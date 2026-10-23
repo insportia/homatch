@@ -27,8 +27,13 @@ export interface MarketplaceSearchRequest {
   rooms: { min: number | null; max: number | null } | null;
   bedrooms: { min: number | null; max: number | null } | null;
   bathrooms: { min: number | null; max: number | null } | null;
+  /** Accepted building ages; a known status outside them is a hard mismatch. */
   buildingStatuses: BuildingStatus[];
+  /** Accepted finishing conditions; a known one outside them is a hard mismatch, an unknown one is unverified. */
   renovationPreferences: RenovationStatus[];
+  /** Soft wishes ("preferably new"): rank higher, never exclude. Absent on older requests. */
+  preferredBuildingStatuses?: BuildingStatus[];
+  preferredRenovations?: RenovationStatus[];
   furnished: boolean | null;
   parking: boolean | null;
   mustHave: string[];

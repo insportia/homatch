@@ -177,3 +177,20 @@ test('queue runtime uses its own worker token and reports through the existing i
  },(request,opts)=>acquireSsge(request,{...opts,...options(s)}));
  try{for(let i=0;i<100&&!finished;i++)await new Promise(r=>setTimeout(r,10));assert.equal(finished,true);}finally{runtime.shutdown();}
 });
+test('a public page that refuses this worker is BLOCKED and says which request got which status from which server (d3d859cc)',async()=>{
+ const reports=[];const deny=async(url)=>new Response('<html>denied</html>',{status:403,headers:{server:'cloudflare','cf-ray':'x'}});
+ const result=await acquireSsge(request(fixture.scenarios[0]),{deadlineAt:new Date(Date.now()+900000).toISOString(),fetcher:deny,sleep:async()=>{},report:async r=>reports.push(r)});
+ assert.equal(result.status,'BLOCKED');assert.equal(result.delivered,0);
+ const error=reports.at(-1).errors[0];
+ assert.equal(error.code,'SSGE_ACCESS_DENIED');
+ assert.match(error.message,/public page HTTP 403 \(cloudflare\)/);
+ assert.equal(validateWorkerReport(reports.at(-1),'ss-ge').ok,true);
+});
+test('the start-up probe reports status and server only, never a token',async()=>{
+ const { probeSsgePublicPage }=await import('../src/marketplace/ssge/probe.mjs');
+ const denied=await probeSsgePublicPage({fetchImpl:async()=>new Response('x',{status:403,headers:{server:'cloudflare'}})});
+ assert.equal(denied.ok,false);assert.equal(denied.status,403);assert.equal(denied.server,'cloudflare');
+ const thrown=await probeSsgePublicPage({fetchImpl:async()=>{throw Error('connect ECONNREFUSED');}});
+ assert.equal(thrown.ok,false);assert.match(thrown.error,/ECONNREFUSED/);
+ assert.ok(!JSON.stringify(denied).includes('eyJ'));
+});

@@ -472,10 +472,12 @@ test('groups: best, owner opportunities, worth considering, more — no property
 
 test('pagination: a page at a time, bounded size, stable offsets', () => {
   const out = run();
-  const page = pageResults(out, 'MORE', 0, 2);
-  assert.equal(page.items.length, 2);
-  assert.equal(page.nextOffset, 2);
-  const last = pageResults(out, 'MORE', page.total - 1, 2);
+  /* BEST holds strong matches only (one definition with the badge and the count), so MORE is small here. */
+  const page = pageResults(out, 'MORE', 0, 1);
+  assert.ok(page.total >= 2);
+  assert.equal(page.items.length, 1);
+  assert.equal(page.nextOffset, 1);
+  const last = pageResults(out, 'MORE', page.total - 1, 1);
   assert.equal(last.nextOffset, null);
   assert.equal(pageResults(out, 'BEST', 0, 10_000).items.length <= 48, true);
   assert.equal('internal' in publicView(out.properties[0]), false, 'ranking internals never reach a customer');

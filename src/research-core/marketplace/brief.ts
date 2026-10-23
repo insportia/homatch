@@ -19,13 +19,15 @@
 
 import {
   type Amenity, type BuildingChoice, type FloorPreference, type MarketplacePropertyType,
-  type MarketplaceTransaction, type RenovationChoice,
+  type MarketplaceTransaction, type RenovationChoice, type BuildingStatus, type RenovationStatus,
   AMENITIES, BUILDING_STATUSES, FLOOR_PREFERENCES, MARKETPLACE_PROPERTY_TYPES, MARKETPLACE_TRANSACTIONS,
   RENOVATION_STATUSES, SEARCH_LANGUAGES,
   asAmenity, asBuildingStatus, asFloorPreference, asPropertyType, asRenovationStatus, asTransaction,
   planPropertyTypeOf, searchGoalOf,
 } from './taxonomy.ts';
 import { resolvePlace } from '../normalize/place.ts';
+import { floorTraceable, statedFloorIntent } from './floor-intent.ts';
+import { statedConditions } from './condition-intent.ts';
 
 export const SEARCH_BRIEF_VERSION = 'search-brief-1';
 
@@ -57,8 +59,14 @@ export interface SearchIntelligenceBrief {
   rooms: BriefField<NumericRange> | null;
   bedrooms: BriefField<NumericRange> | null;
   bathrooms: BriefField<NumericRange> | null;
+  /** The ACCEPTED set: a known status outside it excludes a listing. */
   buildingStatuses: BriefField<BuildingChoice[]> | null;
+  /** The ACCEPTED set: a known condition outside it excludes a listing; an unknown one is unverified. */
   renovationPreferences: BriefField<RenovationChoice[]> | null;
+  /** Soft: "preferably new" (უკეთესია ახალაშენებულში). Ranks higher, never excludes. */
+  preferredBuildingStatuses?: BuildingStatus[];
+  /** Soft: "ideally renovated". Ranks higher, never excludes. */
+  preferredRenovations?: RenovationStatus[];
   furnished: BriefField<boolean> | null;
   parking: BriefField<boolean> | null;
   floorPreferences: FloorPreference[];
@@ -95,7 +103,8 @@ export const SEARCH_BRIEF_JSON_SCHEMA = {
     'transactionType', 'propertyType', 'country', 'city', 'districts', 'locationPreferences',
     'priceMinUsd', 'priceMaxUsd', 'priceCurrencyStated', 'areaMinSqm', 'areaMaxSqm',
     'roomsMin', 'roomsMax', 'bedroomsMin', 'bedroomsMax', 'bathroomsMin',
-    'buildingStatuses', 'renovationPreferences', 'furnished', 'parking', 'floorPreferences',
+    'buildingStatuses', 'renovationPreferences', 'preferredBuildingStatuses', 'preferredRenovations',
+    'furnished', 'parking', 'floorPreferences', 'floorMin', 'floorMax',
     'mustHave', 'niceToHave', 'exclusions', 'userLanguage', 'relevantSearchLanguages', 'proposals',
   ],
   properties: {
@@ -119,7 +128,11 @@ export const SEARCH_BRIEF_JSON_SCHEMA = {
     renovationPreferences: enumArray([...RENOVATION_STATUSES, 'ANY']),
     furnished: nullable('boolean'),
     parking: nullable('boolean'),
+    preferredBuildingStatuses: enumArray(BUILDING_STATUSES),
+    preferredRenovations: enumArray(RENOVATION_STATUSES),
     floorPreferences: enumArray(FLOOR_PREFERENCES),
+    floorMin: nullable('integer'),
+    floorMax: nullable('integer'),
     mustHave: enumArray(AMENITIES),
     niceToHave: enumArray(AMENITIES),
     exclusions: enumArray(AMENITIES),
@@ -151,6 +164,9 @@ export const SEARCH_BRIEF_INSTRUCTIONS = [
   'Rooms and bedrooms are different fields: "3 ოთახიანი" / "3-room" is rooms, "2 საძინებლიანი" / "2-bedroom" is bedrooms.',
   'transactionType: BUY for purchase, MONTHLY_RENT for monthly/long-term rent, DAILY_RENT for daily/short-term rent.',
   'buildingStatuses: NEW_BUILD for new/ახალაშენებული, UNDER_CONSTRUCTION for მშენებარე/under construction, OLD_BUILD for old/ძველი, ANY when they say it does not matter.',
+  'Requirements and preferences are different. buildingStatuses and renovationPreferences hold what the person REQUIRES or ACCEPTS ("must be renovated", "green frame is also fine"). A wish worded as better/preferably/ideally (უკეთესია, სასურველია, ჯობია, лучше, желательно, предпочтительно, preferably, ideally) goes ONLY to preferredBuildingStatuses / preferredRenovations. When building age is only a preference, set buildingStatuses to ["ANY"].',
+  'Building age (new/old/under construction) and finishing condition (renovated/green/white/black frame) are separate: green frame is a finishing condition, never a building age; "new building" never implies "renovated".',
+  'Floors: a numeric floor range goes to floorMin/floorMax ("2-დან 8-მდე სართული" → 2 and 8; "მეორე სართულიდან ზემოთ" / "from the 2nd floor up" / "не ниже 2 этажа" → floorMin 2). Never put a stated floor number into floorPreferences. "not the first floor" / "არა პირველი" / "не первый" is floorPreferences NOT_FIRST. LOW/MIDDLE/HIGH only for vague words like "a high floor". The number of floors in the building (9 სართულიანი) is not a floor range.',
   'Distinguish cities from neighborhoods: Varketili/ვარკეთილი is a Tbilisi neighborhood, never a city. A known neighborhood implies its parent city. Put the neighborhood in districts; keep streets, microdistrict preferences and relative directions in locationPreferences, never in city or districts.',
   'Copy named places without inventing extra neighborhoods or street filters. If their parent city is unknown, leave city null so the person is asked.',
   'relevantSearchLanguages: only languages listings for this market are realistically published in.',
@@ -321,7 +337,53 @@ export function briefFromModel(raw: unknown, originalText: string): SearchIntell
   if (typeof raw.furnished === 'boolean') brief.furnished = stated(raw.furnished);
   if (typeof raw.parking === 'boolean') brief.parking = stated(raw.parking);
 
+  const preferredBuildings = listOf(raw.preferredBuildingStatuses, asBuildingStatus, 3);
+  const preferredRenovations = listOf(raw.preferredRenovations, asRenovationStatus, 5);
+  if (preferredBuildings.length) brief.preferredBuildingStatuses = preferredBuildings;
+  if (preferredRenovations.length) brief.preferredRenovations = preferredRenovations;
+  /* A building-age wish alone excludes nothing: every age stays acceptable, the wish only ranks. */
+  if (!brief.buildingStatuses && preferredBuildings.length) brief.buildingStatuses = stated(['ANY']);
+
+  /* THE CUSTOMER'S WORDS DECIDE requirement versus wish (condition-intent.ts). Where the text
+     speaks about building age or finishing condition, its reading replaces the model's; where
+     it is silent, the model's reading stands. Contradicting statements are left PROPOSED so the
+     customer confirms them; nothing becomes a requirement the customer did not state. */
+  const said = statedConditions(originalText);
+  const inOrder = <T extends string>(all: readonly T[], values: readonly T[]) => all.filter((v) => values.includes(v));
+  if (said.building.evidence.length) {
+    const b = said.building;
+    const hard = b.accepted.length ? inOrder(BUILDING_STATUSES, b.accepted.filter((v) => !b.excluded.includes(v)))
+      : b.excluded.length ? BUILDING_STATUSES.filter((v) => !b.excluded.includes(v)) : null;
+    const value: BuildingChoice[] = hard?.length ? hard : ['ANY'];
+    brief.buildingStatuses = b.ambiguous.length ? { value: brief.buildingStatuses?.value ?? value, status: 'PROPOSED' } : stated(value);
+    if (b.preferred.length) brief.preferredBuildingStatuses = inOrder(BUILDING_STATUSES, b.preferred);
+    else delete brief.preferredBuildingStatuses;
+  }
+  if (said.renovation.evidence.length) {
+    const r = said.renovation;
+    const hard = r.accepted.length ? inOrder(RENOVATION_STATUSES, r.accepted.filter((v) => !r.excluded.includes(v)))
+      : r.excluded.length ? RENOVATION_STATUSES.filter((v) => !r.excluded.includes(v)) : null;
+    /* A finishing-condition wish alone is not a requirement: the field stays unset. */
+    brief.renovationPreferences = r.ambiguous.length ? { value: brief.renovationPreferences?.value ?? hard ?? ['ANY'], status: 'PROPOSED' }
+      : hard?.length ? stated(hard) : null;
+    if (r.preferred.length) brief.preferredRenovations = inOrder(RENOVATION_STATUSES, r.preferred);
+    else delete brief.preferredRenovations;
+  }
+
   brief.floorPreferences = listOf(raw.floorPreferences, asFloorPreference, 5);
+  /* FLOORS ARE A HARD CONSTRAINT WHEN STATED. The customer's own words win; the model's
+     numbers are kept only when they can be traced to the text. */
+  const floorInt = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v >= -5 && v <= 200 ? v : null;
+  const fromText = statedFloorIntent(originalText);
+  const fromModel = range(floorInt(raw.floorMin), floorInt(raw.floorMax));
+  brief.floorRange = fromText.range
+    ?? (fromModel && floorTraceable(fromModel.min, originalText) && floorTraceable(fromModel.max, originalText) ? fromModel : null);
+  if (fromText.notFirst && !brief.floorPreferences.includes('NOT_FIRST')) brief.floorPreferences.push('NOT_FIRST');
+  /* A numeric range supersedes vague LOW/MIDDLE/HIGH; all three together say nothing at all. */
+  const vague = (['LOW', 'MIDDLE', 'HIGH'] as const);
+  if (brief.floorRange || vague.every((v) => brief.floorPreferences.includes(v))) {
+    brief.floorPreferences = brief.floorPreferences.filter((v) => !(vague as readonly string[]).includes(v));
+  }
   brief.mustHave = listOf(raw.mustHave, asAmenity);
   brief.niceToHave = listOf(raw.niceToHave, asAmenity).filter((a) => !brief.mustHave.includes(a));
   brief.exclusions = listOf(raw.exclusions, asAmenity).filter((a) => !brief.mustHave.includes(a));
@@ -487,6 +549,10 @@ export function sanitizeBrief(raw: unknown): SearchIntelligenceBrief {
     maxBuildingAge: boundedInteger(raw.maxBuildingAge, 0, 300), elevatorRequired: false } });
   brief.floorRange = advanced.floorRange;
   brief.maxBuildingAge = advanced.maxBuildingAge;
+  const preferredBuildings = listOf(raw.preferredBuildingStatuses, asBuildingStatus, 3);
+  const preferredRenovations = listOf(raw.preferredRenovations, asRenovationStatus, 5);
+  if (preferredBuildings.length) brief.preferredBuildingStatuses = preferredBuildings;
+  if (preferredRenovations.length) brief.preferredRenovations = preferredRenovations;
   brief.mustHave = listOf(raw.mustHave, asAmenity);
   brief.niceToHave = listOf(raw.niceToHave, asAmenity);
   brief.exclusions = listOf(raw.exclusions, asAmenity);
@@ -586,6 +652,8 @@ export function demandExtrasFromBrief(brief: SearchIntelligenceBrief): DemandExt
   put('exclusions', brief.exclusions);
   put('floorPreferences', brief.floorPreferences);
   put('floorRange', brief.floorRange ?? null);
+  put('preferredBuildingStatuses', brief.preferredBuildingStatuses ?? []);
+  put('preferredRenovations', brief.preferredRenovations ?? []);
   put('maxBuildingAge', brief.maxBuildingAge ?? null);
   put('nearby', brief.locationPreferences);
   const droppedCurrency = brief.dropped.find((d) => d.key === 'mps_dropped_currency')?.value ?? null;

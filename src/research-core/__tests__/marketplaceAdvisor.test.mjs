@@ -26,8 +26,13 @@ test('advisor: silence is UNKNOWN, never "no" (an elevator nobody mentions is no
     brief({ mustHave: ['ELEVATOR'] }));
   assert.deepEqual(a.unknown, [{ code: 'AMENITY', params: { amenity: 'ELEVATOR' } }]);
   assert.equal(a.misses.length, 0);
-  assert.equal(a.verdict, 'GOOD');
-  assert.ok(isRecommended(a));
+  /* Unknown is not "no", and not "yes" either: a REQUIRED elevator nobody mentions is worth a look, never a good match (owner, 2026-10-22). */
+  assert.equal(a.verdict, 'CONSIDER');
+  assert.equal(isRecommended(a), false);
+  /* A nice-to-have nobody mentions is a soft unknown: still a good match. */
+  const soft = assessProperty(property({ intelligence: { strong: false, preferences: { confirmed: [], mentioned: [], unconfirmed: ['ELEVATOR'], contradicted: [] } } }),
+    brief({ niceToHave: ['ELEVATOR'] }));
+  assert.equal(soft.verdict, 'GOOD');
   const said = assessProperty(property({ facts: { elevator: false } }), brief({ mustHave: ['ELEVATOR'] }));
   assert.deepEqual(said.misses, [{ code: 'AMENITY', params: { amenity: 'ELEVATOR' } }]);
 });

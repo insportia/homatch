@@ -46,7 +46,7 @@ export const placege = {
       const line = card.match(/<div><strong>([^<]+)<\/strong>,([^<]*)<br\s*\/?>([^<]*)<\/div>/);
       const facts = decode(line?.[2] ?? ''), place = decode(line?.[3] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
       const usd = card.match(/data-price_usd="\$?([\d,]+)/);
-      const floor = facts.match(/სართული\s*(\d+)\s*\/\s*(\d+)/);
+      const floor = facts.match(/სართული\s*(-?\d+)\s*\/\s*(\d+)/);
       const typeWord = facts.split(',').map((s) => s.trim()).find((s) => TYPE_BACK[s]);
       const contact = card.match(/<div>ტელ\.:\s*([^<]+)<\/div>/);
       const contactParts = decode(contact?.[1] ?? '').split(',').map((s) => s.trim());

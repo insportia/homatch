@@ -339,7 +339,10 @@ export function parseRegisterExtract(rawText: string, recordId: string): Registe
   const ownersBlock = section(text, L_OWNERS, [L_MORTGAGE, L_TAX]) ?? '';
   const rights = ownersBlock.match(/უფლების\s+რეგისტრაცია\s*:\s*თარიღი\s+(\d{2}\/\d{2}\/\d{4})/);
   const basisText = squash(section(ownersBlock, /უფლების\s+დამადასტურებელი\s+დოკუმენტი\s*:/, [/მესაკუთრეები\s*:/]) ?? '');
-  const landFunction = text.match(/ნაკვეთის\s+ფუნქცია\s*:\s*([^\n]+)/)?.[1];
+  // Older extracts say "ნაკვეთის ფუნქცია:", current ones "ნაკვეთის დანიშნულება:"
+  // and wrap the value ("არასასოფლო\nსამეურნეო", prod 176264ba): a following
+  // line with no label of its own is part of it.
+  const landFunction = text.match(/ნაკვეთის\s+(?:ფუნქცია|დანიშნულება)\s*:\s*([^\n]+(?:\n(?![^\n]*:)[^\n]+)?)/)?.[1];
   const landArea = text.match(/დაზუსტებული\s+ფართობი\s*:\s*([\d.]+)/)?.[1];
   const buildings = section(text, /შენობა-ნაგებობები\s*:/, [L_OWNERS]) ?? '';
   const unitArea = ownersBlock.match(/\n\s*([\d]+\.\d{1,2})\s*\n\s*კვ\.მ/)?.[1];

@@ -53,7 +53,8 @@ test('research-agent stamps the engine once at creation, keeps it on the finishe
   assert.match(src, /const engine = engineForNewJob\(engineSetting, now\(\), undefined, \{ isAdmin \}\);/);
   // Admin is the caller's own users.is_admin, looked up only while a preview is on.
   assert.match(src, /if \(user && !anonSession && parseEngineSetting\(engineSetting\)\.adminPreview === 'V2'\) \{\n\s+const \{ data: me \} = await sb\.from\('users'\)\.select\('is_admin'\)\.eq\('auth_id', user\.id\)\.maybeSingle\(\);\n\s+isAdmin = me\?\.is_admin === true;/);
-  assert.match(src, /result_json: \{ _lang: lang, _engine: engine,/);
+  // `stamped` is the engine, plus the research routing on a V2 job (researchRequest.test.mjs).
+  assert.match(src, /result_json: \{ _lang: lang, _engine: stamped,/);
   assert.match(src, /_engine: prior\._engine \?\? null,/);
   assert.match(src, /delete r\._engine;/);
   assert.match(src, /'_engine', '_developerAds'\]\) delete r\[k\];/);

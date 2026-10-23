@@ -38,14 +38,16 @@ serve(async (req) => {
     );
 
     const { data: settingsRows } = await supabase.from('admin_settings').select('key,value').in('key', [
-      'provider_kill_switch', 'outreach_email_sending_enabled', 'outreach_sms_sending_enabled',
+      'provider_kill_switch', 'email_marketing_live', 'outreach_email_sending_enabled', 'outreach_sms_sending_enabled',
       'outreach_calling_enabled', 'outreach_email_provider', 'outreach_sms_provider', 'outreach_calling_provider',
     ]);
     const fm = Object.fromEntries((settingsRows ?? []).map((s: { key: string; value: unknown }) => [s.key, s.value]));
     const truthy = (v: unknown) => v === true || v === 'true';
     const killSwitch = truthy(fm['provider_kill_switch']);
+    /* email_marketing_live lifts the kill switch for email only (see emailMarketing/core.ts). */
+    const emailKilled = killSwitch && !truthy(fm['email_marketing_live']);
 
-    const emailEnabled = truthy(fm['outreach_email_sending_enabled']) && !killSwitch;
+    const emailEnabled = truthy(fm['outreach_email_sending_enabled']) && !emailKilled;
     const smsEnabled = truthy(fm['outreach_sms_sending_enabled']) && !killSwitch;
     const callingEnabled = truthy(fm['outreach_calling_enabled']) && !killSwitch;
 
@@ -64,7 +66,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       kill_switch: killSwitch,
-      email: { flag_enabled: emailEnabled, real: emailReal, provider: (fm['outreach_email_provider'] ?? 'RESEND').toString().toUpperCase() },
+      email: { flag_enabled: emailEnabled, real: emailReal, kill_switch: emailKilled, provider: (fm['outreach_email_provider'] ?? 'RESEND').toString().toUpperCase() },
       sms: { flag_enabled: smsEnabled, real: smsReal, provider: (fm['outreach_sms_provider'] ?? 'TWILIO').toString().toUpperCase() },
       calling: { flag_enabled: callingEnabled, real: callingReal, provider: (fm['outreach_calling_provider'] ?? 'RETELL').toString().toUpperCase() },
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

@@ -502,7 +502,9 @@ export default function EmailCampaignsPage() {
   );
 
   const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`);
-  const sendingLive = !providerLoading && Boolean(providerStatus?.email?.real) && !providerStatus?.kill_switch;
+  /* Email has its own go-live switch: the email kill-switch state wins over the global one. */
+  const emailKilled = providerStatus?.email?.kill_switch ?? providerStatus?.kill_switch;
+  const sendingLive = !providerLoading && Boolean(providerStatus?.email?.real) && !emailKilled;
 
   return (
     <CommsWorkspace
@@ -534,7 +536,7 @@ export default function EmailCampaignsPage() {
                   conservative one — the same message a disabled channel shows. */}
               {providerLoading
                 ? t('outreach_status_checking')
-                : providerStatus?.kill_switch
+                : emailKilled
                 ? t('outreach_status_kill_switch')
                 : providerStatus?.email?.real
                 ? t('email_sending_real', { provider: providerStatus?.email?.provider })

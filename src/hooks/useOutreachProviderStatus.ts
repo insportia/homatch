@@ -5,6 +5,8 @@ export interface ChannelStatus {
   flag_enabled: boolean;
   real: boolean;
   provider: string;
+  /** Email only: the kill switch as it applies to email (email_marketing_live lifts it). */
+  kill_switch?: boolean;
 }
 
 export interface OutreachProviderStatus {

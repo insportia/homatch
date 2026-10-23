@@ -21,7 +21,7 @@ import { checkSpendCap } from '../_shared/spend_cap.ts';
 import { listUnsubscribeHeaders, sendEmail } from '../_shared/resend/client.ts';
 import {
   createReplyRoute, isSuppressed, loadEmailSettings, loadTestMode, marketingKey, ownerFromAuth, reserveQuota, resolveSender, settleQuota,
-  testModeAllows,
+  testModeAllows, EMAIL_LIVE_SETTING, emailKillSwitchOn,
 } from '../_shared/emailMarketing/core.ts';
 import { handleStudioAction, isStudioAction } from '../_shared/emailStudio.ts';
 import { broadcastStep } from '../_shared/emailMarketing/broadcast.ts';
@@ -193,13 +193,16 @@ async function outreachSend(req: Request): Promise<Response> {
 
     // ── Safety flags ─────────────────────────────────────────
     const { data: settingsRows } = await supabase.from('admin_settings').select('key,value').in('key', [
-      'provider_kill_switch', 'outreach_email_sending_enabled', 'outreach_sms_sending_enabled',
+      'provider_kill_switch', EMAIL_LIVE_SETTING, 'outreach_email_sending_enabled', 'outreach_sms_sending_enabled',
       'outreach_calling_enabled', 'outreach_email_provider', 'outreach_sms_provider', 'outreach_calling_provider',
       'outreach_email_price_per_1k', 'outreach_sms_unit_price',
     ]);
     const fm = Object.fromEntries((settingsRows ?? []).map((s: { key: string; value: unknown }) => [s.key, s.value]));
     const truthy = (v: unknown) => v === true || v === 'true';
-    const killSwitch = truthy(fm['provider_kill_switch']) && !testOverride;
+    /* email_marketing_live lifts the global kill switch for EMAIL only; SMS and calls keep it. */
+    const killSwitch = (campaign.campaign_type === 'EMAIL'
+      ? emailKillSwitchOn(fm['provider_kill_switch'], fm[EMAIL_LIVE_SETTING])
+      : truthy(fm['provider_kill_switch'])) && !testOverride;
     if (killSwitch) {
       return new Response(JSON.stringify({
         blocked: true, reason: 'PROVIDER_KILL_SWITCH_ACTIVE',

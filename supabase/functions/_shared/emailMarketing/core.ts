@@ -151,9 +151,11 @@ export interface QuotaGrant {
 
 /**
  * Reserve quota for `count` emails and, when the reservation needs new overage
- * blocks, charge them from the wallet first. If the charge fails the reservation
- * is released and only the included part is offered again (never a send without
- * either allowance or a settled overage charge).
+ * blocks, charge them first (email_quota_bill_overage: wallet charge + record in
+ * one transaction). If the charge fails the reservation is released and only the
+ * included part is offered again (never a send without either allowance or a
+ * settled overage charge). A key whose reservation already settled is refused
+ * (STALE_KEY): callers use one key per send attempt.
  */
 export async function reserveQuota(
   sb: SupabaseClient, s: EmailSettings, owner: Owner, count: number, key: string, source: string,
@@ -162,23 +164,28 @@ export async function reserveQuota(
     p_owner: owner.userId, p_count: count, p_key: key, p_source: source, p_allow_partial: true,
   });
   if (error) throw new Error(`QUOTA_RESERVE_FAILED: ${error.message}`);
-  const r = data as { reservationId: string | null; granted: number; included: number; overage: number; blocksToBill: number; status: string; reason?: string; remaining?: number; periodId?: string };
-  if (!r.reservationId || !r.blocksToBill || r.blocksToBill <= 0) {
+  const r = data as { reservationId: string | null; granted: number; included: number; overage: number; blocksToBill: number; status: string; reason?: string; remaining?: number };
+  if (!r.reservationId || r.status !== 'RESERVED') {
+    return { reservationId: null, granted: 0, included: 0, overage: 0, status: 'REFUSED', reason: r.reason ?? 'QUOTA_EXHAUSTED', remaining: r.remaining };
+  }
+  if (!r.blocksToBill || r.blocksToBill <= 0) {
     return { reservationId: r.reservationId, granted: r.granted, included: r.included, overage: r.overage, status: r.status, reason: r.reason, remaining: r.remaining };
   }
-  const credits = round4(r.blocksToBill * 2.2 * s.creditsPerUsd);
-  const charge = await chargeWallet(sb, owner, 'EMAIL_OVERAGE_1K', credits, `email-overage:${key}`, { blocks: r.blocksToBill, period_id: r.periodId });
-  if (!charge.ok) {
+  const { error: billErr } = await sb.rpc('email_quota_bill_overage', {
+    p_reservation: r.reservationId, p_credits_per_block: round4(OVERAGE_BLOCK_USD * s.creditsPerUsd), p_gross_usd_per_block: OVERAGE_BLOCK_USD,
+  });
+  if (billErr) {
+    const m = billErr.message ?? '';
+    const reason = m.includes('INSUFFICIENT_CREDITS') ? 'INSUFFICIENT_CREDITS' : m.includes('PRODUCT') ? 'PRODUCT_DISABLED' : 'WALLET_ERROR';
     await sb.rpc('email_quota_release', { p_reservation: r.reservationId });
-    if (r.included <= 0) return { reservationId: null, granted: 0, included: 0, overage: 0, status: 'REFUSED', reason: charge.reason };
+    if (r.included <= 0) return { reservationId: null, granted: 0, included: 0, overage: 0, status: 'REFUSED', reason };
     return await reserveQuota(sb, { ...s }, owner, r.included, `${key}:included`, source);
   }
-  await sb.rpc('email_quota_record_overage', {
-    p_owner: owner.userId, p_period: r.periodId, p_blocks: r.blocksToBill, p_credits: credits,
-    p_gross_usd: round2(r.blocksToBill * 2.2), p_wallet_reservation: charge.reservationId, p_key: `email-overage:${key}`,
-  });
   return { reservationId: r.reservationId, granted: r.granted, included: r.included, overage: r.overage, status: 'RESERVED' };
 }
+
+/** HOMATCH's overage price: $2.20 per 1,000 emails, VAT-inclusive, sold in whole blocks. */
+export const OVERAGE_BLOCK_USD = 2.2;
 
 export async function settleQuota(sb: SupabaseClient, reservationId: string | null, accepted: number): Promise<void> {
   if (!reservationId) return;
@@ -187,38 +194,6 @@ export async function settleQuota(sb: SupabaseClient, reservationId: string | nu
 }
 
 /* ── wallet ──────────────────────────────────────────────────────────────── */
-
-export interface Charge { ok: boolean; reservationId: string | null; reason?: string; duplicate?: boolean }
-
-/**
- * A fixed-price wallet charge: reserve exactly `credits`, then settle exactly that.
- * Idempotent on `key` (wallet_reserve returns the same reservation for the same key,
- * and settling an already-settled reservation is a no-op). No negative balances:
- * wallet_reserve refuses INSUFFICIENT_CREDITS before anything moves.
- */
-export async function chargeWallet(
-  sb: SupabaseClient, owner: Owner, productCode: string, credits: number, key: string, metadata: Record<string, unknown> = {},
-): Promise<Charge> {
-  const { data: res, error } = await sb.rpc('wallet_reserve', {
-    p_user_id: owner.userId, p_product_code: productCode, p_authorized_max_credits: credits,
-    p_idempotency_key: key, p_estimate_min_credits: credits, p_estimate_max_credits: credits,
-    p_job_ref: key.slice(0, 120), p_metadata: { ...metadata, service: 'email_marketing' },
-  });
-  if (error) {
-    const m = error.message ?? '';
-    return { ok: false, reservationId: null, reason: m.includes('INSUFFICIENT_CREDITS') ? 'INSUFFICIENT_CREDITS' : m.includes('PRODUCT') ? 'PRODUCT_DISABLED' : 'WALLET_ERROR' };
-  }
-  const row = Array.isArray(res) ? res[0] : res;
-  const reservationId = row?.reservation_id ?? null;
-  if (!reservationId) return { ok: false, reservationId: null, reason: 'WALLET_ERROR' };
-  const { error: settleErr } = await sb.rpc('wallet_settle', {
-    p_reservation_id: reservationId, p_actual_credits: credits,
-    p_usage: { provider: 'HOMATCH', provider_operation: productCode, metadata: { ...metadata, pricing_state: 'FIXED_PRICE', service: 'email_marketing' } },
-    p_outcome: 'SUCCESS',
-  });
-  if (settleErr) return { ok: false, reservationId, reason: 'WALLET_SETTLE_FAILED' };
-  return { ok: true, reservationId, duplicate: Boolean(row?.was_duplicate) };
-}
 
 /** Release a wallet reservation that will not be settled (purchase rolled back before settlement). */
 export async function releaseWallet(sb: SupabaseClient, reservationId: string, reason: string): Promise<void> {
@@ -231,12 +206,15 @@ export const PLAN_PRICES: Record<'PRO' | 'SCALE', { grossUsd: number; product: s
 };
 
 /**
- * Buy (or renew) a plan month from the wallet. Purchase/renewal is recorded first
- * against the wallet reservation, then the reservation settles; a settlement
- * failure after activation is reported, never retried into a second charge.
+ * Buy (or renew) a plan month from the wallet. The wallet hold is taken here;
+ * email_plan_activate checks it is still held and settles it in the same
+ * transaction that activates the period, so a plan is never active without its
+ * charge. If activation refuses, the hold is released (a settled hold is not
+ * touched: wallet_release is a no-op on it).
  */
 export async function purchasePlan(
   sb: SupabaseClient, s: EmailSettings, owner: Owner, plan: 'PRO' | 'SCALE', kind: 'PLAN_PURCHASE' | 'PLAN_RENEWAL', key: string,
+  renewsPeriodId: string | null = null,
 ): Promise<{ ok: boolean; reason?: string; periodId?: string; duplicate?: boolean }> {
   const price = PLAN_PRICES[plan];
   const credits = round4(price.grossUsd * s.creditsPerUsd);
@@ -255,18 +233,14 @@ export async function purchasePlan(
 
   const { data: act, error: actErr } = await sb.rpc('email_plan_activate', {
     p_owner: owner.userId, p_plan: plan, p_kind: kind, p_credits: credits, p_gross_usd: price.grossUsd,
-    p_wallet_reservation: reservationId, p_key: key,
+    p_wallet_reservation: reservationId, p_key: key, p_renews_period: renewsPeriodId,
   });
   if (actErr) {
-    if (!row?.was_duplicate) await releaseWallet(sb, reservationId, 'email_plan_activation_failed');
-    return { ok: false, reason: 'ACTIVATION_FAILED' };
+    const m = actErr.message ?? '';
+    const reason = (['ALREADY_ACTIVE', 'RENEWAL_SUPERSEDED', 'WALLET_RESERVATION_NOT_HELD'] as const).find((r) => m.includes(r)) ?? 'ACTIVATION_FAILED';
+    await releaseWallet(sb, reservationId, `email_plan_${reason.toLowerCase()}`);
+    return { ok: false, reason };
   }
-  const { error: settleErr } = await sb.rpc('wallet_settle', {
-    p_reservation_id: reservationId, p_actual_credits: credits,
-    p_usage: { provider: 'HOMATCH', provider_operation: price.product, metadata: { pricing_state: 'FIXED_PRICE', service: 'email_marketing', plan, kind } },
-    p_outcome: 'SUCCESS',
-  });
-  if (settleErr) console.error('[email-marketing] plan settle failed after activation', reservationId, settleErr.message);
   const a = act as { periodId?: string; duplicate?: boolean };
   return { ok: true, periodId: a?.periodId, duplicate: Boolean(a?.duplicate) };
 }

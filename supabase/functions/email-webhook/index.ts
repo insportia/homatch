@@ -43,7 +43,7 @@ import {
 } from '../_shared/comm/generated/inboundEmail.ts';
 import { detectsOptOut, detectsHumanRequest } from '../_shared/comm/generated/handoff.ts';
 import { handleStudioUnsubscribe, isStudioUnsubscribe } from '../_shared/emailStudioUnsubscribe.ts';
-import { getReceivedEmail, mapDomainStatus, resolveResendKey, routeTokenFrom } from '../_shared/resend/client.ts';
+import { getReceivedEmail, mapDomainStatus, resolveResendKey, routeTokenFrom, senderAuthentication } from '../_shared/resend/client.ts';
 import { loadEmailSettings, resolveReplyRoute } from '../_shared/emailMarketing/core.ts';
 
 /** Bigger than any real reply; smaller than a denial of service. */
@@ -278,6 +278,23 @@ async function handleDeliveryEvent(
     }
   }
 
+  /* A Resend BROADCAST email: one broadcast id for the whole campaign, so the send row is
+     found by broadcast id + recipient address (outreach_sends rows written by broadcast.ts). */
+  if (typeof data.broadcast_id === 'string' && DELIVERY_STATUS[eventType]) {
+    const to = Array.isArray(data.to) ? String(data.to[0] ?? '') : String(data.to ?? '');
+    if (to.includes('@')) {
+      const { data: rows } = await sb.from('outreach_sends')
+        .update({ status: DELIVERY_STATUS[eventType], updated_at: new Date().toISOString(),
+          ...(eventType === 'email.delivered' ? { delivered_at: new Date().toISOString() } : {}) })
+        .eq('provider_message_id', data.broadcast_id).ilike('recipient_email', to.toLowerCase())
+        .neq('status', DELIVERY_STATUS[eventType]).select('campaign_id');
+      const campaignId = (rows ?? [])[0]?.campaign_id;
+      if (campaignId) await sb.rpc('outreach_recompute_campaign_counters', { p_campaign_id: campaignId });
+    }
+    await sb.rpc('comm_finish_webhook_event', { p_provider: 'RESEND', p_event_key: eventId, p_error: null });
+    return;
+  }
+
   const status = DELIVERY_STATUS[eventType];
   if (!status && !STUDIO_KIND[eventType]) {
     // delivery_delayed, and anything added later. Claimed, so a retry of it
@@ -398,10 +415,12 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
        reason, so somebody can see that mail is arriving at an address no
        customer has claimed — which is a configuration problem, not a bug, and
        is invisible if the webhook silently drops it. */
-    logEvent('email-webhook', 'unroutable_address', { to: email.to });
+    /* Recipient addresses are personal data: only their domains are logged and kept. */
+    const domains = [...new Set(email.to.map((a) => a.split('@').pop()?.toLowerCase() ?? '?'))].join(', ').slice(0, 200);
+    logEvent('email-webhook', 'unroutable_address', { domains });
     await sb.rpc('comm_finish_webhook_event', {
       p_provider: 'RESEND', p_event_key: email.eventId,
-      p_error: `no channel account for ${email.to.join(', ').slice(0, 200)}`,
+      p_error: `no channel account for an address at ${domains}`,
     });
     return;
   }
@@ -432,6 +451,14 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
   const fetched = (email.text || email.html) ? null : (full ? { text: full.text ?? null, html: full.html ?? null } : null);
   const body = email.text ?? fetched?.text ?? stripHtml(email.html ?? fetched?.html ?? null) ?? '';
   const sentAt = email.sentAt ?? new Date().toISOString();
+  /*
+   * WHO REALLY SENT IT. The From header is the sender's own claim, and a reply-route address is
+   * visible to everyone who received the campaign. A message whose own domain's DMARC (or both
+   * SPF and DKIM) FAILED is recorded and shown flagged, but it never acts on the contact book or
+   * the conversation: a forged "STOP" cannot unsubscribe somebody else's contact. A sender with
+   * no DMARC at all (UNKNOWN) is treated as genuine, so a real opt-out is never ignored.
+   */
+  const senderCheck = senderAuthentication(full?.authentication);
 
   const { data, error } = await sb.rpc('comm_record_inbound', {
     p_owner_id: account.owner_id,
@@ -470,6 +497,7 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
       authentication: full?.authentication ?? null,
       attachments: (full?.attachments ?? []).slice(0, 25).map((a) => ({ id: a.id, filename: a.filename ?? null, content_type: a.content_type ?? null, size: a.size ?? null })),
       route: route ? { kind: route.kind, campaign_id: route.campaignId } : null,
+      sender_check: senderCheck,
       provider_email_id: email.providerEmailId ?? null,
     };
     await sb.from('comm_messages')
@@ -516,7 +544,9 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
   // Checked deterministically and acted on before anything else, for the same
   // reason as on WhatsApp: a "STOP" only an LLM notices is a "STOP" answered
   // with a cheerful follow-up.
-  if (written && detectsOptOut(written)) {
+  if (senderCheck === 'FAIL') {
+    logEvent('email-webhook', 'sender_authentication_failed', { conversationId });
+  } else if (written && detectsOptOut(written)) {
     await applyOptOut(sb, account.owner_id, email.fromAddress, conversationId);
     logEvent('email-webhook', 'opt_out_recorded', { conversationId });
     await sb.rpc('comm_finish_webhook_event', {
@@ -526,7 +556,7 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
   }
 
   // ── "Give me a real person" (§113) ───────────────────────────────────────
-  if (written && detectsHumanRequest(written).requested && conversationId) {
+  if (senderCheck !== 'FAIL' && written && detectsHumanRequest(written).requested && conversationId) {
     await sb.rpc('comm_set_conversation_mode', {
       p_conversation_id: conversationId,
       p_expected_mode: 'AI_ACTIVE',
@@ -559,6 +589,7 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
       kind: 'NEW_MESSAGE',
       channel: 'EMAIL',
       subject: email.subject,
+      sender_check: senderCheck,
     },
   });
 
@@ -700,6 +731,9 @@ async function handleAccountEvent(sb: Sb, body: unknown, eventType: string, even
       if (status === 'VERIFIED') patch.verified_at = new Date().toISOString();
       await sb.from('email_sending_domains').update(patch).eq('resend_domain_id', data.id).neq('status', 'DISCONNECTED');
     }
+  } else if (eventType === 'contact.updated' && data.unsubscribed === true && typeof data.email === 'string') {
+    /* Somebody used Resend's broadcast unsubscribe link: HOMATCH stops emailing the address too. */
+    await sb.from('email_studio_suppressions').insert({ email: String(data.email).toLowerCase(), reason: 'UNSUBSCRIBED', source: 'RESEND_BROADCAST_UNSUBSCRIBE' });
   } else if (eventType === 'suppression.added') {
     const addr = typeof data.email === 'string' ? data.email : null;
     if (addr && addr.includes('@')) {

@@ -52,7 +52,7 @@ export default function EmailPlanPage() {
     if (!buying) return;
     setBusy(true);
     try {
-      const r = await purchasePlan(buying, requestId.current);
+      const r = await purchasePlan(buying, requestId.current, true);
       requestId.current = crypto.randomUUID();
       toast.success(t(r.duplicate ? 'emp_already_recorded' : 'emp_purchased'));
       await load();

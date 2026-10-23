@@ -23,6 +23,10 @@ import {
 type Sb = ReturnType<typeof serviceClient>;
 
 const RESERVED_DOMAINS = ['homatch.live'];
+/** An unverified domain claim older than this can be taken over by an account that adds it. */
+const UNVERIFIED_CLAIM_MS = 72 * 3_600_000;
+/** RFC 5322 msg-id shape; anything else (CR/LF, spaces, brackets) never reaches a header. */
+const MESSAGE_ID_RE = /^<[^<>\s]{1,250}>$/;
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return preflight();
@@ -73,7 +77,10 @@ async function cronAuthorized(sb: Sb, req: Request): Promise<boolean> {
   const { data } = await sb.from('admin_settings').select('value').eq('key', 'jobs_worker_token').maybeSingle();
   const v = (data as { value?: unknown } | null)?.value;
   const expected = v == null ? '' : typeof v === 'string' ? v : String(v);
-  return Boolean(expected) && token === expected;
+  if (!expected || token.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < token.length; i++) diff |= token.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
 }
 
 /* ── plans ───────────────────────────────────────────────────────────────── */
@@ -91,17 +98,10 @@ async function planPurchase(sb: Sb, s: EmailSettings, owner: Owner, body: Record
   if (!/^[0-9a-f-]{36}$/i.test(requestId)) return json({ ok: false, error: 'REQUEST_ID_REQUIRED' }, 400);
   if (body.confirmed !== true) return json({ ok: false, error: 'CONFIRMATION_REQUIRED' }, 422);
 
-  /* Buying the plan you already have, with time left, is refused rather than charged twice. */
-  const { data: sub } = await sb.from('email_subscriptions').select('plan_code, status, current_period_id').eq('owner_user_id', owner.userId).maybeSingle();
-  if (sub && (sub as { status: string }).status === 'ACTIVE' && (sub as { plan_code: string }).plan_code === plan && (sub as { current_period_id: string | null }).current_period_id) {
-    const { data: period } = await sb.from('email_quota_periods').select('kind, ends_at').eq('id', (sub as { current_period_id: string }).current_period_id).maybeSingle();
-    const p = period as { kind: string; ends_at: string | null } | null;
-    if (p?.kind === 'MONTHLY' && p.ends_at && Date.parse(p.ends_at) > Date.now() + 3 * 86_400_000) {
-      return json({ ok: false, error: 'ALREADY_ACTIVE', endsAt: p.ends_at }, 409);
-    }
-  }
+  /* Buying the plan you already have (or a lower one) while more than 3 days are left is refused
+     by email_plan_activate under the subscription lock, so two clicks can never both charge. */
   const res = await purchasePlan(sb, s, owner, plan, 'PLAN_PURCHASE', `email-plan:${owner.userId}:${requestId}`);
-  if (!res.ok) return json({ ok: false, error: res.reason ?? 'PURCHASE_FAILED' }, res.reason === 'INSUFFICIENT_CREDITS' ? 402 : 422);
+  if (!res.ok) return json({ ok: false, error: res.reason ?? 'PURCHASE_FAILED' }, res.reason === 'INSUFFICIENT_CREDITS' ? 402 : res.reason === 'ALREADY_ACTIVE' ? 409 : 422);
   logEvent('email-marketing', 'plan_purchased', { plan, duplicate: Boolean(res.duplicate) });
   return json({ ok: true, periodId: res.periodId, duplicate: Boolean(res.duplicate) });
 }
@@ -112,19 +112,23 @@ async function renewDue(sb: Sb): Promise<Response> {
   const s = await loadEmailSettings(sb);
   const { data, error } = await sb.rpc('email_plan_due_renewals', { p_limit: 25 });
   if (error) return json({ ok: false, error: error.message }, 500);
-  let renewed = 0, insufficient = 0, failed = 0;
+  let renewed = 0, insufficient = 0, failed = 0, superseded = 0;
   for (const r of (data ?? []) as Array<{ owner_user_id: string; plan_code: string; period_id: string }>) {
     const { data: u } = await sb.from('users').select('auth_id').eq('id', r.owner_user_id).maybeSingle();
     const owner = u?.auth_id ? await ownerFromAuth(sb, String(u.auth_id)) : null;
     if (!owner || (r.plan_code !== 'PRO' && r.plan_code !== 'SCALE')) { failed++; continue; }
-    const res = await purchasePlan(sb, s, owner, r.plan_code, 'PLAN_RENEWAL', `email-renew:${r.owner_user_id}:${r.period_id}`);
+    const res = await purchasePlan(sb, s, owner, r.plan_code, 'PLAN_RENEWAL', `email-renew:${r.owner_user_id}:${r.period_id}`, r.period_id);
     if (res.ok) renewed++;
     else if (res.reason === 'INSUFFICIENT_CREDITS') insufficient++;
+    else if (res.reason === 'RENEWAL_SUPERSEDED') superseded++;
     else failed++;
   }
   const { data: lapsed } = await sb.rpc('email_plan_lapse_expired');
-  logEvent('email-marketing', 'renewals', { renewed, insufficient, failed, lapsed: Number(lapsed ?? 0) });
-  return json({ ok: true, renewed, insufficient, failed, lapsed: Number(lapsed ?? 0) });
+  /* Reservations left open by a run that died give their allowance back. */
+  const { data: stale } = await sb.rpc('email_quota_release_stale', { p_minutes: 30, p_broadcast_days: 7 });
+  const out = { renewed, insufficient, failed, superseded, lapsed: Number(lapsed ?? 0), staleReleased: Number(stale ?? 0) };
+  logEvent('email-marketing', 'renewals', out);
+  return json({ ok: true, ...out });
 }
 
 /* ── domains ─────────────────────────────────────────────────────────────── */
@@ -149,9 +153,24 @@ async function domainAdd(sb: Sb, s: EmailSettings, owner: Owner, body: Record<st
   const limit = await checkRateLimit(sb, 'email_domain_add', 10, 86_400, { userId: owner.authId });
   if (!limit.allowed) return json({ ok: false, error: 'RATE_LIMITED' }, 429);
 
-  const { data: taken } = await sb.from('email_sending_domains').select('id, owner_user_id').eq('domain', domain).neq('status', 'DISCONNECTED').maybeSingle();
+  const key = marketingKey(s).key;
+  if (!key) return json({ ok: false, error: 'PROVIDER_NOT_CONFIGURED' }, 503);
+  const { data: taken } = await sb.from('email_sending_domains').select('id, owner_user_id, status, resend_domain_id, created_at')
+    .eq('domain', domain).neq('status', 'DISCONNECTED').maybeSingle();
   if (taken) {
-    return json({ ok: false, error: (taken as { owner_user_id: string }).owner_user_id === owner.userId ? 'DOMAIN_ALREADY_ADDED' : 'DOMAIN_IN_USE' }, 409);
+    const t = taken as { id: string; owner_user_id: string; status: string; resend_domain_id: string | null; created_at: string };
+    if (t.owner_user_id === owner.userId) return json({ ok: false, error: 'DOMAIN_ALREADY_ADDED' }, 409);
+    /* A claim that never proved DNS control expires after 72 hours, so nobody can squat a
+       domain they do not own. A verified domain is never taken over. */
+    if (t.status === 'VERIFIED' || Date.parse(t.created_at) > Date.now() - UNVERIFIED_CLAIM_MS) return json({ ok: false, error: 'DOMAIN_IN_USE' }, 409);
+    if (t.resend_domain_id) {
+      const del = await deleteDomain(key, t.resend_domain_id);
+      if (!del.ok && del.status !== 404) return json({ ok: false, error: 'DOMAIN_IN_USE' }, 409);
+    }
+    const now = new Date().toISOString();
+    await sb.from('email_sending_domains').update({ status: 'DISCONNECTED', disconnected_at: now, last_error: 'UNVERIFIED_CLAIM_EXPIRED', updated_at: now })
+      .eq('id', t.id).neq('status', 'VERIFIED');
+    logEvent('email-marketing', 'domain_claim_expired', {});
   }
   /* Capacity: the account's Resend plan has a domain limit; never promise beyond it. */
   const { data: snap } = await sb.from('email_provider_usage_snapshots').select('usage').eq('ok', true).order('captured_at', { ascending: false }).limit(1).maybeSingle();
@@ -160,8 +179,6 @@ async function domainAdd(sb: Sb, s: EmailSettings, owner: Owner, body: Record<st
     return json({ ok: false, error: 'DOMAIN_CAPACITY_REACHED' }, 409);
   }
 
-  const key = marketingKey(s).key;
-  if (!key) return json({ ok: false, error: 'PROVIDER_NOT_CONFIGURED' }, 503);
   const region = ['us-east-1', 'eu-west-1', 'sa-east-1', 'ap-northeast-1'].includes(String(body.region)) ? String(body.region) : 'eu-west-1';
   const created = await createDomain(key, domain, region, `domain-add:${owner.userId}:${domain}`);
   if (!created.ok || !created.json?.id) {
@@ -169,7 +186,8 @@ async function domainAdd(sb: Sb, s: EmailSettings, owner: Owner, body: Record<st
     /* Already registered in the provider account (by another tenant, or outside HOMATCH): never adopt it. */
     if (created.status === 409 || /already|exists/i.test(err)) return json({ ok: false, error: 'DOMAIN_IN_USE' }, 409);
     if (/limit|quota|plan/i.test(err)) return json({ ok: false, error: 'DOMAIN_CAPACITY_REACHED' }, 409);
-    return json({ ok: false, error: 'PROVIDER_ERROR', detail: err.slice(0, 120) }, 502);
+    logEvent('email-marketing', 'domain_add_provider_error', { error: redact(err.slice(0, 200)) });
+    return json({ ok: false, error: 'PROVIDER_ERROR' }, 502);
   }
   const d = created.json;
   const { data: row, error } = await sb.from('email_sending_domains').insert({
@@ -266,8 +284,10 @@ async function inboxReply(sb: Sb, s: EmailSettings, owner: Owner, body: Record<s
   const { data: last } = await sb.from('comm_messages').select('email_meta')
     .eq('conversation_id', c.id).eq('direction', 'INBOUND').order('created_at', { ascending: false }).limit(1).maybeSingle();
   const meta = ((last as { email_meta?: Record<string, unknown> } | null)?.email_meta ?? {}) as Record<string, unknown>;
-  const parentId = typeof meta.message_id === 'string' ? meta.message_id : null;
-  const refs = [...(Array.isArray(meta.references) ? meta.references as string[] : []), ...(parentId ? [parentId] : [])].slice(-20);
+  /* The inbound Message-ID is sender-controlled: only a well-formed id goes into a header. */
+  const parentId = typeof meta.message_id === 'string' && MESSAGE_ID_RE.test(meta.message_id) ? meta.message_id : null;
+  const refs = [...(Array.isArray(meta.references) ? meta.references as unknown[] : []), ...(parentId ? [parentId] : [])]
+    .filter((r): r is string => typeof r === 'string' && MESSAGE_ID_RE.test(r)).slice(-20);
   const baseSubject = String(meta.subject ?? body.subject ?? '').replace(/^\s*(re:\s*)+/i, '').slice(0, 250);
   const subject = baseSubject ? `Re: ${baseSubject}` : 'Re:';
 
@@ -296,7 +316,10 @@ async function inboxReply(sb: Sb, s: EmailSettings, owner: Owner, body: Record<s
     await sb.from('comm_conversations').update({ last_message_at: now, last_message_preview: text.slice(0, 200), unread_count: 0, updated_at: now }).eq('id', c.id);
     await sb.from('cost_events').insert({ provider: 'RESEND', operation_type: 'EMAIL_CRM_REPLY', source: 'email-marketing', units: 1, cost_usd: 0, success: true, cache_hit: false, pricing_state: 'UNPRICED' });
   }
-  if (!accepted) return json({ ok: false, error: 'PROVIDER_ERROR', detail: String(result.error ?? '').slice(0, 120) }, 502);
+  if (!accepted) {
+    logEvent('email-marketing', 'inbox_reply_provider_error', { error: redact(String(result.error ?? '').slice(0, 200)) });
+    return json({ ok: false, error: 'PROVIDER_ERROR' }, 502);
+  }
   return json({ ok: true, providerMessageId: providerId });
 }
 

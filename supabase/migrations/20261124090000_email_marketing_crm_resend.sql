@@ -39,6 +39,33 @@ comment on column public.comm_messages.email_meta is
 comment on column public.comm_messages.html_body is
   'EMAIL channel: the message HTML exactly as received/sent. Untrusted: rendered only sanitised in a sandboxed frame.';
 
+/* Both columns are written by the server only. comm_messages keeps its owner FOR ALL policy, so
+   without this a customer could forge a received email's headers or SPF/DKIM/DMARC verdicts on
+   their own rows. SECURITY INVOKER on purpose: current_user is the caller's role. */
+create or replace function public.comm_messages_email_fields_server_only()
+returns trigger
+language plpgsql
+set search_path to ''
+as $function$
+begin
+  if current_user in ('authenticated', 'anon') then
+    if tg_op = 'INSERT' then
+      new.email_meta := null;
+      new.html_body := null;
+    else
+      new.email_meta := old.email_meta;
+      new.html_body := old.html_body;
+    end if;
+  end if;
+  return new;
+end;
+$function$;
+revoke all on function public.comm_messages_email_fields_server_only() from public, anon, authenticated;
+drop trigger if exists trg_comm_messages_email_fields_server_only on public.comm_messages;
+create trigger trg_comm_messages_email_fields_server_only
+  before insert or update on public.comm_messages
+  for each row execute function public.comm_messages_email_fields_server_only();
+
 ------------------------------------------------------------------------------
 -- 2. Reply routing tokens.
 ------------------------------------------------------------------------------
@@ -96,7 +123,7 @@ alter table public.email_sending_domains enable row level security;
 drop policy if exists email_sending_domains_own_read on public.email_sending_domains;
 create policy email_sending_domains_own_read on public.email_sending_domains
   for select to authenticated using (owner_user_id = public.current_homatch_user_id() or public.is_admin());
-revoke all on public.email_sending_domains from public, anon;
+revoke all on public.email_sending_domains from public, anon, authenticated;
 grant select on public.email_sending_domains to authenticated;
 grant all on public.email_sending_domains to service_role;
 comment on table public.email_sending_domains is
@@ -123,6 +150,7 @@ on conflict (code) do nothing;
 alter table public.email_plans enable row level security;
 drop policy if exists email_plans_read on public.email_plans;
 create policy email_plans_read on public.email_plans for select to authenticated using (true);
+revoke all on public.email_plans from public, anon, authenticated;
 grant select on public.email_plans to authenticated;
 
 create table if not exists public.email_subscriptions (
@@ -152,6 +180,9 @@ create table if not exists public.email_quota_periods (
   overage_used           integer not null default 0 check (overage_used >= 0),
   overage_reserved       integer not null default 0 check (overage_reserved >= 0),
   overage_blocks_billed  integer not null default 0 check (overage_blocks_billed >= 0),
+  /* Blocks granted to an open reservation whose wallet charge has not happened yet. Counted
+     under the period lock, so two concurrent reservations never both claim the same block. */
+  overage_blocks_pending integer not null default 0 check (overage_blocks_pending >= 0),
   billing_event_id       uuid,
   created_at             timestamptz not null default now(),
   check (kind = 'FREE_LIFETIME' or ends_at is not null)
@@ -169,12 +200,18 @@ create table if not exists public.email_quota_reservations (
   requested        integer not null check (requested > 0),
   included_part    integer not null check (included_part >= 0),
   overage_part     integer not null check (overage_part >= 0),
+  /* New overage blocks this reservation must pay for before its overage part may be sent:
+     PENDING until email_quota_bill_overage charges the wallet, BILLED after, VOID if never paid. */
+  overage_blocks   integer not null default 0 check (overage_blocks >= 0),
+  blocks_state     text not null default 'NONE' check (blocks_state in ('NONE','PENDING','BILLED','VOID')),
   sent             integer,
   status           text not null default 'RESERVED' check (status in ('RESERVED','SETTLED','RELEASED')),
   created_at       timestamptz not null default now(),
   settled_at       timestamptz
 );
 create index if not exists email_quota_reservations_open on public.email_quota_reservations (owner_user_id) where status = 'RESERVED';
+create index if not exists email_quota_reservations_owner_day on public.email_quota_reservations (owner_user_id, created_at);
+create index if not exists email_quota_reservations_created on public.email_quota_reservations (created_at);
 
 create table if not exists public.email_billing_events (
   id                     uuid primary key default gen_random_uuid(),
@@ -209,7 +246,9 @@ grant select on public.email_subscriptions, public.email_quota_periods, public.e
 grant all on public.email_subscriptions, public.email_quota_periods, public.email_quota_reservations, public.email_billing_events to service_role;
 
 /* The current quota period for an owner; creates the Free account (once, ever) on first use.
-   A paid period that has ended without a renewal falls back to the Free lifetime period. */
+   A paid period that has ended without a renewal falls back to the Free lifetime period. A
+   renewal stacked onto a period that is still running starts later; until then the running
+   period applies. */
 create or replace function public.email_quota_current_period(p_owner uuid)
 returns uuid
 language plpgsql
@@ -233,6 +272,13 @@ begin
   select * into v_sub from public.email_subscriptions where owner_user_id = p_owner;
   if v_sub.current_period_id is null then return v_free; end if;
   select * into v_period from public.email_quota_periods where id = v_sub.current_period_id;
+  if v_period.kind = 'MONTHLY' and v_sub.status = 'ACTIVE' and v_period.starts_at > now() then
+    select * into v_period from public.email_quota_periods
+     where owner_user_id = p_owner and kind = 'MONTHLY' and starts_at <= now() and ends_at > now()
+     order by starts_at desc limit 1;
+    if not found then return v_free; end if;
+    return v_period.id;
+  end if;
   if v_period.kind = 'MONTHLY' and (v_period.ends_at <= now() or v_sub.status <> 'ACTIVE') then
     return v_free;
   end if;
@@ -240,10 +286,12 @@ begin
 end;
 $function$;
 
-/* Reserve quota for p_count emails. Idempotent on p_key (a retry returns the first answer).
-   Without overage consent only the included remainder is granted. With consent, the overage
-   blocks still to be billed are returned; the caller charges them (email_quota_record_overage)
-   BEFORE sending, or releases the reservation. */
+/* Reserve quota for p_count emails. Idempotent on p_key while the reservation is open; a key
+   whose reservation already settled is refused (STALE_KEY) and never re-grants allowance.
+   Without overage consent only the included remainder (plus overage blocks already paid for)
+   is granted. With consent, new overage blocks are counted as PENDING under the period lock
+   and returned as blocksToBill; the caller charges them through email_quota_bill_overage
+   BEFORE sending the overage part, or releases the reservation. */
 create or replace function public.email_quota_reserve(
   p_owner uuid, p_count integer, p_key text, p_source text, p_allow_partial boolean default true
 )
@@ -261,47 +309,101 @@ declare
   v_inc integer;
   v_over integer := 0;
   v_blocks integer := 0;
+  v_paid integer;
   v_id uuid;
+  v_cap numeric;
+  v_window integer;
+  v_room integer;
+  v_cap_reason text;
 begin
   if p_count is null or p_count <= 0 then raise exception 'INVALID_COUNT'; end if;
   if p_key is null or length(p_key) < 8 then raise exception 'IDEMPOTENCY_KEY_REQUIRED'; end if;
-
-  select * into v_existing from public.email_quota_reservations where idempotency_key = p_key;
-  if found then
-    return jsonb_build_object('reservationId', v_existing.id, 'granted', v_existing.included_part + v_existing.overage_part,
-      'included', v_existing.included_part, 'overage', v_existing.overage_part, 'blocksToBill', 0,
-      'status', v_existing.status, 'duplicate', true);
-  end if;
 
   v_period_id := public.email_quota_current_period(p_owner);
   select * into v_period from public.email_quota_periods where id = v_period_id for update;
   select * into v_sub from public.email_subscriptions where owner_user_id = p_owner;
 
+  /* Checked under the period lock: two calls with one key serialise here. */
+  select * into v_existing from public.email_quota_reservations where idempotency_key = p_key;
+  if found then
+    if v_existing.status <> 'RESERVED' then
+      return jsonb_build_object('reservationId', null, 'granted', 0, 'included', 0, 'overage', 0, 'blocksToBill', 0,
+        'status', 'REFUSED', 'reason', 'STALE_KEY', 'duplicate', true);
+    end if;
+    return jsonb_build_object('reservationId', v_existing.id, 'granted', v_existing.included_part + v_existing.overage_part,
+      'included', v_existing.included_part, 'overage', v_existing.overage_part,
+      'blocksToBill', case when v_existing.blocks_state = 'PENDING' then v_existing.overage_blocks else 0 end,
+      'status', v_existing.status, 'duplicate', true, 'periodId', v_existing.period_id);
+  end if;
+
   v_remaining := greatest(v_period.included - v_period.used - v_period.reserved, 0);
   v_inc := least(p_count, v_remaining);
-  if p_count > v_inc and v_sub.overage_enabled and v_sub.overage_consented_at is not null and v_period.kind = 'MONTHLY' then
-    v_over := p_count - v_inc;
-    v_blocks := ceil((v_period.overage_used + v_period.overage_reserved + v_over)::numeric / 1000)::integer - v_period.overage_blocks_billed;
-    if v_blocks < 0 then v_blocks := 0; end if;
-    if v_sub.overage_max_blocks is not null and v_period.overage_blocks_billed + v_blocks > v_sub.overage_max_blocks then
-      /* Over the customer's own cap: grant only what the cap allows. */
-      v_over := greatest(v_sub.overage_max_blocks * 1000 - v_period.overage_used - v_period.overage_reserved, 0);
-      v_over := least(v_over, p_count - v_inc);
-      v_blocks := greatest(ceil((v_period.overage_used + v_period.overage_reserved + v_over)::numeric / 1000)::integer - v_period.overage_blocks_billed, 0);
+  v_paid := v_period.overage_blocks_billed + v_period.overage_blocks_pending;
+  if p_count > v_inc and v_period.kind = 'MONTHLY' then
+    if v_sub.overage_enabled and v_sub.overage_consented_at is not null then
+      v_over := p_count - v_inc;
+      if v_sub.overage_max_blocks is not null
+         and ceil((v_period.overage_used + v_period.overage_reserved + v_over)::numeric / 1000)::integer > greatest(v_sub.overage_max_blocks, v_paid) then
+        /* Over the customer's own cap: grant only what the cap (or blocks already paid) allows. */
+        v_over := least(greatest(greatest(v_sub.overage_max_blocks, v_paid) * 1000 - v_period.overage_used - v_period.overage_reserved, 0), p_count - v_inc);
+      end if;
+    else
+      /* Overage switched off: what is left of blocks already paid for this period still sends. */
+      v_over := least(greatest(v_paid * 1000 - v_period.overage_used - v_period.overage_reserved, 0), p_count - v_inc);
     end if;
   end if;
 
+  /*
+   * SAFEGUARDS (admin_settings; 0 = off). A per-customer daily ceiling against bursts and abuse,
+   * and a HOMATCH-wide monthly ceiling sized to the active Resend plan, so customer allowances
+   * can never commit more sending than the provider account supports. Overage is trimmed first.
+   * An open reservation counts in full; a settled or released one counts what it sent.
+   */
+  v_cap := nullif(public.billing_setting_num('email_marketing_tenant_daily_cap', 0), 0);
+  if v_cap is not null then
+    select coalesce(sum(case when status = 'RESERVED' then included_part + overage_part else coalesce(sent, 0) end), 0)::integer
+      into v_window from public.email_quota_reservations
+     where owner_user_id = p_owner and created_at >= date_trunc('day', now());
+    v_room := greatest(v_cap::integer - v_window, 0);
+    if v_inc + v_over > v_room then
+      v_over := least(v_over, greatest(v_room - v_inc, 0));
+      v_inc := least(v_inc, v_room);
+      v_cap_reason := 'TENANT_DAILY_CAP';
+    end if;
+  end if;
+  v_cap := nullif(public.billing_setting_num('email_marketing_provider_monthly_cap', 0), 0);
+  if v_cap is not null then
+    /* The provider ceiling is shared by every owner: serialise its check across owners. */
+    perform pg_advisory_xact_lock(hashtext('email_marketing_provider_monthly_cap'));
+    select coalesce(sum(case when status = 'RESERVED' then included_part + overage_part else coalesce(sent, 0) end), 0)::integer
+      into v_window from public.email_quota_reservations
+     where created_at >= date_trunc('month', now());
+    v_room := greatest(v_cap::integer - v_window, 0);
+    if v_inc + v_over > v_room then
+      v_over := least(v_over, greatest(v_room - v_inc, 0));
+      v_inc := least(v_inc, v_room);
+      v_cap_reason := 'PROVIDER_CAPACITY';
+    end if;
+  end if;
+  v_blocks := case when v_over > 0
+    then greatest(ceil((v_period.overage_used + v_period.overage_reserved + v_over)::numeric / 1000)::integer - v_paid, 0)
+    else 0 end;
+
   if v_inc + v_over = 0 or (not p_allow_partial and v_inc + v_over < p_count) then
     return jsonb_build_object('reservationId', null, 'granted', 0, 'included', 0, 'overage', 0, 'blocksToBill', 0,
-      'status', 'REFUSED', 'reason', case when v_sub.overage_enabled then 'OVERAGE_CAP_REACHED' else 'QUOTA_EXHAUSTED' end,
+      'status', 'REFUSED', 'reason', coalesce(v_cap_reason,
+        case when v_sub.overage_enabled and v_period.kind = 'MONTHLY' then 'OVERAGE_CAP_REACHED' else 'QUOTA_EXHAUSTED' end),
       'remaining', v_remaining);
   end if;
 
-  insert into public.email_quota_reservations (owner_user_id, period_id, idempotency_key, source, requested, included_part, overage_part)
-  values (p_owner, v_period.id, p_key, left(coalesce(p_source, 'UNKNOWN'), 40), p_count, v_inc, v_over)
+  insert into public.email_quota_reservations
+    (owner_user_id, period_id, idempotency_key, source, requested, included_part, overage_part, overage_blocks, blocks_state)
+  values (p_owner, v_period.id, p_key, left(coalesce(p_source, 'UNKNOWN'), 40), p_count, v_inc, v_over, v_blocks,
+          case when v_blocks > 0 then 'PENDING' else 'NONE' end)
   returning id into v_id;
   update public.email_quota_periods
-     set reserved = reserved + v_inc, overage_reserved = overage_reserved + v_over
+     set reserved = reserved + v_inc, overage_reserved = overage_reserved + v_over,
+         overage_blocks_pending = overage_blocks_pending + v_blocks
    where id = v_period.id;
 
   return jsonb_build_object('reservationId', v_id, 'granted', v_inc + v_over, 'included', v_inc, 'overage', v_over,
@@ -309,33 +411,67 @@ begin
 end;
 $function$;
 
-/* Record that overage blocks for a period were charged (wallet settled). Idempotent on the key. */
-create or replace function public.email_quota_record_overage(
-  p_owner uuid, p_period uuid, p_blocks integer, p_credits numeric, p_gross_usd numeric, p_wallet_reservation uuid, p_key text
+/* Charge a reservation's PENDING overage blocks from the wallet and record them, in ONE
+   transaction: the wallet charge, the billing event and the period's billed counter commit
+   together or not at all (INSUFFICIENT_CREDITS rolls everything back). Idempotent: a BILLED
+   reservation answers duplicate without charging again. */
+create or replace function public.email_quota_bill_overage(
+  p_reservation uuid, p_credits_per_block numeric, p_gross_usd_per_block numeric
 )
-returns uuid
+returns jsonb
 language plpgsql
 security definer
 set search_path to ''
 as $function$
-declare v_id uuid;
+declare
+  v_r public.email_quota_reservations;
+  v_credits numeric;
+  v_gross numeric;
+  v_key text;
+  v_wallet uuid;
+  v_set record;
+  v_event uuid;
 begin
-  insert into public.email_billing_events (owner_user_id, kind, period_id, blocks, credits, gross_usd, wallet_reservation_id, idempotency_key)
-  values (p_owner, 'OVERAGE_BLOCKS', p_period, p_blocks, p_credits, p_gross_usd, p_wallet_reservation, p_key)
-  on conflict (idempotency_key) do nothing
-  returning id into v_id;
-  if v_id is not null then
-    update public.email_quota_periods set overage_blocks_billed = overage_blocks_billed + p_blocks
-     where id = p_period and owner_user_id = p_owner;
-  else
-    select id into v_id from public.email_billing_events where idempotency_key = p_key;
+  select * into v_r from public.email_quota_reservations where id = p_reservation for update;
+  if not found then raise exception 'RESERVATION_NOT_FOUND'; end if;
+  if v_r.blocks_state = 'BILLED' then
+    return jsonb_build_object('billed', true, 'duplicate', true, 'blocks', v_r.overage_blocks);
   end if;
-  return v_id;
+  if v_r.blocks_state <> 'PENDING' or v_r.status <> 'RESERVED' or v_r.overage_blocks <= 0 then
+    raise exception 'NOTHING_TO_BILL';
+  end if;
+  if coalesce(p_credits_per_block, 0) <= 0 or coalesce(p_gross_usd_per_block, 0) <= 0 then raise exception 'INVALID_PRICE'; end if;
+
+  v_credits := round(v_r.overage_blocks * p_credits_per_block, 4);
+  v_gross := round(v_r.overage_blocks * p_gross_usd_per_block, 2);
+  v_key := 'email-overage:' || v_r.id::text;
+  select w.reservation_id into v_wallet
+    from public.wallet_reserve(v_r.owner_user_id, 'EMAIL_OVERAGE_1K', v_credits, v_key, v_credits, v_credits, v_key,
+           jsonb_build_object('service', 'email_marketing', 'blocks', v_r.overage_blocks, 'period_id', v_r.period_id,
+                              'quota_reservation_id', v_r.id)) w;
+  select * into v_set from public.wallet_settle(v_wallet, v_credits,
+           jsonb_build_object('provider', 'HOMATCH', 'provider_operation', 'EMAIL_OVERAGE_1K',
+             'metadata', jsonb_build_object('pricing_state', 'FIXED_PRICE', 'service', 'email_marketing', 'blocks', v_r.overage_blocks)),
+           'SUCCESS');
+  if v_set.was_duplicate or v_set.settled_credits <> v_credits then raise exception 'WALLET_SETTLE_MISMATCH'; end if;
+
+  insert into public.email_billing_events (owner_user_id, kind, period_id, blocks, credits, gross_usd, wallet_reservation_id, idempotency_key)
+  values (v_r.owner_user_id, 'OVERAGE_BLOCKS', v_r.period_id, v_r.overage_blocks, v_credits, v_gross, v_wallet, v_key)
+  returning id into v_event;
+  update public.email_quota_periods
+     set overage_blocks_pending = greatest(overage_blocks_pending - v_r.overage_blocks, 0),
+         overage_blocks_billed = overage_blocks_billed + v_r.overage_blocks
+   where id = v_r.period_id;
+  update public.email_quota_reservations set blocks_state = 'BILLED' where id = v_r.id;
+  return jsonb_build_object('billed', true, 'duplicate', false, 'blocks', v_r.overage_blocks, 'credits', v_credits,
+    'grossUsd', v_gross, 'billingEventId', v_event, 'walletReservationId', v_wallet);
 end;
 $function$;
 
 /* Settle a reservation with the number actually accepted by the provider. Idempotent.
-   Included emails are consumed first; unsent emails go back to the period. */
+   Included emails are consumed first; unsent emails go back to the period. Overage whose
+   blocks were never paid (still PENDING) is never counted as sent, and its pending blocks
+   are given back. A reservation that sent nothing ends RELEASED. */
 create or replace function public.email_quota_settle(p_reservation uuid, p_sent integer)
 returns jsonb
 language plpgsql
@@ -347,23 +483,31 @@ declare
   v_sent integer;
   v_inc_used integer;
   v_over_used integer;
+  v_unpaid boolean;
 begin
   select * into v_r from public.email_quota_reservations where id = p_reservation for update;
   if not found then raise exception 'RESERVATION_NOT_FOUND'; end if;
   if v_r.status <> 'RESERVED' then
     return jsonb_build_object('status', v_r.status, 'sent', coalesce(v_r.sent, 0), 'duplicate', true);
   end if;
-  v_sent := least(greatest(coalesce(p_sent, 0), 0), v_r.included_part + v_r.overage_part);
+  v_unpaid := v_r.blocks_state = 'PENDING';
+  v_sent := least(greatest(coalesce(p_sent, 0), 0), v_r.included_part + case when v_unpaid then 0 else v_r.overage_part end);
   v_inc_used := least(v_sent, v_r.included_part);
   v_over_used := v_sent - v_inc_used;
   update public.email_quota_periods
      set reserved = greatest(reserved - v_r.included_part, 0),
          overage_reserved = greatest(overage_reserved - v_r.overage_part, 0),
          used = used + v_inc_used,
-         overage_used = overage_used + v_over_used
+         overage_used = overage_used + v_over_used,
+         overage_blocks_pending = case when v_unpaid then greatest(overage_blocks_pending - v_r.overage_blocks, 0)
+                                       else overage_blocks_pending end
    where id = v_r.period_id;
-  update public.email_quota_reservations set status = 'SETTLED', sent = v_sent, settled_at = now() where id = v_r.id;
-  return jsonb_build_object('status', 'SETTLED', 'sent', v_sent, 'included', v_inc_used, 'overage', v_over_used, 'duplicate', false);
+  update public.email_quota_reservations
+     set status = case when v_sent = 0 then 'RELEASED' else 'SETTLED' end, sent = v_sent, settled_at = now(),
+         blocks_state = case when v_unpaid then 'VOID' else blocks_state end
+   where id = v_r.id;
+  return jsonb_build_object('status', case when v_sent = 0 then 'RELEASED' else 'SETTLED' end,
+    'sent', v_sent, 'included', v_inc_used, 'overage', v_over_used, 'duplicate', false);
 end;
 $function$;
 
@@ -376,10 +520,43 @@ as $function$
   select public.email_quota_settle(p_reservation, 0);
 $function$;
 
-/* Activate a paid plan period after the wallet charge reserved. Idempotent on p_key.
-   A renewal starts where the current period ends; a purchase or upgrade starts now. */
+/* Reservations left open by a run that died (edge CPU kill, crash) give their allowance back.
+   Transactional batches settle within seconds, so 30 minutes is generous; a broadcast keeps its
+   reservations open while it syncs, so it gets days. Called by jobs-worker maintenance. */
+create or replace function public.email_quota_release_stale(p_minutes integer default 30, p_broadcast_days integer default 7)
+returns integer
+language plpgsql
+security definer
+set search_path to ''
+as $function$
+declare
+  v_id uuid;
+  v_n integer := 0;
+begin
+  for v_id in
+    select r.id from public.email_quota_reservations r
+     where r.status = 'RESERVED'
+       and ((r.source <> 'BROADCAST' and r.created_at < now() - make_interval(mins => greatest(coalesce(p_minutes, 30), 10)))
+         or (r.source = 'BROADCAST' and r.created_at < now() - make_interval(days => greatest(coalesce(p_broadcast_days, 7), 1))))
+     order by r.created_at
+     limit 500
+  loop
+    perform public.email_quota_settle(v_id, 0);
+    v_n := v_n + 1;
+  end loop;
+  return v_n;
+end;
+$function$;
+
+/* Activate a paid plan period and take its wallet charge in ONE transaction: the wallet
+   reservation must still be held (RESERVED, this owner, this plan's product), and it settles
+   here, so a plan is never active without its charge and a charge never lands without its plan.
+   Idempotent on p_key. A renewal must name the period it renews (a purchase in between
+   supersedes it). A purchase is refused while a paid month with more than 3 days left is
+   running, unless it is an upgrade, which starts now. */
 create or replace function public.email_plan_activate(
-  p_owner uuid, p_plan text, p_kind text, p_credits numeric, p_gross_usd numeric, p_wallet_reservation uuid, p_key text
+  p_owner uuid, p_plan text, p_kind text, p_credits numeric, p_gross_usd numeric, p_wallet_reservation uuid, p_key text,
+  p_renews_period uuid default null
 )
 returns jsonb
 language plpgsql
@@ -389,14 +566,21 @@ as $function$
 declare
   v_plan public.email_plans;
   v_sub public.email_subscriptions;
-  v_prev public.email_quota_periods;
+  v_cur public.email_quota_periods;
+  v_wallet record;
+  v_set record;
   v_start timestamptz := now();
   v_period uuid;
   v_event uuid;
 begin
   if p_kind not in ('PLAN_PURCHASE', 'PLAN_RENEWAL') then raise exception 'INVALID_KIND'; end if;
+  if p_wallet_reservation is null then raise exception 'WALLET_RESERVATION_REQUIRED'; end if;
   select * into v_plan from public.email_plans where code = p_plan and active and period = 'MONTH';
   if not found then raise exception 'UNKNOWN_PLAN'; end if;
+
+  /* Every activation for this owner serialises on the subscription row. */
+  perform public.email_quota_current_period(p_owner);
+  select * into v_sub from public.email_subscriptions where owner_user_id = p_owner for update;
 
   select id into v_event from public.email_billing_events where idempotency_key = p_key;
   if found then
@@ -404,13 +588,24 @@ begin
       'periodId', (select period_id from public.email_billing_events where id = v_event));
   end if;
 
-  perform public.email_quota_current_period(p_owner);
-  select * into v_sub from public.email_subscriptions where owner_user_id = p_owner for update;
-  if p_kind = 'PLAN_RENEWAL' and v_sub.current_period_id is not null then
-    select * into v_prev from public.email_quota_periods where id = v_sub.current_period_id;
-    if v_prev.kind = 'MONTHLY' and v_prev.ends_at > now() - interval '3 days' then
-      v_start := greatest(v_prev.ends_at, now() - interval '3 days');
+  select * into v_wallet from public.usage_reservations where id = p_wallet_reservation for update;
+  if not found or v_wallet.user_id <> p_owner or v_wallet.product_code <> v_plan.product_code or v_wallet.status <> 'RESERVED' then
+    raise exception 'WALLET_RESERVATION_NOT_HELD';
+  end if;
+
+  if v_sub.current_period_id is not null then
+    select * into v_cur from public.email_quota_periods where id = v_sub.current_period_id;
+  end if;
+  if p_kind = 'PLAN_RENEWAL' then
+    if p_renews_period is null or p_renews_period is distinct from v_sub.current_period_id then
+      raise exception 'RENEWAL_SUPERSEDED';
     end if;
+    if v_cur.kind = 'MONTHLY' and v_cur.ends_at > now() - interval '3 days' then
+      v_start := greatest(v_cur.ends_at, now() - interval '3 days');
+    end if;
+  elsif v_sub.status = 'ACTIVE' and v_cur.kind = 'MONTHLY' and v_cur.ends_at > now() + interval '3 days'
+        and (select p.sort_order from public.email_plans p where p.code = v_cur.plan_code) >= v_plan.sort_order then
+    raise exception 'ALREADY_ACTIVE';
   end if;
 
   insert into public.email_billing_events (owner_user_id, kind, plan_code, credits, gross_usd, wallet_reservation_id, idempotency_key)
@@ -425,6 +620,14 @@ begin
          pending_plan_code = case when pending_plan_code = p_plan then null else pending_plan_code end,
          updated_at = now()
    where owner_user_id = p_owner;
+
+  select * into v_set from public.wallet_settle(p_wallet_reservation, p_credits,
+           jsonb_build_object('provider', 'HOMATCH', 'provider_operation', v_plan.product_code,
+             'metadata', jsonb_build_object('pricing_state', 'FIXED_PRICE', 'service', 'email_marketing',
+                                            'plan', p_plan, 'kind', p_kind, 'period_id', v_period)),
+           'SUCCESS');
+  if v_set.was_duplicate or v_set.settled_credits <> round(p_credits, 4) then raise exception 'WALLET_SETTLE_MISMATCH'; end if;
+
   return jsonb_build_object('duplicate', false, 'billingEventId', v_event, 'periodId', v_period,
     'startsAt', v_start, 'endsAt', v_start + interval '1 month');
 end;
@@ -468,18 +671,20 @@ $function$;
 
 revoke all on function public.email_quota_current_period(uuid) from public, anon, authenticated;
 revoke all on function public.email_quota_reserve(uuid, integer, text, text, boolean) from public, anon, authenticated;
-revoke all on function public.email_quota_record_overage(uuid, uuid, integer, numeric, numeric, uuid, text) from public, anon, authenticated;
+revoke all on function public.email_quota_bill_overage(uuid, numeric, numeric) from public, anon, authenticated;
+revoke all on function public.email_quota_release_stale(integer, integer) from public, anon, authenticated;
 revoke all on function public.email_quota_settle(uuid, integer) from public, anon, authenticated;
 revoke all on function public.email_quota_release(uuid) from public, anon, authenticated;
-revoke all on function public.email_plan_activate(uuid, text, text, numeric, numeric, uuid, text) from public, anon, authenticated;
+revoke all on function public.email_plan_activate(uuid, text, text, numeric, numeric, uuid, text, uuid) from public, anon, authenticated;
 revoke all on function public.email_plan_due_renewals(integer) from public, anon, authenticated;
 revoke all on function public.email_plan_lapse_expired() from public, anon, authenticated;
 grant execute on function public.email_quota_current_period(uuid) to service_role;
 grant execute on function public.email_quota_reserve(uuid, integer, text, text, boolean) to service_role;
-grant execute on function public.email_quota_record_overage(uuid, uuid, integer, numeric, numeric, uuid, text) to service_role;
+grant execute on function public.email_quota_bill_overage(uuid, numeric, numeric) to service_role;
+grant execute on function public.email_quota_release_stale(integer, integer) to service_role;
 grant execute on function public.email_quota_settle(uuid, integer) to service_role;
 grant execute on function public.email_quota_release(uuid) to service_role;
-grant execute on function public.email_plan_activate(uuid, text, text, numeric, numeric, uuid, text) to service_role;
+grant execute on function public.email_plan_activate(uuid, text, text, numeric, numeric, uuid, text, uuid) to service_role;
 grant execute on function public.email_plan_due_renewals(integer) to service_role;
 grant execute on function public.email_plan_lapse_expired() to service_role;
 
@@ -675,6 +880,10 @@ create trigger trg_outreach_contacts_optout_update
   after update of unsubscribed, suppressed, do_not_contact on public.outreach_contacts
   for each row execute function public.outreach_contacts_share_email_optout();
 
+/* The opt-out trigger, the alignment below and email_address_suppressed all look an address up
+   per owner; without this index each is a scan of the owner's whole contact book. */
+create index if not exists outreach_contacts_owner_email on public.outreach_contacts (owner_id, lower(email)) where email is not null;
+
 /* Existing data: an address already opted out on one row is opted out on all of that owner's rows. */
 update public.outreach_contacts c
    set unsubscribed = true, unsubscribed_at = coalesce(c.unsubscribed_at, now()), updated_at = now()
@@ -703,14 +912,17 @@ as $function$
         and c2.send_eligibility = 'PRODUCTION'
         and c2.updated_at < now() - interval '60 seconds'
         and c2.contact_list_id is not null
-        and exists (
+        and (coalesce(c2.metadata -> 'broadcast' ->> 'state', '') = 'SYNCING' or exists (
           select 1 from public.outreach_contacts oc
            where oc.list_id = c2.contact_list_id and oc.owner_id = c2.owner_id
              and oc.email is not null and not coalesce(oc.suppressed, false)
              and not coalesce(oc.unsubscribed, false) and not coalesce(oc.do_not_contact, false)
              and not coalesce(oc.is_duplicate, false)
+             and oc.consent_status = 'CONSENTED'
+             /* One attempt per contact: a FAILED send is not retried by the scheduler, so a
+                permanently failing address cannot keep a campaign RUNNING forever. */
              and not exists (select 1 from public.outreach_sends s
-                              where s.campaign_id = c2.id and s.contact_id = oc.id and s.status <> 'FAILED'))
+                              where s.campaign_id = c2.id and s.contact_id = oc.id)))
       order by c2.updated_at
       for update skip locked
       limit greatest(1, least(coalesce(p_limit, 5), 20))
@@ -790,6 +1002,46 @@ alter table public.outreach_contacts add column if not exists consent_recorded_a
 comment on column public.outreach_contacts.consent_lawful_basis is
   'Why marketing email to this contact is lawful. Marketing sends require consent_status = CONSENTED. A contact found by Find Buyers is never marketing-eligible by discovery alone.';
 
+/* The owner records (with a lawful basis and their own attestation) or withdraws marketing
+   consent for one of their contacts. An opted-out, suppressed or do-not-contact address can
+   never be re-consented by the owner: only the person can opt in again. */
+create or replace function public.my_outreach_contact_set_email_consent(p_contact uuid, p_grant boolean, p_basis text default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path to ''
+as $function$
+declare
+  v_c public.outreach_contacts;
+begin
+  if auth.uid() is null then raise exception 'FORBIDDEN'; end if;
+  select * into v_c from public.outreach_contacts where id = p_contact and owner_id = auth.uid() for update;
+  if not found then raise exception 'CONTACT_NOT_FOUND'; end if;
+  if p_grant then
+    if v_c.email is null or btrim(v_c.email) = '' then raise exception 'CONTACT_HAS_NO_EMAIL'; end if;
+    if coalesce(v_c.unsubscribed, false) or coalesce(v_c.suppressed, false) or coalesce(v_c.do_not_contact, false) then
+      raise exception 'CONTACT_OPTED_OUT';
+    end if;
+    if p_basis is null or p_basis not in ('CONSENT','CONTRACT','LEGITIMATE_INTEREST_EXISTING_CUSTOMER') then
+      raise exception 'LAWFUL_BASIS_REQUIRED';
+    end if;
+    update public.outreach_contacts
+       set consent_status = 'CONSENTED', consent_lawful_basis = p_basis, consent_recorded_at = now(),
+           consent_source = 'owner_attestation:contact_profile', updated_at = now()
+     where id = v_c.id;
+  else
+    update public.outreach_contacts
+       set consent_status = 'WITHDRAWN', consent_lawful_basis = null, consent_recorded_at = now(),
+           consent_source = 'owner_withdrawal:contact_profile', updated_at = now()
+     where id = v_c.id;
+  end if;
+  return (select jsonb_build_object('consentStatus', c.consent_status, 'lawfulBasis', c.consent_lawful_basis, 'recordedAt', c.consent_recorded_at)
+            from public.outreach_contacts c where c.id = v_c.id);
+end;
+$function$;
+revoke all on function public.my_outreach_contact_set_email_consent(uuid, boolean, text) from public, anon;
+grant execute on function public.my_outreach_contact_set_email_consent(uuid, boolean, text) to authenticated;
+
 ------------------------------------------------------------------------------
 -- 9. Provider economics (layers B/C/D): Resend's published prices, kept apart from
 --    customer entitlements (layer A) and allocations (layer E).
@@ -853,7 +1105,11 @@ insert into public.admin_settings (key, value) values
   ('email_marketing_route', '"TRANSACTIONAL"'::jsonb),
   ('email_marketing_reply_domain', '"reply.homatch.live"'::jsonb),
   ('email_marketing_default_sender', '"CSmarketing@homatch.live"'::jsonb),
-  ('email_marketing_provider_alert_pct', '80'::jsonb)
+  ('email_marketing_provider_alert_pct', '80'::jsonb),
+  /* Safeguards: 5,000 emails per customer per day; the HOMATCH-wide monthly cap is 0 (off) until
+     the owner sets it to the verified Resend plan limit. */
+  ('email_marketing_tenant_daily_cap', '5000'::jsonb),
+  ('email_marketing_provider_monthly_cap', '0'::jsonb)
 on conflict (key) do nothing;
 
 /* Admin economics: customer revenue and allocations next to provider capacity and recorded cost. */

@@ -62,8 +62,9 @@ export async function setAutoRenew(enabled: boolean, nextPlan: 'PRO' | 'SCALE' |
   return data as EmailPlanView;
 }
 
-export const purchasePlan = (plan: 'PRO' | 'SCALE', requestId: string) =>
-  edge<{ periodId: string; duplicate: boolean }>('plan_purchase', { plan, requestId, confirmed: true });
+/** `confirmed` is true only when the customer pressed Pay in the price confirmation dialog. */
+export const purchasePlan = (plan: 'PRO' | 'SCALE', requestId: string, confirmed: boolean) =>
+  edge<{ periodId: string; duplicate: boolean }>('plan_purchase', { plan, requestId, confirmed });
 
 export interface BillingEvent { id: string; kind: string; plan_code: string | null; blocks: number | null; credits: number; gross_usd: number; created_at: string }
 
@@ -143,3 +144,20 @@ export async function adminEmailEconomics(days = 30): Promise<Record<string, unk
 
 export const adminRefreshUsage = () =>
   edge<{ usage: Record<string, unknown> | null; alerts: string[]; keyEnv: string | null; keyFallback: boolean; error: string | null }>('usage_refresh');
+
+/* ── contact marketing consent ──────────────────────────────────────────── */
+
+export type LawfulBasis = 'CONSENT' | 'CONTRACT' | 'LEGITIMATE_INTEREST_EXISTING_CUSTOMER';
+export interface ContactConsent { consentStatus: string; lawfulBasis: LawfulBasis | null; recordedAt: string | null }
+
+const CONSENT_ERRORS = ['CONTACT_OPTED_OUT', 'CONTACT_HAS_NO_EMAIL', 'LAWFUL_BASIS_REQUIRED', 'CONTACT_NOT_FOUND'] as const;
+
+/** Record (with a lawful basis) or withdraw marketing-email consent for one of the owner's contacts. */
+export async function setContactEmailConsent(contactId: string, grant: boolean, basis: LawfulBasis | null): Promise<ContactConsent> {
+  const { data, error } = await supabase.rpc('my_outreach_contact_set_email_consent', { p_contact: contactId, p_grant: grant, p_basis: basis });
+  if (error) {
+    const code = CONSENT_ERRORS.find((c) => error.message.includes(c)) ?? 'CONSENT_UPDATE_FAILED';
+    throw new EmailMarketingError(code, error.message);
+  }
+  return data as ContactConsent;
+}

@@ -20,6 +20,18 @@ warns when a diff enters this domain.
   ending period so it can never charge twice. Billable unit: one message the
   provider accepted; failed/suppressed sends consume nothing. Card recurring
   billing does not exist (payment provider in mock mode).
+  Atomicity: `email_plan_activate` checks the wallet hold is still RESERVED and
+  settles it in the same transaction as the period (never a plan without its
+  charge); a purchase is refused under the subscription lock while a same-or-
+  higher paid month has >3 days left; a renewal must name the period it renews.
+  Overage blocks are counted PENDING under the period lock at reservation, and
+  `email_quota_bill_overage` charges + records them in one transaction; unpaid
+  overage never counts as sent. Quota keys are one per send attempt (a settled
+  key is STALE_KEY, never a re-grant); `email_quota_release_stale` (jobs-worker,
+  every 10 min) returns abandoned reservations. Safeguards (admin_settings, 0 =
+  off): `email_marketing_tenant_daily_cap` (default 5000) and
+  `email_marketing_provider_monthly_cap` (set it to the active Resend plan's
+  monthly limit before enabling sending).
 - **Wallet ≠ Budget ≠ Spend ≠ COGS.** Four distinct concepts; never conflate
   them in schema, service code, or copy.
 - **Reserve → settle → release.** Every paid action reserves first, settles

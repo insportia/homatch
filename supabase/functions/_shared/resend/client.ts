@@ -242,3 +242,21 @@ export function usageAlerts(u: Record<string, unknown> | null, pct: number): str
   check('contacts', u.contacts); check('domains', u.domains); check('broadcasts', u.broadcasts);
   return out;
 }
+
+/**
+ * The provider's verdict on whether a received email really comes from its From domain.
+ * PASS: DMARC passed. FAIL: DMARC failed, or SPF and DKIM both failed. UNKNOWN: anything
+ * else (no verdicts, or a domain without DMARC). Verdicts arrive as "pass" or {result:"pass"}.
+ */
+export function senderAuthentication(auth: unknown): 'PASS' | 'FAIL' | 'UNKNOWN' {
+  if (!auth || typeof auth !== 'object') return 'UNKNOWN';
+  const a = auth as Record<string, unknown>;
+  const verdict = (v: unknown): string => {
+    const raw = v && typeof v === 'object' ? (v as Record<string, unknown>).result ?? (v as Record<string, unknown>).status : v;
+    return String(raw ?? '').trim().toLowerCase();
+  };
+  const dmarc = verdict(a.dmarc), spf = verdict(a.spf), dkim = verdict(a.dkim);
+  if (dmarc === 'pass') return 'PASS';
+  if (dmarc === 'fail' || (spf === 'fail' && dkim === 'fail')) return 'FAIL';
+  return 'UNKNOWN';
+}

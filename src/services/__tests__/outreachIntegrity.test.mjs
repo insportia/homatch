@@ -78,7 +78,8 @@ test('outreach-send claims a contact before contacting them', () => {
   const claimAt = send.indexOf("status: 'QUEUED'");
   assert.ok(claimAt > 0, 'the claim insert must exist');
 
-  for (const dispatch of ['emailAdapter.send(', 'smsAdapter.send(', 'voiceAdapter.initiateCall(']) {
+  // Email goes through the shared Resend client (sendEmail), keyed per send attempt.
+  for (const dispatch of ['await sendEmail(', 'smsAdapter.send(', 'voiceAdapter.initiateCall(']) {
     const at = send.indexOf(dispatch);
     assert.ok(at > 0, `${dispatch} should still be there`);
     assert.ok(at > claimAt, `${dispatch} must happen after the claim, not before it`);
@@ -94,7 +95,10 @@ test('losing the claim race skips the contact instead of sending', () => {
 test('outreach-send records every outcome on the claimed row', () => {
   // One row per attempt. Inserting a second row for the outcome would leave the
   // QUEUED claim behind and double the campaign's send count.
-  const loop = send.slice(send.indexOf('for (const contact of contacts)'));
+  // The loop runs over the batch the email quota granted (all contacts for other channels).
+  const loopAt = send.indexOf('for (const contact of batch)');
+  assert.ok(loopAt > 0, 'the send loop must exist');
+  const loop = send.slice(loopAt);
   const inserts = loop.match(/from\('outreach_sends'\)\s*\.insert\(/g) ?? [];
   assert.equal(inserts.length, 1, 'only the claim may INSERT into outreach_sends inside the loop');
   assert.match(loop, /const finalize = async/, 'outcomes are written by updating the claimed row');

@@ -286,6 +286,7 @@ test('Outlook and Apple quoting are both cut', () => {
 /* ── The webhook uses it, and uses it correctly ────────────────────────── */
 
 const FN = readFileSync('supabase/functions/email-webhook/index.ts', 'utf8');
+const CLIENT = readFileSync('supabase/functions/_shared/resend/client.ts', 'utf8');
 
 test('the webhook refuses to run without a secret', () => {
   assert.match(FN, /RESEND_WEBHOOK_SECRET/);
@@ -417,20 +418,24 @@ test('an address appearing in both to and received_for is not counted twice', ()
 });
 
 test('the webhook fetches the body it was not sent', () => {
-  // The call site, not the comment that explains it.
-  assert.match(FN, /api\.resend\.com\/emails\/receiving\//,
+  // The call site, not the comment that explains it. The provider call lives in the shared
+  // Resend client, keyed with the marketing key; the webhook calls it once per message.
+  assert.match(CLIENT, /\/emails\/receiving\/\$\{encodeURIComponent\(id\)\}/,
     'the received-email API is never called, so a real reply is recorded empty');
-  assert.match(FN, /fetchReceivedBody\(email\.providerEmailId\)/);
-  // Only when it has to. A payload that did carry a body must not cost a
-  // round trip per message.
-  assert.match(FN, /\(email\.text \|\| email\.html\) \? null : await fetchReceivedBody/);
+  assert.match(CLIENT, /https:\/\/api\.resend\.com/);
+  assert.equal((FN.match(/await fetchReceivedEmail\(email\.providerEmailId\)/g) ?? []).length, 1,
+    'the received email is fetched exactly once per message');
+  // email.received carries metadata only: the threading headers and SPF/DKIM/DMARC verdicts
+  // exist only in the fetched message, so the fetch is unconditional; the body text is still
+  // taken from the payload when a payload does carry one.
+  assert.match(FN, /\(email\.text \|\| email\.html\) \? null : \(full \?/);
 });
 
 test('a body that cannot be fetched loses the fetch, not the message', () => {
-  const fn = FN.slice(FN.indexOf('async function fetchReceivedBody'));
+  const fn = FN.slice(FN.indexOf('async function fetchReceivedEmail'));
   const body = fn.slice(0, fn.search(/\r?\n\}\r?\n/));
-  // Three ways it can fail, and all three return null rather than throwing:
-  // the sender, subject, thread and notification are all already known, and a
+  // Three ways it can fail (no id, no key, provider error), and all three return null rather
+  // than throwing: the sender, subject, thread and notification are all already known, and a
   // reply without its text is worth more than no reply.
   assert.equal((body.match(/return null;/g) ?? []).length >= 3, true,
     'a failed body fetch is not survivable');
@@ -441,8 +446,11 @@ test('a body that cannot be fetched loses the fetch, not the message', () => {
 test('a delivery receipt updates the send it belongs to, exactly once', () => {
   // Same signature check, same dedupe gate, different subject — and the
   // dedupe must come first, or a retried bounce bounces one recipient twice.
-  const route = FN.search(/email\\\.\(delivered\|bounced\|complained/);
-  assert.ok(route > 0, 'outbound delivery events are not handled at all');
+  const events = FN.slice(FN.indexOf('const EMAIL_DELIVERY_EVENTS'), FN.indexOf(']);', FN.indexOf('const EMAIL_DELIVERY_EVENTS')));
+  for (const e of ['email.delivered', 'email.bounced', 'email.complained']) {
+    assert.ok(events.includes(`'${e}'`), `outbound delivery event ${e} is not handled at all`);
+  }
+  assert.match(FN, /if \(EMAIL_DELIVERY_EVENTS\.has\(eventType\)\)[\s\S]{0,120}handleDeliveryEvent\(/);
   const handler = FN.slice(FN.indexOf('async function handleDeliveryEvent'));
   const claim = handler.indexOf("sb.rpc('comm_claim_webhook_event'");
   const apply = handler.indexOf("sb.rpc('outreach_apply_delivery_event'");

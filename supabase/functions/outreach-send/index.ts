@@ -23,6 +23,7 @@ import {
   createReplyRoute, isSuppressed, loadEmailSettings, marketingKey, ownerFromAuth, reserveQuota, resolveSender, settleQuota,
 } from '../_shared/emailMarketing/core.ts';
 import { handleStudioAction, isStudioAction } from '../_shared/emailStudio.ts';
+import { broadcastStep } from '../_shared/emailMarketing/broadcast.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const corsHeaders = {
@@ -259,8 +260,12 @@ async function outreachSend(req: Request): Promise<Response> {
     const doNotField = channel === 'AI_CALL' ? 'do_not_call' : 'do_not_contact';
     const contactField = channel === 'EMAIL' ? 'email' : 'phone';
 
-    const { data: alreadySent } = await supabase.from('outreach_sends')
-      .select('contact_id').eq('campaign_id', campaign_id).neq('status', 'FAILED');
+    /* A failed email is not retried: Resend already retries transient errors, and a permanently
+       failing address must not keep the campaign RUNNING (outreach_claim_running_campaigns
+       applies the same rule). Calls and SMS keep retrying failed contacts as before. */
+    let alreadySentQuery = supabase.from('outreach_sends').select('contact_id').eq('campaign_id', campaign_id);
+    if (channel !== 'EMAIL') alreadySentQuery = alreadySentQuery.neq('status', 'FAILED');
+    const { data: alreadySent } = await alreadySentQuery;
     const excludeIds = (alreadySent ?? []).map((r: { contact_id: string }) => r.contact_id).filter(Boolean);
 
     let contactsQuery = supabase.from('outreach_contacts')
@@ -287,6 +292,43 @@ async function outreachSend(req: Request): Promise<Response> {
     // Mark campaign RUNNING
     if (['DRAFT', 'READY', 'PAUSED'].includes(campaign.status)) {
       await supabase.from('outreach_campaigns').update({ status: 'RUNNING', updated_at: new Date().toISOString() }).eq('id', campaign_id);
+    }
+
+    /*
+     * BROADCAST ROUTE (admin_settings.email_marketing_route = BROADCAST). The campaign is synced
+     * into a Resend segment batch by batch and sent once as a broadcast; see
+     * _shared/emailMarketing/broadcast.ts. The default TRANSACTIONAL route continues below.
+     */
+    if (channel === 'EMAIL') {
+      const bSettings = await loadEmailSettings(supabase);
+      if (bSettings.route === 'BROADCAST') {
+        const bOwner = await ownerFromAuth(supabase, ownerId);
+        const bKey = marketingKey(bSettings).key;
+        if (!bOwner) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
+        if (!bKey) return new Response(JSON.stringify({ blocked: true, reason: 'EMAIL_KEY_MISSING' }), { status: 423, headers: corsHeaders });
+        const bDomain = String(campaign.sender_email ?? '').split('@')[1]?.toLowerCase() ?? '';
+        let bDomainId: string | null = null;
+        if (bDomain) {
+          const { data: d } = await supabase.from('email_sending_domains').select('id')
+            .eq('owner_user_id', bOwner.userId).eq('domain', bDomain).eq('status', 'VERIFIED').maybeSingle();
+          bDomainId = (d as { id?: string } | null)?.id ?? null;
+        }
+        const bSender = await resolveSender(supabase, bSettings, bOwner, bDomainId);
+        const step = await broadcastStep(supabase, bKey, bSettings, bOwner, campaign, bSender.from, contacts ?? []);
+        await supabase.rpc('outreach_recompute_campaign_counters', { p_campaign_id: campaign_id });
+        if (step.state === 'QUOTA_EXHAUSTED') {
+          return new Response(JSON.stringify({ blocked: true, reason: step.error ?? 'QUOTA_EXHAUSTED' }), { status: 402, headers: corsHeaders });
+        }
+        if (step.state === 'SENT' || step.state === 'NOTHING_TO_SEND' || step.state === 'FAILED') {
+          await supabase.from('outreach_campaigns').update({
+            status: step.state === 'FAILED' ? 'FAILED' : 'COMPLETED', last_send_error: step.error ?? null, updated_at: new Date().toISOString(),
+          }).eq('id', campaign_id);
+        }
+        return new Response(JSON.stringify({
+          route: 'BROADCAST', state: step.state, processed: (contacts ?? []).length, synced: step.synced, sent: step.sent,
+          broadcast_id: step.broadcastId, remaining_hint: step.state === 'SYNCING', error: step.error ?? null,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
     }
 
     if (!contacts || contacts.length === 0) {
@@ -372,10 +414,10 @@ async function outreachSend(req: Request): Promise<Response> {
       if (!emailCtx.key.key) {
         return new Response(JSON.stringify({ blocked: true, reason: 'EMAIL_KEY_MISSING', message: 'No Resend key is configured for marketing email.' }), { status: 423, headers: corsHeaders });
       }
-      const batchKey = `outreach:${campaign_id}:${contacts.map((c: { id: string }) => c.id).sort().join(',')}`;
-      const keyHash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(batchKey))))
-        .map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
-      const grant = await reserveQuota(supabase, emailCtx.settings, emailCtx.owner, contacts.length, `outreach-batch:${keyHash}`, 'OUTREACH');
+      /* One reservation per invocation. A key derived from the contact set would hand two
+         overlapping invocations the same reservation, and the first to settle would close it
+         over the other's sends. A run that dies leaves its reservation to the stale sweep. */
+      const grant = await reserveQuota(supabase, emailCtx.settings, emailCtx.owner, contacts.length, `outreach-batch:${campaign_id}:${crypto.randomUUID()}`, 'OUTREACH');
       quotaReservationId = grant.reservationId;
       if (!grant.reservationId || grant.granted <= 0) {
         return new Response(JSON.stringify({

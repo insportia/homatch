@@ -245,6 +245,8 @@ export interface CommContact {
   tags: string[];
   consent_status: string;
   consent_source: string | null;
+  consent_lawful_basis?: string | null;
+  consent_recorded_at?: string | null;
   lead_stage: LeadStage | null;
   lead_score: number | null;
   lead_type: string | null;

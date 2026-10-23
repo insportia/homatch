@@ -171,3 +171,14 @@ test('jobs-worker asks for renewals every tick and gates the usage poll on snaps
   assert.match(body, /if \(usage\) await call\('usage_refresh_cron'\)/);
   assert.match(body, /usageSnapshotDue\(/);
 });
+
+test('a capacity ceiling leaves a campaign RUNNING (it resumes when room returns), never FAILED', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync('supabase/functions/jobs-worker/index.ts', 'utf8');
+  const at = src.indexOf('PROVIDER_DAILY_CAPACITY|PROVIDER_CAPACITY|TENANT_DAILY_CAP');
+  assert.ok(at > 0, 'capacity reasons are recognised');
+  const block = src.slice(at, at + 400);
+  assert.match(block, /last_send_error: reason/);
+  assert.doesNotMatch(block.slice(0, block.indexOf('continue;')), /status: /, 'the status is not changed');
+  assert.ok(at < src.indexOf("status: quotaStop ? 'PAUSED' : 'FAILED'"), 'checked before the pause/fail decision');
+});

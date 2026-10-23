@@ -41,7 +41,7 @@ export function sanitizeAudienceFilter(v: unknown): Record<string, string[]> | n
     languages: strList(o.languages, 20, /^[a-z]{2,3}$|^unknown$/i).map((x) => x.toLowerCase()),
     countries: strList(o.countries, 60, /^[a-z]{2}$/i).map((x) => x.toUpperCase()),
     leadTypes: strList(o.leadTypes, 10, /^[A-Z_]{2,20}$/i).map((x) => x.toUpperCase()),
-    sources: strList(o.sources, 6, /^(IMPORT|MANUAL|FIND_BUYERS|CURATED|INTERNAL_MATCH)$/i).map((x) => x.toUpperCase()),
+    sources: strList(o.sources, 6, /^(IMPORT|MANUAL|FIND_BUYERS|CURATED_LEAD|INTERNAL_MATCH)$/i).map((x) => x.toUpperCase()),
     tags: strList(o.tags, 20),
     excludeListIds: strList(o.excludeListIds, 20, UUID),
   };

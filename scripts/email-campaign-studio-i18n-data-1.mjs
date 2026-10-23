@@ -174,7 +174,7 @@ export const PART_1 = {
   ems_src_import: ['Uploaded by me', 'ჩემ მიერ ატვირთული', 'Загружены мной', 'Benim yüklediklerim', 'رفعتُها بنفسي', 'הועלו על ידי'],
   ems_src_manual: ['Added by hand', 'ხელით დამატებული', 'Добавлены вручную', 'Elle eklenen', 'أُضيفت يدويًا', 'נוספו ידנית'],
   ems_src_find_buyers: ['Find Buyers', 'მყიდველების ძიება', 'Поиск покупателей', 'Alıcı Bul', 'البحث عن مشترين', 'חיפוש קונים'],
-  ems_src_curated: ['HOMATCH curated leads', 'HOMATCH-ის შერჩეული ლიდები', 'Лиды HOMATCH', 'HOMATCH seçili adaylar', 'عملاء HOMATCH المختارون', 'לידים נבחרים של HOMATCH'],
+  ems_src_curated_lead: ['HOMATCH curated leads', 'HOMATCH-ის შერჩეული ლიდები', 'Лиды HOMATCH', 'HOMATCH seçili adaylar', 'عملاء HOMATCH المختارون', 'לידים נבחרים של HOMATCH'],
   ems_src_internal_match: ['HOMATCH matches', 'HOMATCH-ის დამთხვევები', 'Совпадения HOMATCH', 'HOMATCH eşleşmeleri', 'تطابقات HOMATCH', 'התאמות HOMATCH'],
   ems_lead_buyer: ['Buyers', 'მყიდველები', 'Покупатели', 'Alıcılar', 'المشترون', 'קונים'],
   ems_lead_tenant: ['Tenants', 'მოიჯარეები', 'Арендаторы', 'Kiracılar', 'المستأجرون', 'שוכרים'],

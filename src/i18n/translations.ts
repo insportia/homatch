@@ -21579,7 +21579,6 @@ const en = {
   ems_src_import: 'Uploaded by me',
   ems_src_manual: 'Added by hand',
   ems_src_find_buyers: 'Find Buyers',
-  ems_src_curated: 'HOMATCH curated leads',
   ems_src_internal_match: 'HOMATCH matches',
   ems_lead_buyer: 'Buyers',
   ems_lead_tenant: 'Tenants',
@@ -22071,6 +22070,9 @@ const en = {
   /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   ems_seg_countries_example: 'e.g. GE, DE, AE',
   ems_d_hex_placeholder: '#RRGGBB (hex colour)',
+
+  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
+  ems_src_curated_lead: 'HOMATCH curated leads',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -43564,7 +43566,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ems_src_import: 'ჩემ მიერ ატვირთული',
   ems_src_manual: 'ხელით დამატებული',
   ems_src_find_buyers: 'მყიდველების ძიება',
-  ems_src_curated: 'HOMATCH-ის შერჩეული ლიდები',
   ems_src_internal_match: 'HOMATCH-ის დამთხვევები',
   ems_lead_buyer: 'მყიდველები',
   ems_lead_tenant: 'მოიჯარეები',
@@ -44056,6 +44057,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   ems_seg_countries_example: 'მაგ. GE, DE, AE',
   ems_d_hex_placeholder: '#RRGGBB (ფერის კოდი)',
+
+  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
+  ems_src_curated_lead: 'HOMATCH-ის შერჩეული ლიდები',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -65540,7 +65544,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ems_src_import: 'Загружены мной',
   ems_src_manual: 'Добавлены вручную',
   ems_src_find_buyers: 'Поиск покупателей',
-  ems_src_curated: 'Лиды HOMATCH',
   ems_src_internal_match: 'Совпадения HOMATCH',
   ems_lead_buyer: 'Покупатели',
   ems_lead_tenant: 'Арендаторы',
@@ -66032,6 +66035,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   ems_seg_countries_example: 'например GE, DE, AE',
   ems_d_hex_placeholder: '#RRGGBB (код цвета)',
+
+  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
+  ems_src_curated_lead: 'Лиды HOMATCH',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -87514,7 +87520,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ems_src_import: 'Benim yüklediklerim',
   ems_src_manual: 'Elle eklenen',
   ems_src_find_buyers: 'Alıcı Bul',
-  ems_src_curated: 'HOMATCH seçili adaylar',
   ems_src_internal_match: 'HOMATCH eşleşmeleri',
   ems_lead_buyer: 'Alıcılar',
   ems_lead_tenant: 'Kiracılar',
@@ -88006,6 +88011,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   ems_seg_countries_example: 'ör. GE, DE, AE',
   ems_d_hex_placeholder: '#RRGGBB (renk kodu)',
+
+  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
+  ems_src_curated_lead: 'HOMATCH seçili adaylar',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -109488,7 +109496,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ems_src_import: 'رفعتُها بنفسي',
   ems_src_manual: 'أُضيفت يدويًا',
   ems_src_find_buyers: 'البحث عن مشترين',
-  ems_src_curated: 'عملاء HOMATCH المختارون',
   ems_src_internal_match: 'تطابقات HOMATCH',
   ems_lead_buyer: 'المشترون',
   ems_lead_tenant: 'المستأجرون',
@@ -109980,6 +109987,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   ems_seg_countries_example: 'مثلًا GE, DE, AE',
   ems_d_hex_placeholder: '#RRGGBB (رمز اللون)',
+
+  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
+  ems_src_curated_lead: 'عملاء HOMATCH المختارون',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -131462,7 +131472,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   ems_src_import: 'הועלו על ידי',
   ems_src_manual: 'נוספו ידנית',
   ems_src_find_buyers: 'חיפוש קונים',
-  ems_src_curated: 'לידים נבחרים של HOMATCH',
   ems_src_internal_match: 'התאמות HOMATCH',
   ems_lead_buyer: 'קונים',
   ems_lead_tenant: 'שוכרים',
@@ -131954,6 +131963,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
   ems_seg_countries_example: 'למשל GE, DE, AE',
   ems_d_hex_placeholder: '#RRGGBB (קוד צבע)',
+
+  /* ── EMAIL CAMPAIGN STUDIO · DESIGNER · HOMI · REVIEW ── */
+  ems_src_curated_lead: 'לידים נבחרים של HOMATCH',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

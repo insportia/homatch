@@ -51,7 +51,8 @@ const STEPS = ['identity', 'recipients', 'sender', 'subject', 'design', 'review'
 type Step = (typeof STEPS)[number];
 const LANGS = ['ka', 'en', 'ru', 'tr', 'ar', 'he'];
 const OBJECTIVES = ['announce', 'investors', 'introduce', 'newsletter', 'event', 'followup', 'update'];
-const SOURCES = ['IMPORT', 'MANUAL', 'FIND_BUYERS', 'CURATED', 'INTERNAL_MATCH'];
+/* outreach_contacts.source_kind values (CURATED_LEAD / INTERNAL_MATCH come from the Matching Marketplace). */
+const SOURCES = ['IMPORT', 'MANUAL', 'FIND_BUYERS', 'CURATED_LEAD', 'INTERNAL_MATCH'];
 const LEAD_TYPES = ['BUYER', 'TENANT', 'INVESTOR', 'SELLER', 'LANDLORD', 'OTHER'];
 
 interface Working {
@@ -100,7 +101,13 @@ export default function EmailCampaignWorkspacePage() {
   const [search, setSearch] = useSearchParams();
   const [campaignId, setCampaignId] = useState<string | null>(params.id && params.id !== 'new' ? params.id : null);
   const [campaign, setCampaign] = useState<StudioCampaign | null>(null);
-  const [w, setW] = useState<Working>(() => blank(lang));
+  /* A new campaign may arrive with a list chosen elsewhere (Matching Marketplace → "create an
+     email campaign": /outreach/email?new=1&list=<id> → here with ?list=<id>). */
+  const [w, setW] = useState<Working>(() => {
+    const b = blank(lang);
+    const preset = !params.id || params.id === 'new' ? search.get('list') : null;
+    return preset && /^[0-9a-f-]{36}$/i.test(preset) ? { ...b, contact_list_ids: [preset] } : b;
+  });
   const [loading, setLoading] = useState(Boolean(campaignId));
   const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');

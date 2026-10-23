@@ -7,7 +7,7 @@
 
 import { Activity, ArrowRight, BarChart3, CalendarClock, CheckCircle2, FileEdit, Inbox, LayoutTemplate, Mail, Plus, Send, ShieldAlert, ShieldCheck } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CommsWorkspace, Section } from '@/components/communications/CommsWorkspace';
 import { EmptyState, ErrorState, Kpi, KpiRow, PageHeader } from '@/components/communications/primitives';
 import { PhaseBadge, pct } from '@/components/emailStudio/shared';
@@ -27,6 +27,14 @@ const RANGES = [7, 30, 90, 0] as const;
 export default function EmailDashboardPage() {
   const { t, lang } = useLanguage();
   const navigate = useNavigate();
+  /* Deep link kept from the old campaigns page: /outreach/email?new=1&list=<id> opens a new
+     campaign with that list already chosen (used by the Matching Marketplace hand-off). */
+  const [deepLink] = useSearchParams();
+  useEffect(() => {
+    if (deepLink.get('new') !== '1') return;
+    const list = deepLink.get('list');
+    navigate(`/outreach/email/campaigns/new?step=2${list && /^[0-9a-f-]{36}$/i.test(list) ? `&list=${list}` : ''}`, { replace: true });
+  }, [deepLink, navigate]);
   const [range, setRange] = useState<(typeof RANGES)[number]>(30);
   const [campaigns, setCampaigns] = useState<StudioCampaign[] | null>(null);
   const [facts, setFacts] = useState<SendFact[] | null>(null);

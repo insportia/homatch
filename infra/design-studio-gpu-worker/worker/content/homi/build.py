@@ -22,7 +22,7 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
-STAGES = ("PREVIEW_360",)
+STAGES = ("BUILD", "FRAMES", "ENCODE")
 T0 = time.perf_counter()
 
 # ── materials ───────────────────────────────────────────────────────────
@@ -31,13 +31,13 @@ MATS = {
     # name: (base rgb, metallic, roughness, coat, emission rgb, emission strength)
     "HOMI_White_Shell": ((0.86, 0.85, 0.82), 0.0, 0.22, 0.7, None, 0.0),
     "HOMI_Gold_Trim": ((0.88, 0.66, 0.36), 1.0, 0.24, 0.0, None, 0.0),
-    "HOMI_Black_Gloss": ((0.004, 0.005, 0.008), 0.0, 0.06, 0.5, None, 0.0),
+    "HOMI_Black_Gloss": ((0.004, 0.005, 0.008), 0.0, 0.14, 0.25, None, 0.0),
     "HOMI_Black_Joint": ((0.025, 0.027, 0.032), 0.7, 0.32, 0.3, None, 0.0),
     "HOMI_LED_Blue": ((0.02, 0.05, 0.12), 0.0, 0.3, 0.0, (0.10, 0.45, 1.0), 4.0),
-    "HOMI_LED_Ring": ((0.1, 0.35, 1.0), 0.0, 0.2, 0.0, (0.16, 0.52, 1.0), 3.2),
-    "HOMI_Eye_Iris": ((0.01, 0.04, 0.25), 0.0, 0.2, 0.0, (0.01, 0.14, 1.0), 1.3),
-    "HOMI_Eye_Pupil": ((0.004, 0.008, 0.025), 0.0, 0.1, 1.0, (0.0, 0.015, 0.06), 1.0),
-    "HOMI_LED_White": ((0.9, 0.95, 1.0), 0.0, 0.2, 0.0, (0.85, 0.95, 1.0), 6.0),
+    "HOMI_LED_Ring": ((0.02, 0.30, 1.0), 0.0, 0.2, 0.0, (0.03, 0.55, 1.0), 1.6),
+    "HOMI_Eye_Iris": ((0.0, 0.05, 0.40), 0.0, 0.25, 0.0, (0.0, 0.30, 1.0), 0.45),
+    "HOMI_Eye_Pupil": ((0.002, 0.004, 0.015), 0.0, 0.1, 0.0, (0.0, 0.01, 0.05), 0.6),
+    "HOMI_LED_White": ((0.9, 0.95, 1.0), 0.0, 0.2, 0.0, (0.85, 0.95, 1.0), 4.0),
     "HOMI_Text_White": ((0.92, 0.92, 0.92), 0.0, 0.35, 0.0, (1.0, 1.0, 1.0), 0.6),
     "HOMI_Ear_Glass": ((0.01, 0.02, 0.05), 0.0, 0.05, 1.0, (0.01, 0.05, 0.15), 0.6),
 }
@@ -437,24 +437,24 @@ def build_torso(M, coll):
     parts.append(chest)
     # shield-shaped black chest plate with a gold border
     cz = CHEST_C.z
-    shield = chaikin([(-0.125, cz + 0.150), (0.125, cz + 0.150), (0.158, cz + 0.070), (0.090, cz - 0.140), (0.0, cz - 0.178),
-                      (-0.090, cz - 0.140), (-0.158, cz + 0.070)], iterations=3)
+    shield = chaikin([(-0.150, cz + 0.165), (0.150, cz + 0.165), (0.188, cz + 0.070), (0.108, cz - 0.150), (0.0, cz - 0.192),
+                      (-0.108, cz - 0.150), (-0.188, cz + 0.070)], iterations=3)
     parts.append(new_object("HOMI_Torso_ChestPlate", project(radial_patch(shield, rings=7, depth=0.012), chest_front, 0.004), M["HOMI_Black_Gloss"], coll))
     border = [(x, chest_front(x, z) - 0.006, z) for x, z in shield]
     parts.append(new_object("HOMI_Torso_ChestTrim", tube(border, 0.0035, closed=True, segs=8), M["HOMI_Gold_Trim"], coll))
     # blue light lines down the sides of the plate
     for side, sx in (("L", 1), ("R", -1)):
-        line = [(sx * (0.172 - 0.075 * f ** 1.3), cz + 0.075 - 0.215 * f) for f in (i / 14 for i in range(15))]
+        line = [(sx * (0.200 - 0.085 * f ** 1.3), cz + 0.075 - 0.230 * f) for f in (i / 14 for i in range(15))]
         pts = [(x, chest_front(x, z) - 0.003, z) for x, z in line]
         parts.append(new_object(f"HOMI_Torso_LightLine_{side}", tube(pts, 0.0032, segs=8), M["HOMI_LED_Blue"], coll))
     # HOMATCH house mark (gold) and wordmark (white)
-    s, lx, lz = 0.072, 0.0, cz + 0.058
+    s, lx, lz = 0.086, 0.0, cz + 0.068
     outer = [(-0.5, 0.0), (-0.5, 0.56), (0.0, 1.0), (0.5, 0.56), (0.5, 0.0), (0.37, 0.0), (0.37, 0.49), (0.0, 0.82), (-0.37, 0.49), (-0.37, 0.0)]
     inner = [(-0.25, 0.0), (-0.25, 0.43), (0.0, 0.63), (0.25, 0.43), (0.25, 0.0), (0.13, 0.0), (0.13, 0.37), (0.0, 0.47), (-0.13, 0.37), (-0.13, 0.0)]
     for nm, poly in (("LogoOuter", outer), ("LogoInner", inner)):
         bm = flat_polygon([(lx + x * s, lz + z * s - 0.5 * s) for x, z in poly], 0.002)
         parts.append(new_object(f"HOMI_Torso_{nm}", project(bm, chest_front, 0.0075), M["HOMI_Gold_Trim"], coll, smooth=False))
-    parts.append(wordmark("HOMI_Torso_Wordmark", "HOMATCH", 0.0, cz - 0.010, 0.038, M["HOMI_Text_White"], coll))
+    parts.append(wordmark("HOMI_Torso_Wordmark", "HOMATCH", 0.0, cz - 0.008, 0.044, M["HOMI_Text_White"], coll))
 
     # waist, gold belt line, pelvis
     parts.append(segment("HOMI_Torso_Waist", Vector((0, 0.0, 0.790)), Vector((0, 0.0, 0.905)), 0.160, 0.182, M["HOMI_Black_Joint"], coll, n=2.8, ry_scale=0.74))
@@ -703,7 +703,7 @@ def studio(scene, size: int, samples: int):
     scene.cycles.use_denoising = True
     scene.render.film_transparent = False
     scene.view_settings.view_transform = "AgX"
-    scene.view_settings.look = "AgX - Medium High Contrast"
+    scene.view_settings.look = "AgX - Punchy"
     world = bpy.data.worlds.new("HOMI_Studio_World")
     world.use_nodes = True
     world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.028, 0.032, 0.040, 1)
@@ -749,7 +749,7 @@ def encode_mp4(frames_dir: Path, count: int, fps: int, size: int, out: Path):
     seq.render.fps = fps
     seq.frame_start, seq.frame_end = 1, count
     ed = seq.sequence_editor_create()
-    files = sorted(frames_dir.glob("f_*.png"))
+    files = sorted(frames_dir.glob("f[0-9][0-9][0-9][0-9].png"))
     strip_ = ed.strips.new_image("frames", str(files[0]), 1, 1)
     for f in files[1:]:
         strip_.elements.append(f.name)
@@ -769,16 +769,8 @@ def encode_mp4(frames_dir: Path, count: int, fps: int, size: int, out: Path):
     bpy.data.scenes.remove(seq)
 
 
-def main():
-    argv = sys.argv[sys.argv.index("--") + 1:]
-    params = json.loads(Path(argv[0]).read_text())
-    if params.get("stage") not in STAGES:
-        raise SystemExit("unknown stage")
-    out = Path(params["out"])
-    out.mkdir(parents=True, exist_ok=True)
-    report = {"ok": False, "stage": params["stage"], "blender": bpy.app.version_string, "timings": {}}
+def _model(report: dict):
     t = time.perf_counter()
-
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
     scene.name = "HOMI_Master"
@@ -789,59 +781,81 @@ def main():
     report["geometry"] = geometry_report(built["parts"])
     report["joints"] = built["joints"]
     report["timings"]["build_s"] = round(time.perf_counter() - t, 2)
+    return scene, root
 
-    # master .blend (model only at this stage; no look-dev lights inside the asset collection)
-    t = time.perf_counter()
-    blend = out / params["files"]["blend"]
-    bpy.ops.wm.save_as_mainfile(filepath=str(blend), compress=True, relative_remap=True)
-    glb = out / params["files"]["glb"]
-    bpy.ops.export_scene.gltf(filepath=str(glb), export_format="GLB", use_selection=False, export_apply=True, export_yup=True, export_extras=True)
-    report["timings"]["save_export_s"] = round(time.perf_counter() - t, 2)
 
-    # turntable on the studio set
-    t = time.perf_counter()
-    device = use_device(scene, params.get("device", "AUTO"))
-    studio(scene, params["size"], params["samples"])
-    frames = out / "frames"
-    frames.mkdir(exist_ok=True)
-    n = params["frames"]
-    scene.render.image_settings.file_format = "PNG"
-    for i in range(n):
-        root.rotation_euler = (0, 0, 2 * math.pi * i / n)
-        scene.render.filepath = str(frames / f"f_{i:04d}.png")
+def main():
+    """BUILD: model, master .blend, GLB, checks, face still. FRAMES: one chunk of turntable frames. ENCODE: frames to MP4.
+    The model is deterministic, so every FRAMES chunk rebuilds exactly the geometry BUILD saved."""
+    argv = sys.argv[sys.argv.index("--") + 1:]
+    params = json.loads(Path(argv[0]).read_text())
+    stage = params.get("stage")
+    if stage not in STAGES:
+        raise SystemExit("unknown stage")
+    out = Path(params["out"])
+    out.mkdir(parents=True, exist_ok=True)
+    report = {"ok": False, "stage": stage, "blender": bpy.app.version_string, "timings": {}}
+
+    if stage == "ENCODE":
+        t = time.perf_counter()
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        mp4 = out / params["files"]["mp4"]
+        encode_mp4(Path(params["frames_dir"]), params["frames"], params["fps"], params["size"], mp4)
+        report["timings"]["encode_s"] = round(time.perf_counter() - t, 2)
+        report["ok"] = mp4.exists() and mp4.stat().st_size > 0
+
+    elif stage == "FRAMES":
+        scene, root = _model(report)
+        t = time.perf_counter()
+        report["device"] = use_device(scene, params.get("device", "AUTO"))
+        studio(scene, params["size"], params["samples"])
+        scene.render.image_settings.file_format = "PNG"
+        n, start, count = params["frames"], params["start"], params["count"]
+        for i in range(start, start + count):
+            root.rotation_euler = (0, 0, 2 * math.pi * i / n)
+            scene.render.filepath = str(out / f"f{i:04d}.png")
+            bpy.ops.render.render(write_still=True)
+        report["timings"]["render_s"] = round(time.perf_counter() - t, 2)
+        report["ok"] = all((out / f"f{i:04d}.png").exists() for i in range(start, start + count))
+
+    else:  # BUILD
+        scene, root = _model(report)
+        # master .blend (model only; no look-dev lights inside the asset collection)
+        t = time.perf_counter()
+        blend = out / params["files"]["blend"]
+        bpy.ops.wm.save_as_mainfile(filepath=str(blend), compress=True, relative_remap=True)
+        glb = out / params["files"]["glb"]
+        bpy.ops.export_scene.gltf(filepath=str(glb), export_format="GLB", use_selection=False, export_apply=True, export_yup=True, export_extras=True)
+        report["timings"]["save_export_s"] = round(time.perf_counter() - t, 2)
+        # face close-up (3/4 front, 85 mm) on the studio set
+        t = time.perf_counter()
+        report["device"] = use_device(scene, params.get("device", "AUTO"))
+        studio(scene, params["size"], params["samples"])
+        scene.render.image_settings.file_format = "PNG"
+        cam = bpy.data.cameras.new("FaceCam")
+        cam.lens = 85
+        fc = bpy.data.objects.new("FaceCam", cam)
+        fc.location = (-0.55, -1.35, 1.52)
+        fc.rotation_euler = (Vector((0, 0, 1.46)) - fc.location).to_track_quat("-Z", "Y").to_euler()
+        scene.collection.objects.link(fc)
+        scene.camera = fc
+        scene.render.filepath = str(out / params["files"]["face"])
         bpy.ops.render.render(write_still=True)
-    report["timings"]["render_s"] = round(time.perf_counter() - t, 2)
-    report["device"] = device
-    root.rotation_euler = (0, 0, 0)
+        report["timings"]["face_s"] = round(time.perf_counter() - t, 2)
+        # the GLB must come back into an empty file with every mesh
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        bpy.ops.import_scene.gltf(filepath=str(glb))
+        meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
+        report["glb_reimport"] = {"meshes": len(meshes), "expected": report["geometry"]["objects"]}
+        # the master must reopen with every object and material
+        bpy.ops.wm.open_mainfile(filepath=str(blend))
+        report["blend_reopen"] = {"objects": len([o for o in bpy.data.objects if o.type == "MESH" and o.get("homi_asset") == "HOMI"]),
+                                  "materials": len([m for m in bpy.data.materials if m.name.startswith("HOMI_")]),
+                                  "missing_files": sorted(i.filepath for i in bpy.data.images if i.source == "FILE" and not i.packed_file and not Path(bpy.path.abspath(i.filepath)).exists())}
+        report["ok"] = (report["glb_reimport"]["meshes"] == report["glb_reimport"]["expected"]
+                        and report["blend_reopen"]["objects"] == report["geometry"]["objects"]
+                        and not report["blend_reopen"]["missing_files"])
 
-    # face close-up (3/4 front, 85 mm) for the contact sheet
-    cam = bpy.data.cameras.new("FaceCam")
-    cam.lens = 85
-    fc = bpy.data.objects.new("FaceCam", cam)
-    fc.location = (-0.55, -1.35, 1.52)
-    fc.rotation_euler = (Vector((0, 0, 1.46)) - fc.location).to_track_quat("-Z", "Y").to_euler()
-    scene.collection.objects.link(fc)
-    scene.camera = fc
-    scene.render.filepath = str(out / "face.png")
-    bpy.ops.render.render(write_still=True)
-
-    t = time.perf_counter()
-    encode_mp4(frames, n, params["fps"], params["size"], out / params["files"]["mp4"])
-    report["timings"]["encode_s"] = round(time.perf_counter() - t, 2)
-
-    # the GLB must come back into an empty file with every mesh
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.ops.import_scene.gltf(filepath=str(glb))
-    meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
-    report["glb_reimport"] = {"meshes": len(meshes), "expected": report["geometry"]["objects"]}
-    # the master must reopen with every object and material
-    bpy.ops.wm.open_mainfile(filepath=str(blend))
-    report["blend_reopen"] = {"objects": len([o for o in bpy.data.objects if o.type == "MESH" and o.get("homi_asset") == "HOMI"]),
-                              "materials": len([m for m in bpy.data.materials if m.name.startswith("HOMI_")]),
-                              "missing_files": sorted(i.filepath for i in bpy.data.images if i.source == "FILE" and not i.packed_file and not Path(bpy.path.abspath(i.filepath)).exists())}
-    report["ok"] = (report["glb_reimport"]["meshes"] == report["glb_reimport"]["expected"]
-                    and report["blend_reopen"]["objects"] == report["geometry"]["objects"]
-                    and not report["blend_reopen"]["missing_files"])
     report["timings"]["total_s"] = round(time.perf_counter() - T0, 2)
     Path(params["report"]).write_text(json.dumps(report, indent=1))
 

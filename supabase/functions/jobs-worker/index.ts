@@ -700,7 +700,16 @@ async function dispatchDueCampaigns(sb: Sb, url: string, cronToken: string): Pro
          */
         /* A campaign already under way that runs out of plan quota is PAUSED, not failed:
            the owner can upgrade or enable overage and resume it. */
-        const quotaStop = continuing.has(row.id) && /QUOTA|OVERAGE/.test(String(body.reason ?? ''));
+        const reason = String(body.reason ?? '');
+        /* A HOMATCH-wide or per-day capacity ceiling is not the campaign's fault: it stays RUNNING
+           (reason recorded) and the continuation claim picks it up when room returns. */
+        if (/PROVIDER_DAILY_CAPACITY|PROVIDER_CAPACITY|TENANT_DAILY_CAP/.test(reason)) {
+          await sb.from('outreach_campaigns').update({ last_send_error: reason, updated_at: new Date().toISOString() })
+            .eq('id', row.id).eq('status', 'RUNNING');
+          failed++;
+          continue;
+        }
+        const quotaStop = continuing.has(row.id) && /QUOTA|OVERAGE/.test(reason);
         await sb.from('outreach_campaigns').update({
           status: quotaStop ? 'PAUSED' : 'FAILED',
           paused_reason: quotaStop ? String(body.reason) : undefined,

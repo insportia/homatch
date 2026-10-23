@@ -23,7 +23,8 @@ import { rsTaxpayerLegalStatus, withoutRsRaw } from '../../../src/verify/rsTaxpa
 import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
 import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
-import { engineForNewJob, VERIFY_ENGINE_SETTING_KEY } from '../../../src/verify/engine.ts';
+import { engineForNewJob, engineOf, VERIFY_ENGINE_SETTING_KEY } from '../../../src/verify/engine.ts';
+import { codeSynthesis } from '../../../src/verify/v2/codeSynthesis.ts';
 // Developer Advertising Intelligence: the shared memo23 Apify client (the one
 // seam Verify shares; the file itself is unchanged) with Verify's OWN
 // orchestration, setting, budget and cost rows — no Find Buyers campaign,
@@ -4356,19 +4357,26 @@ async function stageTimesWithTasks(sb: any, jobId: string, stageTimes: any): Pro
   }
 }
 
-async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any> {
-  const z = parse(extractOpenAIText(p));
-  const sources = extractOpenAISources(p);
+// `code`: a V2 job's SYNTHESIS, assembled here with no model call (p is null).
+// Every SYNTHESIS field already falls back to the earlier stages when the
+// model omits it; the summary and the assessment lists come from
+// codeSynthesis(). No usage is recorded, so COGS has no row for a call that
+// was never made.
+async function finish(sb: any, j: any, s: Stage, p: any, l: string, code = false): Promise<any> {
+  const z = code ? {} : parse(extractOpenAIText(p));
+  const sources = code ? [] : extractOpenAISources(p);
   const prior = j.result_json || {};
   const ev = await resolveSourceUrls(dedupe([...(j.evidence_bundle || []), ...sources], (x) => x.url));
-  prior._cost = { ...(prior._cost || {}), [s.toLowerCase()]: p?.usage || null };
-  // The model the provider says ran this stage, so COGS prices what ran.
-  prior._models = { ...(prior._models || {}), [s.toLowerCase()]: typeof p?.model === 'string' ? p.model : null };
-  prior._searches = { ...(prior._searches || {}), [s.toLowerCase()]: countWebSearches(p) };
+  if (!code) {
+    prior._cost = { ...(prior._cost || {}), [s.toLowerCase()]: p?.usage || null };
+    // The model the provider says ran this stage, so COGS prices what ran.
+    prior._models = { ...(prior._models || {}), [s.toLowerCase()]: typeof p?.model === 'string' ? p.model : null };
+    prior._searches = { ...(prior._searches || {}), [s.toLowerCase()]: countWebSearches(p) };
+  }
   // STAGE TIMINGS (internal). Each model stage's own span; the gaps between
   // consecutive spans are the browser, financial-queue and marketplace waits.
   // Measured, so performance work is argued from data. Stripped for customers.
-  prior._stageTimes = { ...(prior._stageTimes || {}), [s.toLowerCase()]: { startedAt: j.progress?.startedAt ?? null, finishedAt: now() } };
+  prior._stageTimes = { ...(prior._stageTimes || {}), [s.toLowerCase()]: { startedAt: code ? now() : j.progress?.startedAt ?? null, finishedAt: now() } };
 
   if (s === 'IDENTITY') {
     prior.identity = z;
@@ -4637,8 +4645,9 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   // list happened to omit it — so we guarantee at least one mention of it
   // here if the model didn't already include an equivalent item, without
   // ever inflating the list with padding.
-  const keyStrengths = dedupe((z.keyStrengths || []).filter((x: any) => typeof x === 'string' && x.trim()), (x: string) => x.trim().toLowerCase()).slice(0, 5);
-  let itemsToVerify = dedupe((z.itemsToVerify || []).filter((x: any) => typeof x === 'string' && x.trim()), (x: string) => x.trim().toLowerCase()).slice(0, 4);
+  const v2 = code ? codeSynthesis(legalStatus, String(i.entity?.name || j.query || ''), l) : null;
+  const keyStrengths = dedupe(((v2 ?? z).keyStrengths || []).filter((x: any) => typeof x === 'string' && x.trim()), (x: string) => x.trim().toLowerCase()).slice(0, 5);
+  let itemsToVerify = dedupe(((v2 ?? z).itemsToVerify || []).filter((x: any) => typeof x === 'string' && x.trim()), (x: string) => x.trim().toLowerCase()).slice(0, 4);
   const rightsGapAlreadyMentioned = itemsToVerify.some((x: string) => /restrict|mortgage|encumbr|rights|commission|ownership|შეზღუდვ|რეგისტრაც|დამძიმებ|საკუთრებ|ექსპლუატაცი/i.test(x));
   if (rightsAndRestrictions.status === 'NOT_CONFIRMED' && !rightsGapAlreadyMentioned) {
     itemsToVerify = [...itemsToVerify, UNRESOLVED_RIGHTS_GAP_I18N[l] || UNRESOLVED_RIGHTS_GAP_I18N.en].slice(0, 4);
@@ -4668,7 +4677,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     overallConfidence: gatedConfidence,
     dueDiligenceCoverage: coverage,
     confidence: numericConfidence,
-    summary: z.executiveSummary || '',
+    summary: (v2 ?? z).executiveSummary || '',
     service176Evidence: projectService176Evidence(prior.browserOfficial),
     coverageNote: note,
     overallAssessment,
@@ -5207,6 +5216,8 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
         await sb.from('research_jobs').update({ result_json: j.result_json, updated_at: now() }).eq('id', j.id);
       }
       if (waiting) return;
+      // V2: assembled in code — no call, so nothing for the budget gate to hold.
+      if (engineOf(j.result_json) === 'V2') return await finish(sb, j, 'SYNTHESIS', null, l, true);
       if (await holdForBudget(sb, j, 'SYNTHESIS')) return;
       return await launch(sb, k, m, j, 'SYNTHESIS', l);
     }

@@ -509,6 +509,16 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
       .update({ metadata: { reply_route_kind: route.kind, reply_campaign_id: route.campaignId }, updated_at: new Date().toISOString() })
       .eq('id', conversationId).eq('owner_id', route.ownerAuthId);
   }
+  /* An Email Studio offer answered by the member it was sent to: their Leads CRM entry moves
+     to REPLIED and links this thread. The database re-checks token, recipient, sender address
+     and thread ownership, and records each message once. Never on a FAILED sender check. */
+  if (route?.kind === 'STUDIO' && senderCheck !== 'FAIL' && row?.message_id) {
+    const { data: crm, error: crmErr } = await sb.rpc('email_studio_reply_to_crm', {
+      p_token: route.token, p_from: email.fromAddress, p_message_key: email.messageId ?? email.eventId,
+      p_comm_message_id: row.message_id, p_conversation_id: conversationId ?? null,
+    });
+    logEvent('email-webhook', 'studio_reply_crm', { outcome: crmErr ? 'ERROR' : String(crm), error: crmErr ? redact(crmErr.message) : undefined });
+  }
 
   /*
    * WHICH THREAD, WHEN THE REPLY SAYS SO.

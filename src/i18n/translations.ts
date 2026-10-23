@@ -21340,6 +21340,12 @@ const en = {
   /* ── FIND PROPERTY PREFERENCES ── */
   fpv_hi_PREFERRED_BUILDING: '{{status}}, as you preferred.',
   fpv_hi_PREFERRED_RENOVATION: '{{status}}, as you preferred.',
+
+  /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
+
+  /* ── HOMATCH LEADS CRM (buyer relationships, lead contact preferences, Leads notifications) ── */
+  crm_event_EMAIL_REPLIED: 'Replied by email',
+  crm_open_email_thread: 'Open email thread',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -42594,6 +42600,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── FIND PROPERTY PREFERENCES ── */
   fpv_hi_PREFERRED_BUILDING: '{{status}}, როგორც გირჩევნიათ.',
   fpv_hi_PREFERRED_RENOVATION: '{{status}}, როგორც გირჩევნიათ.',
+
+  /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
+
+  /* ── HOMATCH LEADS CRM (buyer relationships, lead contact preferences, Leads notifications) ── */
+  crm_event_EMAIL_REPLIED: 'უპასუხა ელფოსტით',
+  crm_open_email_thread: 'ელფოსტის მიმოწერის გახსნა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -63839,6 +63851,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── FIND PROPERTY PREFERENCES ── */
   fpv_hi_PREFERRED_BUILDING: '{{status}} — как вы и предпочитали.',
   fpv_hi_PREFERRED_RENOVATION: '{{status}} — как вы и предпочитали.',
+
+  /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
+
+  /* ── HOMATCH LEADS CRM (buyer relationships, lead contact preferences, Leads notifications) ── */
+  crm_event_EMAIL_REPLIED: 'Ответил по эл. почте',
+  crm_open_email_thread: 'Открыть переписку',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -85082,6 +85100,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── FIND PROPERTY PREFERENCES ── */
   fpv_hi_PREFERRED_BUILDING: '{{status}}, tercih ettiğiniz gibi.',
   fpv_hi_PREFERRED_RENOVATION: '{{status}}, tercih ettiğiniz gibi.',
+
+  /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
+
+  /* ── HOMATCH LEADS CRM (buyer relationships, lead contact preferences, Leads notifications) ── */
+  crm_event_EMAIL_REPLIED: 'E-postayla yanıtladı',
+  crm_open_email_thread: 'E-posta yazışmasını aç',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -106325,6 +106349,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── FIND PROPERTY PREFERENCES ── */
   fpv_hi_PREFERRED_BUILDING: '{{status}}، كما تفضّل.',
   fpv_hi_PREFERRED_RENOVATION: '{{status}}، كما تفضّل.',
+
+  /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
+
+  /* ── HOMATCH LEADS CRM (buyer relationships, lead contact preferences, Leads notifications) ── */
+  crm_event_EMAIL_REPLIED: 'ردّ عبر البريد الإلكتروني',
+  crm_open_email_thread: 'فتح محادثة البريد',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -127568,6 +127598,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── FIND PROPERTY PREFERENCES ── */
   fpv_hi_PREFERRED_BUILDING: '{{status}}, כפי שהעדפת.',
   fpv_hi_PREFERRED_RENOVATION: '{{status}}, כפי שהעדפת.',
+
+  /* ── EMAIL MARKETING · CRM INBOX · PLANS · DOMAINS ── */
+
+  /* ── HOMATCH LEADS CRM (buyer relationships, lead contact preferences, Leads notifications) ── */
+  crm_event_EMAIL_REPLIED: 'השיב בדוא"ל',
+  crm_open_email_thread: 'פתיחת שרשור הדוא"ל',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

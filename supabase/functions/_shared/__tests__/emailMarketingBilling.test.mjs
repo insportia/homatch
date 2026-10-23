@@ -118,3 +118,14 @@ test('sender authentication: only a DMARC pass is PASS; explicit failures are FA
   assert.equal(senderAuthentication(null), 'UNKNOWN');
   assert.equal(senderAuthentication('pass'), 'UNKNOWN');
 });
+
+test('only an Email Studio reply whose sender did not FAIL authentication reaches the Leads CRM', async () => {
+  const { readFileSync } = await import('node:fs');
+  const fn = readFileSync('supabase/functions/email-webhook/index.ts', 'utf8');
+  const at = fn.indexOf("sb.rpc('email_studio_reply_to_crm'");
+  assert.ok(at > 0, 'the reply is never connected to the CRM');
+  const guard = fn.slice(fn.lastIndexOf('if (', at), at);
+  assert.match(guard, /route\?\.kind === 'STUDIO'/);
+  assert.match(guard, /senderCheck !== 'FAIL'/);
+  assert.ok(fn.indexOf("sb.rpc('comm_record_inbound'") < at, 'the message is recorded before the CRM moves');
+});

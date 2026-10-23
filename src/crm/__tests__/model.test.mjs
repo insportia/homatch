@@ -153,3 +153,13 @@ test('the CRM UI never reads a contact field', () => {
     assert.match(src, /contact: LeadContact \| null/, `${f} takes the consent-checked LeadContact`);
   }
 });
+
+test('an Email Studio reply links its thread, and only a well-formed thread id', () => {
+  const conv = '62000000-0000-0000-0000-000000000001';
+  const d = describeEvent({ kind: 'EMAIL_REPLIED', detail: { by: 'SYSTEM', conversationId: conv } });
+  assert.equal(d.key, 'crm_event_EMAIL_REPLIED');
+  assert.equal(d.conversationId, conv);
+  assert.equal(d.automatic, true);
+  assert.equal(describeEvent({ kind: 'EMAIL_REPLIED', detail: { conversationId: 'javascript:alert(1)' } }).conversationId, null);
+  assert.equal(describeEvent({ kind: 'EMAIL_SENT', detail: { conversationId: conv } }).conversationId, undefined);
+});

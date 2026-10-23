@@ -1045,6 +1045,91 @@ $function$;
 revoke all on function public.my_outreach_contact_set_email_consent(uuid, boolean, text) from public, anon;
 grant execute on function public.my_outreach_contact_set_email_consent(uuid, boolean, text) to authenticated;
 
+/*
+ * EMAIL STUDIO REPLY → LEADS CRM. A member who answers an Email Studio offer by email moves
+ * the owner's CRM entry for them to REPLIED, exactly as a HOMATCH chat reply does
+ * (lead_crm_on_message), and the event carries the inbox thread so the CRM can link to it.
+ *
+ * Trust: the tenant and the member come from the reply token (a live STUDIO route), never
+ * from the message. The route must name an Email Studio recipient of THAT owner, and the
+ * sender must be the very address the offer was sent to — a forwarded or third-party reply
+ * is recorded in the inbox but does not touch the CRM. The thread must belong to the same
+ * owner. The webhook calls this only when the sender's domain did not FAIL authentication.
+ *
+ * Idempotent: one EMAIL_REPLIED event per entry and RFC message id (a hash of it is stored;
+ * the event detail is returned to the owner, so it carries ids only — never an address).
+ */
+create unique index if not exists lead_crm_events_email_reply_once
+  on public.lead_crm_events (entry_id, (detail ->> 'replyKey')) where kind = 'EMAIL_REPLIED';
+
+create or replace function public.email_studio_reply_to_crm(
+  p_token text, p_from text, p_message_key text, p_comm_message_id uuid, p_conversation_id uuid
+)
+returns text
+language plpgsql
+security definer
+set search_path to ''
+as $function$
+declare
+  v_route public.email_reply_routes;
+  v_rec public.email_studio_recipients;
+  v_e public.lead_crm_entries;
+  v_rows integer;
+  v_old integer;
+  v_new integer;
+  v_forward constant text[] := array['UNLOCKED','CONTACT_PLANNED','CONTACTED','DELIVERED','REPLIED'];
+begin
+  if p_message_key is null or btrim(p_message_key) = '' then return 'NO_MESSAGE_KEY'; end if;
+  select * into v_route from public.email_reply_routes
+   where token = p_token and kind = 'STUDIO' and revoked_at is null and expires_at > now();
+  if not found then return 'NO_ROUTE'; end if;
+  if v_route.recipient_id is null then return 'NO_RECIPIENT'; end if;
+
+  select * into v_rec from public.email_studio_recipients
+   where id = v_route.recipient_id and owner_user_id = v_route.owner_user_id;
+  if not found or (v_route.campaign_id is not null and v_rec.campaign_id <> v_route.campaign_id) then
+    return 'RECIPIENT_MISMATCH';
+  end if;
+  if v_route.contact_email is null or lower(btrim(coalesce(p_from, ''))) <> lower(btrim(v_route.contact_email)) then
+    return 'SENDER_MISMATCH';
+  end if;
+  if p_conversation_id is not null and not exists (
+       select 1 from public.comm_conversations c where c.id = p_conversation_id and c.owner_id = v_route.owner_auth_id) then
+    return 'CONVERSATION_MISMATCH';
+  end if;
+
+  select * into v_e from public.lead_crm_entries
+   where owner_user_id = v_rec.owner_user_id and lead_user_id = v_rec.lead_user_id
+   for update;
+  if not found then return 'NO_CRM_ENTRY'; end if;
+
+  insert into public.lead_crm_events (entry_id, kind, detail)
+  values (v_e.id, 'EMAIL_REPLIED', jsonb_build_object(
+    'replyKey', md5(lower(btrim(p_message_key))), 'by', 'SYSTEM', 'source', 'EMAIL_STUDIO',
+    'campaignId', v_rec.campaign_id, 'recipientId', v_rec.id,
+    'conversationId', p_conversation_id, 'commMessageId', p_comm_message_id))
+  on conflict (entry_id, (detail ->> 'replyKey')) where kind = 'EMAIL_REPLIED' do nothing;
+  get diagnostics v_rows = row_count;
+  if v_rows = 0 then return 'DUPLICATE'; end if;
+
+  v_old := array_position(v_forward, v_e.status);
+  v_new := array_position(v_forward, 'REPLIED');
+  if v_old is not null and v_old < v_new then
+    update public.lead_crm_entries set status = 'REPLIED', status_set_by = 'SYSTEM',
+           last_activity_at = now(), updated_at = now() where id = v_e.id;
+    insert into public.lead_crm_events (entry_id, kind, detail)
+    values (v_e.id, 'STATUS_CHANGED', jsonb_build_object('from', v_e.status, 'to', 'REPLIED', 'by', 'SYSTEM',
+                                                        'source', 'EMAIL_STUDIO_REPLY'));
+  else
+    /* Already REPLIED or further along (INTERESTED, …): the owner's later call stands. */
+    update public.lead_crm_entries set last_activity_at = now(), updated_at = now() where id = v_e.id;
+  end if;
+  return 'RECORDED';
+end;
+$function$;
+revoke all on function public.email_studio_reply_to_crm(text, text, text, uuid, uuid) from public, anon, authenticated;
+grant execute on function public.email_studio_reply_to_crm(text, text, text, uuid, uuid) to service_role;
+
 ------------------------------------------------------------------------------
 -- 9. Provider economics (layers B/C/D): Resend's published prices, kept apart from
 --    customer entitlements (layer A) and allocations (layer E).

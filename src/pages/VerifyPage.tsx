@@ -741,6 +741,8 @@ if(data?.status==='COMPLETE'&&data.result_json){again=false;stop();setCaptcha(nu
    Losing the race is not an error state: the report is persisted, so the
    evidence view renders and the customer can retry. */
 const SYNTHESIS_FETCH_TIMEOUT_MS=45000;
+/* How long the page waits for a report being built: past the server's own stale window (7 min), so a slow build is read, not abandoned. */
+const SYNTHESIS_WAIT_MS=9*60*1000;
 /* THE ONE COMPLETION PREDICATE (src/verify/completion.ts). Everything the customer reads about whether this run has finished derives from here, so the page and the global job indicator can no longer disagree about it. */const customerState=verifyCustomerState({jobStatus:jobMeta?.status,stage:jobMeta?.stage,hasReport:!!report,synthesis,synthesisLoading,synthesisSettled,awaitingSignIn});const loadSynthesis=async(id:string)=>{setSynthesisLoading(true);setSynthesisSettled(false);try{
 /* The server is already writing this report (research-agent started it the
    moment research finished): wait for that one instead of starting a second
@@ -750,13 +752,22 @@ const SYNTHESIS_FETCH_TIMEOUT_MS=45000;
    earlier in this tab comes from its cache. Null falls through to the loop. */
 const pre=await takeVerifyReport(id);if(pre){setSynthesis(pre.payload as unknown as VerifySynthesis);if(pre.refresh)void pre.refresh.then(p=>{if(p)setSynthesis(p as unknown as VerifySynthesis)});return}
 let data:unknown=null,error:unknown=null;
-for(let attempt=0;attempt<45;attempt++){
-  const res=await Promise.race([
+/* WAIT FOR THE REPORT, NOT FOR A NUMBER OF TRIES (prod 176264ba). The server
+   builds it in the background (~2.5 min) and answers "pending"; a 504, a
+   gateway error or a timed-out read on the way is transient and asked again.
+   Only a final answer, or the deadline, ends the wait. */
+const deadline=Date.now()+SYNTHESIS_WAIT_MS;
+for(;;){
+  let res:{data:unknown;error:unknown};
+  try{res=await Promise.race([
     supabase.functions.invoke('verify-synthesis',{body:{jobId:id}}),
     new Promise<never>((_,rej)=>setTimeout(()=>rej(new Error('synthesis timed out')),SYNTHESIS_FETCH_TIMEOUT_MS)),
-  ]);
-  ({data,error}=res as{data:unknown;error:unknown});
-  if(!(data as any)?.pending)break;
+  ]) as{data:unknown;error:unknown}}catch(e){res={data:null,error:e}}
+  ({data,error}=res);
+  const status=Number((error as any)?.context?.status)||0;
+  const transient=!!error&&!(data as any)?.error&&(status===0||status===502||status===504);
+  if(!(data as any)?.pending&&!transient)break;
+  if(Date.now()>deadline)break;
   await new Promise((r)=>setTimeout(r,Math.min(8000,Math.max(2000,Number((data as any)?.retryAfterMs)||4000))));
 }
 if(error||(data as any)?.error||!data||(data as any)?.pending)throw new Error('synthesis unavailable');

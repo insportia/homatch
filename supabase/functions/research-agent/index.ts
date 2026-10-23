@@ -2901,8 +2901,10 @@ async function freshJobPhotos(sb: any, jobId: string, force: boolean): Promise<{
   if (werr) return { status: 500, body: { error: 'write_failed' } };
   if (!Array.isArray(wrote) || !wrote.length) return { status: 200, body: { ok: true, skipped: true, reason: 'concurrent_search' } };
   if (result.status !== 'NOT_RUN' && result.status !== 'NO_LOCATION') {
+    // cost_provider has no WIKIMEDIA_COMMONS: a free public source is OTHER
+    // (the enum rejected every row). The sources searched are in `source`.
     const { error: cerr } = await sb.from('cost_events').insert([{
-      provider: 'WIKIMEDIA_COMMONS',
+      provider: 'OTHER',
       operation_type: 'FRESH_PHOTOS_VERIFY',
       source: `fresh_photos;status=${result.status};sources=${result.sources.filter((s) => s.status === 'SEARCHED').map((s) => s.source).join('+') || 'none'}`,
       units: result.photos.length,
@@ -6664,7 +6666,9 @@ const DRIVE_WALL_CLOCK_MS = 55_000;
 /** §54: synthesis may retry; research must never be re-run because of it. */
 const MAX_SYNTHESIS_ATTEMPTS = 4;
 /** Longer than any real synthesis, short enough that a stall is not a dead end. */
-const SYNTHESIS_ATTEMPT_TIMEOUT_MS = 4 * 60 * 1000;
+// Above the edge wall-clock limit (400 s): a report build still running is never
+// swept as stale. Same window as verify-synthesis REPORT_BUILD_STALE_MS.
+const SYNTHESIS_ATTEMPT_TIMEOUT_MS = 7 * 60 * 1000;
 
 async function adminSetting(sb: any, key: string): Promise<string> {
   const { data } = await sb.from('admin_settings').select('value').eq('key', key).maybeSingle();

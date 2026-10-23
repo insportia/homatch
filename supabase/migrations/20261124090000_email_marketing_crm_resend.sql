@@ -773,15 +773,18 @@ grant execute on function public.my_email_set_auto_renew(boolean, text) to authe
 
 ------------------------------------------------------------------------------
 -- 5. Billable products, Finance V2 policy and service.
+--    Seeded with kill_switch ON: applying this migration charges nobody. Wallet charges
+--    for plans and overage start only when the owner turns each product's kill switch
+--    off (Admin, or a reviewed SQL update) — a separate, explicit release step.
 ------------------------------------------------------------------------------
 insert into public.billable_products (code, name, billing_mode, requires_reservation, standard_retail_cents, reference_landed_cogs_cents,
   min_gross_margin_bps, estimate_strategy, pricing_version, enabled, pricing_active, kill_switch, sort_order, config, min_viable_budget_credits)
 values
-  ('EMAIL_PLAN_PRO', 'Email Marketing Pro (1 month)', 'FIXED', true, 5000, 0, 0, 'FIXED', 1, true, true, false, 400,
+  ('EMAIL_PLAN_PRO', 'Email Marketing Pro (1 month)', 'FIXED', true, 5000, 0, 0, 'FIXED', 1, true, true, true, 400,
    '{"unit":"MONTH","included_emails":50000,"vat_inclusive":true,"pricing_policy":"email_marketing_37_63_vat_v1"}', 0),
-  ('EMAIL_PLAN_SCALE', 'Email Marketing Scale (1 month)', 'FIXED', true, 22000, 0, 0, 'FIXED', 1, true, true, false, 401,
+  ('EMAIL_PLAN_SCALE', 'Email Marketing Scale (1 month)', 'FIXED', true, 22000, 0, 0, 'FIXED', 1, true, true, true, 401,
    '{"unit":"MONTH","included_emails":100000,"vat_inclusive":true,"pricing_policy":"email_marketing_37_63_vat_v1"}', 0),
-  ('EMAIL_OVERAGE_1K', 'Email Marketing overage (1,000 emails)', 'FIXED', true, 220, 0, 0, 'PER_UNIT', 1, true, true, false, 402,
+  ('EMAIL_OVERAGE_1K', 'Email Marketing overage (1,000 emails)', 'FIXED', true, 220, 0, 0, 'PER_UNIT', 1, true, true, true, 402,
    '{"unit":"1000_EMAILS","vat_inclusive":true,"requires_customer_consent":true,"pricing_policy":"email_marketing_37_63_vat_v1"}', 0)
 on conflict (code) do nothing;
 

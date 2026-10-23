@@ -332,14 +332,18 @@ async function inboxReply(sb: Sb, s: EmailSettings, owner: Owner, body: Record<s
 async function usageRefresh(sb: Sb): Promise<Response> {
   const s = await loadEmailSettings(sb);
   const k = marketingKey(s);
+  /* Which key answered — the secret's NAME and whether it fell back to the shared key — is kept
+     with every snapshot, so Admin can prove the dedicated marketing key is the one in use. */
+  const keyInfo = { keyEnv: k.envName ?? null, keyFallback: Boolean(k.keyFallback) };
   if (!k.key) {
-    await sb.from('email_provider_usage_snapshots').insert({ ok: false, error: 'NO_RESEND_KEY' });
+    await sb.from('email_provider_usage_snapshots').insert({ ok: false, error: 'NO_RESEND_KEY', usage: { _key: keyInfo } });
     return json({ ok: false, error: 'NO_RESEND_KEY' });
   }
   const res = await getUsage(k.key);
   const usage = res.ok ? res.json : null;
   await sb.from('email_provider_usage_snapshots').insert({
-    ok: res.ok, error: res.ok ? null : (res.status === 401 || res.status === 403 ? 'KEY_NOT_FULL_ACCESS' : res.error), usage,
+    ok: res.ok, error: res.ok ? null : (res.status === 401 || res.status === 403 ? 'KEY_NOT_FULL_ACCESS' : res.error),
+    usage: { ...((usage as Record<string, unknown> | null) ?? {}), _key: keyInfo },
   });
   const alerts = res.ok ? usageAlerts(usage as Record<string, unknown>, s.alertPct) : [];
   if (alerts.length) logEvent('email-marketing', 'provider_limit_alert', { alerts: alerts.join(',') });

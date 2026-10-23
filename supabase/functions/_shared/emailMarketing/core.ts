@@ -92,6 +92,14 @@ export async function loadTestMode(sb: SupabaseClient): Promise<TestMode | null>
   return parseTestMode((data as { value?: unknown } | null)?.value);
 }
 
+/** A Resend usage snapshot is due when the latest one is older than this (or there is none). */
+export const USAGE_SNAPSHOT_EVERY_MS = 55 * 60_000;
+
+export function usageSnapshotDue(latestCapturedAt: string | null | undefined, now = new Date()): boolean {
+  const t = latestCapturedAt ? Date.parse(latestCapturedAt) : NaN;
+  return !Number.isFinite(t) || now.getTime() - t >= USAGE_SNAPSHOT_EVERY_MS;
+}
+
 export function marketingKey(s: EmailSettings): ResolvedKey {
   return resolveResendKey('marketing', s.keyEnvName);
 }

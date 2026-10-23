@@ -161,14 +161,13 @@ test('the campaign CTA says what this property is looking for', () => {
    * reserve-settle-release. Only the words are contextual.
    */
   const body = code(read('src', 'pages', 'property', 'PropertyDetailPage.tsx'));
-  assert.match(body, /intelligenceActionFor\(transactionType\)/,
+  assert.match(body, /intelligenceActionFor\(property\.transaction_type/,
     'the CTA does not derive the action from the transaction type');
-  assert.match(body, /transactionType=\{property\.transaction_type\}/,
-    'the real transaction type is not passed to the panel');
   /* Falls back to the generic wording rather than guessing a side of the market. */
-  assert.match(body, /: t\('matches_start_matching'\)/);
-  /* And the engine is untouched: the same product code still launches the campaign. */
-  assert.match(body, /productCode="FIND_CLIENTS"/);
+  assert.match(body, /: t\('prop_view_matches'\)/);
+  /* Matching workspace (owner, 2026-10-24): the property page no longer launches the legacy paid external campaign; it opens the workspace (MatchingEntryCard). */
+  assert.match(body, /<MatchingEntryCard propertyId=\{id\} \/>/);
+  assert.doesNotMatch(body, /productCode="FIND_CLIENTS"/, 'the property page no longer launches a paid campaign');
 });
 
 /*

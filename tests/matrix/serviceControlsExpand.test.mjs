@@ -14,8 +14,8 @@ const { serviceForPath } = await import(join(ROOT, 'src/lib/serviceControls/rout
 const { translations } = await import(join(ROOT, 'src/i18n/translations.ts'));
 const MIGRATION = read('supabase/migrations/20261110090000_service_controls_expand.sql');
 /* The key list is redefined when a service is added; the newest definition is the truth.
-   20261127090000 added the matching workspace keys (owner, 2026-10-24). */
-const MATCHING = read('supabase/migrations/20261127090000_curated_leads_marketplace.sql');
+   20261128090000 added the matching workspace keys (owner, 2026-10-24). */
+const MATCHING = read('supabase/migrations/20261128090000_curated_leads_marketplace.sql');
 const MATCHING_KEYS = ['internal_matching', 'curated_leads', 'find_buyers_external'];
 
 test('one list of services: database, server and browser agree', () => {

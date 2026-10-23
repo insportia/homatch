@@ -1,4 +1,4 @@
-// PGlite behaviour test for 20261127090000_curated_leads_marketplace.sql on production-shaped stubs:
+// PGlite behaviour test for 20261128090000_curated_leads_marketplace.sql on production-shaped stubs:
 // import (stage → fix → commit), publication rules, masked catalog, filters, quote, idempotent
 // all-or-nothing unlock, the shared-catalog rule (A's purchase never removes a lead for B), the
 // CRM handoff and its consent rule, the four independent switches, internal feed filters.
@@ -15,7 +15,7 @@ const { PGlite } = process.argv[3]
   ? require(process.argv[3] + '/node_modules/@electric-sql/pglite/dist/index.cjs')
   : require('@electric-sql/pglite');
 const PREV = readFileSync(ROOT + '/supabase/migrations/20261126090000_find_buyers_leads_crm.sql', 'utf8');
-const MIGRATION = readFileSync(ROOT + '/supabase/migrations/20261127090000_curated_leads_marketplace.sql', 'utf8');
+const MIGRATION = readFileSync(ROOT + '/supabase/migrations/20261128090000_curated_leads_marketplace.sql', 'utf8');
 const db = new PGlite();
 const A = '00000000-0000-0000-0000-0000000000a1', B = '00000000-0000-0000-0000-0000000000b1', ADM = '00000000-0000-0000-0000-0000000000ad';
 const UA = '10000000-0000-0000-0000-0000000000a1', UB = '10000000-0000-0000-0000-0000000000b1', UADM = '10000000-0000-0000-0000-0000000000ad';
@@ -276,6 +276,7 @@ assert.equal((await feed({ interests: ['RENT'] })).items[0].interest, 'RENT', 'R
 assert.equal((await feed({ countries: ['DE'] })).total, 1);
 assert.equal((await feed({ languages: ['ka'] })).total, 1);
 assert.equal((await feed({ q: 'vake' })).total, 1);
+assert.deepEqual((await feed({ filters: ['LOCKED'] })).facets.languages, {}, 'no language is listed for members not yet unlocked');
 assert.deepEqual((await feed({ withIds: true })).ids.length, 2);
 await db.exec(`insert into public.internal_lead_unlocks (account_user_id, lead_user_id) values ('${UA}', '${UM}')`);
 assert.deepEqual([(await feed({ filters: ['LOCKED'] })).total, (await feed({ filters: ['UNLOCKED'] })).total], [1, 1], 'available and unlocked are server-side views');
@@ -314,6 +315,15 @@ await one(ADM, `select public.admin_curated_set_price(10, 'restore') r`);
 const ul = await one(ADM, `select public.admin_outreach_lists('{}'::jsonb) r`);
 assert.ok(ul.total >= 3 && ul.items[0].ownerEmail);
 await assert.rejects(as(A, `select public.admin_outreach_lists('{}'::jsonb)`), /FORBIDDEN/);
+await assert.rejects(as(A, `select public.admin_outreach_list_export($1, 'Customer support ticket 123')`, [ul.items[0].id]), /FORBIDDEN/, 'customers cannot export lists through the API');
+await assert.rejects(as(ADM, `select public.admin_outreach_list_export($1, 'short')`, [ul.items[0].id]), /REASON_REQUIRED/);
+const lx = await one(ADM, `select public.admin_outreach_list_export($1, 'Customer support ticket 123') r`, [ul.items[0].id]);
+assert.ok(lx.count >= 1);
+const lxAudit = (await db.query(`select target_id, metadata from public.admin_audit_log where action = 'OUTREACH_LIST_EXPORT' order by id desc limit 1`)).rows[0];
+assert.equal(lxAudit.metadata.reason, 'Customer support ticket 123');
+assert.ok(lxAudit.target_id, 'the list owner is recorded');
+for (let i = 0; i < 8; i++) await one(ADM, `select public.admin_outreach_list_export($1, 'Customer support ticket 123') r`, [ul.items[0].id]);
+await assert.rejects(as(ADM, `select public.admin_outreach_list_export($1, 'Customer support ticket 123')`, [ul.items[0].id]), /EXPORT_RATE_LIMITED/, 'at most 10 exports per hour');
 const audit = (await db.query(`select action from public.admin_audit_log order by id`)).rows.map((r) => r.action);
 for (const a of ['CURATED_BATCH_CREATE', 'CURATED_BATCH_COMMIT', 'CURATED_PUBLISH', 'CURATED_EXPORT', 'CURATED_PRICE_SET']) assert.ok(audit.includes(a), a);
 await assert.rejects(as(A, `insert into public.outreach_contacts (list_id, owner_id, source_kind) values (gen_random_uuid(), '${A}', 'SCRAPED')`), /check constraint|violates/);

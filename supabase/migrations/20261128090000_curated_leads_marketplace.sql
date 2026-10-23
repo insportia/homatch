@@ -277,10 +277,12 @@ revoke all on function public.curated_filter_arr(jsonb, text, boolean) from publ
 grant execute on function public.curated_filter_arr(jsonb, text, boolean) to service_role;
 
 /* The per-row test: a single SQL expression over arguments (no SET, no FROM), so the planner
-   inlines it into the calling query — 100k rows filter in milliseconds, not seconds. */
+   inlines it into the calling query — 100k rows filter in milliseconds, not seconds. It is STABLE,
+   not IMMUTABLE: concat_ws / array_to_string are STABLE, and a function declared less volatile than
+   its body is never inlined (measured on Postgres 17: 2.2 s IMMUTABLE vs 29 ms STABLE at 100k). */
 create or replace function public.curated_lead_hit(l public.curated_leads, p_countries text[], p_languages text[], p_interests text[],
   p_channels text[], p_categories text[], p_batches uuid[], p_q text, p_added date, p_verified date, p_location text)
-returns boolean language sql immutable as $$
+returns boolean language sql stable as $$
   select (cardinality(p_countries) = 0 or l.country = any (p_countries))
     /* Language is its own field: never inferred from country. UNKNOWN = none recorded. */
     and (cardinality(p_languages) = 0 or l.languages && p_languages
@@ -607,11 +609,14 @@ begin
          x.property_type, array(select 'interest:' || lower(i) from unnest(x.interests) i)
     from (select l.*, (b.legal_basis = 'CONSENT_PARTNER_OFFERS' and coalesce(b.rights_verified, false)) as consented,
                  row_number() over (partition by l.phone order by l.id) as phone_rank
-            from public.curated_leads l
-            join public.curated_lead_unlocks u on u.lead_id = l.id and u.account_user_id = p_user_id
+            /* Driven by the given ids, entitlement checked through its index: inside the purchase
+               transaction the just-inserted unlocks have no statistics, and a join on them planned
+               badly (3,750 leads: 4 s joined, 0.27 s driven — Postgres 17 benchmark, 2026-10-24). */
+            from (select distinct unnest(p_lead_ids) as id) sel
+            join public.curated_leads l on l.id = sel.id
             left join public.curated_lead_batches b on b.id = l.batch_id
-           where l.id = any (p_lead_ids)
-             and not exists (select 1 from public.outreach_contacts d where d.list_id = p_list and d.source_curated_lead_id = l.id)) x
+           where exists (select 1 from public.curated_lead_unlocks u where u.account_user_id = p_user_id and u.lead_id = sel.id)
+             and not exists (select 1 from public.outreach_contacts d where d.list_id = p_list and d.source_curated_lead_id = sel.id)) x
   on conflict do nothing;
   get diagnostics v_n = row_count;
   update public.outreach_contact_lists l
@@ -1374,12 +1379,29 @@ end $$;
 revoke all on function public.admin_curated_lead_update(uuid, jsonb) from public, anon;
 grant execute on function public.admin_curated_lead_update(uuid, jsonb) to authenticated;
 
+/* Every admin export: an administrator, a stated reason (10–500 characters), at most 10 exports per
+   administrator per hour, and an audit row. Direct API calls meet the same checks. */
+create or replace function public.admin_export_guard(p_reason text)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare v_admin uuid := public.curated_admin_guard();
+begin
+  if length(btrim(coalesce(p_reason, ''))) < 10 or length(p_reason) > 500 then raise exception 'REASON_REQUIRED'; end if;
+  perform pg_advisory_xact_lock(hashtextextended('admin_export:' || v_admin::text, 0));
+  if (select count(*) from public.admin_audit_log a
+       where a.admin_id = v_admin and a.action in ('CURATED_EXPORT', 'OUTREACH_LIST_EXPORT')
+         and a.created_at > now() - interval '1 hour') >= 10 then
+    raise exception 'EXPORT_RATE_LIMITED';
+  end if;
+  return v_admin;
+end $$;
+revoke all on function public.admin_export_guard(text) from public, anon, authenticated;
+grant execute on function public.admin_export_guard(text) to service_role;
+
 /* Export of AUTHORISED records only (verified disclosure rights), for a stated reason, audited. */
 create or replace function public.admin_curated_export(p jsonb, p_reason text)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_admin uuid := public.curated_admin_guard(); v_rows jsonb; v_n integer;
+declare v_admin uuid := public.admin_export_guard(p_reason); v_rows jsonb; v_n integer;
 begin
-  if length(btrim(coalesce(p_reason, ''))) < 10 then raise exception 'REASON_REQUIRED'; end if;
   select coalesce(jsonb_agg(to_jsonb(l) - 'email_norm' - 'admin_notes' order by l.created_at), '[]'::jsonb), count(*)
     into v_rows, v_n
     from (select l.* from public.curated_filtered(coalesce(p->'filters', '{}'::jsonb)) l
@@ -1438,15 +1460,19 @@ grant execute on function public.admin_outreach_lists(jsonb) to authenticated;
 
 create or replace function public.admin_outreach_list_export(p_list_id uuid, p_reason text)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_admin uuid := public.curated_admin_guard(); v_rows jsonb; v_n integer;
+declare v_admin uuid := public.admin_export_guard(p_reason); v_rows jsonb; v_n integer; v_owner uuid;
 begin
-  if length(btrim(coalesce(p_reason, ''))) < 10 then raise exception 'REASON_REQUIRED'; end if;
+  select l.owner_id into v_owner from public.outreach_contact_lists l where l.id = p_list_id;
+  if not found then raise exception 'NOT_FOUND'; end if;
+  select count(*) into v_n from public.outreach_contacts c where c.list_id = p_list_id;
+  /* A private list is inspected, not harvested: one export is capped at 5,000 contacts. */
+  if v_n > 5000 then raise exception 'EXPORT_TOO_LARGE'; end if;
   select coalesce(jsonb_agg(jsonb_build_object('full_name', c.full_name, 'email', c.email, 'phone', c.phone, 'language', c.language,
            'country', c.country, 'consent_status', c.consent_status, 'source_kind', c.source_kind, 'unsubscribed', c.unsubscribed,
-           'suppressed', c.suppressed, 'created_at', c.created_at) order by c.created_at), '[]'::jsonb), count(*)
-    into v_rows, v_n from public.outreach_contacts c where c.list_id = p_list_id;
-  insert into public.admin_audit_log (admin_id, action, entity_type, entity_id, metadata)
-  values (v_admin, 'OUTREACH_LIST_EXPORT', 'outreach_contact_lists', p_list_id::text,
+           'suppressed', c.suppressed, 'created_at', c.created_at) order by c.created_at), '[]'::jsonb)
+    into v_rows from public.outreach_contacts c where c.list_id = p_list_id;
+  insert into public.admin_audit_log (admin_id, target_id, action, entity_type, entity_id, metadata)
+  values (v_admin, (select u.id from public.users u where u.auth_id = v_owner), 'OUTREACH_LIST_EXPORT', 'outreach_contact_lists', p_list_id::text,
           jsonb_build_object('rows', v_n, 'reason', left(p_reason, 500)));
   return jsonb_build_object('rows', v_rows, 'count', v_n);
 end $$;
@@ -1605,7 +1631,9 @@ begin
             union select nb from marked b, unnest(coalesce(b.neighborhoods, '{}'::text[])) nb) x), '[]'::jsonb),
         'propertyTypes', coalesce((select jsonb_agg(distinct t order by t) from marked b, unnest(coalesce(b.property_types, '{}'::text[])) t), '[]'::jsonb),
         'countries', coalesce((select jsonb_object_agg(c, n) from (select upper(b.country) c, count(*) n from marked b where coalesce(b.country, '') <> '' group by 1) x), '{}'::jsonb),
-        'languages', coalesce((select jsonb_object_agg(lg, n) from (select coalesce(nullif(lower(b.preferred_language), ''), 'unknown') lg, count(*) n from marked b group by 1) x), '{}'::jsonb),
+        /* Language is filterable on the server, never listed per locked member: the facet counts only
+           members this account already unlocked (their language is disclosed to it anyway). */
+        'languages', coalesce((select jsonb_object_agg(lg, n) from (select coalesce(nullif(lower(b.preferred_language), ''), 'unknown') lg, count(*) n from marked b where b.unlocked group by 1) x), '{}'::jsonb),
         'interests', coalesce((select jsonb_object_agg(i, n) from (select b.interest i, count(*) n from marked b group by 1) x), '{}'::jsonb)),
     'ids', case when v_with_ids and not v_disabled then coalesce((select jsonb_agg(x.match_id order by x.rn) from (select match_id, rn from page order by rn limit 500) x), '[]'::jsonb) end,
     'disabled', v_disabled,

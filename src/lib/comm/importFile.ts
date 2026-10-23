@@ -34,7 +34,19 @@ export interface ParsedSheet {
   headers: string[];
   rows: string[][];
   /** Set when the file could not be read. The wizard shows this, not a stack trace. */
-  error?: 'XLS_LEGACY' | 'EMPTY' | 'UNREADABLE' | 'TOO_LARGE';
+  error?: 'XLS_LEGACY' | 'EMPTY' | 'UNREADABLE' | 'TOO_LARGE' | 'TOO_MANY_ROWS';
+}
+
+/**
+ * Limits for one read. The defaults are the customer import's (10 MB, 50,000 rows, extra rows
+ * dropped); an administrator import passes larger ones and asks for an explicit TOO_MANY_ROWS
+ * instead of a silent cut.
+ */
+export interface ReadFileOptions {
+  maxBytes?: number;
+  maxRows?: number;
+  /** 'truncate' (default) keeps the first maxRows rows; 'error' refuses the file. */
+  onRowOverflow?: 'truncate' | 'error';
 }
 
 /** A row's verdict, before anything is written. */
@@ -100,7 +112,7 @@ export function sniffFormat(head: Uint8Array): SourceFormat | null {
  * ninety lines of well-understood state machine, and because the delimiter
  * sniffing below is specific to this problem.
  */
-export function parseCsv(text: string): { headers: string[]; rows: string[][] } {
+export function parseCsv(text: string, maxRows: number = MAX_ROWS): { headers: string[]; rows: string[][] } {
   const clean = text.replace(/^﻿/, '');
   const delimiter = sniffDelimiter(clean);
 
@@ -138,7 +150,7 @@ export function parseCsv(text: string): { headers: string[]; rows: string[][] } 
   if (row.some((c) => c.trim())) rows.push(row);
 
   const headers = (rows.shift() ?? []).map((h) => h.trim());
-  return { headers, rows: rows.slice(0, MAX_ROWS) };
+  return { headers, rows: rows.slice(0, maxRows) };
 }
 
 /** The delimiter that produces the most consistent column count over the first lines. */
@@ -165,7 +177,7 @@ function sniffDelimiter(text: string): string {
  * parser on the homepage's initial path, and a visitor who never imports
  * anything should never download it.
  */
-export async function parseXlsx(file: Blob): Promise<{ headers: string[]; rows: string[][] }> {
+export async function parseXlsx(file: Blob, maxRows: number = MAX_ROWS): Promise<{ headers: string[]; rows: string[][] }> {
   const { default: readXlsxFile } = await import('read-excel-file/browser');
 
   /*
@@ -192,7 +204,7 @@ export async function parseXlsx(file: Blob): Promise<{ headers: string[]; rows: 
 
   const asText = grid.map((row) => row.map(cellToText));
   const headers = (asText.shift() ?? []).map((h: string) => h.trim());
-  return { headers, rows: asText.slice(0, MAX_ROWS) };
+  return { headers, rows: asText.slice(0, maxRows) };
 }
 
 /** Rows, whether the reader handed back rows or a list of worksheets. */
@@ -225,8 +237,16 @@ function cellToText(cell: unknown): string {
   return String(cell);
 }
 
-export async function readFile(file: File): Promise<ParsedSheet> {
-  if (file.size > MAX_BYTES) {
+export async function readFile(file: File, options: ReadFileOptions = {}): Promise<ParsedSheet> {
+  const maxBytes = options.maxBytes ?? MAX_BYTES;
+  const maxRows = options.maxRows ?? MAX_ROWS;
+  const strict = options.onRowOverflow === 'error';
+  // One row past the limit is read in strict mode, so an overflow is seen rather than cut.
+  const readRows = strict ? maxRows + 1 : maxRows;
+  const overflow = (format: SourceFormat, headers: string[], rows: string[][]): ParsedSheet | null =>
+    (strict && rows.length > maxRows ? { format, headers, rows: [], error: 'TOO_MANY_ROWS' } : null);
+
+  if (file.size > maxBytes) {
     return { format: 'UNKNOWN', headers: [], rows: [], error: 'TOO_LARGE' };
   }
 
@@ -242,12 +262,14 @@ export async function readFile(file: File): Promise<ParsedSheet> {
 
   try {
     if (format === 'XLSX') {
-      const { headers, rows } = await parseXlsx(file);
+      const { headers, rows } = await parseXlsx(file, readRows);
       if (!rows.length) return { format, headers, rows, error: 'EMPTY' };
-      return { format, headers, rows };
+      return overflow(format, headers, rows) ?? { format, headers, rows };
     }
-    const { headers, rows } = parseCsv(await file.text());
+    const { headers, rows } = parseCsv(await file.text(), readRows);
     if (!rows.length) return { format: 'CSV', headers, rows, error: 'EMPTY' };
+    const tooMany = overflow('CSV', headers, rows);
+    if (tooMany) return tooMany;
     return { format: 'CSV', headers, rows };
   } catch {
     return { format, headers: [], rows: [], error: 'UNREADABLE' };

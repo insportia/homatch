@@ -1,9 +1,8 @@
-// ADMIN — External Leads Database manager (migration 20261127090000_curated_leads_marketplace.sql).
+// ADMIN — External Leads Database manager (migration 20261128090000_curated_leads_marketplace.sql).
 // Every call is is_admin()-checked on the server; writes and exports are audited there.
 import { supabase } from '@/db/supabase';
-import { serverCode } from './matchingWorkspace';
 import type { CuratedPrice, MatchingFilters, WorkspaceState } from './matchingWorkspace';
-import { filterPayload, normalizeState } from './matchingWorkspace';
+import { filterPayload, normalizeState, serverCode } from './matchingWorkspace';
 
 export class AdminLeadsError extends Error {
   constructor(public code: string) { super(code); }
@@ -13,7 +12,7 @@ async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T
   const { data, error } = await supabase.rpc(fn, args);
   if (error) {
     const m = String(error.message ?? '');
-    const known = ['REASON_REQUIRED', 'BATCH_NOT_STAGING', 'INVALID_ARGUMENT', 'EMAIL_DUPLICATE'].find((k) => m.includes(k));
+    const known = ['REASON_REQUIRED', 'BATCH_NOT_STAGING', 'INVALID_ARGUMENT', 'EMAIL_DUPLICATE', 'EXPORT_RATE_LIMITED', 'EXPORT_TOO_LARGE'].find((k) => m.includes(k));
     throw new AdminLeadsError(known ?? serverCode(error));
   }
   return data as T;

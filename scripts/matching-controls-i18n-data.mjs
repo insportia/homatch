@@ -3,6 +3,14 @@
  * Service Control Center shows for the three new switches. [en, ka, ru, tr, ar, he].
  */
 export const MATCHING_CONTROLS_STRINGS = {
+  admin_nav_leads_database: [
+    'Leads Database',
+    'ლიდების ბაზა',
+    'База лидов',
+    'Potansiyel Müşteri Veritabanı',
+    'قاعدة بيانات العملاء المحتملين',
+    'מאגר לידים',
+  ],
   svc_name_internal_matching: [
     'HOMATCH Internal Matches',
     'HOMATCH-ის შიდა დამთხვევები',

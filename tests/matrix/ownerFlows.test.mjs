@@ -23,10 +23,10 @@ test('the contact phone columns are owner-updatable, and the UI never lies about
 });
 
 test('the campaign-launch dialogs scroll instead of clipping the choices', () => {
-  for (const p of ['src/pages/property/PropertyDetailPage.tsx', 'src/pages/property/MatchesPage.tsx']) {
-    const s = read(p);
-    assert.match(s, /max-h-\[85dvh\] overflow-y-auto/, `${p} launch dialog must scroll`);
-  }
+  /* The legacy results page keeps its (now unrouted) launch dialog; the property page has none. */
+  assert.match(read('src/pages/property/MatchesPage.tsx'), /max-h-\[85dvh\] overflow-y-auto/, 'MatchesPage launch dialog must scroll');
+  const detail = read('src/pages/property/PropertyDetailPage.tsx').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(detail, /CampaignLaunchPanel/, 'no launch dialog on the property page');
 });
 
 test('the selected search-language mode is unmistakable, never a pale tint', () => {

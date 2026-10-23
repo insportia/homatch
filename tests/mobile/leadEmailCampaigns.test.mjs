@@ -2,7 +2,7 @@
 //
 // Harness build; the list audience, the language split, the campaign create edge function
 // and the contacts query answered by fixtures shaped like the SQL / edge functions
-// (20261127090000_curated_leads_marketplace.sql §12, outreach-campaign-preview):
+// (20261128090000_curated_leads_marketplace.sql §12, outreach-campaign-preview):
 //
 //   * /outreach/email?new=1&list=<id> opens the create dialog on that list, and the
 //     launch params leave the URL (a refresh does not reopen it);

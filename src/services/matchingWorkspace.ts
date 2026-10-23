@@ -1,5 +1,5 @@
 // MATCHING WORKSPACE — the client for the two matching products and their switches
-// (migration 20261127090000_curated_leads_marketplace.sql).
+// (migration 20261128090000_curated_leads_marketplace.sql).
 //
 //   HOMATCH Internal Matches   → internal_leads_feed_v2 (existing feed, new filters) + the existing
 //                                internal unlock (atomic-unlock kind internal_leads) — reused from
@@ -9,7 +9,7 @@
 //   Unlocked leads → email     → curated_leads_save_to_list / internal_leads_save_to_list, which write
 //                                into the EXISTING outreach contact lists (no second contact manager).
 import { supabase } from '@/db/supabase';
-import { UnlockError, type LeadFeed, type LeadItem, type LeadQuery } from './homatchLeads';
+import { type LeadFeed, type LeadFilter, type LeadItem, type LeadQuery, UnlockError } from './homatchLeads';
 
 export { UnlockError };
 
@@ -271,8 +271,10 @@ export interface InternalLead extends LeadItem {
 export interface InternalPage extends Omit<LeadFeed, 'items' | 'facets'> {
   items: InternalLead[];
   facets: LeadFeed['facets'] & { countries: Record<string, number>; languages: Record<string, number>; interests: Record<string, number> };
-  /** Every id matching the filters (≤ 500), only when asked for. */
+  /** Every id matching the filters (≤ 500, in page order), only when asked for. */
   ids: string[] | null;
+  /** Internal matching switched off (or maintenance): only members already unlocked are returned. */
+  disabled: boolean;
 }
 
 export const INTERNAL_PAGE_SIZE = 100;
@@ -283,6 +285,10 @@ export interface InternalQuery {
   sort: LeadQuery['sort'];
   page: number;          // 1-based
   withIds?: boolean;
+  /** The feed's own criteria (EXACT / NEARBY / VIP, strength, confidence, searcher, freshness). */
+  criteria?: LeadFilter[];
+  district?: string | null;
+  propertyType?: string | null;
 }
 
 export async function getInternalPage(propertyId: string, q: InternalQuery): Promise<InternalPage> {
@@ -290,8 +296,9 @@ export async function getInternalPage(propertyId: string, q: InternalQuery): Pro
   const { data, error } = await supabase.rpc('internal_leads_feed_v2', {
     p_property_id: propertyId,
     p: {
-      filters: [q.view === 'UNLOCKED' ? 'UNLOCKED' : 'LOCKED'],
+      filters: [...(q.criteria ?? []).filter((c) => c !== 'LOCKED' && c !== 'UNLOCKED'), q.view === 'UNLOCKED' ? 'UNLOCKED' : 'LOCKED'],
       sort: q.sort, limit: INTERNAL_PAGE_SIZE, offset: (Math.max(1, q.page) - 1) * INTERNAL_PAGE_SIZE,
+      district: q.district ?? null, propertyType: q.propertyType ?? null,
       countries: f.countries ?? [], languages: f.languages ?? [], interests: f.interests ?? [], q: f.q ?? null,
       withIds: q.withIds === true,
     },
@@ -314,10 +321,11 @@ export async function getInternalPage(propertyId: string, q: InternalQuery): Pro
       interests: (fac.interests ?? {}) as Record<string, number>,
     },
     ids: Array.isArray(base.ids) ? (base.ids as unknown[]).map(String) : null,
+    disabled: base.disabled === true,
   };
 }
 
-export { quoteUnlock as quoteInternal, unlockLeads as unlockInternal, newUnlockKey as newInternalUnlockKey, getLeadContact as getInternalContact } from './homatchLeads';
+export { getLeadContact as getInternalContact, newUnlockKey as newInternalUnlockKey, quoteUnlock as quoteInternal, unlockLeads as unlockInternal } from './homatchLeads';
 
 /* ── unlocked leads → the EXISTING email contact lists ───────────────────── */
 

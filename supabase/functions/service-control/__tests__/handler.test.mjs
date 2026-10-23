@@ -8,7 +8,7 @@ const { handler } = await import('../index.ts');
 
 const SIX = ['publishing', 'ai_call_center', 'ai_talk', 'whatsapp', 'live_chat', 'design_studio'];
 // The live products added by the expansion (migration 20261110090000), seeded ON as in production.
-const LIVE = ['find_property', 'find_property_deep', 'find_buyers', 'verify', 'contracts', 'mortgage', 'investment', 'for_expats',
+const LIVE = ['find_property', 'find_property_deep', 'find_buyers', 'internal_matching', 'curated_leads', 'verify', 'contracts', 'mortgage', 'investment', 'for_expats',
   'meta_ads', 'email_campaigns', 'ai_assistant', 'brokers_directory', 'broker_desk', 'developers'];
 const KEYS = [...SIX, ...LIVE];
 const SECRET_VALUE = 'sk-live-super-secret-value';
@@ -92,13 +92,16 @@ test('overview: every service, effective state, readiness by NAME, never a secre
   const w = world();
   const r = await call(w, 'overview');
   assert.equal(r.status, 200);
-  /* Service order: the six, the live products, then paid Deep Search (fails closed since 2026-10-18). */
-  assert.deepEqual(r.body.services.map((s) => s.key), [...SIX, ...LIVE.filter((k) => k !== 'find_property_deep'), 'find_property_deep']);
+  /* Service order: the six, the live products, then the paid ones that fail closed — Deep Search
+     (2026-10-18) and the legacy paid external discovery (matching workspace, 2026-10-24). */
+  assert.deepEqual(r.body.services.map((s) => s.key), [...SIX, ...LIVE.filter((k) => k !== 'find_property_deep'), 'find_property_deep', 'find_buyers_external']);
   const six = r.body.services.filter((s) => SIX.includes(s.key));
   assert.ok(six.every((s) => s.effective === 'PAUSED' && s.frontend === false && s.backend === false && s.failMode === 'CLOSED'), 'the six stay paused and fail closed');
   const live = r.body.services.filter((s) => LIVE.includes(s.key) && s.key !== 'find_property_deep');
   assert.ok(live.every((s) => s.frontend === true && s.backend === true && s.failMode === 'OPEN'), 'the live products are on and fail open');
   assert.equal(r.body.services.find((s) => s.key === 'find_property_deep').failMode, 'CLOSED', 'paid Deep Search fails closed');
+  const legacy = r.body.services.find((s) => s.key === 'find_buyers_external');
+  assert.deepEqual([legacy.failMode, legacy.backend, legacy.group], ['CLOSED', false, 'discovery'], 'legacy paid discovery: closed and OFF');
   assert.equal(r.body.services.find((s) => s.key === 'verify').group, 'intelligence');
   assert.equal(r.body.services.find((s) => s.key === 'meta_ads').group, 'marketing');
   const talk = r.body.services.find((s) => s.key === 'ai_talk');

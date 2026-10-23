@@ -56,10 +56,14 @@ test('the results are scoped to one search and a failed read is never shown as e
 });
 
 test('Find Buyers 3.0: the dashboard lists no leads; each result kind has its own page', () => {
+  /* Matching workspace (owner, 2026-10-24): /matches is the one workspace; every older result page
+     address redirects into it with the right product (their files stay, unrouted). */
   const routes = read('src/routes.tsx');
-  for (const [path, page] of [['/property/:id/matches', 'FindBuyersHomePage'], ['/property/:id/buyers/external', 'MatchesPage'],
-    ['/property/:id/buyers/internal', 'InternalResultsPage'], ['/property/:id/buyers/opportunity/:key', 'PostOpportunityPage']]) {
-    assert.match(routes, new RegExp(`path: '${path.replace(/[/:]/g, (c) => `\\${c}`)}',\\s*element: <${page} />`), path);
+  const esc = (path) => path.replace(/[/:]/g, (c) => `\\${c}`);
+  assert.match(routes, new RegExp(`path: '${esc('/property/:id/matches')}',\\s*element: <MatchingWorkspacePage />`));
+  for (const [path, target] of [['/property/:id/buyers/external', 'external'], ['/property/:id/buyers/internal', 'internal'],
+    ['/property/:id/buyers/opportunity/:key', 'external'], ['/property/:id/buyers/lead/:leadId', 'external'], ['/property/:id/leads', 'internal']]) {
+    assert.match(routes, new RegExp(`path: '${esc(path)}',\\s*element: <LegacyMatchingRedirect target="${target}" />`), path);
   }
   const home = read('src/pages/property/FindBuyersHomePage.tsx');
   for (const list of ['PotentialBuyerCard', 'ExternalResultsView', 'InternalMatchesSection ', '<InternalMatchesSection']) {

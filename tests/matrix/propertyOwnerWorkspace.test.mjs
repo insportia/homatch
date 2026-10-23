@@ -162,10 +162,9 @@ test('the detail page is a workspace: wide canvas, no sidebar, collapsing column
   for (const key of ['prop_ask_ai_btn', 'prop_find_better_deal_btn', 'prop_verify_btn', 'dash_calculate_mortgage_property', 'ds_open_in_design_studio', 'pow_action_investment', 'mads_property_cta', 'prop_view_matches']) {
     assert.ok(page.includes(`'${key}'`), `${key} kept`);
   }
-  /* The campaign machinery is the same machinery. */
-  assert.match(page, /productCode="FIND_CLIENTS"/);
-  assert.match(page, /startMatchingCampaign\(/);
-  assert.match(page, /pauseMatchingCampaign\(/);
+  /* Matching workspace (owner, 2026-10-24): the property page no longer launches the legacy paid external campaign; it opens the workspace (MatchingEntryCard). */
+  assert.match(page, /<MatchingEntryCard propertyId=\{id\} \/>/);
+  assert.doesNotMatch(page, /productCode="FIND_CLIENTS"|startMatchingCampaign\(/);
 });
 
 /* ── COPY ──────────────────────────────────────────────────────────────── */

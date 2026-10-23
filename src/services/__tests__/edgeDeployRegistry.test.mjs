@@ -89,7 +89,6 @@ const UNSHIPPED = {
    */
   'browserbase-handoff': 'hand-deployed; CI route unreviewed',
   'generate-search-profile': 'production is the owner\'s 423 stub (paid AI profile generation disabled); CI must not redeploy the full function',
-  'outreach-provider-status': 'hand-deployed; CI route unreviewed',
   'outreach-sms-webhook': 'hand-deployed; CI route unreviewed',
   'retell-webhook': 'hand-deployed (verify_jwt=false); moving it into CI is an owner decision',
   'outreach-unsubscribe': 'hand-deployed; CI route unreviewed',

@@ -297,3 +297,46 @@ test('adaptive depth stops on the time budget and reports it; a server that filt
   assert.match(last.queryApplied.adaptiveDepth, /TIME_BUDGET$/);
   assert.ok(last.errors.some((e) => e.code === 'PAGE_CAP_REACHED' && /time budget/.test(e.message)));
 });
+
+test('a listing\'s floor is its own floor: "1/9" is 1, "-1" a basement, never digits glued together (2026-10-22)', async () => {
+  const { floorNumber } = await import('../src/marketplace/portals/html.mjs');
+  for (const [text, floor] of [['1', 1], ['1/9', 1], ['3/12', 3], ['2 / 12', 2], ['-1', -1], ['-1/9', -1], ['2 из 9', 2],
+    ['სარდაფი', -1], ['ნახევარსარდაფი', 0], ['ground floor', 0], [' 4 ', 4], ['', null], [null, null], ['უცნობი', null]]) {
+    assert.equal(floorNumber(text), floor, String(text));
+  }
+  /* The recorded pages keep reading exactly as before. */
+  assert.equal(homege.parseDetail(page('homege-detail')).floor, 4);
+  assert.equal(allhome.parseDetail(page('allhome-detail')).floor, 10);
+  /* The card's "N/M" form, with a basement sign. */
+  const card = page('place-list').replace('სართული 3/8', 'სართული -1/8');
+  assert.ok(placege.parseList(card, 'https://place.ge/ge/ads', {}).some((l) => l.floor === -1 && l.totalFloors === 8));
+});
+
+test('Home.ge price: card, else the page\'s own price tag; never a per-m² figure; a non-listing page is unreadable (d3d859cc)', () => {
+  const real = page('homege-detail');
+  assert.equal(homege.parseDetail(real).price, 240300);
+  /* The same page without the twitter card: the visible price tag holds the same figure and currency. */
+  const noCard = real.replace(/<meta name="twitter:data1"[^>]*>/, '');
+  const d = homege.parseDetail(noCard);
+  assert.equal(d.price, 240300); assert.equal(d.currency, 'GEL');
+  /* A tag that states a price per m² is never taken as the total; the exclusion says why. */
+  const perSqm = noCard.replace('<span>240,300.00 ₾</span>', '<span>1,200 $ / მ²</span>');
+  const none = homege.parseDetail(perSqm);
+  assert.equal(none.price, undefined);
+  assert.match(none.evidence[0].text, /no total price/);
+  /* An expired listing answers with a page of other ads: nothing is read from it. */
+  assert.deepEqual(homege.parseDetail('<html><h1>დეტალების ნახვა</h1><div class="listing">…</div></html>'), {});
+});
+
+test('Allhome price: dollars first, else the listing\'s own lari price (converted later at the stored rate)', () => {
+  const real = page('allhome-detail');
+  const usd = allhome.parseDetail(real);
+  assert.equal(usd.price, 94000); assert.equal(usd.currency, 'USD');
+  const lariOnly = real.replace(/<div id="atr" class="price-dollar"[\s\S]*?<\/div>/, '');
+  const gel = allhome.parseDetail(lariOnly);
+  assert.equal(gel.price, 248743); assert.equal(gel.currency, 'GEL');
+  const neither = lariOnly.replace(/<div id="atr" class="price-lari"[\s\S]*?<\/div>/, '');
+  const none = allhome.parseDetail(neither);
+  assert.equal(none.price, undefined);
+  assert.match(none.evidence[0].text, /no price/);
+});

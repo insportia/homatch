@@ -102,7 +102,10 @@ export function buildIntelligenceInput(request: MarketplaceSearchRequest, sheets
       transactionType: request.transactionType, propertyType: request.propertyType, city: request.city,
       districts: request.districts, priceMinUsd: request.priceMinUsd, priceMaxUsd: request.priceMaxUsd,
       areaMinSqm: request.areaMinSqm, areaMaxSqm: request.areaMaxSqm, rooms: request.rooms, bedrooms: request.bedrooms,
-      buildingStatuses: request.buildingStatuses, mustHave: request.mustHave, niceToHave: request.niceToHave,
+      buildingStatuses: request.buildingStatuses, renovation: request.renovationPreferences,
+      floorRange: request.floorRange ?? null, floorPreferences: request.floorPreferences ?? [],
+      preferredBuildingStatuses: request.preferredBuildingStatuses ?? [], preferredRenovations: request.preferredRenovations ?? [],
+      mustHave: request.mustHave, niceToHave: request.niceToHave,
     },
     properties: sheets,
   };

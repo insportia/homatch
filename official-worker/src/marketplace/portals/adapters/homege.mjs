@@ -1,4 +1,4 @@
-import { decode, dmy, int, meta, num, strip } from '../html.mjs';
+import { decode, dmy, floorNumber, int, meta, num, strip } from '../html.mjs';
 import { requestedDistrictKeys } from '../places.mjs';
 
 /*
@@ -78,10 +78,18 @@ export const homege = {
   },
   parseDetail(html) {
     const h = String(html);
+    /* Not a listing page (an expired listing answers with a page of other ads, whose first heading is
+       "დეტალების ნახვა" — production d3d859cc, 2026-10-22): nothing is read from it, so the shared loop
+       rejects it as unreadable instead of reporting a listing "without a price". */
+    if (!/id="df_field_/.test(h)) return {};
     const field = (key) => { const m = h.match(new RegExp(`id="df_field_${key}">\\s*<div class="name"[^>]*>[\\s\\S]*?<div class="value">([\\s\\S]*?)</div>`)); return m ? strip(m[1]) : null; };
     const placed = h.match(/title="განთავსების თარიღი">[\s\S]*?<div class="value">([\s\S]*?)<\/div>/);
     const title = strip((h.match(/<h1[^>]*>([\s\S]*?)<\/h1>/) ?? [])[1] ?? '') || meta(h, 'og:title');
-    const priceText = meta(h, 'twitter:data1') ?? '';
+    /* The price: the twitter card first, else the page's own price tag (#df_field_price, the same
+       figure — recorded page 2026-10-15). A tag that states a price per m² is never a total. */
+    const tag = strip((h.match(/id="df_field_price"[^>]*>\s*<span>([\s\S]*?)<\/span>/) ?? [])[1] ?? '');
+    const perSqm = /მ²|მ2|კვ\.?\s*მ|\/\s*m|sq\.?\s*m/i.test(tag);
+    const priceText = meta(h, 'twitter:data1') || (perSqm ? '' : tag);
     const currency = /₾/.test(priceText) ? 'GEL' : /\$/.test(priceText) ? 'USD' : /€/.test(priceText) ? 'EUR' : null;
     const price = currency ? num(priceText) : null;
     const usdRate = num((h.match(/rates\['dollar'\]\s*=\s*new Array\('([\d.]+)'/) ?? [])[1]);
@@ -96,7 +104,7 @@ export const homege = {
       areaSqm: area > 0 ? area : undefined,
       rooms: int((field('rooms') ?? '').match(/\d+/)?.[0]) ?? undefined,
       bedrooms: int(field('bedrooms')) ?? undefined, bathrooms: int(field('bathrooms')) ?? undefined,
-      floor: int(field('floor')) ?? undefined, totalFloors: int(field('number_of_floors')) ?? undefined,
+      floor: floorNumber(field('floor')) ?? undefined, totalFloors: int(field('number_of_floors')) ?? undefined,
       city: field('mdebareoba') ?? undefined, district: field('mdebareoba_level2') ?? undefined,
       latitude: pin ? Number(pin[1]) : undefined, longitude: pin ? Number(pin[2]) : undefined,
       publishedAt: dmy(placed ? strip(placed[1]) : null) ?? undefined,
@@ -104,6 +112,8 @@ export const homege = {
       renovationStatus: /გასარემონტებელი/.test(renovation) ? 'NEEDS_RENOVATION' : /თეთრი/.test(renovation) ? 'WHITE_FRAME' : /შავი/.test(renovation) ? 'BLACK_FRAME' : /მწვანე/.test(renovation) ? 'GREEN_FRAME' : /გარემონტებული/.test(renovation) ? 'RENOVATED' : undefined,
       amenities: [['elevator', 'elevator'], ['gas', 'natural gas'], ['balcony_terrace', 'balcony'], ['pool', 'pool'], ['sauna', 'sauna'], ['fireplace', 'fireplace']].filter(([k]) => yes(k)).map(([, label]) => label),
       pricePerSqm: price != null && area > 0 ? Math.round(price / area) : undefined,
+      /* Why there is no price, from what the page itself said, so an exclusion is never a mystery. */
+      ...(price == null ? { evidence: [{ field: 'price', text: `Home.ge page states no total price (card: ${JSON.stringify((meta(h, 'twitter:data1') ?? '').slice(0, 40))}, price tag: ${JSON.stringify(tag.slice(0, 40))})` }] } : {}),
     };
   },
 };

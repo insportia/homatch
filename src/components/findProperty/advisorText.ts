@@ -14,7 +14,7 @@ function params(point: AdvisorPoint, t: T): Record<string, string | number> {
   const out: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(p)) {
     if (k === 'amenity') out.amenity = amenityLabel(String(v), t);
-    else if (k === 'status') out.status = point.code === 'RENOVATION' ? t(`mps_rn_${v}`) : t(`mps_bs_${v}`);
+    else if (k === 'status') out.status = point.code === 'RENOVATION' || point.code === 'PREFERRED_RENOVATION' ? t(`mps_rn_${v}`) : t(`mps_bs_${v}`);
     else if (k === 'amount') out.amount = usd(Number(v));
     else if (k === 'v') out.v = num(Number(v));
     else out[k] = v;
@@ -61,6 +61,10 @@ export function summaryText(a: AdvisorAssessment, t: T, lang: string): string {
     const ask = a.unknown.length ? listText(a.unknown.slice(0, 2).map((p) => nounText(p, t)), lang, t) : null;
     if (!a.fits.length) return ask ? t('fpv_sum_ask_only', { ask }) : t('fpv_sum_top_plain');
     return ask ? t('fpv_sum_good', { list: fitNouns, ask }) : t('fpv_sum_good_plain', { list: fitNouns });
+  }
+  if (!a.misses.length) {
+    /* Nothing contradicts the request, but something required is not stated: say what to ask. */
+    return t('fpv_sum_ask_only', { ask: listText(a.unknown.slice(0, 2).map((p) => nounText(p, t)), lang, t) });
   }
   const miss = missText(a.misses[0], t);
   return a.fits.length ? t('fpv_sum_consider', { list: fitNouns, miss }) : miss;

@@ -34,7 +34,19 @@ export async function acquireSsge(request, { deadlineAt, signal, report, client,
   const publicFetch = fetcher ?? createGatewayHttp2Fetch();
   const boundedFetch = (url, options = {}) => { remaining(); actions++; return publicFetch(url, { ...options, signal: AbortSignal.any([boundedSignal(), ...(options.signal ? [options.signal] : [])]) }); };
   const runSignal = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(Number.isFinite(deadline) ? Math.max(1, deadline - Date.now() - 10000) : 1)]);
-  const source = client ?? new SsgePublicClient({ http: { fetchImpl: boundedFetch, signal: runSignal, retries: 1 } });
+  /* The last answer SS.ge gave, so a blocked or failed run says which request got which status
+     from which server (production d3d859cc, 2026-10-22: BLOCKED in 67 ms with no trace of why).
+     Status and server only: never a body, a header value with a credential, or the token. */
+  const lastHttp = { phase: null, status: null, server: null };
+  const note = (phase) => (info) => {
+    if (info?.status == null && !info?.error) return;
+    const headers = info.responseHeaders ?? {};
+    lastHttp.phase = phase;
+    lastHttp.status = info.status ?? null;
+    lastHttp.server = typeof headers.server === 'string' ? headers.server.slice(0, 40) : headers['cf-ray'] ? 'cloudflare' : null;
+  };
+  const source = client ?? new SsgePublicClient({ http: { fetchImpl: boundedFetch, signal: runSignal, retries: 1,
+    onBootstrap: note('public page'), onResponse: note('gateway') } });
   const emit = async (status, listings = [], failure = [], retryable = false) => {
     const result = { contract: 'marketplace-worker-1', searchId: request.searchId, searchPlanId: request.searchPlanId, workerId: 'ssge-agent', sourceId: 'ss-ge', status,
       startedAt: new Date(started).toISOString(), completedAt: status === 'RESULTS_RECEIVED' ? null : new Date().toISOString(),
@@ -95,7 +107,10 @@ export async function acquireSsge(request, { deadlineAt, signal, report, client,
     // Do not log raw HTTP/parser error text which could contain issued credentials.
     const transient = error.transient === true || error.status === 429 || error.status >= 500
       || ['ECONNRESET', 'ETIMEDOUT', 'ENETUNREACH', 'EAI_AGAIN'].includes(error.cause?.code);
-    await emit(status, [], [{ code: error.code === 'DEADLINE' ? 'DEADLINE' : 'SSGE_ACQUISITION_FAILED', message: 'SS.ge acquisition stopped; previously ingested observations are retained.' }], transient && status === 'FAILED' && !delivered);
+    const answered = lastHttp.status != null ? ` Last answer: ${lastHttp.phase} HTTP ${lastHttp.status}${lastHttp.server ? ` (${lastHttp.server})` : ''}.`
+      : error.status ? ` HTTP ${error.status}.` : '';
+    const code = error.code === 'DEADLINE' ? 'DEADLINE' : status === 'BLOCKED' ? 'SSGE_ACCESS_DENIED' : 'SSGE_ACQUISITION_FAILED';
+    await emit(status, [], [{ code, message: `SS.ge acquisition stopped; previously ingested observations are retained.${answered}` }], transient && status === 'FAILED' && !delivered);
     return { status, delivered, pagesVisited };
   }
 }

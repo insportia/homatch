@@ -14,7 +14,7 @@
  *   highlights  what makes it worth a look beyond the request (value, owner, …)
  */
 import type { SearchIntelligenceBrief, NumericRange } from './brief.ts';
-import { districtFit, type PropertyFacts } from './ranking.ts';
+import { type ConstraintCheck, districtFit, type PropertyFacts } from './ranking.ts';
 
 export type AdvisorVerdict = 'TOP' | 'GOOD' | 'CONSIDER' | 'UPGRADE';
 
@@ -45,6 +45,31 @@ export interface AdvisorInput {
   listings: Array<{ publishedAt?: string | null; updatedAt?: string | null }>;
   priceDiscrepancy: { significant: boolean; differenceUsd: number } | null;
   upgrade: { overMaxPct: number | null; advantages: Array<{ code: string; delta: number | null }> } | null;
+  /** The pipeline's decision record (pipeline.ts `checks`); absent on results stored before it existed. */
+  checks?: ConstraintCheck[];
+}
+
+/** The advisor point a hard check stands for, so a FAIL or UNKNOWN in the record is never left unsaid. */
+function pointOf(c: ConstraintCheck): { code: string; params?: AdvisorPoint['params'] } | null {
+  const n = typeof c.observed === 'number' ? c.observed : null;
+  const below = n !== null && (c.expected as NumericRange | null)?.min != null && n < (c.expected as NumericRange).min!;
+  switch (c.field) {
+    case 'AREA': return c.result === 'FAIL' ? { code: below ? 'AREA_SMALLER' : 'AREA_LARGER', params: { v: n ?? 0 } } : { code: 'AREA' };
+    case 'ROOMS': case 'BEDROOMS': return c.result === 'FAIL' ? { code: c.field, params: { n: n ?? 0 } } : { code: c.field };
+    case 'DISTRICT': return c.result === 'FAIL' ? { code: 'DISTRICT', params: { district: String(c.observed ?? '') } } : { code: 'DISTRICT' };
+    case 'BUILDING_STATUS': return c.result === 'FAIL' ? { code: 'BUILDING', params: { status: String(c.observed) } } : { code: 'BUILDING' };
+    case 'RENOVATION': return c.result === 'FAIL' ? { code: 'RENOVATION', params: { status: String(c.observed) } } : { code: 'RENOVATION' };
+    case 'BUILDING_AGE': return c.result === 'FAIL' ? { code: 'BUILD_YEAR', params: { year: n ?? 0 } } : { code: 'BUILD_YEAR' };
+    case 'FLOOR_RANGE': return c.result === 'FAIL' ? { code: 'FLOOR', params: { n: n ?? 0 } } : { code: 'FLOOR' };
+    case 'FLOOR_NOT_FIRST': return c.result === 'FAIL' ? { code: 'FIRST_FLOOR' } : { code: 'FLOOR' };
+    case 'FLOOR_NOT_LAST': return c.result === 'FAIL' ? { code: 'LAST_FLOOR' } : { code: 'FLOOR' };
+    case 'FURNISHED': return c.result === 'FAIL' ? { code: c.expected ? 'UNFURNISHED' : 'FURNISHED' } : { code: 'FURNISHED' };
+    case 'PARKING': return { code: 'AMENITY', params: { amenity: 'PARKING' } };
+    default:
+      if (c.field.startsWith('REQUIRED_')) return { code: 'AMENITY', params: { amenity: c.field.slice(9) } };
+      if (c.field.startsWith('EXCLUDED_')) return { code: 'EXCLUDED', params: { amenity: c.field.slice(9) } };
+      return null;
+  }
 }
 
 type Fit = 'IN' | 'BELOW' | 'ABOVE' | 'UNKNOWN' | 'NA';
@@ -158,16 +183,44 @@ export function assessProperty(p: AdvisorInput, brief: SearchIntelligenceBrief, 
   const amenities = [...new Set([...(brief.parking?.value === true ? ['PARKING'] : []), ...brief.mustHave, ...brief.niceToHave])]
     .filter((code) => code !== 'FURNISHED' || brief.furnished?.value == null);
   const prefs = p.intelligence?.preferences ?? null;
+  /* A nice-to-have the listing does not mention is a soft unknown: it never blocks a "good match". */
+  const required = new Set([...(brief.parking?.value === true ? ['PARKING'] : []), ...brief.mustHave]);
+  let softUnknown = 0;
   for (const code of amenities) {
     const state = amenityState(code, f, prefs);
     if (state === 'YES') fits.push({ code: 'AMENITY', params: { amenity: code } });
     else if (state === 'MENTIONED') fits.push({ code: 'AMENITY_MENTIONED', params: { amenity: code } });
     else if (state === 'NO') misses.push({ code: 'AMENITY', params: { amenity: code } });
-    else unknown.push({ code: 'AMENITY', params: { amenity: code } });
+    else {
+      unknown.push({ code: 'AMENITY', params: { amenity: code } });
+      if (!required.has(code)) softUnknown += 1;
+    }
   }
   for (const code of brief.exclusions) {
     if (f.amenities.includes(code)) misses.push({ code: 'EXCLUDED', params: { amenity: code } });
   }
+
+  /* The decision record wins: a hard FAIL or UNKNOWN the record holds is always said, even where
+     the brief-side reading above did not produce it, so the assessment can never be kinder than
+     the eligibility decision. Price is the budget point above (its band is the pipeline's). */
+  const record = (p.checks ?? []).filter((c) => c.hard && c.field !== 'PRICE');
+  const said = (list: AdvisorPoint[], code: string, amenity?: unknown) => list.some((x) => x.code === code && (amenity === undefined || x.params?.amenity === amenity));
+  for (const c of record) {
+    if (c.result === 'PASS') continue;
+    const point = pointOf(c);
+    if (!point) continue;
+    const list = c.result === 'FAIL' ? misses : unknown;
+    const fitted = fits.findIndex((x) => x.code === point.code || (point.code === 'AMENITY' && x.code.startsWith('AMENITY') && x.params?.amenity === point.params?.amenity));
+    if (fitted >= 0 && !(point.code === 'FLOOR' && c.result === 'UNKNOWN')) fits.splice(fitted, 1);
+    if (!said(list, point.code, point.params?.amenity)) list.push(point as AdvisorPoint);
+  }
+  for (const c of p.checks ?? []) {
+    if (!c.hard && c.result === 'PASS' && typeof c.observed === 'string') {
+      highlights.push({ code: c.field === 'PREFERRED_RENOVATION' ? 'PREFERRED_RENOVATION' : 'PREFERRED_BUILDING', params: { status: c.observed } });
+    }
+  }
+  const hardFail = record.some((c) => c.result === 'FAIL');
+  const hardUnknown = record.some((c) => c.result === 'UNKNOWN');
 
   // Beyond the request: only what the evidence supports.
   if (p.vsComparable !== null && p.vsComparable <= -5) highlights.push({ code: 'BELOW_MARKET', params: { pct: Math.round(Math.abs(p.vsComparable)) } });
@@ -178,9 +231,11 @@ export function assessProperty(p: AdvisorInput, brief: SearchIntelligenceBrief, 
   if (p.priceDiscrepancy?.significant) highlights.push({ code: 'PRICE_DIFFERS', params: { amount: Math.round(p.priceDiscrepancy.differenceUsd) } });
   for (const a of p.upgrade?.advantages ?? []) highlights.push({ code: `UPGRADE_${a.code}`, params: { n: a.delta !== null ? Math.abs(a.delta) : 0 } });
 
+  /* "Good match" is a claim: nothing the customer required may contradict it or be unknown.
+     A required criterion the listing does not state makes it "worth a look" (ask first). */
   const verdict: AdvisorVerdict = p.group === 'UPGRADE' || p.upgrade ? 'UPGRADE'
     : p.intelligence?.strong ? 'TOP'
-      : misses.length === 0 ? 'GOOD' : 'CONSIDER';
+      : misses.length === 0 && unknown.length === softUnknown && !hardFail && !hardUnknown ? 'GOOD' : 'CONSIDER';
   return { verdict, fits, misses, unknown, highlights };
 }
 

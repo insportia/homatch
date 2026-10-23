@@ -109,6 +109,9 @@ export function rankScore(fields, request, nowMs = Date.now()) {
   const b = request.buildingStatuses ?? [], rv = request.renovationPreferences ?? [], br = request.bedrooms;
   if (b.length && fields.buildingStatus) s += b.includes(fields.buildingStatus) ? 4 : -4;
   if (rv.length && fields.renovationStatus) s += rv.includes(fields.renovationStatus) ? 2 : -2;
+  /* A stated wish ("preferably new") only lifts; it never lowers a listing that meets the request. */
+  if (fields.buildingStatus && (request.preferredBuildingStatuses ?? []).includes(fields.buildingStatus)) s += 1;
+  if (fields.renovationStatus && (request.preferredRenovations ?? []).includes(fields.renovationStatus)) s += 1;
   if (br && fields.bedrooms != null) s += (br.min == null || fields.bedrooms >= br.min) && (br.max == null || fields.bedrooms <= br.max) ? 1 : -2;
   const keys = requestedDistrictKeys(request);
   if (keys && fields.district && keys.includes(districtKey(fields.district))) s += 2;

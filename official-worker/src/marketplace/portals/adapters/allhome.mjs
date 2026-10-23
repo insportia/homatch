@@ -1,4 +1,4 @@
-import { decode, dmy, int, meta, num, strip } from '../html.mjs';
+import { decode, dmy, floorNumber, int, meta, num, strip } from '../html.mjs';
 
 /*
  * ALLHOME.GE — its only search and list routes live under /index.php?…, which
@@ -50,7 +50,11 @@ export const allhome = {
     const h = String(html);
     const field = (label) => { const m = h.match(new RegExp(`<div id="atr"><b>${label}:</b>(?:&nbsp;|\\s)*<span>([\\s\\S]*?)</span>`)); return m ? strip(m[1]) : null; };
     const usd = h.match(/class="price-dollar"[^>]*>[\s\S]{0,300}?<span style="margin-left: 3px;">([\d\s,.]+)<\/span>\s*\$/);
-    const price = usd ? num(usd[1]) : null, area = num(field('საერთო ფართი'));
+    /* USD block first; a listing priced only in lari keeps its lari price (the recorded page shows both
+       blocks, 2026-10-15) and the pipeline converts it at the stored rate — never a guessed rate here. */
+    const lari = usd ? null : h.match(/class="price-lari"[^>]*>[\s\S]{0,300}?<span style="margin-left: 3px;">([\d\s,.]+)<\/span>\s*<span class="gel">/);
+    const price = usd ? num(usd[1]) : lari ? num(lari[1]) : null, area = num(field('საერთო ფართი'));
+    const currency = usd ? 'USD' : lari ? 'GEL' : null;
     const built = field('შენობის სტატუსი') ?? '', renovation = field('მდგომარეობა') ?? '';
     const head = h.match(/<b class="obj-title"><a[^>]*>([^<]+)<\/a><\/b>[\s\S]{0,200}?<div class="obj_date">\s*(\d{2}\.\d{2}\.\d{4})/);
     const images = [...new Set([...h.matchAll(/<a class="thumb"[^>]*href="(https:\/\/www\.allhome\.ge\/files\/gallery\/[^"]+)"/g)].map((m) => decode(m[1])))];
@@ -59,10 +63,11 @@ export const allhome = {
     return {
       title: [decode(head?.[1] ?? '').trim() || null, rooms ? `${rooms} ოთახი` : null, area ? `${area} მ²` : null, district, street].filter(Boolean).join(', ') || meta(h, 'og:title') || undefined,
       description: description ?? meta(h, 'og:description') ?? undefined,
-      price: price ?? undefined, currency: price != null ? 'USD' : undefined,
+      price: price ?? undefined, currency: price != null ? currency : undefined,
+      ...(price == null ? { evidence: [{ field: 'price', text: 'Allhome page states no price in dollars or lari' }] } : {}),
       areaSqm: area > 0 ? area : undefined, pricePerSqm: price != null && area > 0 ? Math.round(price / area) : undefined,
       rooms: rooms ?? undefined, bedrooms: int(field('საძინებლის რაოდენობა')) ?? undefined, bathrooms: int(field('სველი წერტილები')) ?? undefined,
-      floor: int(field('სართული')) ?? undefined, totalFloors: int(field('სართულიანობა')) ?? undefined,
+      floor: floorNumber(field('სართული')) ?? undefined, totalFloors: int(field('სართულიანობა')) ?? undefined,
       city: field('ქალაქი') ?? undefined, district: district ?? undefined, address: street ?? undefined,
       publishedAt: dmy(head?.[2]) ?? undefined,
       buildingStatus: /მშენებარე/.test(built) ? 'UNDER_CONSTRUCTION' : /ახალი აშენებული/.test(built) ? 'NEW_BUILD' : /ძველი აშენებული/.test(built) ? 'OLD_BUILD' : undefined,

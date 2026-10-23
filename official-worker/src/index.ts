@@ -14,6 +14,7 @@ import { parseTasFileRequest, recoverTasFiles } from './workflows/tas/api/tasFil
 import { isCadastralCode } from './workflows/tas/cadastral.js';
 import { startMyHomeRuntime } from './marketplace/MyHomeRuntime.js';
 import { startSsgeRuntime } from './marketplace/ssge/runtime.mjs';
+import { probeSsgePublicPage } from './marketplace/ssge/probe.mjs';
 import { acquireSsge } from './marketplace/ssge/acquire.mjs';
 import { startPortalRuntime } from './marketplace/portals/runtime.mjs';
 import { PORTAL_ADAPTERS } from './marketplace/portals/adapters.mjs';
@@ -90,6 +91,11 @@ mountTasFileRoutes(app, { token: TOKEN });
 const myhome = startMyHomeRuntime();
 const ssge = startSsgeRuntime();
 process.once('SIGTERM', () => ssge.shutdown());
+/* One public-page check at start: whether SS.ge answers this worker (status and server only). */
+if (ssge.status().enabled && ssge.status().configured) {
+  void probeSsgePublicPage().then((r) => console.log(JSON.stringify({ service: 'ssge-agent', event: 'production_connectivity', ...r })))
+    .catch(() => {});
+}
 app.get('/health/ssge', auth, (_q: any, r: any) => r.json(ssge.status()));
 // Find Property HTML portals (place.ge, home.ge, brokeri.ge, allhome.ge):
 // one runtime each on this worker; each idles until its own enable flag and token are set.

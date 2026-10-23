@@ -16,7 +16,8 @@ import {
   createDomain, deleteDomain, getDomain, getUsage, listUnsubscribeHeaders, mapDomainStatus, sendEmail, usageAlerts, verifyDomain,
 } from '../_shared/resend/client.ts';
 import {
-  createReplyRoute, isSuppressed, loadEmailSettings, marketingKey, ownerFromAuth, purchasePlan, resolveSender,
+  createReplyRoute, isSuppressed, loadEmailSettings, loadTestMode, marketingKey, ownerFromAuth, purchasePlan, resolveSender,
+  testModeAllows,
   type EmailSettings, type Owner,
 } from '../_shared/emailMarketing/core.ts';
 
@@ -261,9 +262,7 @@ async function domainDisconnect(sb: Sb, s: EmailSettings, owner: Owner, body: Re
 const escapeHtml = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 async function inboxReply(sb: Sb, s: EmailSettings, owner: Owner, body: Record<string, unknown>): Promise<Response> {
-  if (s.killSwitch) return json({ ok: false, error: 'PROVIDER_KILL_SWITCH' }, 423);
-  if (!s.studioEnabled && !s.outreachEnabled) return json({ ok: false, error: 'SENDING_DISABLED' }, 423);
-  const text = String(body.text ?? '').replace(/\r\n/g, '\n').trim();
+  const text =String(body.text ?? '').replace(/\r\n/g, '\n').trim();
   if (!text || text.length > 20_000) return json({ ok: false, error: 'INVALID_BODY' }, 422);
   const limit = await checkRateLimit(sb, 'email_crm_reply', 60, 3600, { userId: owner.authId });
   if (!limit.allowed) return json({ ok: false, error: 'RATE_LIMITED' }, 429);
@@ -273,6 +272,11 @@ async function inboxReply(sb: Sb, s: EmailSettings, owner: Owner, body: Record<s
     .eq('id', String(body.conversationId ?? '')).eq('owner_id', owner.authId).eq('channel', 'EMAIL').maybeSingle();
   const c = conv as { id: string; peer_address: string; peer_name: string | null; mode: string } | null;
   if (!c) return json({ ok: false, error: 'CONVERSATION_NOT_FOUND' }, 404);
+  /* Sending switches; a controlled live test (loadTestMode) lifts them for an allowlisted owner
+     answering an allowlisted address only. */
+  const testOk = testModeAllows(await loadTestMode(sb), owner.userId, [c.peer_address]);
+  if (s.killSwitch && !testOk) return json({ ok: false, error: 'PROVIDER_KILL_SWITCH' }, 423);
+  if (!s.studioEnabled && !s.outreachEnabled && !testOk) return json({ ok: false, error: 'SENDING_DISABLED' }, 423);
   if (await isSuppressed(sb, owner, c.peer_address)) return json({ ok: false, error: 'RECIPIENT_OPTED_OUT' }, 422);
 
   const key = marketingKey(s).key;

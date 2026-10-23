@@ -54,6 +54,44 @@ export async function loadEmailSettings(sb: SupabaseClient): Promise<EmailSettin
   };
 }
 
+/*
+ * CONTROLLED LIVE TEST MODE. With sending off for everyone (flags off, provider kill switch on),
+ * an admin can still prove the real pipeline end to end: admin_settings.email_marketing_test_mode
+ * = {"enabled":true,"owner_user_ids":[...],"recipients":[...],"expires_at":"<ISO, ≤ 7 days>"}.
+ * A send passes only when its owner is listed AND every recipient is a Resend simulator address
+ * (delivered@ / bounced@ / complained@ / suppressed@resend.dev, which reach no person) or an
+ * address listed exactly. It lifts the sending flags and the kill switch for that send only;
+ * quota, consent, suppression and every other check still apply. Expired or malformed: off.
+ */
+export interface TestMode { ownerUserIds: Set<string>; recipients: Set<string>; expiresAt: number }
+
+const RESEND_SIMULATOR = /^(delivered|bounced|complained|suppressed)(\+[a-z0-9._-]{1,40})?@resend\.dev$/;
+const TEST_MODE_MAX_MS = 7 * 86_400_000;
+
+export function parseTestMode(raw: unknown, now = Date.now()): TestMode | null {
+  const v = (raw && typeof raw === 'object' ? raw : null) as Record<string, unknown> | null;
+  if (!v || v.enabled !== true) return null;
+  const expiresAt = Date.parse(String(v.expires_at ?? ''));
+  if (!Number.isFinite(expiresAt) || expiresAt <= now || expiresAt > now + TEST_MODE_MAX_MS) return null;
+  const list = (x: unknown) => (Array.isArray(x) ? x : []).map((s) => String(s).trim().toLowerCase()).filter(Boolean);
+  const ownerUserIds = new Set(list(v.owner_user_ids).filter((s) => /^[0-9a-f-]{36}$/.test(s)));
+  if (!ownerUserIds.size) return null;
+  return { ownerUserIds, recipients: new Set(list(v.recipients).filter((s) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s))), expiresAt };
+}
+
+export function testModeAllows(t: TestMode | null, ownerUserId: string, recipients: Array<string | null | undefined>): boolean {
+  if (!t || !t.ownerUserIds.has(String(ownerUserId).toLowerCase()) || recipients.length === 0) return false;
+  return recipients.every((r) => {
+    const a = String(r ?? '').trim().toLowerCase();
+    return Boolean(a) && (RESEND_SIMULATOR.test(a) || t.recipients.has(a));
+  });
+}
+
+export async function loadTestMode(sb: SupabaseClient): Promise<TestMode | null> {
+  const { data } = await sb.from('admin_settings').select('value').eq('key', 'email_marketing_test_mode').maybeSingle();
+  return parseTestMode((data as { value?: unknown } | null)?.value);
+}
+
 export function marketingKey(s: EmailSettings): ResolvedKey {
   return resolveResendKey('marketing', s.keyEnvName);
 }

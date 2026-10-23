@@ -163,7 +163,7 @@ async function outreachSend(req: Request): Promise<Response> {
     if (!['EMAIL', 'SMS', 'AI_CALL'].includes(campaign.campaign_type)) {
       return new Response(JSON.stringify({ error: `campaign_type ${campaign.campaign_type} not supported by outreach-send yet` }), { status: 400, headers: corsHeaders });
     }
-    if (!campaign.contact_list_id) {
+    if (!campaign.contact_list_id && !(campaign.campaign_type === 'EMAIL' && Array.isArray(campaign.contact_list_ids) && campaign.contact_list_ids.length)) {
       return new Response(JSON.stringify({ error: 'Campaign has no contact_list_id' }), { status: 400, headers: corsHeaders });
     }
     // SERVICE CONTROL: AI calls need `ai_call_center`; e-mail and SMS campaigns need
@@ -322,7 +322,12 @@ async function outreachSend(req: Request): Promise<Response> {
     if (channel === 'EMAIL') contactsQuery = contactsQuery.eq('consent_status', 'CONSENTED');
     if (excludeIds.length) contactsQuery = contactsQuery.not('id', 'in', `(${excludeIds.join(',')})`);
 
-    const { data: contacts, error: contactsErr } = await contactsQuery;
+    /* Email: one SQL definition of the audience (outreach_email_campaign_batch): every list of the
+       campaign, its audience filter and exclusions, consented and reachable only, ONE message per
+       address across lists, nobody this campaign already reached. SMS/calls keep the list query. */
+    const { data: contacts, error: contactsErr } = channel === 'EMAIL'
+      ? await supabase.rpc('outreach_email_campaign_batch', { p_campaign: campaign_id, p_limit: BATCH_SIZE })
+      : await contactsQuery;
     if (contactsErr) return new Response(JSON.stringify({ error: contactsErr.message }), { status: 500, headers: corsHeaders });
 
     // Mark campaign RUNNING

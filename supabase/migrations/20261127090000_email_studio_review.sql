@@ -300,3 +300,125 @@ as $$
   returning c.id, c.owner_id, c.campaign_type;
 $$;
 revoke all on function public.outreach_claim_due_campaigns(integer) from public, anon, authenticated;
+
+/* ── AUDIENCE (owner brief §4 step 2, §12) ─────────────────────────────────────────────────
+   One definition of "who receives this email campaign", used by the send path and by the
+   wizard's estimate: the campaign's lists (one or many), the audience filter (languages,
+   countries, lead types, sources, tags, excluded lists), consented and reachable contacts only,
+   ONE message per address across all lists, nobody already sent to in this campaign. */
+create or replace function public.email_audience_matches(oc public.outreach_contacts, f jsonb)
+returns boolean
+language sql
+immutable
+set search_path to ''
+as $function$
+  select (f is null or jsonb_typeof(f) <> 'object' or (
+        (coalesce(jsonb_array_length(f->'languages'), 0) = 0 or lower(coalesce(oc.language, 'unknown')) in (select lower(x) from jsonb_array_elements_text(f->'languages') x))
+    and (coalesce(jsonb_array_length(f->'countries'), 0) = 0 or upper(coalesce(oc.country, '')) in (select upper(x) from jsonb_array_elements_text(f->'countries') x))
+    and (coalesce(jsonb_array_length(f->'leadTypes'), 0) = 0 or upper(coalesce(oc.lead_type, '')) in (select upper(x) from jsonb_array_elements_text(f->'leadTypes') x))
+    and (coalesce(jsonb_array_length(f->'sources'), 0) = 0 or upper(coalesce(oc.source_kind, 'IMPORT')) in (select upper(x) from jsonb_array_elements_text(f->'sources') x))
+    and (coalesce(jsonb_array_length(f->'tags'), 0) = 0 or coalesce(oc.tags, '{}'::text[]) && array(select jsonb_array_elements_text(f->'tags')))
+  ));
+$function$;
+
+create index if not exists outreach_sends_campaign_email on public.outreach_sends (campaign_id, lower(recipient_email)) where recipient_email is not null;
+
+create or replace function public.outreach_email_campaign_batch(p_campaign uuid, p_limit integer default 40)
+returns table (id uuid, email text, phone text, full_name text)
+language sql
+stable
+security definer
+set search_path to ''
+as $function$
+  with c as (
+    select owner_id, coalesce(nullif(contact_list_ids, '{}'::uuid[]), array[contact_list_id]) as lists, audience_filter as f
+      from public.outreach_campaigns where id = p_campaign and campaign_type = 'EMAIL'
+  ), excluded as (
+    select lower(x.email) as email from public.outreach_contacts x, c
+     where x.owner_id = c.owner_id and x.email is not null
+       and x.list_id in (select (jsonb_array_elements_text(coalesce(c.f->'excludeListIds', '[]'::jsonb)))::uuid)
+  ), cand as (
+    select distinct on (lower(oc.email)) oc.id, oc.email, oc.phone, oc.full_name, oc.created_at
+      from public.outreach_contacts oc, c
+     where oc.list_id = any (c.lists) and oc.owner_id = c.owner_id and oc.email is not null
+       and coalesce(oc.email_valid, true) and not oc.suppressed and not coalesce(oc.do_not_contact, false)
+       and not coalesce(oc.unsubscribed, false) and not coalesce(oc.is_duplicate, false)
+       and oc.consent_status = 'CONSENTED'
+       and public.email_audience_matches(oc, c.f)
+       and lower(oc.email) not in (select email from excluded)
+       and not exists (select 1 from public.outreach_sends s where s.campaign_id = p_campaign
+                        and (s.contact_id = oc.id or lower(s.recipient_email) = lower(oc.email)))
+     order by lower(oc.email), oc.created_at
+  )
+  select cand.id, cand.email, cand.phone, cand.full_name from cand order by cand.created_at limit greatest(1, least(coalesce(p_limit, 40), 200));
+$function$;
+revoke all on function public.outreach_email_campaign_batch(uuid, integer) from public, anon, authenticated;
+
+/* The wizard's estimate, for the caller's own lists only. Counts, never addresses. */
+create or replace function public.email_audience_estimate(p_list_ids uuid[], p_filter jsonb)
+returns jsonb
+language sql
+stable
+security definer
+set search_path to ''
+as $function$
+  with own as (
+    select oc.* from public.outreach_contacts oc
+     where oc.owner_id = auth.uid() and oc.list_id = any (coalesce(p_list_ids, '{}'::uuid[]))
+  ), excluded as (
+    select lower(x.email) as email from public.outreach_contacts x
+     where x.owner_id = auth.uid() and x.email is not null
+       and x.list_id in (select (jsonb_array_elements_text(coalesce(p_filter->'excludeListIds', '[]'::jsonb)))::uuid)
+  ), matched as (
+    select oc.* from public.outreach_contacts oc
+     where oc.owner_id = auth.uid() and oc.list_id = any (coalesce(p_list_ids, '{}'::uuid[]))
+       and public.email_audience_matches(oc, p_filter) and (oc.email is null or lower(oc.email) not in (select email from excluded))
+  ), reachable as (
+    select * from matched where email is not null and coalesce(email_valid, true) and not suppressed
+       and not coalesce(do_not_contact, false) and not coalesce(unsubscribed, false) and not coalesce(is_duplicate, false)
+  )
+  select jsonb_build_object(
+    'total', (select count(*) from own),
+    'matched', (select count(*) from matched),
+    'withEmail', (select count(*) from matched where email is not null),
+    'reachable', (select count(distinct lower(email)) from reachable),
+    'eligible', (select count(distinct lower(email)) from reachable where consent_status = 'CONSENTED'),
+    'consentUnknown', (select count(distinct lower(email)) from reachable where consent_status is distinct from 'CONSENTED'),
+    'suppressed', (select count(*) from matched where suppressed or coalesce(unsubscribed, false)),
+    'duplicates', (select count(*) from reachable) - (select count(distinct lower(email)) from reachable),
+    'byLanguage', (select coalesce(jsonb_object_agg(l, n), '{}'::jsonb) from (select coalesce(lower(language), 'unknown') l, count(distinct lower(email)) n from reachable where consent_status = 'CONSENTED' group by 1) t),
+    'bySource', (select coalesce(jsonb_object_agg(s, n), '{}'::jsonb) from (select coalesce(source_kind, 'IMPORT') s, count(distinct lower(email)) n from reachable where consent_status = 'CONSENTED' group by 1) t)
+  );
+$function$;
+revoke all on function public.email_audience_estimate(uuid[], jsonb) from public, anon;
+grant execute on function public.email_audience_estimate(uuid[], jsonb) to authenticated;
+grant execute on function public.outreach_email_campaign_batch(uuid, integer) to service_role;
+
+/* The running-campaign scheduler asks the SAME audience question as the send path, so a
+   campaign over several lists (or with only cross-list duplicates left) neither stalls nor
+   stays RUNNING forever. */
+create or replace function public.outreach_claim_running_campaigns(p_limit integer default 5)
+returns table (id uuid, owner_id uuid, campaign_type text)
+language sql
+security definer
+set search_path to 'public'
+as $function$
+  update public.outreach_campaigns c
+     set updated_at = now()
+   where c.id in (
+     select c2.id from public.outreach_campaigns c2
+      where c2.status = 'RUNNING' and c2.campaign_type = 'EMAIL'
+        and c2.send_eligibility = 'PRODUCTION'
+        and c2.updated_at < now() - interval '60 seconds'
+        and (c2.contact_list_id is not null or coalesce(array_length(c2.contact_list_ids, 1), 0) > 0)
+        and (coalesce(c2.metadata -> 'broadcast' ->> 'state', '') = 'SYNCING'
+             or exists (select 1 from public.outreach_email_campaign_batch(c2.id, 1)))
+      order by c2.updated_at
+      for update skip locked
+      limit greatest(1, least(coalesce(p_limit, 5), 20))
+   )
+  returning c.id, c.owner_id, c.campaign_type;
+$function$;
+revoke all on function public.outreach_claim_running_campaigns(integer) from public, anon, authenticated;
+grant execute on function public.outreach_claim_running_campaigns(integer) to service_role;
+grant execute on function public.outreach_claim_due_campaigns(integer) to service_role;

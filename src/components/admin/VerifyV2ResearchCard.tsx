@@ -22,7 +22,9 @@ const STAGE_LABEL: Record<ResearchStageKey, string> = {
   public_research: 'adm_v2r_stage_public',
   market: 'adm_v2r_stage_market',
 };
-const MODEL_OPTIONS = [['', 'adm_v2r_default'], ['gpt-5.6-luna', 'Luna'], ['gpt-5.6-terra', 'Terra']] as const;
+const MODEL_OPTIONS = [['', 'adm_v2r_default'], ['gpt-5.6-luna', 'Luna'], ['gpt-5.6-terra', 'Terra']] as const; // labels: MODEL_NAME, or the i18n key
+/* Model names: product names, the same in every language. */
+const MODEL_NAME = { luna: 'Luna', terra: 'Terra' } as const;
 const selectCls = 'h-9 rounded-md border border-input bg-background px-2 text-sm';
 
 export function VerifyV2ResearchCard() {
@@ -103,8 +105,8 @@ export function VerifyV2ResearchCard() {
           <select aria-label={t('adm_v2r_report')} className={selectCls} value={tuning.report?.policy ?? ''} onChange={(e) => setTuning((c) => ({ ...c, report: e.target.value ? { policy: e.target.value as 'AUTO' } : undefined }))}>
             <option value="">{t('adm_v2r_default')}</option>
             <option value="AUTO">{t('adm_v2r_report_auto')}</option>
-            <option value="LUNA">Luna</option>
-            <option value="TERRA">Terra</option>
+            <option value="LUNA">{MODEL_NAME.luna}</option>
+            <option value="TERRA">{MODEL_NAME.terra}</option>
           </select>
         </div>
         <div className="flex flex-wrap items-center gap-2">

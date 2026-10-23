@@ -201,7 +201,8 @@ export default function CampaignsPage() {
                           <button
                             type="button"
                             className="block max-w-full truncate text-start font-medium hover:underline"
-                            onClick={() => navigate(builderPath(`?id=${c.id}`))}
+                            /* An email campaign lives in Email Studio (review, designer, send). */
+                            onClick={() => navigate(c.campaign_type === 'EMAIL' ? `/outreach/email/campaigns/${c.id}` : builderPath(`?id=${c.id}`))}
                           >
                             {c.name}
                           </button>

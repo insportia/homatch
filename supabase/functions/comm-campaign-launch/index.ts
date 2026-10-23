@@ -70,6 +70,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
       : typed.campaign_type === 'EMAIL' || typed.campaign_type === 'SMS' ? 'email_campaigns' : null;
     if (service && !(await serviceBackendEnabled(sb, service))) return json(serviceDisabledBody(service), 503);
   }
+  /* An EMAIL campaign is launched only through Email Studio's review (owner brief 2026-10-24 §10):
+     approval is pinned to its content and enforced in outreach-send. This launcher would move it
+     to RUNNING without that approval, where the send gate refuses it and it would sit stuck, so
+     it refuses email outright. SMS, calls and WhatsApp are unchanged. */
+  {
+    const { data: kind } = await sb.from('outreach_campaigns').select('campaign_type').eq('id', body.campaignId).maybeSingle();
+    if (kind?.campaign_type === 'EMAIL') return json({ error: 'EMAIL_USES_EMAIL_STUDIO_REVIEW' }, 409);
+  }
   const isPreview = body.action !== 'launch';
 
   const decision = await decideLaunch({

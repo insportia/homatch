@@ -1,9 +1,36 @@
 # PROJECT STATE
 
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Finance V2.1 + production hardening (PR #286 merged 28ab1db1; #262, #264 merged 2026-10-22) — MIGRATION APPLIED, EDGE DEPLOY PENDING PROOF
+
+- Migration `20261123090000_finance_v2_1_cost_coverage` applied 2026-10-23 via MCP (ledger
+  `20261023073650 finance_v2_1_cost_coverage`); normalized md5 56ea51ad... equals the committed file
+  (the migration gate's content check). Verified live: 20 Design Studio image rates in the book,
+  8 finance_cost_coverage rows, cost_events.idempotency_key unique index, NULL model -> NULL rate,
+  no anon/authenticated access to the new objects, finance_v2_services costComplete/coverageGaps,
+  finance_v2_shared_costs (Railway $7.80/mo, Supabase AI Talk share $5/mo; Supabase/Vercel plans
+  NOT_CONFIGURED), finance_v2_price_drift MATCH.
+- Migration gate (scripts/release/migration-gate.mjs) proven in production: run 39905829395 (merge
+  push, before the apply) refused with PENDING and uploaded nothing; dispatch run 39919056746 (after)
+  passed it in both jobs. Release order for any migration PR: merge -> apply -> deploy.
+- Edge: run 39919056746 uploaded 27 of 29 owed functions; its proof failed because
+  generate-search-profile and retell-webhook are in no deploy list (pre-existing UNSHIPPED). Both are
+  now HAND_DEPLOYED (scripts/deploy-scope.mjs): generate-search-profile in production is the owner's
+  423 stub (paid AI profile generation disabled) and must not be overwritten; retell-webhook runs
+  verify_jwt=false and moving it into CI's no-JWT list is an owner decision. Their V2.1 code is in the
+  repository, not in production. refs/deployed/edge advances only on the next proven run.
+- #262 (worker guards): Railway homatch-official-worker deployment 981808a8 SUCCESS at 8ad47a73.
+  #264 (sweeper): jobs-worker deployed (run 39835445096); switch
+  `admin_settings.wallet_reservation_sweeper_enabled` absent = OFF. Enabling is an owner decision;
+  rollback = set false/delete. The V2.1 migration fixed its race (skip locked; EXPIRED only if released).
+- Open: owner decisions above; RunPod/Meta/Retell/ZenRows/gemini-2.0-flash/captcha rates not in the
+  book (finance_cost_coverage rows); Supabase/Vercel plan amounts; Vercel/Railway builds are not
+  gated by CI (Deployment Checks / "Wait for CI" are owner settings). Coverage matrix:
+  docs/claude/FINANCE_V2_1_COVERAGE.md.
 
 ## Finance V2 — VAT-first engine + per-service dashboards (PR #281, merged 0f9d8673, 2026-10-19) — DEPLOYED, MIGRATION APPLIED 2026-10-22
 

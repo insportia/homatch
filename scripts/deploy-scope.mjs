@@ -69,9 +69,19 @@ const git = (...args) => execFileSync('git', args,
  * Neither name appears in either of deploy.yml's deploy lists — on purpose —
  * so leaving them in the owed set made run 36328705484's accounting fail
  * (owed 31, matched 29) although every listed function had reached a deploy
- * command. Owed is what CI is responsible for; these two are not.
+ * command. Owed is what CI is responsible for; these are not.
+ *
+ * generate-search-profile (2026-10-23): production runs the owner's 423 stub
+ * ("paid AI search-profile generation is temporarily disabled"). The
+ * repository keeps the full function for when it returns, so CI must never
+ * owe it: a deploy would silently re-enable a paid AI feature the owner
+ * switched off. Re-enabling it is a deliberate hand deploy.
+ *
+ * retell-webhook (2026-10-23): hand-deployed with verify_jwt=false (Retell posts
+ * without a Supabase credential). Moving it into CI's no-JWT list is an
+ * auth-surface decision for the owner, so until then CI does not owe it either.
  */
-export const HAND_DEPLOYED = ['impersonate-user', 'unlock-external-contact'];
+export const HAND_DEPLOYED = ['impersonate-user', 'unlock-external-contact', 'generate-search-profile', 'retell-webhook'];
 
 /** Every deployable edge function: a directory with an index.ts. */
 export function edgeFunctionNames(root = ROOT) {

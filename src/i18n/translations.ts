@@ -21411,6 +21411,9 @@ const en = {
   fbcrm_details_saved_consent_reset: 'Saved. The address changed, so consent must be recorded again.',
   fbcrm_err_email: 'That email address is not valid.',
   fbcrm_err_phone: 'That phone number is not valid.',
+
+  /* ── VERIFY MARKET — LAND ── */
+  vfm6_insufficient_body_land: 'A price range needs at least {{need}} comparable plots of the same land designation nearby. We found {{have}}, so we are not giving a number for this plot. Any listing shown is context, not a valuation.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -42736,6 +42739,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbcrm_details_saved_consent_reset: 'შენახულია. მისამართი შეიცვალა, ამიტომ თანხმობა თავიდან უნდა დაფიქსირდეს.',
   fbcrm_err_email: 'ელფოსტის მისამართი არასწორია.',
   fbcrm_err_phone: 'ტელეფონის ნომერი არასწორია.',
+
+  /* ── VERIFY MARKET — LAND ── */
+  vfm6_insufficient_body_land: 'ფასის დიაპაზონის დასადგენად საჭიროა მინიმუმ {{need}} იმავე დანიშნულების შესადარებელი მიწის ნაკვეთი ახლომდებარე ტერიტორიაზე. ვიპოვეთ {{have}}, ამიტომ ამ ნაკვეთისთვის ციფრს არ ვასახელებთ. ნაჩვენები განცხადებები მხოლოდ კონტექსტია და არა შეფასება.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -64052,6 +64058,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbcrm_details_saved_consent_reset: 'Сохранено. Адрес изменился, поэтому согласие нужно зафиксировать заново.',
   fbcrm_err_email: 'Неверный адрес эл. почты.',
   fbcrm_err_phone: 'Неверный номер телефона.',
+
+  /* ── VERIFY MARKET — LAND ── */
+  vfm6_insufficient_body_land: 'Для ценового диапазона нужно не менее {{need}} сопоставимых участков того же назначения поблизости. Мы нашли {{have}}, поэтому не называем цифру для этого участка. Показанные объявления — контекст, а не оценка.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -85366,6 +85375,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbcrm_details_saved_consent_reset: 'Kaydedildi. Adres değiştiği için izin yeniden kaydedilmeli.',
   fbcrm_err_email: 'E-posta adresi geçerli değil.',
   fbcrm_err_phone: 'Telefon numarası geçerli değil.',
+
+  /* ── VERIFY MARKET — LAND ── */
+  vfm6_insufficient_body_land: 'Bir fiyat aralığı için yakında aynı arazi niteliğinde en az {{need}} karşılaştırılabilir parsel gerekir. {{have}} bulduk, bu yüzden bu parsel için bir rakam vermiyoruz. Gösterilen ilanlar değerleme değil, bağlamdır.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -106680,6 +106692,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbcrm_details_saved_consent_reset: 'تم الحفظ. تغيّر العنوان، لذا يجب تسجيل الموافقة من جديد.',
   fbcrm_err_email: 'عنوان البريد الإلكتروني غير صالح.',
   fbcrm_err_phone: 'رقم الهاتف غير صالح.',
+
+  /* ── VERIFY MARKET — LAND ── */
+  vfm6_insufficient_body_land: 'يتطلب نطاق السعر ما لا يقل عن {{need}} قطع أراضٍ مماثلة بالتصنيف نفسه في المنطقة. وجدنا {{have}}، لذلك لا نذكر رقمًا لهذه القطعة. أي إعلان معروض هو سياق وليس تقييمًا.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -127994,6 +128009,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbcrm_details_saved_consent_reset: 'נשמר. הכתובת השתנתה, ולכן יש לתעד שוב את ההסכמה.',
   fbcrm_err_email: 'כתובת הדוא"ל אינה תקינה.',
   fbcrm_err_phone: 'מספר הטלפון אינו תקין.',
+
+  /* ── VERIFY MARKET — LAND ── */
+  vfm6_insufficient_body_land: 'טווח מחירים דורש לפחות {{need}} מגרשים דומים באותו ייעוד קרקע בסביבה. מצאנו {{have}}, ולכן איננו נוקבים במספר עבור המגרש הזה. מודעות שמוצגות הן הקשר, לא הערכת שווי.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

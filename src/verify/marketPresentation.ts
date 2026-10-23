@@ -108,6 +108,8 @@ export interface MarketInsufficiency {
   nextStepKeys: string[];
   /** v6: listings of another property kind set aside (apartments for a parking space). */
   otherKind?: number;
+  /** The explanation's i18n key: land is compared with plots, not homes. */
+  bodyKey: string;
 }
 
 /** v6: the subject's own price, and whether any verdict on it is allowed. */
@@ -277,7 +279,8 @@ export function insufficiencyOf(m: Record<string, any>): MarketInsufficiency | n
     ? ['vfm6_next_parking_developer', 'vfm6_next_parking_listings', 'vfm_next_registered_sales']
     : ['vfm_next_same_project', 'vfm_next_same_street', 'vfm_next_registered_sales', 'vfm_next_developer_prices'];
   if (!subjectAreaKnown) nextStepKeys.push('vfm_next_subject_area');
-  return { have, need, otherDistricts, sizeOutOfBand, sizeBand, subjectAreaKnown, missingKeys, nextStepKeys, otherKind };
+  const bodyKey = kind === 'LAND' ? 'vfm6_insufficient_body_land' : 'vfm_insufficient_body';
+  return { have, need, otherDistricts, sizeOutOfBand, sizeBand, subjectAreaKnown, missingKeys, nextStepKeys, otherKind, bodyKey };
 }
 
 const KIND_KEY: Record<string, string> = {
@@ -399,7 +402,8 @@ export function marketView(raw: unknown): MarketView | null {
 
   const context = arr(m.tiers)
     .map(obj)
-    .filter((t) => t.contextOnly === true && isTier(t.tier) && t.tier !== 'WIDER_MARKET' && n(t.median) && Number(t.count) > 0)
+    // One listing is not a median (prod 176264ba): a band shows only from two.
+    .filter((t) => t.contextOnly === true && isTier(t.tier) && t.tier !== 'WIDER_MARKET' && n(t.median) && Number(t.count) >= 2)
     .map((t) => ({ tier: t.tier as MarketTier, median: t.median as number, count: Number(t.count) }));
 
   const kind = obj(m.valuation).subjectKind;

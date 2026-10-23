@@ -47,6 +47,12 @@ RUN mkdir -p /tmp/st && printf '{"spec":"/app/selftest/apartment.spec.json","tex
     && python3 -c "import json; r=json.load(open('/tmp/st/report.json')); assert r['ok'], r; print('factory selftest', r['counts'])" \
     && rm -rf /tmp/st
 
+# The same proof for Content Studio: HOMI builds, saves, exports, re-imports and renders a tiny turntable on the CPU.
+RUN mkdir -p /tmp/hs && printf '{"stage":"PREVIEW_360","out":"/tmp/hs/out","report":"/tmp/hs/report.json","device":"CPU","size":512,"samples":4,"frames":8,"fps":8,"files":{"blend":"h.blend","glb":"h.glb","mp4":"h.mp4"}}' > /tmp/hs/params.json \
+    && /opt/blender/blender -b --factory-startup --python /app/worker/content/homi/build.py -- /tmp/hs/params.json \
+    && python3 -c "import json; r=json.load(open('/tmp/hs/report.json')); assert r['ok'], r; print('homi selftest', r['geometry']['objects'], r['geometry']['triangles'])" \
+    && rm -rf /tmp/hs
+
 # The commit this image was built from (the GHCR workflow passes github.sha); every job reports it
 # as result.worker.revision. Last, so a new commit never invalidates the layers above.
 ARG HM_IMAGE_REVISION=""

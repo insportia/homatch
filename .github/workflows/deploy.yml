@@ -516,6 +516,9 @@ jobs:
             # Admin → Service Control Center: browser-facing, admin-only (is_admin
             # on the caller's token inside), so the gateway JWT check stays on.
             "service-control"
+            # Content Studio (HOMI assets on the Design Studio GPU worker): operator-only
+            # (is_admin on the caller's token inside), so the gateway JWT check stays on.
+            "content-studio"
             # Admin → System health: browser-facing, admin-only (is_admin checked
             # inside); deployed by hand until 2026-10-18 (v33), so repository changes
             # (the queues-and-stuck-work checks, #259) could not reach production.

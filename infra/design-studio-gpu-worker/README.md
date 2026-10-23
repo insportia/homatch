@@ -25,6 +25,23 @@ by HOMATCH from the same canonical geometry so walls remain editable surfaces.
 No generative 3D, no model weights, no tokens: SAM/TRELLIS are not part of
 this worker.
 
+## Content Studio jobs (HOMI)
+
+The same image also builds HOMATCH's own character assets. A job whose input is exactly
+`{"contentStudio": {...}}` takes a separate path (`worker/handler.py` → `worker/content/`) and never
+touches the scene factory, its spec or its billing:
+
+- **Allowlisted:** asset `HOMI`, version `vNNN`, stage `PREVIEW_360` (new stages are added only as
+  code). Render numbers are bounded. The job carries no code: Blender runs only
+  `worker/content/homi/build.py`, under the same no-eval/exec/shell test as the factory.
+- **Outputs:** one signed PUT per file, each checked to point inside
+  `homatch-content/3D/characters/HOMI/versions/<vNNN>/` with the right extension: master `.blend`,
+  `.glb`, turntable `.mp4`, contact sheet and face `.png`, and a manifest `.json` (size and sha256 of
+  every file, geometry stats, inferred parts, GLB re-import and `.blend` reopen checks), uploaded last.
+- **Dispatch:** only through the admin-only `content-studio` edge function. It signs the PUTs,
+  chooses the render numbers, refuses while any customer factory job is open or anything is queued
+  or running on the endpoint, and checks every output in R2 before reporting success.
+
 ## Security
 
 - The job carries **signed URLs only**, host-locked to

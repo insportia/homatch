@@ -11,11 +11,13 @@ const RUNPOD_KEY = 'rpa_SUPERSECRETRUNPODKEY';
 const ORIGIN = 'https://homatch.live';
 const KEYS = stageKeys('HOMI', 'v001', 'PREVIEW_360');
 
-function world({ admin = true, customerJobs = [], endpoint = { inQueue: 0, inProgress: 0 }, designStudio = true, objects = {}, statusOf = {} } = {}) {
+function world({ admin = true, customerJobs = [], renders = [], walkthroughs = [], endpoint = { inQueue: 0, inProgress: 0 }, designStudio = true, objects = {}, statusOf = {}, runStatus = 200 } = {}) {
   resetServiceControlCache();
   const tables = {
     service_controls: [{ service_key: 'design_studio', frontend_enabled: designStudio, backend_enabled: designStudio }],
     ds_factory_jobs: customerJobs,
+    ds_renders: renders,
+    ds_walkthroughs: walkthroughs,
     users: [{ id: 'u-admin', auth_id: 'auth-admin' }],
     admin_audit_log: [],
     impersonation_sessions: [],
@@ -40,7 +42,7 @@ function world({ admin = true, customerJobs = [], endpoint = { inQueue: 0, inPro
     calls.push({ url, init });
     const path = url.replace(/^https:\/\/api\.runpod\.ai\/v2\/ep123abc\//, '');
     if (path === 'health') return new Response(JSON.stringify({ jobs: endpoint, workers: { idle: 0, running: 0 } }));
-    if (path === 'run') return new Response(JSON.stringify({ id: 'rp-job-0001', status: 'IN_QUEUE' }));
+    if (path === 'run') return runStatus === 200 ? new Response(JSON.stringify({ id: 'rp-job-0001', status: 'IN_QUEUE' })) : new Response('{}', { status: runStatus });
     if (path.startsWith('status/')) {
       const id = decodeURIComponent(path.slice(7));
       return statusOf[id] ? new Response(JSON.stringify(statusOf[id])) : new Response('{}', { status: 404 });
@@ -55,7 +57,17 @@ function world({ admin = true, customerJobs = [], endpoint = { inQueue: 0, inPro
     signedGet: async (key) => `https://acct.r2.cloudflarestorage.com/homatch-storage/${key}?X-Amz-Signature=get`,
     head: async (key) => (key in store.objects ? { exists: true, size: store.objects[key].length } : { exists: false, size: null }),
     getJson: async (key) => (key in store.objects ? JSON.parse(store.objects[key]) : null),
-    putJson: async (key, value) => { store.objects[key] = JSON.stringify(value); },
+    // etag = the stored text's length + a write counter: enough to model R2's compare-and-swap
+    etags: {},
+    writes: 0,
+    getRecord: async (key) => (key in store.objects ? { value: JSON.parse(store.objects[key]), etag: store.etags[key] ?? 'e0' } : null),
+    putJson: async (key, value, cond) => {
+      if (cond?.ifNoneMatch && key in store.objects) return false;
+      if (cond?.ifMatch !== undefined && (store.etags[key] ?? 'e0') !== cond.ifMatch) return false;
+      store.objects[key] = JSON.stringify(value);
+      store.etags[key] = `e${++store.writes}`;
+      return true;
+    },
     configured: () => true,
   };
   const env = { RUNPOD_API_KEY: RUNPOD_KEY, RUNPOD_DS_ENDPOINT_ID: 'ep123abc', RUNPOD_DS_USD_PER_SECOND: '0.00031' };
@@ -94,7 +106,13 @@ test('preflight says the GPU is free only with no customer job open and nothing 
 });
 
 test('dispatch is refused while a customer job is open or the endpoint is busy — RunPod is never asked to run', async () => {
-  for (const w of [world({ customerJobs: [{ id: 'j', state: 'QUEUED' }] }), world({ endpoint: { inQueue: 0, inProgress: 1 } })]) {
+  for (const w of [
+    world({ customerJobs: [{ id: 'j', state: 'QUEUED' }] }),
+    world({ endpoint: { inQueue: 0, inProgress: 1 } }),
+    // a walkthrough still planning (no factory job yet) and an open render count as customer work too
+    world({ walkthroughs: [{ id: 'w', state: 'PLANNING' }, { id: 'x', state: 'READY' }] }),
+    world({ renders: [{ id: 'r', status: 'RESERVED' }] }),
+  ]) {
     const r = await call(w, DISPATCH);
     assert.equal(r.status, 409);
     assert.equal(r.body.code, 'GPU_BUSY');
@@ -169,4 +187,66 @@ test('a reference image gets one short PUT, never over an existing one', async (
   const exists = await call(world({ objects: { [fresh.body.key]: 'png' } }), { action: 'reference', asset: 'HOMI', file: 'HOMI_REF_hero_v001.png' });
   assert.equal(exists.status, 409);
   assert.equal((await call(world(), { action: 'reference', asset: 'HOMI', file: '../../design-studio/x.png' })).status, 400);
+});
+
+const RECORD = 'homatch-content/3D/characters/HOMI/versions/v001/jobs/PREVIEW_360.json';
+const LOCK = 'homatch-content/jobs/GPU_LOCK.json';
+
+test('a worker failure (RunPod COMPLETED with ok:false) frees the version for a retry', async () => {
+  const rec = JSON.stringify({ providerJobId: 'rp-job-0000', dispatchedAt: '2026-10-23T11:50:00Z' });
+  const failed = { status: 'COMPLETED', output: { ok: false, error: 'CONTENT_FAILED: blender: deadline' } };
+  const r = await call(world({ objects: { [RECORD]: rec, [LOCK]: rec }, statusOf: { 'rp-job-0000': failed } }), DISPATCH);
+  assert.equal(r.status, 202);
+});
+
+test('a job RunPod has forgotten blocks only until its ttl has passed', async () => {
+  const recent = JSON.stringify({ providerJobId: 'rp-job-0000', dispatchedAt: '2026-10-23T11:50:00Z', deadlineS: 900 });
+  assert.equal((await call(world({ objects: { [RECORD]: recent } }), DISPATCH)).body.code, 'VERSION_IN_PROGRESS');
+  const old = JSON.stringify({ providerJobId: 'rp-job-0000', dispatchedAt: '2026-10-23T11:00:00Z', deadlineS: 900 });
+  assert.equal((await call(world({ objects: { [RECORD]: old } }), DISPATCH)).status, 202);
+});
+
+test('one content job on the GPU at a time, across versions', async () => {
+  const running = JSON.stringify({ version: 'v002', stage: 'PREVIEW_360', providerJobId: 'rp-job-0002', dispatchedAt: '2026-10-23T11:58:00Z' });
+  const w = world({ objects: { [LOCK]: running }, statusOf: { 'rp-job-0002': { status: 'IN_PROGRESS' } } });
+  const r = await call(w, DISPATCH);
+  assert.equal(r.body.code, 'CONTENT_JOB_RUNNING');
+  assert.equal(r.body.version, 'v002');
+  assert.ok(!w.calls.some((c) => c.url.endsWith('/run')));
+});
+
+test('of two dispatches racing for the GPU, the losing compare-and-swap never reaches RunPod', async () => {
+  const w = world();
+  const realGet = w.store.getRecord;
+  // the other dispatch claims the lock between our read and our write
+  w.store.getRecord = async (key) => {
+    const seen = await realGet(key);
+    if (key === LOCK) w.store.objects[LOCK] = JSON.stringify({ claimedAt: '2026-10-23T12:00:00Z' });
+    return seen;
+  };
+  const r = await call(w, DISPATCH);
+  assert.equal(r.body.code, 'CONTENT_JOB_RUNNING');
+  assert.ok(!w.calls.some((c) => c.url.endsWith('/run')));
+});
+
+test('a refused provider call releases the GPU lock', async () => {
+  const w = world({ runStatus: 500 });
+  assert.equal((await call(w, DISPATCH)).body.code, 'PROVIDER_REFUSED');
+  assert.equal(JSON.parse(w.store.objects[LOCK]).released, true);
+});
+
+test('cancel reaches only the content job recorded for that version', async () => {
+  const w = world({ objects: { [RECORD]: JSON.stringify({ providerJobId: 'rp-job-0001' }) } });
+  const stranger = await call(w, { action: 'cancel', version: 'v001', providerJobId: 'customer-job-123' });
+  assert.equal(stranger.status, 404);
+  assert.equal((await call(w, { action: 'cancel', providerJobId: 'rp-job-0001' })).body.code, 'BAD_VERSION');
+  assert.ok(!w.calls.some((c) => c.url.includes('/cancel/')));
+  assert.equal((await call(w, { action: 'cancel', version: 'v001', providerJobId: 'rp-job-0001' })).body.cancelled, true);
+});
+
+test('inherited object names are not assets or stages', async () => {
+  for (const asset of ['constructor', '__proto__', 'toString']) {
+    assert.equal((await call(world(), { ...DISPATCH, asset, confirm: `${asset} v001 PREVIEW_360` })).body.code, 'UNKNOWN_ASSET');
+  }
+  assert.equal((await call(world(), { ...DISPATCH, stage: 'constructor', confirm: 'HOMI v001 constructor' })).body.code, 'UNKNOWN_STAGE');
 });

@@ -177,3 +177,24 @@ def test_homi_builds_renders_exports_and_reports_for_real():
     assert g["objects"] > 100 and 1.6 < g["height_m"] < 1.85 and abs(g["bbox_min"][2]) < 1e-3
     assert m["checks"]["glbReimport"]["meshes"] == g["objects"] and m["checks"]["blendReopen"]["missing_files"] == []
     assert "HOMI_Leg_Foot_L" in g["inferred"] and "HOMI_Head_Visor" not in g["inferred"]
+
+
+def test_a_float_size_is_refused():
+    j = cjob()
+    j["render"]["size"] = 720.0
+    with pytest.raises(JobError, match="render.size"):
+        parse_content_job(j)
+
+
+def test_a_silently_hanging_blender_is_killed_at_the_deadline(monkeypatch, tmp_path):
+    import subprocess
+    import sys
+    import time
+
+    real = subprocess.Popen
+    # a "Blender" that prints nothing and never ends: only a watchdog can stop it
+    monkeypatch.setattr(content_pipeline.subprocess, "Popen", lambda args, **k: real([sys.executable, "-c", "import time; time.sleep(60)"], **k))
+    t0 = time.monotonic()
+    with pytest.raises(RuntimeError, match="deadline"):
+        content_pipeline.run_blender("blender", tmp_path / "p.json", timeout=2)
+    assert time.monotonic() - t0 < 20

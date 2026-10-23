@@ -15,7 +15,7 @@
 // object keys, and signed GET URLs (15 minutes) only to the admin who asked.
 import { createClient } from '@supabase/supabase-js';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
-import { envReport, getObject, headObject, r2Config, signedUrl } from '../_shared/objectStore.ts';
+import { envReport, getObject, headObject, normaliseEtag, r2Config, signedUrl } from '../_shared/objectStore.ts';
 import { presign } from '../_shared/storage/sigv4.ts';
 import { serviceBackendEnabled } from '../_shared/serviceControl.ts';
 
@@ -24,9 +24,21 @@ const MAX_BODY = 4_000;
 const VERSION = /^v\d{3}$/;
 const PROVIDER_JOB = /^[A-Za-z0-9-]{8,80}$/;
 const REFERENCE_FILE = /^HOMI_REF_[a-z0-9_]{1,40}_v\d{3}\.(png|webp|jpg)$/;
-const PUT_SECONDS = 3600;
-/** Factory jobs in these states are a customer's work in flight (ds_factory_jobs, factory.ts). */
-const CUSTOMER_TERMINAL = '(COMPLETED,FAILED,CANCELLED)';
+/** One content job on the GPU at a time, across versions: a compare-and-swap object in R2 (conditional PUT). */
+const GPU_LOCK = 'homatch-content/jobs/GPU_LOCK.json';
+const CLAIM_SECONDS = 120;
+const SETTLED = ['COMPLETED', 'FAILED', 'CANCELLED', 'TIMED_OUT'];
+const own = (o: object, k: string) => Object.hasOwn(o, k);
+/**
+ * Design Studio work in flight, as Service Control counts it (service-control RUNNING.design_studio): open renders
+ * and walkthroughs too, not only submitted factory jobs — a walkthrough still planning has no factory row yet but
+ * will submit one, and would then queue behind a content job.
+ */
+const CUSTOMER_WORK = [
+  { label: 'gpuJobsOpen', table: 'ds_factory_jobs', column: 'state', terminal: '(COMPLETED,FAILED,CANCELLED)' },
+  { label: 'rendersOpen', table: 'ds_renders', column: 'status', terminal: '(READY,FAILED,CANCELLED)' },
+  { label: 'walkthroughsOpen', table: 'ds_walkthroughs', column: 'state', terminal: '(READY,FAILED,CANCELLED)' },
+] as const;
 
 export const ASSETS = { HOMI: 'homatch-content/3D/characters/HOMI' } as const;
 type Asset = keyof typeof ASSETS;
@@ -60,7 +72,10 @@ interface Store {
   signedGet: (key: string, downloadAs?: string) => Promise<string>;
   head: (key: string) => Promise<{ exists: boolean; size: number | null }>;
   getJson: (key: string) => Promise<any | null>;
-  putJson: (key: string, value: unknown) => Promise<void>;
+  /** The object and its etag, for a compare-and-swap write. */
+  getRecord: (key: string) => Promise<{ value: any; etag: string | null } | null>;
+  /** Writes; with a condition, false when R2 refuses it (412: someone else wrote first). */
+  putJson: (key: string, value: unknown, cond?: { ifNoneMatch?: true; ifMatch?: string | null }) => Promise<boolean>;
   configured: () => boolean;
 }
 
@@ -74,17 +89,23 @@ const r2Store: Store = {
     const f = await headObject(key);
     return { exists: f.exists, size: f.size };
   },
-  getJson: async (key) => {
+  getJson: async (key) => (await r2Store.getRecord(key))?.value ?? null,
+  getRecord: async (key) => {
     const r = await getObject(key);
     if (r.status === 404) { await r.body?.cancel(); return null; }
     if (!r.ok) { await r.body?.cancel(); throw new Error(`read ${r.status}`); }
-    return await r.json();
+    return { value: await r.json(), etag: normaliseEtag(r.headers.get('etag')) };
   },
-  putJson: async (key, value) => {
+  putJson: async (key, value, cond) => {
     const url = await r2Store.presignPut(key, 60);
-    const r = await fetch(url, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(value, null, 1) });
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (cond?.ifNoneMatch) headers['if-none-match'] = '*';
+    if (cond?.ifMatch) headers['if-match'] = `"${cond.ifMatch}"`;
+    const r = await fetch(url, { method: 'PUT', headers, body: JSON.stringify(value, null, 1) });
     await r.body?.cancel();
+    if (r.status === 412 && cond) return false;
     if (!r.ok) throw new Error(`write ${r.status}`);
+    return true;
   },
   configured: () => { try { return envReport().allPresent; } catch { return false; } },
 };
@@ -141,14 +162,19 @@ export async function handler(req: Request, deps: Deps = defaultDeps): Promise<R
   const runpod = (path: string, init?: RequestInit) => http(`https://api.runpod.ai/v2/${endpoint}/${path}`, { ...init, headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' } });
 
   const asset = String(input.asset ?? 'HOMI') as Asset;
-  if (!(asset in ASSETS)) return reply({ code: 'UNKNOWN_ASSET' }, 400);
+  if (!own(ASSETS, asset)) return reply({ code: 'UNKNOWN_ASSET' }, 400);
   const version = String(input.version ?? '');
   const providerJobId = String(input.providerJobId ?? '');
 
-  /** The GPU is free only when no customer factory job is open and the endpoint has nothing queued or running. */
+  /** The GPU is free only when no Design Studio work is open and the endpoint has nothing queued or running. Unreadable = busy. */
   const busy = async () => {
-    const { count, error } = await db.from('ds_factory_jobs').select('id', { count: 'exact', head: true }).not('state', 'in', CUSTOMER_TERMINAL);
-    const customerJobsOpen = error ? null : (count ?? 0);
+    const customerWork: Record<string, number | null> = {};
+    for (const w of CUSTOMER_WORK) {
+      const { count, error } = await db.from(w.table).select('id', { count: 'exact', head: true }).not(w.column, 'in', w.terminal);
+      customerWork[w.label] = error ? null : (count ?? 0);
+    }
+    const counts = Object.values(customerWork);
+    const customerJobsOpen = counts.some((c) => c === null) ? null : counts.reduce((a, c) => a + (c ?? 0), 0);
     let endpointJobs: { inQueue: number; inProgress: number } | null = null;
     let workers: Record<string, number> | null = null;
     const r = await runpod('health').catch(() => null);
@@ -160,12 +186,25 @@ export async function handler(req: Request, deps: Deps = defaultDeps): Promise<R
       await r?.body?.cancel();
     }
     const free = customerJobsOpen === 0 && endpointJobs !== null && endpointJobs.inQueue === 0 && endpointJobs.inProgress === 0;
-    return { free, customerJobsOpen, endpointJobs, workers };
+    return { free, customerJobsOpen, customerWork, endpointJobs, workers };
   };
   const providerStatus = async (id: string) => {
     const r = await runpod(`status/${encodeURIComponent(id)}`).catch(() => null);
     if (!r?.ok) { await r?.body?.cancel(); return null; }
     return await r.json().catch(() => null);
+  };
+  /**
+   * Is a dispatch record finished with the GPU? A worker failure comes back as a COMPLETED job with ok:false,
+   * so every terminal provider status settles it; a job RunPod no longer knows settles once its ttl has passed;
+   * a claim that never reached the provider settles after CLAIM_SECONDS.
+   */
+  const settled = async (rec: any) => {
+    if (!rec || rec.released) return true;
+    const t = now().getTime();
+    if (!rec.providerJobId) return t - Date.parse(rec.claimedAt ?? '') > CLAIM_SECONDS * 1000;
+    const st = await providerStatus(String(rec.providerJobId));
+    if (st) return SETTLED.includes(st.status);
+    return t - Date.parse(rec.dispatchedAt ?? rec.claimedAt ?? '') > ((rec.deadlineS ?? 900) + 900) * 1000;
   };
   const adminId = async () => {
     const { data } = await db.from('users').select('id').eq('auth_id', who.user.id).maybeSingle();
@@ -191,7 +230,7 @@ export async function handler(req: Request, deps: Deps = defaultDeps): Promise<R
 
       case 'dispatch': {
         const stage = String(input.stage ?? '') as Stage;
-        if (!(stage in STAGES)) return reply({ code: 'UNKNOWN_STAGE' }, 400);
+        if (!own(STAGES, stage)) return reply({ code: 'UNKNOWN_STAGE' }, 400);
         if (!VERSION.test(version)) return reply({ code: 'BAD_VERSION' }, 400);
         if (input.confirm !== `${asset} ${version} ${stage}`) return reply({ code: 'CONFIRMATION_REQUIRED', expected: `${asset} ${version} ${stage}` }, 400);
         if (!gpuConfigured) return reply({ code: 'GPU_NOT_CONFIGURED' }, 503);
@@ -204,20 +243,23 @@ export async function handler(req: Request, deps: Deps = defaultDeps): Promise<R
         const recordKey = versionPrefix(asset, version) + `jobs/${stage}.json`;
         if ((await store.head(keys.manifest)).exists) return reply({ code: 'VERSION_EXISTS' }, 409);
         const previous = await store.getJson(recordKey);
-        if (previous?.providerJobId) {
-          const s = await providerStatus(previous.providerJobId);
-          if (!s || !['FAILED', 'CANCELLED', 'TIMED_OUT'].includes(s.status)) return reply({ code: 'VERSION_IN_PROGRESS', providerJobId: previous.providerJobId }, 409);
-        } else if (previous && now().getTime() - Date.parse(previous.claimedAt ?? '') < 120_000) {
-          return reply({ code: 'VERSION_IN_PROGRESS' }, 409); // another dispatch is between its claim and the provider
+        if (!(await settled(previous))) return reply({ code: 'VERSION_IN_PROGRESS', providerJobId: previous?.providerJobId ?? null }, 409);
+        const lock = await store.getRecord(GPU_LOCK);
+        if (lock && !(await settled(lock.value))) {
+          return reply({ code: 'CONTENT_JOB_RUNNING', version: lock.value?.version ?? null, stage: lock.value?.stage ?? null, providerJobId: lock.value?.providerJobId ?? null }, 409);
         }
 
         const s = STAGES[stage];
         const jobId = (deps.uuid ?? (() => crypto.randomUUID()))();
         const by = await adminId();
-        // Claim first: a second dispatch now sees a record without a provider job and must wait for it.
-        const claim = { asset, version, stage, jobId, providerJobId: null, claimedAt: now().toISOString(), dispatchedBy: by, keys, previous: previous ?? null };
+        // Claim the GPU with a compare-and-swap: of two dispatches racing here, exactly one write succeeds.
+        const claim = { asset, version, stage, jobId, providerJobId: null as string | null, claimedAt: now().toISOString(), dispatchedBy: by, keys,
+          deadlineS: s.deadlineS, previousProviderJobId: previous?.providerJobId ?? null };
+        const won = await store.putJson(GPU_LOCK, claim, lock ? { ifMatch: lock.etag } : { ifNoneMatch: true });
+        if (!won) return reply({ code: 'CONTENT_JOB_RUNNING' }, 409);
         await store.putJson(recordKey, claim);
-        const outputs = Object.fromEntries(await Promise.all(Object.entries(keys).map(async ([name, k]) => [name, await store.presignPut(k, PUT_SECONDS)])));
+        // Signed for the job's own lifetime (deadline + start-up), not longer.
+        const outputs = Object.fromEntries(await Promise.all(Object.entries(keys).map(async ([name, k]) => [name, await store.presignPut(k, s.deadlineS + 300)])));
         const r = await runpod('run', {
           method: 'POST',
           body: JSON.stringify({
@@ -225,10 +267,16 @@ export async function handler(req: Request, deps: Deps = defaultDeps): Promise<R
             policy: { executionTimeout: (s.deadlineS + 60) * 1000, ttl: (s.deadlineS + 900) * 1000 },
           }),
         }).catch(() => null);
-        if (!r?.ok) { await r?.body?.cancel(); return reply({ code: 'PROVIDER_REFUSED', status: r?.status ?? null }, 502); }
-        const run = await r.json().catch(() => null);
-        if (!run?.id || !PROVIDER_JOB.test(String(run.id))) return reply({ code: 'PROVIDER_REFUSED' }, 502);
-        const record = { ...claim, providerJobId: String(run.id), dispatchedAt: now().toISOString(), render: s.render, deadlineS: s.deadlineS };
+        if (r && !r.ok) await r.body?.cancel();
+        const run = r?.ok ? await r.json().catch(() => null) : null;
+        if (!run?.id || !PROVIDER_JOB.test(String(run.id))) {
+          const released = { ...claim, released: true, error: `PROVIDER_REFUSED_${r?.status ?? 'NETWORK'}` };
+          await store.putJson(GPU_LOCK, released);
+          await store.putJson(recordKey, released);
+          return reply({ code: 'PROVIDER_REFUSED', status: r?.status ?? null }, 502);
+        }
+        const record = { ...claim, providerJobId: String(run.id), dispatchedAt: now().toISOString(), render: s.render };
+        await store.putJson(GPU_LOCK, record);
         await store.putJson(recordKey, record);
         await audit('CONTENT_STUDIO_DISPATCH', `${asset}/${version}/${stage}`, { providerJobId: record.providerJobId, jobId });
         return reply({ providerJobId: record.providerJobId, jobId, keys, estimateUsd: usd(s.estimateS) }, 202);
@@ -238,7 +286,7 @@ export async function handler(req: Request, deps: Deps = defaultDeps): Promise<R
         if (!VERSION.test(version)) return reply({ code: 'BAD_VERSION' }, 400);
         if (!PROVIDER_JOB.test(providerJobId)) return reply({ code: 'BAD_JOB' }, 400);
         const stage = String(input.stage ?? 'PREVIEW_360') as Stage;
-        if (!(stage in STAGES)) return reply({ code: 'UNKNOWN_STAGE' }, 400);
+        if (!own(STAGES, stage)) return reply({ code: 'UNKNOWN_STAGE' }, 400);
         const record = await store.getJson(versionPrefix(asset, version) + `jobs/${stage}.json`);
         if (record?.providerJobId !== providerJobId) return reply({ code: 'NOT_FOUND' }, 404);
         const st = await providerStatus(providerJobId);
@@ -264,7 +312,13 @@ export async function handler(req: Request, deps: Deps = defaultDeps): Promise<R
       }
 
       case 'cancel': {
+        // Only the content job recorded for this version: never an arbitrary job on the shared endpoint.
+        if (!VERSION.test(version)) return reply({ code: 'BAD_VERSION' }, 400);
         if (!PROVIDER_JOB.test(providerJobId)) return reply({ code: 'BAD_JOB' }, 400);
+        const stage = String(input.stage ?? 'PREVIEW_360') as Stage;
+        if (!own(STAGES, stage)) return reply({ code: 'UNKNOWN_STAGE' }, 400);
+        const record = await store.getJson(versionPrefix(asset, version) + `jobs/${stage}.json`);
+        if (record?.providerJobId !== providerJobId) return reply({ code: 'NOT_FOUND' }, 404);
         const r = await runpod(`cancel/${encodeURIComponent(providerJobId)}`, { method: 'POST' }).catch(() => null);
         await r?.body?.cancel();
         await audit('CONTENT_STUDIO_CANCEL', providerJobId, {});
@@ -274,7 +328,7 @@ export async function handler(req: Request, deps: Deps = defaultDeps): Promise<R
       case 'links': {
         if (!VERSION.test(version)) return reply({ code: 'BAD_VERSION' }, 400);
         const stage = String(input.stage ?? 'PREVIEW_360') as Stage;
-        if (!(stage in STAGES)) return reply({ code: 'UNKNOWN_STAGE' }, 400);
+        if (!own(STAGES, stage)) return reply({ code: 'UNKNOWN_STAGE' }, 400);
         const keys = stageKeys(asset, version, stage);
         const manifest = await store.getJson(keys.manifest);
         if (!manifest) return reply({ code: 'NOT_FOUND' }, 404);
@@ -299,7 +353,8 @@ export async function handler(req: Request, deps: Deps = defaultDeps): Promise<R
         return reply({ code: 'UNKNOWN_ACTION' }, 400);
     }
   } catch (e) {
-    console.error('content-studio', String(input.action || ''), e instanceof Error ? e.message.slice(0, 120) : 'unknown');
+    // The class only: a network error's message can carry a signed URL.
+    console.error('content-studio', String(input.action || ''), e instanceof Error ? e.name : 'unknown');
     return reply({ code: 'REQUEST_FAILED' }, 500);
   }
 }

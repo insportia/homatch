@@ -15,6 +15,7 @@ import json
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -51,20 +52,26 @@ class Uploader:
 def run_blender(blender: str, params: Path, timeout: int, progress=None) -> None:
     proc = subprocess.Popen([blender, "-b", "--factory-startup", "--python", str(BUILD), "--", str(params)],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-    deadline = time.monotonic() + timeout
     tail: list[str] = []
+    # A watchdog, not a per-line check: a Blender that hangs silently prints nothing to check against.
+    fired = threading.Event()
+
+    def kill() -> None:
+        fired.set()
+        proc.kill()
+
+    watchdog = threading.Timer(timeout, kill)
+    watchdog.start()
     try:
         for line in proc.stdout:  # type: ignore[union-attr]
             tail = (tail + [line.rstrip()])[-40:]
             if progress and "Saved:" in line and "f_" in line:
                 progress("RENDERING")
-            if time.monotonic() > deadline:
-                proc.kill()
-                raise RuntimeError("blender: deadline")
-        proc.wait(timeout=max(1, deadline - time.monotonic()))
-    except subprocess.TimeoutExpired as e:
-        proc.kill()
-        raise RuntimeError("blender: deadline") from e
+        proc.wait()
+    finally:
+        watchdog.cancel()
+    if fired.is_set():
+        raise RuntimeError("blender: deadline")
     if proc.returncode != 0:
         last = next((t for t in reversed(tail) if "Error" in t or "error" in t), "exit " + str(proc.returncode))
         raise RuntimeError(f"blender: {last[:200]}")

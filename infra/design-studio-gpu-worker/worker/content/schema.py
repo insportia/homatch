@@ -91,7 +91,7 @@ def parse_content_job(raw: object) -> ContentJob:
     if not isinstance(render, dict) or set(render) != {"size", "samples", "frames", "fps"}:
         raise JobError("render: size, samples, frames and fps")
     size = render["size"]
-    if size not in SIZES or isinstance(size, bool):
+    if type(size) is not int or size not in SIZES:  # 720.0 == 720, but Blender wants an int
         raise JobError(f"render.size: one of {SIZES}")
     samples = _int(render, "samples", 4, 256)
     frames = _int(render, "frames", 8, 144)

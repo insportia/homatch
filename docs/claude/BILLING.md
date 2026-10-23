@@ -159,6 +159,45 @@ warns when a diff enters this domain.
   cannot cover (`executionBudget.ts` AiSpendGate; items it cannot afford stay
   UNVERIFIED). Unknown spend shuts the gate.
 
+- **Verify fixed price + 30-day validity** (migration `20261127090000`,
+  owner decisions 2026-10-23; supersedes the cost-based budget below for
+  every job opened after it). ONE customer price per Verify, V1 and V2
+  alike: `billable_products.VERIFY` (`billing_mode` FIXED,
+  `standard_retail_cents` 190 → 19 credits at `credits_per_usd`), **VAT
+  included**. Admin → Pricing Configuration edits it through
+  `admin_set_verify_price(p_cents, p_reason)` (admin only, row-locked,
+  whole credits only — refused, never rounded; `pricing_version` bump;
+  `admin_audit_log` VERIFY_PRICE_UPDATED with old/new/reason;
+  `admin_verify_price_history`). `verify_billing_open` snapshots the price
+  on the job (`price_mode/price_credits/price_cents/pricing_version`) and
+  refuses a start whose quoted price (`p_expected_credits`, sent by the page
+  from `verify_launch_quote`) differs: `PRICE_CHANGED`, nothing held.
+  Charged ONLY on delivery: `verify_billing_close('COMPLETE')` settles the
+  snapshot minus earlier charges; STOPPED / PARTIAL / SYSTEM_FAILED release
+  everything. `verify_budget_gate` always answers GO (no budget pauses, no
+  +25 extensions). The metered cost is still recorded on every session for
+  finance; a run that costs more than its price is absorbed and flagged
+  `needs_review`. Jobs whose billing row has no snapshot (opened before the
+  migration) close on the cost-based rules below. `finance_services.verify`
+  → `fixed_retail_v1`.
+  **Validity:** a report delivered (synthesis READY, status COMPLETE) with
+  `completed_at` ≥ `admin_settings.verify_report_validity.effective_at` (the
+  migration time) is registered in `retention_records` by trigger
+  `trg_verify_report_validity`: available_at = completed_at, expires_at =
+  `retention_expiry(completed_at)` (+30 days UTC), policy STANDARD_30D, never
+  moved. Access ends at that instant through the existing read-time gates
+  (RLS `research_jobs_retention_gate`, `retentionGuard` 410 REPORT_EXPIRED)
+  — no sweep has to run. **Migration policy:** reports delivered before the
+  cutover get no record and stay permanent; failed jobs are never
+  registered; nothing is deleted (access expiry only; billing, ledger and
+  audit rows untouched). The global `storage_retention` switch is NOT used:
+  it would also start expiring contract documents.
+  **Known metering difference (not changed here):** `verify_job_cost()` prices
+  the cost-based research SYNTHESIS stage with the policy map's
+  `ai_models.synthesis = gpt-5.6-luna` (20261026100000) while it runs on
+  gpt-5.6-terra — about $0.061 low per cost-based V1 job. Fixed-price jobs do
+  not charge from that meter.
+
 - **Verify credit budget** (migration `20261026100000`, OFF until
   `admin_settings.verify_billing_enabled` = true). A Verify reserves its
   authorised budget (`billable_products.VERIFY.config.verify_budget.max_budget_credits`,

@@ -5,6 +5,23 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## Verify fixed price + 30-day validity + Snake/ads fixes (branch claude/verify-fixed-price-validity, 2026-10-23) — PR OPEN, NOT DEPLOYED
+
+- Owner decisions 2026-10-23: one admin-editable Verify price (initial $1.90 = 19 credits, VAT included,
+  V1 = V2), charged ONLY when the report is READY (stop/fail free; no budget pauses or +25); each job keeps
+  its start price; reports completed after the migration are accessible 30 days from `completed_at`, then
+  not (no deletion); earlier reports stay permanent. Details: `docs/claude/BILLING.md` (Verify fixed price).
+- Migration `20261127090000_verify_fixed_price_validity.sql` (must be applied BEFORE the edge deploy;
+  migration gate). Proven on PGlite: tests/sql/verify_fixed_price.sql F0–F15 + in-flight cost-based job,
+  migration applied twice, and the cost-based suites re-run on the rewritten functions in VARIABLE mode.
+  The 30-way concurrency block in tests/sql/run-verify-billing.sh needs a real Postgres (not run locally).
+- Also: SafeSnakeGame (prod 12272abd: opening Snake took the app to the global error page; the game is now
+  error-isolated, chunk retried once); developer-ads items pgSafe'd (a lone surrogate made every write of
+  12272abd return 400, finish re-ran each tick and inserted 51 cost rows — owner-approved SQL kept 1);
+  finish() stops on a refused COMPLETE write.
+- Known, not changed: verify_job_cost prices the cost-based SYNTHESIS stage at luna (policy map) while it
+  runs on terra (~$0.061 low per cost-based V1 job).
+
 ## Finance V2.1 + production hardening (PR #286 merged 28ab1db1; #262, #264 merged 2026-10-22) — MIGRATION APPLIED, EDGE DEPLOY PENDING PROOF
 
 - Migration `20261123090000_finance_v2_1_cost_coverage` applied 2026-10-23 via MCP (ledger

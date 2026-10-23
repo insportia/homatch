@@ -15,6 +15,7 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   'emp_plan_pro',
   'emp_plan_scale',
   'admin_emx_net',
+  'fbcrm_source_platform', // tr: "Platform" is the Turkish word
   // Find Buyers 2.0 outreach / logged-contact channels: messenger brand names, the same in Latin-script locales.
   'crm_channel_WHATSAPP', 'crm_channel_TELEGRAM', 'lo_channel_WHATSAPP', 'lo_channel_TELEGRAM',
   // Find Property paid campaign: social-network brand names, the same in Latin-script locales.

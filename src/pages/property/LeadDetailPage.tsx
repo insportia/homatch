@@ -14,6 +14,7 @@
 // owner's, a typed id) says so; a failed read says so and offers a retry.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { LeadCrmCard } from '@/components/findBuyers/LeadCrmCard';
 import { Link, useParams } from 'react-router-dom';
 import {
   AlertTriangle, CalendarClock, Check, Copy, ExternalLink, FileText, Flame, Languages, Loader2, MessageSquareText, RefreshCw,
@@ -308,6 +309,10 @@ function LeadContent() {
               ) : <p className={cn('mt-2 text-sm', INK_SOFT)}>{t('fbx_lead_no_evidence')}</p>}
               <p className={cn('mt-3 text-2xs', INK_SOFT)}>{t('fbx_lead_contact_note')}</p>
             </section>
+
+            {/* ── into the CRM, as a prospect: source kept, no address, no consent ── */}
+            <LeadCrmCard className={CARD} leadId={lead.id} matchCategory={lead.match_category ?? null}
+              saveable={Boolean(placement)} />
           </div>
         )}
       </CustomerSurface>

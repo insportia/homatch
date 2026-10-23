@@ -23,7 +23,7 @@ import { rsTaxpayerLegalStatus, withoutRsRaw } from '../../../src/verify/rsTaxpa
 import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
 import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
-import { engineForNewJob, engineOf, VERIFY_ENGINE_SETTING_KEY } from '../../../src/verify/engine.ts';
+import { engineForNewJob, engineOf, parseEngineSetting, VERIFY_ENGINE_SETTING_KEY } from '../../../src/verify/engine.ts';
 import { codeSynthesis } from '../../../src/verify/v2/codeSynthesis.ts';
 // Developer Advertising Intelligence: the shared memo23 Apify client (the one
 // seam Verify shares; the file itself is unchanged) with Verify's OWN
@@ -8034,7 +8034,15 @@ Deno.serve(async (req) => {
     /* VERIFY ENGINE (V1 original / V2 code-first), read ONCE here and stamped on
        the job: every later step reads the stamp, so a running job never changes
        engine (src/verify/engine.ts, docs/claude/VERIFY_V2_PLAN.md §1). */
-    const engine = engineForNewJob(await adminSettingJson(sb, VERIFY_ENGINE_SETTING_KEY), now());
+    const engineSetting = await adminSettingJson(sb, VERIFY_ENGINE_SETTING_KEY);
+    // An admin's own verification runs on the admin preview engine (V2 live
+    // testing); the lookup is made only while a preview is switched on.
+    let isAdmin = false;
+    if (user && !anonSession && parseEngineSetting(engineSetting).adminPreview === 'V2') {
+      const { data: me } = await sb.from('users').select('is_admin').eq('auth_id', user.id).maybeSingle();
+      isAdmin = me?.is_admin === true;
+    }
+    const engine = engineForNewJob(engineSetting, now(), undefined, { isAdmin });
     if (engine.requested) console.log(JSON.stringify({ scope: 'verify_engine', event: 'requested_unavailable', requested: engine.requested, stamped: engine.version }));
     const row = { ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang, _engine: engine, ...(reusePlan ? { _reusePlan: reusePlan } : {}) }, progress: { phase: 'queued', percent: 5 }, updated_at: now() };
     let { data: j, error } = await sb.from('research_jobs').insert({ ...row, ...(clientRequestId ? { client_request_id: clientRequestId } : {}) }).select('*').single();

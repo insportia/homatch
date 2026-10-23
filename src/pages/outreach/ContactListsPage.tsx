@@ -20,6 +20,19 @@ import { ContactList } from '@/types/types';
 import { toast } from 'sonner';
 import { parseCsv } from '@/lib/csv';
 
+type ListWithSource = ContactList & { source_kind?: string | null };
+/** The source badge for a list that records one (purchased leads, imports, Find Buyers, mixed). */
+function listSourceKey(list: ContactList) {
+  switch ((list as ListWithSource).source_kind) {
+    case 'CURATED_LEAD': return 'mwe_source_curated' as const;
+    case 'INTERNAL_MATCH': return 'mwe_source_internal' as const;
+    case 'FIND_BUYERS': return 'mwe_source_find_buyers' as const;
+    case 'IMPORT': case 'MANUAL': return 'mwe_source_uploaded' as const;
+    case 'MIXED': return 'mwe_source_mixed' as const;
+    default: return null;
+  }
+}
+
 const IMPORT_ROW_CAP = 5000;
 
 interface ImportPreview {
@@ -49,13 +62,18 @@ export default function ContactListsPage() {
     if (!homatchUser) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('outreach_contact_lists')
-        .select('id,name,description,import_status,total_rows,valid_rows,invalid_rows,duplicate_rows,missing_email,missing_phone,source_format,created_at,updated_at')
+      const columns = 'id,name,description,import_status,total_rows,valid_rows,invalid_rows,duplicate_rows,missing_email,missing_phone,source_format,created_at,updated_at';
+      const query = (cols: string) => supabase.from('outreach_contact_lists')
+        .select(cols)
         .eq('owner_id', homatchUser.id)
         .order('created_at', { ascending: false })
         .limit(50);
+      /* source_kind (where the list came from) is newer than this page: a database that does
+         not have the column yet still lists everything, just without the source badge. */
+      let { data, error } = await query(`${columns},source_kind`);
+      if (error) ({ data, error } = await query(columns));
       if (error) throw error;
-      setLists(Array.isArray(data) ? data as ContactList[] : []);
+      setLists(Array.isArray(data) ? data as unknown as ContactList[] : []);
     } catch (err) {
       toast.error(t('contacts_load_error'));
       console.error(err);
@@ -290,6 +308,9 @@ export default function ContactListsPage() {
                             <span className="font-medium text-sm truncate">{list.name}</span>
                             <StatusBadge status={list.import_status} />
                             {list.source_format && <Badge variant="outline" className="text-[13px] px-1.5">{list.source_format}</Badge>}
+                            {listSourceKey(list) ? (
+                              <Badge variant="outline" className="text-[13px] px-1.5" data-list-source={(list as ListWithSource).source_kind}>{t(listSourceKey(list)!)}</Badge>
+                            ) : null}
                           </div>
                           {list.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{list.description}</p>}
                           {(list.total_rows ?? 0) > 0 && (

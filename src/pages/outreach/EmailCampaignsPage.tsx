@@ -26,11 +26,22 @@
  * are four different facts and they arrive at four different times. They are
  * shown apart, and a campaign with both successes and failures says so
  * instead of averaging them into a number that reads like success.
+ *
+ * PURCHASED LEADS ARRIVE HERE, NOT IN A SECOND EMAIL TOOL
+ *
+ * Unlocking leads saves them into this account's contact lists and lands on
+ * /outreach/email?new=1&list=<id>[&property=<id>]. The create dialog opens on
+ * that list, shows who it can really reach (outreach_list_audience: an
+ * address, consent, no opt-out — the rule outreach-send itself applies), and
+ * can split a multilingual list into one DRAFT per language through the same
+ * outreach-campaign-preview path a single campaign uses. A contact with no
+ * recorded language goes where the owner chose, or nowhere — never to a
+ * language guessed from a country. Nothing on this path sends anything.
  */
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Mail, Plus, Eye, Loader2, BarChart2, Rocket, Clock, Pencil, XCircle, Send, CheckCircle2, AlertTriangle, AlertCircle, Activity, MessageSquare, Inbox } from 'lucide-react';
+import { Mail, Plus, Eye, Loader2, BarChart2, Rocket, Clock, Pencil, XCircle, Send, CheckCircle2, AlertTriangle, AlertCircle, Activity, MessageSquare, Inbox, Sparkles, Languages, Users } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CommsWorkspace, Section } from '@/components/communications/CommsWorkspace';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -53,6 +64,13 @@ import { cn } from '@/lib/utils';
 import { renderCampaignEmail } from '@/emailMarketing/campaignTemplate';
 import { EmailMarketingError, sendCampaignTest } from '@/services/emailMarketing';
 import type { CommConversation, CommSend } from '@/types/communications';
+import { type ListAudience, getListAudience, splitListByLanguage } from '@/services/matchingWorkspace';
+import { type StudioProperty, emailStudio } from '@/services/emailStudio';
+import type { TemplateId } from '@/emailStudio/templates';
+import {
+  CAMPAIGN_LANGUAGES, LEAVE_OUT, UNKNOWN_LANGUAGE, audienceLanguages, copyToTextBody, fallbackForSplit,
+  isCampaignLanguage, parseCampaignLaunch, planLanguageDrafts, shouldOfferLanguageSplit, withoutLaunchParams,
+} from '@/emailMarketing/leadCampaigns';
 
 /** The tabs, and which statuses each one owns. Every status has a home. */
 const TABS = [
@@ -68,7 +86,7 @@ const TABS = [
 const LIST_COLUMNS =
   'id,name,status,campaign_type,audience_count,sent_count,delivered_count,bounce_count,' +
   'complaint_count,failed_count,open_count,cost_estimate_usd,created_at,language,subject,' +
-  'contact_list_id,scheduled_at,timezone,sender_name,sender_email,reply_to,send_eligibility,last_send_error';
+  'contact_list_id,scheduled_at,timezone,sender_name,sender_email,reply_to,send_eligibility,last_send_error,property_id';
 
 interface CampaignForm {
   name: string;
@@ -79,12 +97,23 @@ interface CampaignForm {
   sender_name: string;
   sender_email: string;
   reply_to: string;
+  /** The listing the campaign is about — lets Email Studio's AI draft the copy. */
+  property_id: string;
 }
 
 const EMPTY_FORM: CampaignForm = {
   name: '', subject: '', text_body: '', language: 'en',
-  contact_list_id: '', sender_name: '', sender_email: '', reply_to: '',
+  contact_list_id: '', sender_name: '', sender_email: '', reply_to: '', property_id: '',
 };
+
+/** Email Studio's general template: the AI drafts from the listing's own facts. */
+const AI_TEMPLATE: TemplateId = 'PROPERTY_INTRODUCTION';
+const NO_PROPERTY = '__none';
+
+/** A per-language draft this dialog just created (nothing sent). */
+interface LanguageDraft { id: string; language: string; name: string; listId: string; total: number; eligible: number }
+
+type ContactListRow = ContactList & { total_rows?: number };
 
 /** The browser's own zone. The one the person picking a time is thinking in. */
 function localZone(): string {
@@ -144,7 +173,19 @@ export default function EmailCampaignsPage() {
 
   const [previewCampaign, setPreviewCampaign] = useState<OutreachCampaign | null>(null);
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
-  const [contactLists, setContactLists] = useState<ContactList[]>([]);
+  const [contactLists, setContactLists] = useState<ContactListRow[]>([]);
+  const [listsLoaded, setListsLoaded] = useState(false);
+  /* Who the selected list can really reach, by the rule outreach-send applies. */
+  const [audience, setAudience] = useState<ListAudience | null>(null);
+  const [audienceState, setAudienceState] = useState<'idle' | 'loading' | 'error'>('idle');
+  /* One campaign per language: on/off, and where contacts with no language go. */
+  const [splitOn, setSplitOn] = useState(false);
+  const [fallback, setFallback] = useState('');
+  const [langDrafts, setLangDrafts] = useState<LanguageDraft[] | null>(null);
+  /* The owner's listings, for AI copy. Loaded when the dialog first needs them. */
+  const [properties, setProperties] = useState<StudioProperty[] | null>(null);
+  const [aiBusy, setAiBusy] = useState<string | null>(null);
+  const [aiPrefilled, setAiPrefilled] = useState(false);
   const [launchingId, setLaunchingId] = useState<string | null>(null);
   /*
    * Replies live in comm_conversations, not in a second email store: an
@@ -158,6 +199,7 @@ export default function EmailCampaignsPage() {
 
   const zone = useMemo(localZone, []);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const load = useCallback(async () => {
     if (!homatchUser) return;
@@ -181,10 +223,11 @@ export default function EmailCampaignsPage() {
   const loadContactLists = useCallback(async () => {
     if (!homatchUser) return;
     const { data } = await supabase.from('outreach_contact_lists')
-      .select('id,name,valid_rows')
+      .select('id,name,valid_rows,total_rows')
       .eq('owner_id', homatchUser.id)
       .order('created_at', { ascending: false });
-    setContactLists(Array.isArray(data) ? data as ContactList[] : []);
+    setContactLists(Array.isArray(data) ? data as ContactListRow[] : []);
+    setListsLoaded(true);
   }, [homatchUser]);
 
   const loadActivity = useCallback(async () => {
@@ -208,6 +251,37 @@ export default function EmailCampaignsPage() {
   useEffect(() => {
     load(); loadContactLists(); loadReplies(); loadActivity();
   }, [load, loadContactLists, loadReplies, loadActivity]);
+
+  /*
+   * /outreach/email?new=1&list=<id>&property=<id> — where an unlock lands. Consumed once,
+   * after the lists are in, then removed from the URL (replace) so a refresh does not
+   * reopen the dialog.
+   */
+  useEffect(() => {
+    const launch = parseCampaignLaunch(searchParams);
+    if (!launch || !listsLoaded) return;
+    const known = launch.listId && contactLists.some((l) => l.id === launch.listId) ? launch.listId : '';
+    setForm({ ...EMPTY_FORM, contact_list_id: known, property_id: launch.propertyId ?? '' });
+    setLangDrafts(null); setSplitOn(false); setFallback('');
+    setCreateOpen(true);
+    setSearchParams(withoutLaunchParams(searchParams), { replace: true });
+  }, [searchParams, listsLoaded, contactLists, setSearchParams]);
+
+  useEffect(() => {
+    const listId = createOpen ? form.contact_list_id : '';
+    if (!listId) { setAudience(null); setAudienceState('idle'); return; }
+    let live = true;
+    setAudienceState('loading');
+    getListAudience(listId)
+      .then((a) => { if (live) { setAudience(a); setAudienceState('idle'); } })
+      .catch(() => { if (live) { setAudience(null); setAudienceState('error'); } });
+    return () => { live = false; };
+  }, [createOpen, form.contact_list_id]);
+
+  useEffect(() => {
+    if (!(createOpen || editing) || properties !== null) return;
+    emailStudio.myProperties().then((p) => setProperties(Array.isArray(p) ? p : [])).catch(() => setProperties([]));
+  }, [createOpen, editing, properties]);
 
   // Live counters: any change to this user's outreach_campaigns rows (from
   // this tab's own Launch click, from a delivery webhook, or from the
@@ -308,22 +382,56 @@ export default function EmailCampaignsPage() {
     }
   };
 
+  /** The one create path: a DRAFT through outreach-campaign-preview. Returns its id. */
+  const createDraft = async (f: CampaignForm): Promise<string | null> => {
+    const { data, error } = await supabase.functions.invoke('outreach-campaign-preview', {
+      body: {
+        campaign_type: 'EMAIL', name: f.name, subject: f.subject, text_body: f.text_body,
+        language: f.language, contact_list_id: f.contact_list_id || undefined,
+        property_id: f.property_id || undefined,
+        sender_name: f.sender_name || undefined,
+        sender_email: f.sender_email || undefined,
+        reply_to: f.reply_to || undefined,
+      },
+    });
+    if (error) { const msg = await error?.context?.text(); throw new Error(msg ?? error.message); }
+    return (data as { campaign?: { id?: string } } | null)?.campaign?.id ?? null;
+  };
+
+  const languages = useMemo(() => audienceLanguages(audience?.byLanguage), [audience]);
+  const hasUnknown = languages.some((x) => x.language === UNKNOWN_LANGUAGE);
+  const offerSplit = !!form.contact_list_id && shouldOfferLanguageSplit(languages);
+  const splitActive = offerSplit && splitOn;
+  /* With people of unknown language in the list, the owner must say where they go. */
+  const splitReady = !splitActive || !hasUnknown || fallback !== '';
+
+  const closeCreate = (open: boolean) => {
+    setCreateOpen(open);
+    if (!open) { setLangDrafts(null); setSplitOn(false); setFallback(''); }
+  };
+
   const handleCreate = async () => {
-    if (!form.name.trim()) return;
+    if (!form.name.trim() || !splitReady) return;
     setCreating(true);
     try {
-      const { error } = await supabase.functions.invoke('outreach-campaign-preview', {
-        body: {
-          campaign_type: 'EMAIL', name: form.name, subject: form.subject, text_body: form.text_body,
-          language: form.language, contact_list_id: form.contact_list_id || undefined,
-          sender_name: form.sender_name || undefined,
-          sender_email: form.sender_email || undefined,
-          reply_to: form.reply_to || undefined,
-        },
-      });
-      if (error) { const msg = await error?.context?.text(); throw new Error(msg ?? error.message); }
+      if (splitActive) {
+        /* One recipients list per language (server-side), then one DRAFT per list through
+           the same create path. The "unknown" list, when the owner left them out, gets none. */
+        const lists = await splitListByLanguage(form.contact_list_id, fallbackForSplit(fallback));
+        const created: LanguageDraft[] = [];
+        for (const plan of planLanguageDrafts(form.name, lists)) {
+          const id = await createDraft({ ...form, name: plan.name, language: plan.language, contact_list_id: plan.listId });
+          if (id) created.push({ id, language: plan.language, name: plan.name, listId: plan.listId, total: plan.total, eligible: plan.eligible });
+        }
+        toast.success(t('mwe_split_done', { n: created.length }));
+        setLangDrafts(created);
+        loadContactLists();
+        load();
+        return;
+      }
+      await createDraft(form);
       toast.success(t('email_campaign_created'));
-      setCreateOpen(false);
+      closeCreate(false);
       setForm(EMPTY_FORM);
       load();
     } catch (err) {
@@ -334,13 +442,53 @@ export default function EmailCampaignsPage() {
     }
   };
 
+  /** Email Studio's generator: copy for review, never saved or sent by itself. */
+  const generateCopy = async (propertyId: string, language: string, key: string) => {
+    setAiBusy(key);
+    try {
+      const r = await emailStudio.generate({ propertyId, templateId: AI_TEMPLATE, language: language.toLowerCase() });
+      if (!r.ok || !r.copy) {
+        toast.error(t(r.error === 'PROPERTY_NOT_FOUND' ? 'mwe_ai_no_property' : 'mwe_ai_failed'));
+        return null;
+      }
+      toast(t(r.source === 'AI' ? 'mwe_ai_used' : 'mwe_ai_fallback'));
+      return { subject: r.copy.subject, text_body: copyToTextBody(r.copy) };
+    } catch {
+      toast.error(t('mwe_ai_failed'));
+      return null;
+    } finally {
+      setAiBusy(null);
+    }
+  };
+
+  /** A language draft from the step above → the existing edit dialog, optionally AI-prefilled. */
+  const reviewDraft = async (d: LanguageDraft, withAi: boolean) => {
+    const base: CampaignForm = { ...form, name: d.name, language: d.language, contact_list_id: d.listId };
+    const known = campaigns.find((c) => c.id === d.id);
+    let next = known ? formOf(known) : base;
+    if (withAi && next.property_id) {
+      const copy = await generateCopy(next.property_id, d.language, d.id);
+      if (!copy) return;
+      next = { ...next, ...copy };
+    }
+    setEditing(known ?? ({ id: d.id, name: d.name, status: 'DRAFT', language: d.language, contact_list_id: d.listId } as unknown as OutreachCampaign));
+    setEditForm(next);
+    setAiPrefilled(withAi);
+    closeCreate(false);
+    setForm(EMPTY_FORM);
+  };
+
+  const formOf = (c: OutreachCampaign): CampaignForm => ({
+    name: c.name ?? '', subject: c.subject ?? '', text_body: c.text_body ?? '',
+    language: c.language ?? 'en', contact_list_id: c.contact_list_id ?? '',
+    sender_name: c.sender_name ?? '', sender_email: c.sender_email ?? '', reply_to: c.reply_to ?? '',
+    property_id: c.property_id ?? '',
+  });
+
   const openEdit = (c: OutreachCampaign) => {
     setEditing(c);
-    setEditForm({
-      name: c.name ?? '', subject: c.subject ?? '', text_body: c.text_body ?? '',
-      language: c.language ?? 'en', contact_list_id: c.contact_list_id ?? '',
-      sender_name: c.sender_name ?? '', sender_email: c.sender_email ?? '', reply_to: c.reply_to ?? '',
-    });
+    setEditForm(formOf(c));
+    setAiPrefilled(false);
   };
 
   const handleSaveEdit = async () => {
@@ -454,12 +602,69 @@ export default function EmailCampaignsPage() {
     }
   };
 
-  const fields = (f: CampaignForm, set: (next: CampaignForm) => void) => (
+  const languageOptions = (current: string) =>
+    [...new Set<string>([...CAMPAIGN_LANGUAGES, ...(current ? [current] : [])])];
+
+  const fields = (f: CampaignForm, set: (next: CampaignForm) => void, mode: 'create' | 'edit') => {
+    const perLanguage = mode === 'create' && splitActive;
+    const canGenerate = !perLanguage && !!f.property_id && isCampaignLanguage(f.language);
+    return (
     <div className="space-y-4 py-2">
       <div className="space-y-1.5">
         <Label>{t('email_campaign_name')}</Label>
         <Input value={f.name} onChange={(e) => set({ ...f, name: e.target.value })} placeholder={t('email_campaign_name_placeholder')} />
       </div>
+      {mode === 'create' && (properties?.length || f.property_id) ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="email-property">{t('mwe_property_label')}</Label>
+          <Select value={f.property_id || NO_PROPERTY} onValueChange={(v) => set({ ...f, property_id: v === NO_PROPERTY ? '' : v })}>
+            <SelectTrigger id="email-property"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_PROPERTY}>{t('mwe_property_none')}</SelectItem>
+              {f.property_id && !properties?.some((p) => p.propertyId === f.property_id) ? (
+                <SelectItem value={f.property_id}>{t('mwe_property_linked')}</SelectItem>
+              ) : null}
+              {(properties ?? []).map((p) => (
+                <SelectItem key={p.propertyId} value={p.propertyId}>
+                  {[p.homatchId ? `#${p.homatchId}` : null, p.title, p.city].filter(Boolean).join(' · ')}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
+      {!perLanguage ? (
+        <div className="space-y-1.5">
+          <Label htmlFor={`email-language-${mode}`}>{t('comm_field_language')}</Label>
+          <Select value={f.language} onValueChange={(v) => set({ ...f, language: v })}>
+            <SelectTrigger id={`email-language-${mode}`} className="w-full sm:w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {languageOptions(f.language).map((l) => <SelectItem key={l} value={l}>{l.toUpperCase()}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
+      {canGenerate ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button" variant="outline" size="sm" className="gap-1.5"
+            disabled={aiBusy !== null}
+            onClick={async () => {
+              const copy = await generateCopy(f.property_id, f.language, `form-${mode}`);
+              if (copy) { set({ ...f, ...copy }); setAiPrefilled(true); }
+            }}
+          >
+            {aiBusy === `form-${mode}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {t('mwe_ai_generate')}
+          </Button>
+          <span className="text-[13px] text-muted-foreground">{t('mwe_ai_note')}</span>
+        </div>
+      ) : null}
+      {aiPrefilled && mode === 'edit' ? (
+        <p className="rounded-lg border border-[hsl(38_92%_50%)]/30 bg-[hsl(38_92%_50%)]/[0.06] px-3 py-2 text-[13px] leading-snug" role="note">
+          {t('mwe_ai_review')}
+        </p>
+      ) : null}
       <div className="space-y-1.5">
         <Label>{t('email_subject')}</Label>
         <Input value={f.subject} onChange={(e) => set({ ...f, subject: e.target.value })} placeholder={t('email_subject_placeholder')} />
@@ -488,18 +693,88 @@ export default function EmailCampaignsPage() {
         {contactLists.length === 0 ? (
           <p className="text-xs text-muted-foreground">{t('email_no_lists')}</p>
         ) : (
-          <Select value={f.contact_list_id} onValueChange={(v) => set({ ...f, contact_list_id: v })}>
-            <SelectTrigger><SelectValue placeholder={t('email_contact_list_placeholder')} /></SelectTrigger>
+          <Select value={f.contact_list_id} onValueChange={(v) => { set({ ...f, contact_list_id: v }); if (mode === 'create') { setSplitOn(false); setFallback(''); } }}>
+            <SelectTrigger data-testid={`email-list-${mode}`}><SelectValue placeholder={t('email_contact_list_placeholder')} /></SelectTrigger>
             <SelectContent>
+              {/* The list's size, not a reachable count: who is reachable is shown below,
+                  from the same rule the sender applies. */}
               {contactLists.map((l) => (
-                <SelectItem key={l.id} value={l.id}>{l.name} ({l.valid_rows ?? 0})</SelectItem>
+                <SelectItem key={l.id} value={l.id}>{l.name} · {t('mwe_list_contacts', { n: l.total_rows ?? l.valid_rows ?? 0 })}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         )}
+        {mode === 'create' && f.contact_list_id ? audiencePanel(f.contact_list_id) : null}
       </div>
     </div>
-  );
+    );
+  };
+
+  /* Who the chosen list reaches. "Eligible" is outreach-send's own rule, not an estimate. */
+  const audiencePanel = (listId: string) => {
+    if (audienceState === 'loading') return <Skeleton className="h-16 w-full" />;
+    if (audienceState === 'error' || !audience) {
+      return <p className="text-[13px] text-muted-foreground">{t('mwe_aud_unavailable')}</p>;
+    }
+    const a = audience;
+    return (
+      <div className="space-y-2.5 rounded-xl border bg-muted/20 p-3" data-testid="email-audience">
+        <dl className="grid grid-cols-3 gap-2 text-center">
+          <div><dt className="text-[13px] text-muted-foreground">{t('mwe_aud_total')}</dt><dd className="text-base font-semibold tabular-nums" data-testid="aud-total">{a.total}</dd></div>
+          <div><dt className="text-[13px] text-muted-foreground">{t('mwe_aud_with_email')}</dt><dd className="text-base font-semibold tabular-nums">{a.withEmail}</dd></div>
+          <div><dt className="text-[13px] text-muted-foreground">{t('mwe_aud_eligible')}</dt><dd className="text-base font-semibold tabular-nums text-emerald-800" data-testid="aud-eligible">{a.eligible}</dd></div>
+        </dl>
+        {languages.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Languages className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+            {languages.map((x) => (
+              <Badge key={x.language} variant="outline" className="text-[13px] font-normal" data-lang={x.language}>
+                {x.language === UNKNOWN_LANGUAGE ? t('mwe_lang_unknown') : x.language.toUpperCase()}
+                <span className="ms-1 tabular-nums text-muted-foreground">{t('mwe_aud_lang_count', { total: x.total, eligible: x.eligible })}</span>
+              </Badge>
+            ))}
+          </div>
+        ) : null}
+        {a.eligible < a.total ? (
+          <div className={cn('rounded-lg px-2.5 py-2 text-[13px] leading-snug', a.eligible === 0 ? 'bg-amber-500/10 text-amber-950' : 'text-muted-foreground')}>
+            <p>{t(a.eligible === 0 ? 'mwe_aud_none_eligible' : 'mwe_aud_not_all', { n: a.total - a.eligible })}</p>
+            <Link to={`/outreach/email/contacts?list=${encodeURIComponent(listId)}`} className="mt-1 inline-flex items-center gap-1 font-medium underline underline-offset-2">
+              <Users className="h-3.5 w-3.5" aria-hidden="true" />{t('mwe_aud_review_contacts')}
+            </Link>
+          </div>
+        ) : null}
+        {offerSplit ? (
+          <div className="space-y-2 border-t pt-2.5">
+            <label className="flex items-start gap-2 text-[13px]">
+              <input
+                type="checkbox" className="mt-0.5 h-4 w-4 accent-[hsl(38_92%_50%)]"
+                checked={splitOn} onChange={(e) => setSplitOn(e.target.checked)} data-testid="email-split"
+              />
+              <span>
+                <span className="font-medium">{t('mwe_split_label')}</span>
+                <span className="block text-muted-foreground">{t('mwe_split_body')}</span>
+              </span>
+            </label>
+            {splitOn && hasUnknown ? (
+              <div className="space-y-1 ps-6">
+                <Label htmlFor="email-split-fallback" className="text-[13px]">{t('mwe_split_fallback_label')}</Label>
+                <Select value={fallback} onValueChange={setFallback}>
+                  <SelectTrigger id="email-split-fallback" className="w-full sm:w-64" data-testid="email-split-fallback">
+                    <SelectValue placeholder={t('mwe_split_fallback_placeholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={LEAVE_OUT}>{t('mwe_split_leave_out')}</SelectItem>
+                    {CAMPAIGN_LANGUAGES.map((l) => <SelectItem key={l} value={l}>{l.toUpperCase()}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <p className="text-[13px] text-muted-foreground">{t('mwe_split_never_guess')}</p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
 
   const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`);
   /* Email has its own go-live switch: the email kill-switch state wins over the global one. */
@@ -515,7 +790,7 @@ export default function EmailCampaignsPage() {
           title={t('email_campaigns_title')}
           subtitle={t('email_campaigns_subtitle')}
           secondary={{ label: t('emx_nav_inbox'), onClick: () => navigate('/outreach/email/inbox'), icon: Inbox }}
-          primary={{ label: t('email_new_campaign'), onClick: () => setCreateOpen(true), icon: Plus }}
+          primary={{ label: t('email_new_campaign'), onClick: () => closeCreate(true), icon: Plus }}
         />
       )}
     >
@@ -586,7 +861,7 @@ export default function EmailCampaignsPage() {
               icon={Mail}
               titleKey="email_empty_title"
               bodyKey="email_empty_desc"
-              action={{ labelKey: 'email_new_campaign', onClick: () => setCreateOpen(true) }}
+              action={{ labelKey: 'email_new_campaign', onClick: () => closeCreate(true) }}
               secondary={{ labelKey: 'comms_nav_contacts', onClick: () => navigate('/outreach/email/contacts') }}
             />
           ) : (
@@ -643,7 +918,7 @@ export default function EmailCampaignsPage() {
                           )}
 
                           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
-                            <span className="flex items-center gap-1"><BarChart2 className="h-3 w-3" />{c.audience_count ?? 0} {t('email_audience')}</span>
+                            <span className="flex items-center gap-1" title={t('mwe_card_audience_hint')}><BarChart2 className="h-3 w-3" />{t('mwe_card_audience', { n: c.audience_count ?? 0 })}</span>
                             {sent === 0 && failed === 0 ? (
                               <span>{t('email_never_sent')}</span>
                             ) : (
@@ -802,15 +1077,55 @@ export default function EmailCampaignsPage() {
           </>)}
         </div>
 
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <Dialog open={createOpen} onOpenChange={closeCreate}>
           <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg max-h-[85vh] overflow-y-auto">
-            <DialogHeader><DialogTitle>{t('email_new_campaign')}</DialogTitle></DialogHeader>
-            {fields(form, setForm)}
+            <DialogHeader><DialogTitle>{t(langDrafts ? 'mwe_drafts_title' : 'email_new_campaign')}</DialogTitle></DialogHeader>
+            {langDrafts ? (
+              /* The drafts exist; nothing has been sent. Each language is reviewed on its own. */
+              <div className="space-y-3 py-2" data-testid="email-language-drafts">
+                <p className="text-[13px] leading-snug text-muted-foreground">{t('mwe_drafts_body')}</p>
+                {langDrafts.length === 0 ? (
+                  <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">{t('mwe_drafts_none')}</p>
+                ) : (
+                  <ul className="divide-y rounded-xl border">
+                    {langDrafts.map((d) => {
+                      const propertyId = campaigns.find((c) => c.id === d.id)?.property_id ?? form.property_id;
+                      const ai = !!propertyId && isCampaignLanguage(d.language);
+                      return (
+                        <li key={d.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5" data-lang={d.language}>
+                          <Badge variant="outline" className="uppercase">{d.language}</Badge>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{d.name}</p>
+                            <p className="text-[13px] text-muted-foreground">{t('mwe_drafts_reach', { eligible: d.eligible, total: d.total })}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {ai ? (
+                              <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" disabled={aiBusy !== null} onClick={() => void reviewDraft(d, true)}>
+                                {aiBusy === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}{t('mwe_ai_generate')}
+                              </Button>
+                            ) : null}
+                            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => void reviewDraft(d, false)}>
+                              <Pencil className="h-3.5 w-3.5" />{t('mwe_drafts_review')}
+                            </Button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            ) : fields(form, setForm, 'create')}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateOpen(false)}>{t('general_cancel')}</Button>
-              <Button onClick={handleCreate} disabled={creating || !form.name.trim()}>
-                {creating && <Loader2 className="h-4 w-4 me-2 animate-spin" />}{t('general_create')}
-              </Button>
+              {langDrafts ? (
+                <Button onClick={() => { closeCreate(false); setForm(EMPTY_FORM); }}>{t('general_close')}</Button>
+              ) : (
+                <>
+                  <Button variant="outline" onClick={() => closeCreate(false)}>{t('general_cancel')}</Button>
+                  <Button onClick={handleCreate} disabled={creating || !form.name.trim() || !splitReady} data-testid="email-create">
+                    {creating && <Loader2 className="h-4 w-4 me-2 animate-spin" />}{t(splitActive ? 'mwe_split_create' : 'general_create')}
+                  </Button>
+                </>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -818,7 +1133,7 @@ export default function EmailCampaignsPage() {
         <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
           <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader><DialogTitle>{t('email_edit_title')}</DialogTitle></DialogHeader>
-            {fields(editForm, setEditForm)}
+            {fields(editForm, setEditForm, 'edit')}
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditing(null)}>{t('general_cancel')}</Button>
               <Button onClick={handleSaveEdit} disabled={saving || !editForm.name.trim()}>

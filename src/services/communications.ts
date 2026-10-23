@@ -26,6 +26,7 @@ import type {
 } from '@/types/communications';
 import { customerFacingComplianceLabel } from '@/lib/comm/vocabulary';
 import { parsePhone } from '@/lib/comm/phone';
+import { type ContactSourceFilter, UNKNOWN_LANGUAGE, sourceKindQuery } from '@/emailMarketing/leadCampaigns';
 
 export type { AnalyticsFilter, AnalyticsResult } from '@/types/communications';
 
@@ -933,6 +934,8 @@ export async function createContact(
   const { data, error } = await supabase.from('outreach_contacts').insert({
     owner_id: uid,
     list_id: listId,
+    /* Typed in by the user: recorded so it is never mistaken for a purchased lead. */
+    source_kind: 'MANUAL',
     phone: parsed.e164,
     phone_valid: parsed.valid,
     full_name: input.full_name?.trim() || null,
@@ -1025,6 +1028,16 @@ export async function listContacts(params: {
    * to select a row that can never be sent to.
    */
   channel?: CommsChannel;
+  /**
+   * Where the contact came from. CURATED_LEAD = HOMATCH External Leads Database,
+   * INTERNAL_MATCH = HOMATCH Internal Matches, FIND_BUYERS, and UPLOADED = the user's
+   * own import / manual entry (IMPORT, MANUAL, or nothing recorded on older rows).
+   */
+  source?: ContactSourceFilter | null;
+  /** An ISO language code, or "unknown" for contacts with none recorded. */
+  language?: string | null;
+  /** An ISO country code. */
+  country?: string | null;
 }): Promise<{ rows: CommContact[]; total: number }> {
   const uid = await currentUserId();
   if (!uid) return { rows: [], total: 0 };
@@ -1040,6 +1053,13 @@ export async function listContacts(params: {
 
   if (params.listId) q = q.eq('list_id', params.listId);
   if (params.stage && params.stage !== 'ALL') q = q.eq('lead_stage', params.stage);
+  if (params.source) {
+    const cond = sourceKindQuery(params.source);
+    q = 'eq' in cond ? q.eq('source_kind', cond.eq) : q.or(cond.or);
+  }
+  if (params.language === UNKNOWN_LANGUAGE) q = q.or('language.is.null,language.eq.');
+  else if (params.language && /^[a-z]{2,3}$/i.test(params.language)) q = q.ilike('language', params.language);
+  if (params.country && /^[a-z]{2}$/i.test(params.country)) q = q.ilike('country', params.country);
   /*
    * Reachability, not a channel column: outreach_contacts has none, because a
    * person is not per-channel. Email needs an address; the two phone channels

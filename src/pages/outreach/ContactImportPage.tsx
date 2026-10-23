@@ -186,6 +186,8 @@ export default function ContactImportPage() {
           slice.map((row) => ({
             list_id: list.id,
             owner_id: user.id,
+            /* User-uploaded: recorded, so the contacts manager can tell it from a purchased lead. */
+            source_kind: 'IMPORT',
             phone: row.phone.e164,
             phone_raw: row.fields.phone ?? null,
             phone_valid: row.phone.valid,

@@ -231,6 +231,15 @@ export interface CommSend {
   updated_at: string;
 }
 
+/**
+ * Where a CRM contact came from (outreach_contacts.source_kind).
+ *   IMPORT / MANUAL   the user uploaded or typed it (null on legacy rows means the same)
+ *   FIND_BUYERS       saved from a Find Buyers result
+ *   CURATED_LEAD      purchased from the HOMATCH External Leads Database
+ *   INTERNAL_MATCH    unlocked from HOMATCH Internal Matches
+ */
+export type ContactSourceKind = 'IMPORT' | 'MANUAL' | 'FIND_BUYERS' | 'CURATED_LEAD' | 'INTERNAL_MATCH';
+
 export interface CommContact {
   id: string;
   list_id: string;
@@ -247,8 +256,12 @@ export interface CommContact {
   consent_source: string | null;
   consent_lawful_basis?: string | null;
   consent_recorded_at?: string | null;
-  source_kind?: 'IMPORT' | 'MANUAL' | 'FIND_BUYERS' | null;
+  source_kind?: ContactSourceKind | null;
   source_lead_id?: string | null;
+  /** HOMATCH External Leads Database lead this contact was unlocked from (CURATED_LEAD). */
+  source_curated_lead_id?: string | null;
+  /** HOMATCH Internal Matches: the platform user this contact was unlocked from (INTERNAL_MATCH). */
+  source_internal_lead_user_id?: string | null;
   source_property_id?: string | null;
   source_platform?: string | null;
   source_url?: string | null;

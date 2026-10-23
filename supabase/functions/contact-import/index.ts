@@ -208,6 +208,8 @@ serve(async (req) => {
       return {
         list_id,
         owner_id: ownerId,
+        // User-uploaded, recorded (outreach_contacts.source_kind) so it is never mistaken for a purchased lead.
+        source_kind: 'IMPORT',
         full_name: String(row.full_name ?? '').trim() || null,
         email,
         phone: phone,

@@ -172,7 +172,7 @@ create index if not exists curated_lead_import_rows_status on public.curated_lea
 
 create table if not exists public.curated_lead_unlock_batches (
   id              uuid primary key default gen_random_uuid(),
-  account_user_id uuid not null references public.users(id),
+  account_user_id uuid not null references public.users(id) on delete cascade,
   idempotency_key text not null check (length(idempotency_key) between 8 and 200),
   result          jsonb not null,
   created_at      timestamptz not null default now(),
@@ -183,12 +183,12 @@ revoke all on public.curated_lead_unlock_batches from anon, authenticated;
 
 create table if not exists public.curated_lead_unlocks (
   id                 uuid primary key default gen_random_uuid(),
-  account_user_id    uuid not null references public.users(id),
+  account_user_id    uuid not null references public.users(id) on delete cascade,
   lead_id            uuid not null references public.curated_leads(id),
   unit_price_credits numeric not null,
   credits_charged    numeric not null,
   reservation_id     uuid,
-  batch_id           uuid references public.curated_lead_unlock_batches(id),
+  batch_id           uuid references public.curated_lead_unlock_batches(id) on delete set null,
   created_at         timestamptz not null default now(),
   unique (account_user_id, lead_id)
 );
@@ -266,63 +266,99 @@ grant execute on function public.matching_workspace_state() to authenticated;
 
 /* The filter every catalog read, quote and unlock shares — one definition, so a count, a page and
    a "select all matching" purchase can never disagree. Codes are upper-cased; languages lower. */
-create or replace function public.curated_lead_matches(l public.curated_leads, f jsonb)
-returns boolean language sql stable set search_path = public as $$
-  with p as (
-    select
-      coalesce((select array_agg(upper(btrim(x))) from jsonb_array_elements_text(
-        case when jsonb_typeof(f->'countries') = 'array' then f->'countries' else '[]'::jsonb end) x where btrim(x) <> ''), '{}') as countries,
-      coalesce((select array_agg(lower(btrim(x))) from jsonb_array_elements_text(
-        case when jsonb_typeof(f->'languages') = 'array' then f->'languages' else '[]'::jsonb end) x where btrim(x) <> ''), '{}') as languages,
-      coalesce((select array_agg(upper(btrim(x))) from jsonb_array_elements_text(
-        case when jsonb_typeof(f->'interests') = 'array' then f->'interests' else '[]'::jsonb end) x where btrim(x) <> ''), '{}') as interests,
-      coalesce((select array_agg(upper(btrim(x))) from jsonb_array_elements_text(
-        case when jsonb_typeof(f->'channels') = 'array' then f->'channels' else '[]'::jsonb end) x where btrim(x) <> ''), '{}') as channels,
-      coalesce((select array_agg(upper(btrim(x))) from jsonb_array_elements_text(
-        case when jsonb_typeof(f->'categories') = 'array' then f->'categories' else '[]'::jsonb end) x where btrim(x) <> ''), '{}') as categories,
-      coalesce((select array_agg(upper(btrim(x))) from jsonb_array_elements_text(
-        case when jsonb_typeof(f->'sources') = 'array' then f->'sources' else '[]'::jsonb end) x where btrim(x) <> ''), '{}') as sources,
-      nullif(btrim(coalesce(f->>'q', '')), '') as q,
-      nullif(f->>'addedSince', '')::date as added_since,
-      nullif(f->>'verifiedSince', '')::date as verified_since,
-      nullif(btrim(coalesce(f->>'location', '')), '') as location
-  )
-  select
-    (cardinality(p.countries) = 0 or l.country = any (p.countries))
-    /* Language is its own field: never inferred from country. UNKNOWN = none recorded. */
-    and (cardinality(p.languages) = 0 or l.languages && p.languages
-         or ('unknown' = any (p.languages) and cardinality(l.languages) = 0))
-    /* BUY never returns a tenant unless that person is explicitly both. */
-    and (cardinality(p.interests) = 0 or l.interests && p.interests)
-    and (cardinality(p.categories) = 0 or l.category = any (p.categories))
-    and (cardinality(p.sources) = 0 or exists (select 1 from public.curated_lead_batches b
-                                                where b.id = l.batch_id and b.source_class = any (p.sources)))
-    and (cardinality(p.channels) = 0 or (
-          (not ('PHONE' = any (p.channels)) or l.phone is not null)
-      and (not ('WHATSAPP' = any (p.channels)) or l.whatsapp is not null)
-      and (not ('TELEGRAM' = any (p.channels)) or l.telegram is not null)
-      and (not ('FACEBOOK' = any (p.channels)) or l.facebook is not null)
-      and (not ('LINKEDIN' = any (p.channels)) or l.linkedin is not null)
-      and (not ('SOCIAL' = any (p.channels)) or coalesce(l.facebook, l.linkedin, l.other_social, l.telegram) is not null)))
-    and (p.added_since is null or l.created_at >= p.added_since)
-    and (p.verified_since is null or l.last_verified_at >= p.verified_since)
-    and (p.location is null or position(lower(p.location) in lower(concat_ws(' ', l.city, l.region, l.preferred_location))) > 0)
-    and (p.q is null or position(lower(p.q) in lower(concat_ws(' ', l.first_name, l.city, l.region, l.preferred_location,
-                                                                l.property_type, l.investment_prefs, l.description,
-                                                                array_to_string(l.tags, ' ')))) > 0)
-  from p
+/* One text[] from a filter key (parsed once per call, never per row). */
+create or replace function public.curated_filter_arr(f jsonb, k text, p_upper boolean)
+returns text[] language sql immutable as $$
+  select coalesce(array_agg(case when p_upper then upper(btrim(x)) else lower(btrim(x)) end), '{}')
+    from jsonb_array_elements_text(case when jsonb_typeof(f->k) = 'array' then f->k else '[]'::jsonb end) x
+   where btrim(x) <> ''
 $$;
-revoke all on function public.curated_lead_matches(public.curated_leads, jsonb) from public, anon, authenticated;
-grant execute on function public.curated_lead_matches(public.curated_leads, jsonb) to service_role;
+revoke all on function public.curated_filter_arr(jsonb, text, boolean) from public, anon, authenticated;
+grant execute on function public.curated_filter_arr(jsonb, text, boolean) to service_role;
 
-create or replace function public.curated_lead_channels(l public.curated_leads)
-returns jsonb language sql immutable set search_path = public as $$
-  select jsonb_build_object('email', true, 'phone', l.phone is not null, 'whatsapp', l.whatsapp is not null,
-    'telegram', l.telegram is not null, 'facebook', l.facebook is not null, 'linkedin', l.linkedin is not null,
-    'otherSocial', l.other_social is not null)
+/* The per-row test: a single SQL expression over arguments (no SET, no FROM), so the planner
+   inlines it into the calling query — 100k rows filter in milliseconds, not seconds. */
+create or replace function public.curated_lead_hit(l public.curated_leads, p_countries text[], p_languages text[], p_interests text[],
+  p_channels text[], p_categories text[], p_batches uuid[], p_q text, p_added date, p_verified date, p_location text)
+returns boolean language sql immutable as $$
+  select (cardinality(p_countries) = 0 or l.country = any (p_countries))
+    /* Language is its own field: never inferred from country. UNKNOWN = none recorded. */
+    and (cardinality(p_languages) = 0 or l.languages && p_languages
+         or ('unknown' = any (p_languages) and cardinality(l.languages) = 0))
+    /* BUY never returns a tenant unless that person is explicitly both. */
+    and (cardinality(p_interests) = 0 or l.interests && p_interests)
+    and (cardinality(p_categories) = 0 or l.category = any (p_categories))
+    and (p_batches is null or l.batch_id = any (p_batches))
+    and (not ('PHONE' = any (p_channels)) or l.phone is not null)
+    and (not ('WHATSAPP' = any (p_channels)) or l.whatsapp is not null)
+    and (not ('TELEGRAM' = any (p_channels)) or l.telegram is not null)
+    and (not ('FACEBOOK' = any (p_channels)) or l.facebook is not null)
+    and (not ('LINKEDIN' = any (p_channels)) or l.linkedin is not null)
+    and (not ('SOCIAL' = any (p_channels)) or coalesce(l.facebook, l.linkedin, l.other_social, l.telegram) is not null)
+    and (p_added is null or l.created_at >= p_added)
+    and (p_verified is null or l.last_verified_at >= p_verified)
+    and (p_location is null or position(p_location in lower(concat_ws(' ', l.city, l.region, l.preferred_location))) > 0)
+    and (p_q is null or position(p_q in lower(concat_ws(' ', l.first_name, l.city, l.region, l.preferred_location,
+                                                       l.property_type, l.investment_prefs, l.description,
+                                                       array_to_string(l.tags, ' ')))) > 0)
 $$;
-revoke all on function public.curated_lead_channels(public.curated_leads) from public, anon, authenticated;
-grant execute on function public.curated_lead_channels(public.curated_leads) to service_role;
+revoke all on function public.curated_lead_hit(public.curated_leads, text[], text[], text[], text[], text[], uuid[], text, date, date, text) from public, anon, authenticated;
+grant execute on function public.curated_lead_hit(public.curated_leads, text[], text[], text[], text[], text[], uuid[], text, date, date, text) to service_role;
+
+/* Every catalog lead matching a filter — the one definition every count, page, quote, purchase
+   and export shares, so they can never disagree. */
+create or replace function public.curated_filtered(f jsonb)
+returns setof public.curated_leads language plpgsql stable security definer set search_path = public as $$
+declare
+  v_countries text[] := public.curated_filter_arr(f, 'countries', true);
+  v_langs text[] := public.curated_filter_arr(f, 'languages', false);
+  v_interests text[] := public.curated_filter_arr(f, 'interests', true);
+  v_channels text[] := public.curated_filter_arr(f, 'channels', true);
+  v_categories text[] := public.curated_filter_arr(f, 'categories', true);
+  v_sources text[] := public.curated_filter_arr(f, 'sources', true);
+  v_batches uuid[];
+  v_q text := nullif(lower(btrim(coalesce(f->>'q', ''))), '');
+  v_added date;
+  v_verified date;
+  v_location text := nullif(lower(btrim(coalesce(f->>'location', ''))), '');
+begin
+  begin
+    v_added := nullif(f->>'addedSince', '')::date;
+    v_verified := nullif(f->>'verifiedSince', '')::date;
+  exception when others then raise exception 'INVALID_ARGUMENT';
+  end;
+  if cardinality(v_sources) > 0 then
+    select coalesce(array_agg(b.id), '{}') into v_batches from public.curated_lead_batches b where b.source_class = any (v_sources);
+  end if;
+  return query
+    select l.* from public.curated_leads l
+     where public.curated_lead_hit(l, v_countries, v_langs, v_interests, v_channels, v_categories, v_batches,
+                                   v_q, v_added, v_verified, v_location);
+end $$;
+revoke all on function public.curated_filtered(jsonb) from public, anon, authenticated;
+grant execute on function public.curated_filtered(jsonb) to service_role;
+
+create or replace function public.curated_lead_channels(p_phone text, p_whatsapp text, p_telegram text, p_facebook text,
+  p_linkedin text, p_other text)
+returns jsonb language sql immutable as $$
+  select jsonb_build_object('email', true, 'phone', p_phone is not null, 'whatsapp', p_whatsapp is not null,
+    'telegram', p_telegram is not null, 'facebook', p_facebook is not null, 'linkedin', p_linkedin is not null,
+    'otherSocial', p_other is not null)
+$$;
+revoke all on function public.curated_lead_channels(text, text, text, text, text, text) from public, anon, authenticated;
+grant execute on function public.curated_lead_channels(text, text, text, text, text, text) to service_role;
+
+/* Before purchase, free text never carries a way to reach the person (the importer refuses it;
+   this is the second line of defence). */
+create or replace function public.curated_mask_text(t text)
+returns text language sql immutable as $$
+  select regexp_replace(regexp_replace(regexp_replace(t,
+           '[^@\s]+@[^@\s]+', '•••', 'g'),
+           '(https?://|www\.)\S+', '•••', 'gi'),
+           '\+?[0-9][0-9 ()./-]{7,}[0-9]', '•••', 'g')
+$$;
+revoke all on function public.curated_mask_text(text) from public, anon, authenticated;
+grant execute on function public.curated_mask_text(text) to service_role;
 
 /*
  * curated_leads_catalog — one paginated, server-filtered view of the catalog for the caller.
@@ -340,9 +376,12 @@ declare
   v_page integer := greatest(1, coalesce(nullif(p->>'page', '')::integer, 1));
   v_sort text := upper(coalesce(nullif(p->>'sort', ''), 'NEWEST'));
   v_f jsonb := coalesce(p->'filters', '{}'::jsonb);
+  v_nofilter boolean;
   v_out jsonb;
 begin
   if v_me is null then raise exception 'not signed in' using errcode = '42501'; end if;
+  v_nofilter := not exists (select 1 from jsonb_each(case when jsonb_typeof(v_f) = 'object' then v_f else '{}'::jsonb end) e
+                             where e.value not in ('[]'::jsonb, '""'::jsonb, 'null'::jsonb));
   if v_view not in ('AVAILABLE', 'UNLOCKED') then raise exception 'INVALID_ARGUMENT'; end if;
   /* Sales off (or maintenance) closes the marketplace — never what the account already bought. */
   if v_view = 'AVAILABLE' and (public.matching_maintenance_on() or not public.matching_service_on('curated_leads')) then
@@ -350,14 +389,13 @@ begin
   end if;
 
   with scope as (
-    select l.*, u.created_at as unlocked_at, u.credits_charged, public.curated_lead_channels(l) as channels,
-           public.curated_lead_matches(l, v_f) as hit
+    select l.*, u.created_at as unlocked_at, u.credits_charged
       from public.curated_leads l
       left join public.curated_lead_unlocks u on u.lead_id = l.id and u.account_user_id = v_me
      where (v_view = 'AVAILABLE' and l.status = 'PUBLISHED' and u.id is null)
         or (v_view = 'UNLOCKED' and u.id is not null)
   ), hits as (
-    select s.* from scope s where s.hit
+    select s.* from scope s where v_nofilter or s.id in (select f.id from public.curated_filtered(v_f) f)
   ), ranked as (
     select h.*, row_number() over (order by
       case when v_sort = 'NAME' then lower(h.first_name || ' ' || h.last_name) end asc nulls last,
@@ -395,16 +433,18 @@ begin
          'propertyType', r.property_type, 'investmentPrefs', r.investment_prefs, 'description', r.description,
          'addedAt', r.created_at, 'lastVerifiedAt', r.last_verified_at,
          'unlockedAt', r.unlocked_at, 'creditsCharged', r.credits_charged,
-         'channels', r.channels)
+         'channels', public.curated_lead_channels(r.phone, r.whatsapp, r.telegram, r.facebook, r.linkedin, r.other_social))
        else jsonb_build_object(
          'id', r.id, 'displayName', r.first_name || ' ' || left(r.last_name, 1) || '.',
          'country', r.country, 'languages', to_jsonb(r.languages), 'interests', to_jsonb(r.interests),
-         'category', r.category, 'city', r.city, 'region', r.region, 'preferredLocation', r.preferred_location,
+         'category', r.category, 'city', r.city, 'region', r.region,
+         'preferredLocation', public.curated_mask_text(r.preferred_location),
          'budget', case when r.budget_min is null and r.budget_max is null then null
                         else jsonb_build_object('min', r.budget_min, 'max', r.budget_max, 'currency', r.currency) end,
-         'propertyType', r.property_type, 'investmentPrefs', r.investment_prefs, 'description', r.description,
+         'propertyType', r.property_type, 'investmentPrefs', public.curated_mask_text(r.investment_prefs),
+         'description', public.curated_mask_text(r.description),
          'addedAt', r.created_at, 'lastVerifiedAt', r.last_verified_at,
-         'channels', r.channels) end
+         'channels', public.curated_lead_channels(r.phone, r.whatsapp, r.telegram, r.facebook, r.linkedin, r.other_social)) end
        order by r.rn) from ranked r where r.rn > (v_page - 1) * v_size and r.rn <= v_page * v_size), '[]'::jsonb)
   ) into v_out;
   return v_out;
@@ -419,22 +459,28 @@ grant execute on function public.curated_leads_catalog(jsonb) to authenticated;
  */
 create or replace function public.curated_lead_selection(p_user_id uuid, p jsonb)
 returns table (lead_id uuid, already boolean)
-language sql stable security definer set search_path = public as $$
-  with ids as (
-    select (x)::uuid id from jsonb_array_elements_text(
-      case when jsonb_typeof(p->'ids') = 'array' then p->'ids' else '[]'::jsonb end) x
-  ), excl as (
-    select (x)::uuid id from jsonb_array_elements_text(
-      case when jsonb_typeof(p->'exclude') = 'array' then p->'exclude' else '[]'::jsonb end) x
-  )
-  select l.id, exists (select 1 from public.curated_lead_unlocks u where u.account_user_id = p_user_id and u.lead_id = l.id)
-    from public.curated_leads l
-   where l.status = 'PUBLISHED'
-     and case when coalesce((p->>'allMatching')::boolean, false)
-              then public.curated_lead_matches(l, coalesce(p->'filters', '{}'::jsonb))
-                   and not exists (select 1 from excl e where e.id = l.id)
-              else exists (select 1 from ids i where i.id = l.id) end
-$$;
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_ids uuid[];
+  v_ex uuid[];
+begin
+  begin
+    v_ids := array(select (x)::uuid from jsonb_array_elements_text(case when jsonb_typeof(p->'ids') = 'array' then p->'ids' else '[]'::jsonb end) x);
+    v_ex := array(select (x)::uuid from jsonb_array_elements_text(case when jsonb_typeof(p->'exclude') = 'array' then p->'exclude' else '[]'::jsonb end) x);
+  exception when others then raise exception 'INVALID_ARGUMENT';
+  end;
+  if coalesce((p->>'allMatching')::boolean, false) then
+    return query
+      select f.id, exists (select 1 from public.curated_lead_unlocks u where u.account_user_id = p_user_id and u.lead_id = f.id)
+        from public.curated_filtered(coalesce(p->'filters', '{}'::jsonb)) f
+       where f.status = 'PUBLISHED' and not (f.id = any (v_ex));
+  else
+    return query
+      select l.id, exists (select 1 from public.curated_lead_unlocks u where u.account_user_id = p_user_id and u.lead_id = l.id)
+        from public.curated_leads l
+       where l.status = 'PUBLISHED' and l.id = any (v_ids);
+  end if;
+end $$;
 revoke all on function public.curated_lead_selection(uuid, jsonb) from public, anon, authenticated;
 grant execute on function public.curated_lead_selection(uuid, jsonb) to service_role;
 
@@ -474,7 +520,9 @@ grant execute on function public.curated_leads_quote(jsonb) to authenticated;
 
 alter table public.outreach_contacts
   add column if not exists source_curated_lead_id uuid references public.curated_leads(id) on delete set null,
-  add column if not exists source_internal_lead_user_id uuid;
+  add column if not exists source_internal_lead_user_id uuid,
+  /* A per-language copy made by outreach_list_split_by_language points at the contact it came from. */
+  add column if not exists split_from_contact_id uuid references public.outreach_contacts(id) on delete set null;
 alter table public.outreach_contacts drop constraint if exists outreach_contacts_source_kind_check;
 alter table public.outreach_contacts add constraint outreach_contacts_source_kind_check
   check (source_kind is null or source_kind in ('IMPORT', 'MANUAL', 'FIND_BUYERS', 'CURATED_LEAD', 'INTERNAL_MATCH'));
@@ -483,6 +531,8 @@ create unique index if not exists outreach_contacts_curated_per_list
 create unique index if not exists outreach_contacts_internal_per_list
   on public.outreach_contacts (list_id, source_internal_lead_user_id) where source_internal_lead_user_id is not null;
 create index if not exists outreach_contacts_owner_source on public.outreach_contacts (owner_id, source_kind);
+create unique index if not exists outreach_contacts_split_per_list
+  on public.outreach_contacts (list_id, split_from_contact_id) where split_from_contact_id is not null;
 
 alter table public.outreach_contact_lists
   add column if not exists source_kind text,
@@ -494,7 +544,9 @@ create unique index if not exists outreach_contact_lists_selection
   on public.outreach_contact_lists (owner_id, selection_hash) where selection_hash is not null;
 
 /* Contacts imported by a user are user-uploaded: record it from now on. */
-update public.outreach_contacts c set source_kind = 'IMPORT'
+update public.outreach_contacts c
+   set source_kind = case when (select upper(l.source_format) from public.outreach_contact_lists l where l.id = c.list_id) = 'MANUAL'
+                          then 'MANUAL' else 'IMPORT' end
  where c.source_kind is null and c.source_lead_id is null
    and exists (select 1 from public.outreach_contact_lists l where l.id = c.list_id and l.source_format is not null);
 
@@ -533,25 +585,34 @@ declare v_auth uuid; v_n integer;
 begin
   select u.auth_id into v_auth from public.users u where u.id = p_user_id;
   if v_auth is null then raise exception 'USER_NOT_FOUND'; end if;
+  /* The list's phone and e-mail are unique (outreach_send_integrity): a phone already in the list
+     (or repeated in this selection) is left off the new row instead of blocking it; an e-mail the
+     owner already has in this list keeps their existing contact. */
   insert into public.outreach_contacts
     (list_id, owner_id, full_name, email, email_valid, phone, language, country, city, lead_type, lead_stage,
      consent_status, consent_source, consent_lawful_basis, consent_recorded_at,
      source_kind, source_curated_lead_id, contact_detail_origin, notes, budget_min, budget_max, currency, property_type, tags)
-  select p_list, v_auth, l.first_name || ' ' || l.last_name, l.email_norm, true, l.phone,
-         nullif(l.languages[1], ''), l.country, l.city,
-         case when 'INVEST' = any (l.interests) and not ('BUY' = any (l.interests)) then 'INVESTOR'
-              when l.interests = array['RENT'] then 'TENANT' else 'BUYER' end, 'NEW',
-         case when b.legal_basis = 'CONSENT_PARTNER_OFFERS' and b.rights_verified then 'CONSENTED' else 'UNKNOWN' end,
-         'homatch_curated:' || coalesce(l.batch_id::text, 'none'),
-         case when b.legal_basis = 'CONSENT_PARTNER_OFFERS' and b.rights_verified then 'CONSENT' end,
-         case when b.legal_basis = 'CONSENT_PARTNER_OFFERS' and b.rights_verified then now() end,
-         'CURATED_LEAD', l.id, 'PERSON_PROVIDED', left(l.description, 2000), l.budget_min, l.budget_max, l.currency,
-         l.property_type, array(select 'interest:' || lower(i) from unnest(l.interests) i)
-    from public.curated_leads l
-    join public.curated_lead_unlocks u on u.lead_id = l.id and u.account_user_id = p_user_id
-    left join public.curated_lead_batches b on b.id = l.batch_id
-   where l.id = any (p_lead_ids)
-  on conflict (list_id, source_curated_lead_id) where source_curated_lead_id is not null do nothing;
+  select p_list, v_auth, x.first_name || ' ' || x.last_name, x.email_norm, true,
+         case when x.phone is null or x.phone_rank > 1
+                   or exists (select 1 from public.outreach_contacts d where d.list_id = p_list and d.phone = x.phone)
+              then null else x.phone end,
+         nullif(x.languages[1], ''), x.country, x.city,
+         case when 'INVEST' = any (x.interests) and not ('BUY' = any (x.interests)) then 'INVESTOR'
+              when x.interests = array['RENT'] then 'TENANT' else 'BUYER' end, 'NEW',
+         case when x.consented then 'CONSENTED' else 'UNKNOWN' end,
+         'homatch_curated:' || coalesce(x.batch_id::text, 'none'),
+         case when x.consented then 'CONSENT' end,
+         case when x.consented then now() end,
+         'CURATED_LEAD', x.id, 'PERSON_PROVIDED', left(x.description, 2000), x.budget_min, x.budget_max, x.currency,
+         x.property_type, array(select 'interest:' || lower(i) from unnest(x.interests) i)
+    from (select l.*, (b.legal_basis = 'CONSENT_PARTNER_OFFERS' and coalesce(b.rights_verified, false)) as consented,
+                 row_number() over (partition by l.phone order by l.id) as phone_rank
+            from public.curated_leads l
+            join public.curated_lead_unlocks u on u.lead_id = l.id and u.account_user_id = p_user_id
+            left join public.curated_lead_batches b on b.id = l.batch_id
+           where l.id = any (p_lead_ids)
+             and not exists (select 1 from public.outreach_contacts d where d.list_id = p_list and d.source_curated_lead_id = l.id)) x
+  on conflict do nothing;
   get diagnostics v_n = row_count;
   update public.outreach_contact_lists l
      set total_rows = (select count(*) from public.outreach_contacts c where c.list_id = l.id),
@@ -604,9 +665,20 @@ declare
   v_n integer;
 begin
   if v_me is null or v_auth is null then raise exception 'FORBIDDEN'; end if;
-  select array_agg(distinct e.lead_user_id order by e.lead_user_id) into v_people
+  /* Exactly the people internal_lead_contact would show today: entitled, not suspended, not
+     blocked either way, accepting property offers. */
+  create temporary table if not exists pg_temp.ils_people (lead_user_id uuid, property_id uuid, unlock_id uuid) on commit drop;
+  truncate pg_temp.ils_people;
+  insert into pg_temp.ils_people
+  select distinct on (e.lead_user_id) e.lead_user_id, e.property_id, e.unlock_id
     from unnest(coalesce(p_match_ids, '{}'::uuid[])) m(id)
-    cross join lateral public.internal_lead_entitled(v_me, m.id) e;
+    cross join lateral public.internal_lead_entitled(v_me, m.id) e
+    join public.users u on u.id = e.lead_user_id and u.suspended_at is null
+   where (select pr.accept_property_offers from public.lead_contact_prefs_of(e.lead_user_id) pr)
+     and not exists (select 1 from public.conversation_blocks b
+                      where (b.blocker_id = e.lead_user_id and b.blocked_id = v_me)
+                         or (b.blocker_id = v_me and b.blocked_id = e.lead_user_id));
+  select array_agg(lead_user_id order by lead_user_id) into v_people from pg_temp.ils_people;
   if coalesce(cardinality(v_people), 0) = 0 then raise exception 'NOTHING_SELECTED'; end if;
   if cardinality(v_people) > 2000 then raise exception 'TOO_MANY_SELECTED'; end if;
   v_hash := 'internal:' || md5(array_to_string(v_people, ','));
@@ -617,21 +689,30 @@ begin
     (list_id, owner_id, full_name, email, email_valid, phone, language, lead_type, lead_stage,
      consent_status, consent_source, consent_lawful_basis, consent_recorded_at,
      source_kind, source_internal_lead_user_id, contact_detail_origin)
-  select v_list, v_auth, coalesce(nullif(u.nickname, ''), nullif(u.full_name, ''), 'HOMATCH member'),
+  select v_list, v_auth, coalesce(nullif(u.nickname, ''), nullif(split_part(coalesce(u.full_name, ''), ' ', 1), ''), 'HOMATCH member'),
          case when pr.share_email_on_unlock then lower(u.email) end,
          pr.share_email_on_unlock and u.email is not null,
-         case when pr.share_phone_on_unlock then u.phone end,
-         u.preferred_language, 'BUYER', 'NEW',
-         case when pr.share_email_on_unlock and pr.accept_property_offers and u.email is not null then 'CONSENTED' else 'UNKNOWN' end,
+         case when pr.share_phone_on_unlock and length(coalesce(u.phone, '')) > 4
+                   and not exists (select 1 from public.outreach_contacts d where d.list_id = v_list and d.phone = u.phone)
+              then u.phone end,
+         u.preferred_language, 'UNKNOWN', 'NEW',
+         /* Marketing e-mail only with the member's own marketing consent (internal_lead_contact.marketingEmail). */
+         case when pr.share_email_on_unlock and pr.accept_marketing_email and u.email is not null then 'CONSENTED' else 'UNKNOWN' end,
          'homatch_internal_match',
-         case when pr.share_email_on_unlock and pr.accept_property_offers and u.email is not null then 'CONSENT' end,
-         case when pr.share_email_on_unlock and pr.accept_property_offers and u.email is not null then now() end,
+         case when pr.share_email_on_unlock and pr.accept_marketing_email and u.email is not null then 'CONSENT' end,
+         case when pr.share_email_on_unlock and pr.accept_marketing_email and u.email is not null then now() end,
          'INTERNAL_MATCH', u.id, 'PERSON_PROVIDED'
-    from unnest(v_people) p(id)
-    join public.users u on u.id = p.id
+    from pg_temp.ils_people p
+    join public.users u on u.id = p.lead_user_id
     cross join lateral public.lead_contact_prefs_of(u.id) pr
-  on conflict (list_id, source_internal_lead_user_id) where source_internal_lead_user_id is not null do nothing;
+   where not exists (select 1 from public.outreach_contacts d where d.list_id = v_list and d.source_internal_lead_user_id = u.id)
+  on conflict do nothing;
   get diagnostics v_n = row_count;
+  /* A phone handed over is a disclosure, recorded like internal_lead_contact records it. */
+  insert into public.contact_disclosures (viewer_user_id, subject_user_id, property_id, relationship_kind, relationship_id)
+  select v_me, p.lead_user_id, p.property_id, 'INTERNAL_LEAD_UNLOCK', p.unlock_id
+    from pg_temp.ils_people p
+    join public.outreach_contacts c on c.list_id = v_list and c.source_internal_lead_user_id = p.lead_user_id and c.phone is not null;
   update public.outreach_contact_lists l
      set total_rows = (select count(*) from public.outreach_contacts c where c.list_id = l.id),
          valid_rows = (select count(*) from public.outreach_contacts c where c.list_id = l.id and c.email is not null),
@@ -641,6 +722,58 @@ begin
 end $$;
 revoke all on function public.internal_leads_save_to_list(uuid[], text) from public, anon;
 grant execute on function public.internal_leads_save_to_list(uuid[], text) to authenticated;
+
+/* A member's later choice wins over a copy in someone's list: withdrawing sharing removes that
+   detail, withdrawing offers or marketing consent stops campaigns to them. */
+create or replace function public.internal_match_contacts_resync(p_lead_user uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_pr record;
+begin
+  select * into v_pr from public.lead_contact_prefs_of(p_lead_user);
+  update public.outreach_contacts c set
+    email = case when v_pr.share_email_on_unlock then c.email end,
+    email_valid = v_pr.share_email_on_unlock and c.email is not null,
+    phone = case when v_pr.share_phone_on_unlock then c.phone end,
+    do_not_contact = case when not v_pr.accept_property_offers then true else c.do_not_contact end,
+    /* The member's own consent, in both directions (an opt-out recorded on the contact still wins at send time). */
+    consent_status = case when c.consent_source <> 'homatch_internal_match' then c.consent_status
+                          when v_pr.share_email_on_unlock and v_pr.accept_marketing_email and c.email is not null then 'CONSENTED'
+                          else 'UNKNOWN' end,
+    consent_lawful_basis = case when c.consent_source <> 'homatch_internal_match' then c.consent_lawful_basis
+                                when v_pr.share_email_on_unlock and v_pr.accept_marketing_email and c.email is not null then 'CONSENT'
+                                else null end,
+    updated_at = now()
+   where c.source_internal_lead_user_id = p_lead_user;
+end $$;
+revoke all on function public.internal_match_contacts_resync(uuid) from public, anon, authenticated;
+grant execute on function public.internal_match_contacts_resync(uuid) to service_role;
+
+create or replace function public.internal_match_contacts_on_prefs()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  perform public.internal_match_contacts_resync(new.user_id);
+  return new;
+end $$;
+revoke all on function public.internal_match_contacts_on_prefs() from public, anon, authenticated;
+grant execute on function public.internal_match_contacts_on_prefs() to service_role;
+drop trigger if exists internal_match_contacts_on_prefs on public.lead_contact_preferences;
+create trigger internal_match_contacts_on_prefs after insert or update on public.lead_contact_preferences
+  for each row execute function public.internal_match_contacts_on_prefs();
+
+/* A block either way: the owner's copies of that member stop receiving anything. */
+create or replace function public.internal_match_contacts_on_block()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  update public.outreach_contacts c set do_not_contact = true, updated_at = now()
+   where c.source_internal_lead_user_id in (new.blocker_id, new.blocked_id)
+     and c.owner_id in (select u.auth_id from public.users u where u.id in (new.blocker_id, new.blocked_id));
+  return new;
+end $$;
+revoke all on function public.internal_match_contacts_on_block() from public, anon, authenticated;
+grant execute on function public.internal_match_contacts_on_block() to service_role;
+drop trigger if exists internal_match_contacts_on_block on public.conversation_blocks;
+create trigger internal_match_contacts_on_block after insert on public.conversation_blocks
+  for each row execute function public.internal_match_contacts_on_block();
 
 /* ════════════════════════════════════════════════════════════════════════
  * 7 · unlock — one transaction, advisory lock per account, idempotency key, never charges a lead
@@ -664,6 +797,7 @@ declare
   v_expected numeric := nullif(p->>'expectedCredits', '')::numeric;
   v_auth uuid;
   v_list uuid;
+  v_granted integer;
   v_result jsonb;
 begin
   if auth.role() <> 'service_role' then raise exception 'FORBIDDEN'; end if;
@@ -671,6 +805,7 @@ begin
   if p_idempotency_key is null or length(p_idempotency_key) < 8 or length(p_idempotency_key) > 200 then
     raise exception 'IDEMPOTENCY_KEY_REQUIRED';
   end if;
+  if v_expected is null then raise exception 'PRICE_CHANGED'; end if;
   if public.matching_maintenance_on() or not public.matching_service_on('curated_leads') then raise exception 'SERVICE_DISABLED'; end if;
 
   perform pg_advisory_xact_lock(hashtextextended('curated_lead_unlock:' || p_user_id::text, 0));
@@ -691,7 +826,7 @@ begin
   if v_n > 5000 then raise exception 'TOO_MANY_SELECTED'; end if;
   v_total := round(v_unit * v_n, 4);
   /* The customer confirmed a price: a selection that grew since the quote is not silently charged. */
-  if v_expected is not null and v_total > v_expected then raise exception 'PRICE_CHANGED'; end if;
+  if v_total > v_expected then raise exception 'PRICE_CHANGED'; end if;
 
   if v_total > 0 then
     select r.reservation_id into v_res
@@ -700,7 +835,8 @@ begin
                                  v_total, v_total, 'curated-leads:' || v_batch::text,
                                  jsonb_build_object('units', v_n, 'unit_credits', v_unit, 'batch_id', v_batch)) r;
     perform public.wallet_settle(v_res, v_total,
-                                 jsonb_build_object('units', v_n, 'unit_credits', v_unit, 'landed_cogs_cents', 0), 'SUCCESS');
+                                 jsonb_build_object('units', v_n, 'unit_credits', v_unit, 'landed_cogs_cents', 0,
+                                                    'cogs_basis', 'NO_MARGINAL_COGS'), 'SUCCESS');
   end if;
 
   insert into public.curated_lead_unlock_batches (id, account_user_id, idempotency_key, result)
@@ -709,6 +845,9 @@ begin
   insert into public.curated_lead_unlocks (account_user_id, lead_id, unit_price_credits, credits_charged, reservation_id, batch_id)
   select p_user_id, x, v_unit, v_unit, v_res, v_batch from unnest(v_new) x
   on conflict (account_user_id, lead_id) do nothing;
+  /* Defence in depth: never a charge for a lead that was not granted (the lock makes this unreachable). */
+  get diagnostics v_granted = row_count;
+  if v_granted <> v_n then raise exception 'UNLOCK_MISMATCH'; end if;
 
   if v_n > 0 then
     select u.auth_id into v_auth from public.users u where u.id = p_user_id;
@@ -904,6 +1043,22 @@ begin
     perform nullif(btrim(coalesce(r->>'collected_at', '')), '')::date, nullif(btrim(coalesce(r->>'last_verified_at', '')), '')::date;
   exception when others then v_errors := array_append(v_errors, 'DATE_INVALID');
   end;
+  if cardinality(v_langs) > 8 then v_errors := array_append(v_errors, 'LANGUAGES_TOO_MANY'); end if;
+  /* Every length the table enforces, checked here so one row can never abort a whole commit. */
+  foreach v_tok in array array['first_name:120', 'last_name:120', 'phone:40', 'whatsapp:60', 'telegram:120', 'facebook:300',
+                               'linkedin:300', 'other_social:300', 'city:120', 'region:120', 'preferred_location:200',
+                               'property_type:80', 'investment_prefs:500', 'description:600', 'source_description:600',
+                               'admin_notes:2000'] loop
+    if length(btrim(coalesce(r->>split_part(v_tok, ':', 1), ''))) > split_part(v_tok, ':', 2)::integer then
+      v_errors := array_append(v_errors, upper(split_part(v_tok, ':', 1)) || '_TOO_LONG');
+    end if;
+  end loop;
+  /* What a buyer sees before paying must not contain a way to reach the person. */
+  foreach v_tok in array array['description', 'investment_prefs', 'preferred_location', 'city', 'region', 'property_type'] loop
+    if coalesce(r->>v_tok, '') ~* '[^@\s]+@[^@\s]+\.[a-z]{2,}|(https?://|www\.)|\+?[0-9][0-9 ()./-]{7,}[0-9]' then
+      v_errors := array_append(v_errors, 'CONTACT_IN_TEXT:' || v_tok);
+    end if;
+  end loop;
 
   v_out := jsonb_strip_nulls(jsonb_build_object(
     'first_name', nullif(btrim(r->>'first_name'), ''), 'last_name', nullif(btrim(r->>'last_name'), ''),
@@ -918,9 +1073,10 @@ begin
     'budget_max', nullif(replace(replace(btrim(coalesce(r->>'budget_max', '')), ' ', ''), ',', ''), ''),
     'currency', nullif(upper(btrim(coalesce(r->>'currency', ''))), ''),
     'property_type', nullif(btrim(r->>'property_type'), ''),
-    'area_min', nullif(replace(btrim(coalesce(r->>'area_min', '')), ',', ''), ''),
-    'area_max', nullif(replace(btrim(coalesce(r->>'area_max', '')), ',', ''), ''),
-    'rooms_min', nullif(btrim(coalesce(r->>'rooms_min', '')), ''), 'rooms_max', nullif(btrim(coalesce(r->>'rooms_max', '')), ''),
+    'area_min', nullif(replace(replace(btrim(coalesce(r->>'area_min', '')), ' ', ''), ',', ''), ''),
+    'area_max', nullif(replace(replace(btrim(coalesce(r->>'area_max', '')), ' ', ''), ',', ''), ''),
+    'rooms_min', nullif(replace(replace(btrim(coalesce(r->>'rooms_min', '')), ' ', ''), ',', ''), ''),
+    'rooms_max', nullif(replace(replace(btrim(coalesce(r->>'rooms_max', '')), ' ', ''), ',', ''), ''),
     'investment_prefs', nullif(btrim(r->>'investment_prefs'), ''), 'description', nullif(btrim(r->>'description'), ''),
     'source_description', nullif(btrim(r->>'source_description'), ''),
     'collected_at', nullif(btrim(r->>'collected_at'), ''), 'last_verified_at', nullif(btrim(r->>'last_verified_at'), ''),
@@ -1044,19 +1200,29 @@ revoke all on function public.admin_curated_row_fix(uuid, jsonb) from public, an
 grant execute on function public.admin_curated_row_fix(uuid, jsonb) to authenticated;
 
 create or replace function public.curated_lead_from_data(d jsonb)
-returns public.curated_leads language sql immutable set search_path = public as $$
-  select (null::uuid, null::uuid, d->>'first_name', d->>'last_name', d->>'email', d->>'email',
-          array(select jsonb_array_elements_text(d->'interests')), d->>'country',
-          coalesce(array(select jsonb_array_elements_text(d->'languages')), '{}'), d->>'category',
-          d->>'phone', d->>'whatsapp', d->>'telegram', d->>'facebook', d->>'linkedin', d->>'other_social',
-          d->>'city', d->>'region', d->>'preferred_location',
-          (d->>'budget_min')::numeric, (d->>'budget_max')::numeric, d->>'currency', d->>'property_type',
-          (d->>'area_min')::numeric, (d->>'area_max')::numeric, (d->>'rooms_min')::numeric, (d->>'rooms_max')::numeric,
-          d->>'investment_prefs', d->>'description', d->>'source_description',
-          (d->>'collected_at')::date, (d->>'last_verified_at')::date,
-          coalesce(array(select jsonb_array_elements_text(d->'tags')), '{}'), d->>'admin_notes',
-          'HIDDEN', null::timestamptz, now(), now())::public.curated_leads
-$$;
+returns public.curated_leads language plpgsql stable set search_path = public as $$
+declare v public.curated_leads;
+begin
+  v.first_name := d->>'first_name'; v.last_name := d->>'last_name';
+  v.email := d->>'email'; v.email_norm := lower(d->>'email');
+  v.interests := array(select jsonb_array_elements_text(coalesce(d->'interests', '[]'::jsonb)));
+  v.country := d->>'country';
+  v.languages := array(select jsonb_array_elements_text(coalesce(d->'languages', '[]'::jsonb)));
+  v.category := d->>'category';
+  v.phone := d->>'phone'; v.whatsapp := d->>'whatsapp'; v.telegram := d->>'telegram';
+  v.facebook := d->>'facebook'; v.linkedin := d->>'linkedin'; v.other_social := d->>'other_social';
+  v.city := d->>'city'; v.region := d->>'region'; v.preferred_location := d->>'preferred_location';
+  v.budget_min := (d->>'budget_min')::numeric; v.budget_max := (d->>'budget_max')::numeric; v.currency := d->>'currency';
+  v.property_type := d->>'property_type';
+  v.area_min := (d->>'area_min')::numeric; v.area_max := (d->>'area_max')::numeric;
+  v.rooms_min := (d->>'rooms_min')::numeric; v.rooms_max := (d->>'rooms_max')::numeric;
+  v.investment_prefs := d->>'investment_prefs'; v.description := d->>'description'; v.source_description := d->>'source_description';
+  v.collected_at := (d->>'collected_at')::date; v.last_verified_at := (d->>'last_verified_at')::date;
+  v.tags := array(select jsonb_array_elements_text(coalesce(d->'tags', '[]'::jsonb)));
+  v.admin_notes := d->>'admin_notes';
+  v.status := 'HIDDEN';
+  return v;
+end $$;
 revoke all on function public.curated_lead_from_data(jsonb) from public, anon, authenticated;
 grant execute on function public.curated_lead_from_data(jsonb) to service_role;
 
@@ -1072,8 +1238,9 @@ declare
   v_new integer := 0;
   v_upd integer := 0;
 begin
-  if not exists (select 1 from public.curated_lead_batches where id = p_batch and status = 'STAGING') then raise exception 'BATCH_NOT_STAGING'; end if;
   perform pg_advisory_xact_lock(hashtextextended('curated_batch_commit:' || p_batch::text, 0));
+  perform 1 from public.curated_lead_batches where id = p_batch and status = 'STAGING' for update;
+  if not found then raise exception 'BATCH_NOT_STAGING'; end if;
   for v_r in select * from public.curated_lead_import_rows where batch_id = p_batch and status in ('VALID', 'DUPLICATE') order by row_no loop
     v_l := public.curated_lead_from_data(v_r.data);
     if v_r.status = 'VALID' then
@@ -1164,10 +1331,9 @@ declare
 begin
   perform public.curated_admin_guard();
   return (with hits as (
-    select l.* from public.curated_leads l
+    select l.* from public.curated_filtered(v_f - 'q') l
      where (v_status is null or l.status = v_status) and (v_batch is null or l.batch_id = v_batch)
        and (v_q is null or position(v_q in lower(l.first_name || ' ' || l.last_name || ' ' || l.email_norm)) > 0)
-       and public.curated_lead_matches(l, v_f - 'q')
   )
   select jsonb_build_object('total', (select count(*) from hits), 'page', v_page, 'pageSize', v_size,
     'items', coalesce((select jsonb_agg(to_jsonb(h) - 'email_norm' || jsonb_build_object(
@@ -1216,9 +1382,9 @@ begin
   if length(btrim(coalesce(p_reason, ''))) < 10 then raise exception 'REASON_REQUIRED'; end if;
   select coalesce(jsonb_agg(to_jsonb(l) - 'email_norm' - 'admin_notes' order by l.created_at), '[]'::jsonb), count(*)
     into v_rows, v_n
-    from (select l.* from public.curated_leads l join public.curated_lead_batches b on b.id = l.batch_id and b.rights_verified
-           where public.curated_lead_matches(l, coalesce(p->'filters', '{}'::jsonb))
-             and (nullif(upper(coalesce(p->>'status', '')), '') is null or l.status = upper(p->>'status'))
+    from (select l.* from public.curated_filtered(coalesce(p->'filters', '{}'::jsonb)) l
+            join public.curated_lead_batches b on b.id = l.batch_id and b.rights_verified
+           where (nullif(upper(coalesce(p->>'status', '')), '') is null or l.status = upper(p->>'status'))
              and (nullif(p->>'batchId', '') is null or l.batch_id = (p->>'batchId')::uuid)
            order by l.created_at limit 50000) l;
   insert into public.admin_audit_log (admin_id, action, entity_type, entity_id, metadata)
@@ -1315,15 +1481,14 @@ declare
                         case when jsonb_typeof(p->'interests') = 'array' then p->'interests' else '[]'::jsonb end) x where btrim(x) <> ''), '{}');
   v_q text := nullif(lower(btrim(coalesce(p->>'q', ''))), '');
   v_with_ids boolean := coalesce((p->>'withIds')::boolean, false);
+  v_disabled boolean;
   v_result jsonb;
 begin
   if v_me is null then raise exception 'not signed in' using errcode = '42501'; end if;
-  /* Internal matching off (or maintenance) closes discovery; the UNLOCKED view of members the
-     account already unlocked stays readable. */
-  if (public.matching_maintenance_on() or not public.matching_service_on('internal_matching'))
-     and not ('UNLOCKED' = any (v_filters)) then
-    raise exception 'SERVICE_DISABLED' using errcode = 'P0001';
-  end if;
+  /* Internal matching off (or maintenance) closes discovery: the feed then answers with the
+     members the account already unlocked and nothing about anyone else (disabled = true). */
+  v_disabled := public.matching_maintenance_on() or not public.matching_service_on('internal_matching');
+  if v_disabled then v_filters := array['UNLOCKED']; end if;
   if not exists (select 1 from public.properties pr where pr.id = p_property_id and pr.user_id = v_me and not pr.is_deleted) then
     raise exception 'not found' using errcode = '42501';
   end if;
@@ -1372,7 +1537,7 @@ begin
       left join public.internal_lead_unlocks u on u.account_user_id = v_me and u.lead_user_id = r.lead_user_id
       left join public.lead_crm_entries cr on cr.owner_user_id = v_me and cr.lead_user_id = r.lead_user_id
   ), marked as (
-    select b.*, (b.active_at < now() - interval '45 days') as stale from base b
+    select b.*, (b.active_at < now() - interval '45 days') as stale from base b where not v_disabled or b.unlocked
   ), filtered as (
     select * from marked b
      where (not ('STRONG' = any (v_filters)) or b.band = 'STRONG')
@@ -1442,7 +1607,8 @@ begin
         'countries', coalesce((select jsonb_object_agg(c, n) from (select upper(b.country) c, count(*) n from marked b where coalesce(b.country, '') <> '' group by 1) x), '{}'::jsonb),
         'languages', coalesce((select jsonb_object_agg(lg, n) from (select coalesce(nullif(lower(b.preferred_language), ''), 'unknown') lg, count(*) n from marked b group by 1) x), '{}'::jsonb),
         'interests', coalesce((select jsonb_object_agg(i, n) from (select b.interest i, count(*) n from marked b group by 1) x), '{}'::jsonb)),
-    'ids', case when v_with_ids then coalesce((select jsonb_agg(f.match_id) from (select match_id from filtered limit 500) f), '[]'::jsonb) end,
+    'ids', case when v_with_ids and not v_disabled then coalesce((select jsonb_agg(x.match_id order by x.rn) from (select match_id, rn from page order by rn limit 500) x), '[]'::jsonb) end,
+    'disabled', v_disabled,
     'prices', v_prices,
     'preferences', public.internal_match_preferences_of(p_property_id),
     'lastSeenAt', v_seen,
@@ -1517,7 +1683,7 @@ declare
   v_key text;
   v_old jsonb;
 begin
-  if p_on is null then raise exception 'INVALID_ARGUMENT'; end if;
+  if p_on is null or length(coalesce(p_reason, '')) > 500 then raise exception 'INVALID_ARGUMENT'; end if;
   if v_control in ('INTERNAL', 'CURATED') then
     v_key := case v_control when 'INTERNAL' then 'internal_matching' else 'curated_leads' end;
     select jsonb_build_object('frontend', frontend_enabled, 'backend', backend_enabled) into v_old
@@ -1601,24 +1767,33 @@ begin
                 left(v_src.name, 140) || ' · ' || upper(v_lang),
                 'split:' || p_list_id::text || ':' || v_lang,
                 'Recipients of "' || left(v_src.name, 120) || '" whose language is ' || v_lang || '.');
+    /* source_lead_id is NOT copied: one CRM contact per Find Buyers lead (outreach_contacts_one_per_lead);
+       the copy keeps its provenance in source_kind and the source_* fields. */
     insert into public.outreach_contacts
       (list_id, owner_id, full_name, email, email_valid, phone, language, country, city, tags, lead_type, lead_stage, notes,
        consent_status, consent_source, consent_lawful_basis, consent_recorded_at, unsubscribed, suppressed, suppressed_reason,
-       do_not_contact, source_kind, source_curated_lead_id, source_internal_lead_user_id, source_lead_id, source_property_id,
-       source_platform, source_url, source_profile_url, source_match_category, contact_detail_origin)
-    select v_list, v_auth, c.full_name, c.email, c.email_valid, c.phone,
+       do_not_contact, source_kind, source_curated_lead_id, source_internal_lead_user_id, source_property_id,
+       source_platform, source_url, source_profile_url, source_match_category, contact_detail_origin, split_from_contact_id)
+    select v_list, v_auth, c.full_name, c.email, c.email_valid,
+           case when c.phone is null or row_number() over (partition by c.phone order by c.created_at, c.id) > 1
+                     or exists (select 1 from public.outreach_contacts d where d.list_id = v_list and d.phone = c.phone)
+                then null else c.phone end,
            case when coalesce(nullif(btrim(c.language), ''), '') = '' then v_fallback else c.language end,
            c.country, c.city, c.tags, c.lead_type, c.lead_stage, c.notes,
            c.consent_status, c.consent_source, c.consent_lawful_basis, c.consent_recorded_at, c.unsubscribed, c.suppressed,
            c.suppressed_reason, c.do_not_contact, c.source_kind, c.source_curated_lead_id, c.source_internal_lead_user_id,
-           c.source_lead_id, c.source_property_id, c.source_platform, c.source_url, c.source_profile_url,
-           c.source_match_category, c.contact_detail_origin
+           c.source_property_id, c.source_platform, c.source_url, c.source_profile_url,
+           c.source_match_category, c.contact_detail_origin, c.id
       from public.outreach_contacts c
      where c.list_id = p_list_id and c.owner_id = v_auth
        and coalesce(nullif(lower(btrim(c.language)), ''), v_fallback, 'unknown') = v_lang
        and not exists (select 1 from public.outreach_contacts d where d.list_id = v_list
-                        and ((c.email is not null and lower(d.email) = lower(c.email))
-                          or (c.email is null and c.phone is not null and d.phone = c.phone)));
+                        and (d.split_from_contact_id = c.id
+                          or (c.email is not null and lower(d.email) = lower(c.email))
+                          or (c.source_curated_lead_id is not null and d.source_curated_lead_id = c.source_curated_lead_id)
+                          or (c.source_internal_lead_user_id is not null and d.source_internal_lead_user_id = c.source_internal_lead_user_id)
+                          or (c.email is null and c.phone is not null and d.phone = c.phone)))
+    on conflict do nothing;
     update public.outreach_contact_lists l
        set total_rows = (select count(*) from public.outreach_contacts x where x.list_id = l.id),
            valid_rows = (select count(*) from public.outreach_contacts x where x.list_id = l.id and x.email is not null),

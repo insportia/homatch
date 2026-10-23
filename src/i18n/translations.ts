@@ -21359,6 +21359,12 @@ const en = {
   adm_engine_confirm: 'Switch engine',
   adm_engine_reason: 'Reason (required)',
   adm_engine_saved: 'Engine updated for new verifications',
+
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'Customers',
+  adm_engine_admin_preview: 'Your own test verifications (admin accounts)',
+  adm_engine_admin_preview_note: 'Applies only to verifications started from an admin account. Customers stay on the engine above.',
+  adm_engine_confirm_admin_title: 'Run your own test verifications on {{engine}}?',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -42632,6 +42638,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   adm_engine_confirm: 'ძრავის გადართვა',
   adm_engine_reason: 'მიზეზი (სავალდებულო)',
   adm_engine_saved: 'ძრავა განახლდა ახალი ვერიფიკაციებისთვის',
+
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'მომხმარებლები',
+  adm_engine_admin_preview: 'თქვენი სატესტო ვერიფიკაციები (ადმინის ანგარიშები)',
+  adm_engine_admin_preview_note: 'ვრცელდება მხოლოდ ადმინის ანგარიშიდან დაწყებულ ვერიფიკაციებზე. მომხმარებლები ზემოთ მითითებულ ძრავაზე რჩებიან.',
+  adm_engine_confirm_admin_title: 'გაეშვას თქვენი სატესტო ვერიფიკაციები {{engine}}-ზე?',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -63896,6 +63908,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   adm_engine_confirm: 'Переключить движок',
   adm_engine_reason: 'Причина (обязательно)',
   adm_engine_saved: 'Движок обновлён для новых проверок',
+
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'Клиенты',
+  adm_engine_admin_preview: 'Ваши тестовые проверки (аккаунты администраторов)',
+  adm_engine_admin_preview_note: 'Действует только для проверок, запущенных из аккаунта администратора. Клиенты остаются на движке выше.',
+  adm_engine_confirm_admin_title: 'Запускать ваши тестовые проверки на {{engine}}?',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -85158,6 +85176,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   adm_engine_confirm: 'Motoru değiştir',
   adm_engine_reason: 'Gerekçe (zorunlu)',
   adm_engine_saved: 'Yeni doğrulamalar için motor güncellendi',
+
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'Müşteriler',
+  adm_engine_admin_preview: 'Kendi test doğrulamalarınız (yönetici hesapları)',
+  adm_engine_admin_preview_note: 'Yalnızca yönetici hesabından başlatılan doğrulamalara uygulanır. Müşteriler yukarıdaki motorda kalır.',
+  adm_engine_confirm_admin_title: 'Kendi test doğrulamalarınız {{engine}} motorunda çalışsın mı?',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -106420,6 +106444,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   adm_engine_confirm: 'تبديل المحرك',
   adm_engine_reason: 'السبب (مطلوب)',
   adm_engine_saved: 'تم تحديث المحرك لعمليات التحقق الجديدة',
+
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'العملاء',
+  adm_engine_admin_preview: 'عمليات التحقق التجريبية الخاصة بك (حسابات المسؤولين)',
+  adm_engine_admin_preview_note: 'ينطبق فقط على عمليات التحقق التي تبدأ من حساب مسؤول. يبقى العملاء على المحرك أعلاه.',
+  adm_engine_confirm_admin_title: 'هل تريد تشغيل عمليات التحقق التجريبية الخاصة بك على {{engine}}؟',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -127682,6 +127712,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   adm_engine_confirm: 'החלפת מנוע',
   adm_engine_reason: 'סיבה (חובה)',
   adm_engine_saved: 'המנוע עודכן לאימותים חדשים',
+
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'לקוחות',
+  adm_engine_admin_preview: 'אימותי הבדיקה שלך (חשבונות מנהל)',
+  adm_engine_admin_preview_note: 'חל רק על אימותים שהופעלו מחשבון מנהל. הלקוחות נשארים על המנוע שלמעלה.',
+  adm_engine_confirm_admin_title: 'להריץ את אימותי הבדיקה שלך על {{engine}}?',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

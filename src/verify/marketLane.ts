@@ -428,7 +428,11 @@ export async function runMarketLane(
  * them, and the prompt says so explicitly so it does not spend searches
  * re-finding what it has been handed.
  */
-export function marketLaneBrief(result: MarketLaneResult): string {
+// `restate: false` (V2): finish() keeps the code-gathered set and drops any
+// model comparable at one of its URLs, so writing them back out is output
+// spent on records that are thrown away. V2 asks only for new URLs.
+export function marketLaneBrief(result: MarketLaneResult, opts: { restate?: boolean } = {}): string {
+  const restate = opts.restate !== false;
   const s = result.summary;
   if (!result.comparables.length) {
     return (
@@ -465,8 +469,13 @@ export function marketLaneBrief(result: MarketLaneResult): string {
     'These are ASKING prices from listings, never transaction prices, and they must ' +
       'never be described as what a property sold for.',
     '',
-    'COMPARABLES ALREADY GATHERED — restate and interpret these. Do NOT spend ' +
-      'searches re-finding listings; spend them only on questions these do not answer:',
+    restate
+      ? 'COMPARABLES ALREADY GATHERED — restate and interpret these. Do NOT spend ' +
+        'searches re-finding listings; spend them only on questions these do not answer:'
+      : 'COMPARABLES ALREADY GATHERED — they are already in the report. Interpret them in ' +
+        'your price-driver evidence, but do NOT repeat any of them in comparables[]: return ' +
+        'there only listings at URLs NOT listed below. Do NOT spend searches re-finding ' +
+        'listings; spend them only on questions these do not answer:',
     ...lines,
     '',
     result.conflicts.length

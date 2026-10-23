@@ -21371,6 +21371,11 @@ const en = {
   emx_test_no_email: 'Your account has no email address to send the test to.',
   emx_test_rate: 'Too many tests in the last hour. Try again later.',
   emx_test_quota: 'Your email allowance is used up, so no test was sent.',
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'Customers',
+  adm_engine_admin_preview: 'Your own test verifications (admin accounts)',
+  adm_engine_admin_preview_note: 'Applies only to verifications started from an admin account. Customers stay on the engine above.',
+  adm_engine_confirm_admin_title: 'Run your own test verifications on {{engine}}?',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -42656,6 +42661,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   emx_test_no_email: 'თქვენს ანგარიშს ელფოსტის მისამართი არ აქვს.',
   emx_test_rate: 'ბოლო საათში ძალიან ბევრი ტესტი გაიგზავნა. სცადეთ მოგვიანებით.',
   emx_test_quota: 'წერილების ლიმიტი ამოიწურა, ამიტომ სატესტო წერილი არ გაიგზავნა.',
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'მომხმარებლები',
+  adm_engine_admin_preview: 'თქვენი სატესტო ვერიფიკაციები (ადმინის ანგარიშები)',
+  adm_engine_admin_preview_note: 'ვრცელდება მხოლოდ ადმინის ანგარიშიდან დაწყებულ ვერიფიკაციებზე. მომხმარებლები ზემოთ მითითებულ ძრავაზე რჩებიან.',
+  adm_engine_confirm_admin_title: 'გაეშვას თქვენი სატესტო ვერიფიკაციები {{engine}}-ზე?',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -63932,6 +63942,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   emx_test_no_email: 'У вашего аккаунта нет адреса эл. почты для теста.',
   emx_test_rate: 'Слишком много тестов за последний час. Попробуйте позже.',
   emx_test_quota: 'Лимит писем исчерпан, поэтому тест не отправлен.',
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'Клиенты',
+  adm_engine_admin_preview: 'Ваши тестовые проверки (аккаунты администраторов)',
+  adm_engine_admin_preview_note: 'Действует только для проверок, запущенных из аккаунта администратора. Клиенты остаются на движке выше.',
+  adm_engine_confirm_admin_title: 'Запускать ваши тестовые проверки на {{engine}}?',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -85206,6 +85221,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   emx_test_no_email: 'Hesabınızda test gönderilecek bir e-posta adresi yok.',
   emx_test_rate: 'Son bir saatte çok fazla test gönderildi. Daha sonra deneyin.',
   emx_test_quota: 'E-posta hakkınız doldu, bu yüzden test gönderilmedi.',
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'Müşteriler',
+  adm_engine_admin_preview: 'Kendi test doğrulamalarınız (yönetici hesapları)',
+  adm_engine_admin_preview_note: 'Yalnızca yönetici hesabından başlatılan doğrulamalara uygulanır. Müşteriler yukarıdaki motorda kalır.',
+  adm_engine_confirm_admin_title: 'Kendi test doğrulamalarınız {{engine}} motorunda çalışsın mı?',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -106480,6 +106500,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   emx_test_no_email: 'لا يوجد عنوان بريد إلكتروني في حسابك لإرسال النسخة التجريبية.',
   emx_test_rate: 'عدد كبير من الاختبارات في الساعة الأخيرة. حاول لاحقاً.',
   emx_test_quota: 'نفدت حصة رسائلك، لذلك لم تُرسل نسخة تجريبية.',
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'العملاء',
+  adm_engine_admin_preview: 'عمليات التحقق التجريبية الخاصة بك (حسابات المسؤولين)',
+  adm_engine_admin_preview_note: 'ينطبق فقط على عمليات التحقق التي تبدأ من حساب مسؤول. يبقى العملاء على المحرك أعلاه.',
+  adm_engine_confirm_admin_title: 'هل تريد تشغيل عمليات التحقق التجريبية الخاصة بك على {{engine}}؟',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -127754,6 +127779,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   emx_test_no_email: 'אין בחשבון שלך כתובת דוא"ל לשליחת הבדיקה.',
   emx_test_rate: 'יותר מדי בדיקות בשעה האחרונה. נסו שוב מאוחר יותר.',
   emx_test_quota: 'מכסת ההודעות שלך נוצלה, ולכן לא נשלחה בדיקה.',
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_customers: 'לקוחות',
+  adm_engine_admin_preview: 'אימותי הבדיקה שלך (חשבונות מנהל)',
+  adm_engine_admin_preview_note: 'חל רק על אימותים שהופעלו מחשבון מנהל. הלקוחות נשארים על המנוע שלמעלה.',
+  adm_engine_confirm_admin_title: 'להריץ את אימותי הבדיקה שלך על {{engine}}?',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

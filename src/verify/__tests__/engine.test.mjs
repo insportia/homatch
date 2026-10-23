@@ -9,20 +9,31 @@ const at = '2026-10-23T12:00:00.000Z';
 
 test('missing, malformed and unknown settings are V1', () => {
   for (const v of [null, undefined, '', 'v2', 'V3', 2, {}, { active: 'v2' }, { active: null }, []]) {
-    assert.equal(parseEngineSetting(v).active, 'V1', JSON.stringify(v));
+    assert.deepEqual(parseEngineSetting(v), { active: 'V1', adminPreview: 'V1' }, JSON.stringify(v));
   }
   assert.equal(parseEngineSetting({ active: 'V2' }).active, 'V2');
   assert.equal(parseEngineSetting('V2').active, 'V2');
+  assert.equal(parseEngineSetting({ active: 'V1', adminPreview: 'V2' }).adminPreview, 'V2');
+  assert.equal(parseEngineSetting({ adminPreview: 'v2' }).adminPreview, 'V1');
 });
 
-test('V2 requested before it is deployed creates a V1 job and records the request', () => {
+test('V2 requested for customers before it is approved creates a V1 job and records the request', () => {
   assert.deepEqual(engineForNewJob({ active: 'V2' }, at, false), { version: 'V1', requested: 'V2', selectedAt: at });
 });
 
-test('V2 requested once deployed creates a V2 job; V1 always creates V1', () => {
+test('V2 requested once approved creates a V2 job; V1 always creates V1', () => {
   assert.deepEqual(engineForNewJob({ active: 'V2' }, at, true), { version: 'V2', selectedAt: at });
   assert.deepEqual(engineForNewJob({ active: 'V1' }, at, true), { version: 'V1', selectedAt: at });
   assert.deepEqual(engineForNewJob(null, at, true), { version: 'V1', selectedAt: at });
+});
+
+test('admin preview: an admin job runs V2 while customers stay V1', () => {
+  const s = { active: 'V1', adminPreview: 'V2' };
+  assert.deepEqual(engineForNewJob(s, at, false, { isAdmin: true }), { version: 'V2', audience: 'admin_preview', selectedAt: at });
+  assert.deepEqual(engineForNewJob(s, at, false, { isAdmin: false }), { version: 'V1', selectedAt: at });
+  assert.deepEqual(engineForNewJob(s, at, false), { version: 'V1', selectedAt: at });
+  // Preview off: an admin follows the customer engine like everyone else.
+  assert.deepEqual(engineForNewJob({ active: 'V1', adminPreview: 'V1' }, at, false, { isAdmin: true }), { version: 'V1', selectedAt: at });
 });
 
 test('the job keeps its stamp; jobs from before the selector read as V1', () => {
@@ -32,17 +43,27 @@ test('the job keeps its stamp; jobs from before the selector read as V1', () => 
   assert.equal(engineOf(null), 'V1');
 });
 
-test('V2 is not selectable in this release', () => {
+test('V2 is not yet approved for customers', () => {
   assert.equal(VERIFY_V2_AVAILABLE, false);
 });
 
 test('research-agent stamps the engine once at creation, keeps it on the finished row, and never shows it to customers', () => {
   const src = readFileSync(fileURLToPath(new URL('../../../supabase/functions/research-agent/index.ts', import.meta.url)), 'utf8');
-  assert.match(src, /const engine = engineForNewJob\(await adminSettingJson\(sb, VERIFY_ENGINE_SETTING_KEY\), now\(\)\);/);
+  assert.match(src, /const engineSetting = await adminSettingJson\(sb, VERIFY_ENGINE_SETTING_KEY\);/);
+  assert.match(src, /const engine = engineForNewJob\(engineSetting, now\(\), undefined, \{ isAdmin \}\);/);
+  // Admin is the caller's own users.is_admin, looked up only while a preview is on.
+  assert.match(src, /if \(user && !anonSession && parseEngineSetting\(engineSetting\)\.adminPreview === 'V2'\) \{\n\s+const \{ data: me \} = await sb\.from\('users'\)\.select\('is_admin'\)\.eq\('auth_id', user\.id\)\.maybeSingle\(\);\n\s+isAdmin = me\?\.is_admin === true;/);
   assert.match(src, /result_json: \{ _lang: lang, _engine: engine,/);
   assert.match(src, /_engine: prior\._engine \?\? null,/);
   assert.match(src, /delete r\._engine;/);
   assert.match(src, /'_engine', '_developerAds'\]\) delete r\[k\];/);
   // Read once: the live setting is never consulted after creation.
   assert.equal((src.match(/VERIFY_ENGINE_SETTING_KEY/g) ?? []).length, 2, 'import + the single creation-time read');
+});
+
+test('the Admin card writes both fields on every change', () => {
+  const src = readFileSync(fileURLToPath(new URL('../../components/admin/VerifyEngineCard.tsx', import.meta.url)), 'utf8');
+  assert.match(src, /const next = \{ \.\.\.setting, \[target\.field\]: target\.engine \};/);
+  assert.match(src, /updateAdminSetting\(VERIFY_ENGINE_SETTING_KEY, next, reason\.trim\(\)\)/);
+  assert.match(src, /field === 'active' && engine === 'V2' && !VERIFY_V2_AVAILABLE/);
 });

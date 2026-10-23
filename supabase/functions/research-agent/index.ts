@@ -23,6 +23,7 @@ import { rsTaxpayerLegalStatus, withoutRsRaw } from '../../../src/verify/rsTaxpa
 import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
 import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
+import { engineForNewJob, VERIFY_ENGINE_SETTING_KEY } from '../../../src/verify/engine.ts';
 // Developer Advertising Intelligence: the shared memo23 Apify client (the one
 // seam Verify shares; the file itself is unchanged) with Verify's OWN
 // orchestration, setting, budget and cost rows — no Find Buyers campaign,
@@ -4848,6 +4849,9 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
      * by reading it mid-run and then finding it gone from the finished row.
      */
     _reusePlan: prior._reusePlan ?? null,
+    // The engine the job was created on (src/verify/engine.ts): kept on the
+    // finished row so COGS and quality can be compared V1 vs V2.
+    _engine: prior._engine ?? null,
     _stageTimes: await stageTimesWithTasks(sb, j.id, prior._stageTimes),
     // Internal ledgers and official visual references (finish() replaces
     // result_json wholesale, so they are carried explicitly). Stripped from
@@ -6396,7 +6400,7 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
  */
 function stripInternalInProgress(result: any): any {
   const r: any = { ...result };
-  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_marketEligibility', '_officialVisualsError', '_unattendedVerificationSkips', '_stageTimes', '_developerAds']) delete r[k];
+  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_marketEligibility', '_officialVisualsError', '_unattendedVerificationSkips', '_stageTimes', '_engine', '_developerAds']) delete r[k];
   // Per-stage model names (COGS) are internal economics too.
   delete r._models;
   if (r.browserOfficial && typeof r.browserOfficial === 'object' && Array.isArray(r.browserOfficial.results)) {
@@ -6527,6 +6531,7 @@ function sanitizeForCustomer(job: any): any {
   // internal economics. A customer buys the current state of their property,
   // not a description of how cheaply we assembled it.
   delete r._reusePlan;
+  delete r._engine;
   delete r._stageTimes;
   delete r._worker;
   delete r._cost;
@@ -8015,7 +8020,12 @@ Deno.serve(async (req) => {
      * name is kept because it is what the whole pipeline reads.
      */
     const reusePlan = await shadowReusePlan(sb, q);
-    const row = { ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang, ...(reusePlan ? { _reusePlan: reusePlan } : {}) }, progress: { phase: 'queued', percent: 5 }, updated_at: now() };
+    /* VERIFY ENGINE (V1 original / V2 code-first), read ONCE here and stamped on
+       the job: every later step reads the stamp, so a running job never changes
+       engine (src/verify/engine.ts, docs/claude/VERIFY_V2_PLAN.md §1). */
+    const engine = engineForNewJob(await adminSettingJson(sb, VERIFY_ENGINE_SETTING_KEY), now());
+    if (engine.requested) console.log(JSON.stringify({ scope: 'verify_engine', event: 'requested_unavailable', requested: engine.requested, stamped: engine.version }));
+    const row = { ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang, _engine: engine, ...(reusePlan ? { _reusePlan: reusePlan } : {}) }, progress: { phase: 'queued', percent: 5 }, updated_at: now() };
     let { data: j, error } = await sb.from('research_jobs').insert({ ...row, ...(clientRequestId ? { client_request_id: clientRequestId } : {}) }).select('*').single();
     // Before migration 20261026090000 the column does not exist: start as before.
     if (error?.code === '42703' && clientRequestId) ({ data: j, error } = await sb.from('research_jobs').insert(row).select('*').single());

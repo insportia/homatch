@@ -328,10 +328,11 @@ test('every requirement or amenity code the server can name has natural words in
   const ranking = read('src/research-core/marketplace/ranking.ts');
   const hard = ranking.slice(ranking.indexOf('export function hardFilter'), ranking.indexOf('return { fits:', ranking.indexOf('export function hardFilter')));
   const codes = new Set([
-    ...[...hard.matchAll(/check\('([A-Z_]+)'/g)].map((m) => m[1]),
+    /* Every audited check (record/range) whose hard FAIL or UNKNOWN becomes a violation or unverified code. */
+    ...[...hard.matchAll(/(?:record|range)\('([A-Z_]+)', (?:true|f\.)/g)].map((m) => m[1]),
     ...[...hard.matchAll(/(?:unverified|violations)\.push\('([A-Z_]+)'\)/g)].map((m) => m[1]),
   ]);
-  assert.match(hard, /unverified\.push\(`REQUIRED_\$\{must\}`\)/, 'required amenities are reported as REQUIRED_<amenity>');
+  assert.match(hard, /record\(`REQUIRED_\$\{must\}`, true/, 'required amenities are reported as REQUIRED_<amenity>');
   const amenities = read('src/research-core/marketplace/taxonomy.ts').match(/export const AMENITIES[^=]*=\s*\[([^\]]+)\]/)[1].match(/'([A-Z_]+)'/g).map((x) => x.slice(1, -1));
   for (const a of amenities) codes.add(a).add(`REQUIRED_${a}`).add(`EXCLUDED_${a}`);
   assert.ok(codes.size >= 30, `enumerated ${codes.size} codes`);

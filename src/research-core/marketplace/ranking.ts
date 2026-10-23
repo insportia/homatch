@@ -56,12 +56,37 @@ export function budgetBand(priceUsd: number | null, minUsd: number, maxUsd: numb
   return 'ABOVE_CEILING';
 }
 
+export type CheckResult = 'PASS' | 'FAIL' | 'UNKNOWN';
+
+/**
+ * One requested criterion against one property: what was asked, what the listing
+ * says, where that came from, and the verdict. Hard checks decide eligibility; soft
+ * ones (a stated wish) only rank. UNKNOWN is never a PASS.
+ */
+export interface ConstraintCheck {
+  field: string;
+  hard: boolean;
+  expected: unknown;
+  observed: unknown;
+  /** STRUCTURED: a field the source published. DESCRIPTION: the listing's own text. */
+  basis: 'STRUCTURED' | 'DESCRIPTION' | 'NONE';
+  result: CheckResult;
+}
+
 export interface HardFilterResult {
   /** Passes every non-price hard constraint. */
   fits: boolean;
   band: BudgetBand;
   violations: string[];
   unverified: string[];
+  /** Every requested criterion, hard and soft, in a fixed order (persisted for audit). */
+  checks: ConstraintCheck[];
+}
+
+/** What the listing's own description says about requested amenities (result-evidence.ts). */
+export interface TextEvidence {
+  mentioned: readonly string[];
+  contradicted: readonly string[];
 }
 
 const inRange = (v: number | null, r: { min: number | null; max: number | null } | null): 'IN' | 'OUT' | 'UNKNOWN' | 'NA' => {
@@ -88,50 +113,79 @@ export function districtFit(district: string | null, wanted: readonly string[]):
   return 'UNKNOWN';
 }
 
-export function hardFilter(f: PropertyFacts, req: MarketplaceSearchRequest): HardFilterResult {
+const structuredAmenity = (must: string, f: PropertyFacts): boolean | null => must === 'PARKING' ? f.parking
+  : must === 'FURNISHED' ? f.furnished
+    : must === 'ELEVATOR' ? f.elevator ?? (f.amenities.includes('ELEVATOR') ? true : f.amenities.includes('NO_ELEVATOR') ? false : null)
+      : f.amenities.includes(must) ? true : null;
+
+export function hardFilter(f: PropertyFacts, req: MarketplaceSearchRequest, text: TextEvidence = { mentioned: [], contradicted: [] }): HardFilterResult {
   const violations: string[] = [];
   const unverified: string[] = [];
-  const check = (name: string, r: 'IN' | 'OUT' | 'UNKNOWN' | 'NA') => {
-    if (r === 'OUT') violations.push(name);
-    else if (r === 'UNKNOWN') unverified.push(name);
+  const checks: ConstraintCheck[] = [];
+  const record = (field: string, hard: boolean, expected: unknown, observed: unknown, result: CheckResult, basis: ConstraintCheck['basis'] = observed === null || observed === undefined ? 'NONE' : 'STRUCTURED') => {
+    checks.push({ field, hard, expected, observed: observed ?? null, basis, result });
+    if (!hard) return;
+    if (result === 'FAIL') violations.push(field);
+    else if (result === 'UNKNOWN') unverified.push(field);
   };
-  check('AREA', inRange(f.areaSqm, { min: req.areaMinSqm, max: req.areaMaxSqm }));
-  check('ROOMS', inRange(f.rooms, req.rooms));
-  check('BEDROOMS', inRange(f.bedrooms, req.bedrooms));
-  check('BATHROOMS', inRange(f.bathrooms, req.bathrooms));
-  check('FLOOR_RANGE', inRange(f.floor, req.floorRange ?? null));
+  const range = (field: string, v: number | null, r: { min: number | null; max: number | null } | null) => {
+    const fit = inRange(v, r);
+    if (fit !== 'NA') record(field, true, r, v, fit === 'IN' ? 'PASS' : fit === 'OUT' ? 'FAIL' : 'UNKNOWN');
+  };
+  const band = budgetBand(f.priceUsd, req.priceMinUsd, req.priceMaxUsd);
+  /* Price is recorded for the audit; its band (upgrades, OTHER) is decided by the pipeline. */
+  checks.push({ field: 'PRICE', hard: true, expected: { min: req.priceMinUsd, max: req.priceMaxUsd }, observed: f.priceUsd,
+    basis: f.priceUsd === null ? 'NONE' : 'STRUCTURED', result: band === 'IN_BUDGET' ? 'PASS' : band === 'UNKNOWN' ? 'UNKNOWN' : 'FAIL' });
+  range('AREA', f.areaSqm, { min: req.areaMinSqm, max: req.areaMaxSqm });
+  range('ROOMS', f.rooms, req.rooms);
+  range('BEDROOMS', f.bedrooms, req.bedrooms);
+  range('BATHROOMS', f.bathrooms, req.bathrooms);
+  range('FLOOR_RANGE', f.floor, req.floorRange ?? null);
   if (req.maxBuildingAge != null) {
     const year = req.requestedAt ? new Date(req.requestedAt).getUTCFullYear() : NaN;
-    check('BUILDING_AGE', f.constructionYear == null || !Number.isFinite(year) || f.constructionYear > year ? 'UNKNOWN'
-      : year - f.constructionYear > req.maxBuildingAge ? 'OUT' : 'IN');
+    record('BUILDING_AGE', true, req.maxBuildingAge, f.constructionYear ?? null,
+      f.constructionYear == null || !Number.isFinite(year) || f.constructionYear > year ? 'UNKNOWN'
+        : year - f.constructionYear > req.maxBuildingAge ? 'FAIL' : 'PASS');
   }
   for (const preference of req.floorPreferences ?? []) {
-    if (preference === 'NOT_FIRST') check('FLOOR_NOT_FIRST', f.floor === null ? 'UNKNOWN' : f.floor === 1 ? 'OUT' : 'IN');
-    if (preference === 'NOT_LAST') check('FLOOR_NOT_LAST', f.floor === null || f.totalFloors === null ? 'UNKNOWN' : f.floor === f.totalFloors ? 'OUT' : 'IN');
+    if (preference === 'NOT_FIRST') record('FLOOR_NOT_FIRST', true, 'NOT_FIRST', f.floor, f.floor === null ? 'UNKNOWN' : f.floor === 1 ? 'FAIL' : 'PASS');
+    if (preference === 'NOT_LAST') record('FLOOR_NOT_LAST', true, 'NOT_LAST', f.floor === null || f.totalFloors === null ? null : `${f.floor}/${f.totalFloors}`,
+      f.floor === null || f.totalFloors === null ? 'UNKNOWN' : f.floor === f.totalFloors ? 'FAIL' : 'PASS');
   }
   const d = districtFit(f.district, req.districts);
-  if (d === 'OTHER') violations.push('DISTRICT');
-  else if (d === 'UNKNOWN') unverified.push('DISTRICT');
+  if (d !== 'NA') record('DISTRICT', true, req.districts, f.district, d === 'MATCH' ? 'PASS' : d === 'OTHER' ? 'FAIL' : 'UNKNOWN');
   if (req.buildingStatuses.length) {
-    if (!f.buildingStatus) unverified.push('BUILDING_STATUS');
-    else if (!req.buildingStatuses.includes(f.buildingStatus as never)) violations.push('BUILDING_STATUS');
+    record('BUILDING_STATUS', true, req.buildingStatuses, f.buildingStatus,
+      !f.buildingStatus ? 'UNKNOWN' : req.buildingStatuses.includes(f.buildingStatus as never) ? 'PASS' : 'FAIL');
   }
-  if (req.renovationPreferences.length && f.renovationStatus && !req.renovationPreferences.includes(f.renovationStatus as never)) {
-    violations.push('RENOVATION');
+  /* A required finishing condition the listing does not state is UNVERIFIED, not a pass
+     (production search d3d859cc: "must be renovated", 106 of 150 homes did not say). */
+  if (req.renovationPreferences.length) {
+    record('RENOVATION', true, req.renovationPreferences, f.renovationStatus,
+      !f.renovationStatus ? 'UNKNOWN' : req.renovationPreferences.includes(f.renovationStatus as never) ? 'PASS' : 'FAIL');
   }
-  if (req.parking === true && f.parking === false) violations.push('PARKING');
-  if (req.parking === true && f.parking === null) unverified.push('PARKING');
-  if (req.furnished !== null && f.furnished !== null && req.furnished !== f.furnished) violations.push('FURNISHED');
-  if (req.furnished !== null && f.furnished === null) unverified.push('FURNISHED');
+  if (req.preferredBuildingStatuses?.length) {
+    record('PREFERRED_BUILDING_STATUS', false, req.preferredBuildingStatuses, f.buildingStatus,
+      !f.buildingStatus ? 'UNKNOWN' : req.preferredBuildingStatuses.includes(f.buildingStatus as never) ? 'PASS' : 'FAIL');
+  }
+  if (req.preferredRenovations?.length) {
+    record('PREFERRED_RENOVATION', false, req.preferredRenovations, f.renovationStatus,
+      !f.renovationStatus ? 'UNKNOWN' : req.preferredRenovations.includes(f.renovationStatus as never) ? 'PASS' : 'FAIL');
+  }
+  if (req.parking === true) record('PARKING', true, true, f.parking, f.parking === true ? 'PASS' : f.parking === false ? 'FAIL' : 'UNKNOWN');
+  if (req.furnished !== null) record('FURNISHED', true, req.furnished, f.furnished,
+    f.furnished === null ? 'UNKNOWN' : f.furnished === req.furnished ? 'PASS' : 'FAIL');
+  /* A required amenity: the source's structured field first; otherwise the listing's own
+     description (the seller's words) confirms or denies it. Silence stays UNKNOWN. */
   for (const must of req.mustHave) {
-    const known = must === 'PARKING' ? f.parking : must === 'FURNISHED' ? f.furnished
-      : must === 'ELEVATOR' ? f.elevator ?? (f.amenities.includes('ELEVATOR') ? true : f.amenities.includes('NO_ELEVATOR') ? false : null)
-        : f.amenities.includes(must) ? true : null;
-    if (known === false) violations.push(`REQUIRED_${must}`);
-    if (known === null) unverified.push(`REQUIRED_${must}`);
+    const known = structuredAmenity(must, f);
+    if (known !== null) record(`REQUIRED_${must}`, true, true, known, known ? 'PASS' : 'FAIL');
+    else if (text.contradicted.includes(must)) record(`REQUIRED_${must}`, true, true, false, 'FAIL', 'DESCRIPTION');
+    else if (text.mentioned.includes(must)) record(`REQUIRED_${must}`, true, true, true, 'PASS', 'DESCRIPTION');
+    else record(`REQUIRED_${must}`, true, true, null, 'UNKNOWN');
   }
-  for (const ex of req.exclusions) if (f.amenities.includes(ex)) violations.push(`EXCLUDED_${ex}`);
-  return { fits: violations.length === 0, band: budgetBand(f.priceUsd, req.priceMinUsd, req.priceMaxUsd), violations, unverified };
+  for (const ex of req.exclusions) if (f.amenities.includes(ex)) record(`EXCLUDED_${ex}`, true, false, true, 'FAIL');
+  return { fits: violations.length === 0, band, violations, unverified, checks };
 }
 
 export const RANKING_WEIGHTS = {
@@ -190,9 +244,10 @@ function criteriaScore(f: PropertyFacts, filter: HardFilterResult, req: Marketpl
   }
   if (req.buildingStatuses.length) parts.push(f.buildingStatus ? (req.buildingStatuses.includes(f.buildingStatus as never) ? 1 : 0) : 0.5);
   if (req.renovationPreferences.length) parts.push(f.renovationStatus ? (req.renovationPreferences.includes(f.renovationStatus as never) ? 1 : 0) : 0.5);
-  for (const must of req.mustHave) {
-    const has = must === 'PARKING' ? f.parking : must === 'FURNISHED' ? f.furnished : f.amenities.includes(must) ? true : null;
-    parts.push(has === true ? 1 : has === false ? 0 : 0.5);
+  for (const c of filter.checks) {
+    if (c.field.startsWith('REQUIRED_')) parts.push(c.result === 'PASS' ? 1 : c.result === 'FAIL' ? 0 : 0.5);
+    /* A wish only nudges the order: matching it ranks a little higher, missing it never excludes. */
+    if (c.field.startsWith('PREFERRED_')) parts.push(c.result === 'PASS' ? 1 : c.result === 'FAIL' ? 0.6 : 0.75);
   }
   for (const nice of req.niceToHave) {
     const has = nice === 'PARKING' ? f.parking : f.amenities.includes(nice) ? true : null;

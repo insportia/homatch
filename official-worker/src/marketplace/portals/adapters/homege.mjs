@@ -1,4 +1,4 @@
-import { decode, dmy, int, meta, num, strip } from '../html.mjs';
+import { decode, dmy, floorNumber, int, meta, num, strip } from '../html.mjs';
 import { requestedDistrictKeys } from '../places.mjs';
 
 /*
@@ -96,7 +96,7 @@ export const homege = {
       areaSqm: area > 0 ? area : undefined,
       rooms: int((field('rooms') ?? '').match(/\d+/)?.[0]) ?? undefined,
       bedrooms: int(field('bedrooms')) ?? undefined, bathrooms: int(field('bathrooms')) ?? undefined,
-      floor: int(field('floor')) ?? undefined, totalFloors: int(field('number_of_floors')) ?? undefined,
+      floor: floorNumber(field('floor')) ?? undefined, totalFloors: int(field('number_of_floors')) ?? undefined,
       city: field('mdebareoba') ?? undefined, district: field('mdebareoba_level2') ?? undefined,
       latitude: pin ? Number(pin[1]) : undefined, longitude: pin ? Number(pin[2]) : undefined,
       publishedAt: dmy(placed ? strip(placed[1]) : null) ?? undefined,

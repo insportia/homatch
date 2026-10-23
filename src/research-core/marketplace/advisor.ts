@@ -158,12 +158,18 @@ export function assessProperty(p: AdvisorInput, brief: SearchIntelligenceBrief, 
   const amenities = [...new Set([...(brief.parking?.value === true ? ['PARKING'] : []), ...brief.mustHave, ...brief.niceToHave])]
     .filter((code) => code !== 'FURNISHED' || brief.furnished?.value == null);
   const prefs = p.intelligence?.preferences ?? null;
+  /* A nice-to-have the listing does not mention is a soft unknown: it never blocks a "good match". */
+  const required = new Set([...(brief.parking?.value === true ? ['PARKING'] : []), ...brief.mustHave]);
+  let softUnknown = 0;
   for (const code of amenities) {
     const state = amenityState(code, f, prefs);
     if (state === 'YES') fits.push({ code: 'AMENITY', params: { amenity: code } });
     else if (state === 'MENTIONED') fits.push({ code: 'AMENITY_MENTIONED', params: { amenity: code } });
     else if (state === 'NO') misses.push({ code: 'AMENITY', params: { amenity: code } });
-    else unknown.push({ code: 'AMENITY', params: { amenity: code } });
+    else {
+      unknown.push({ code: 'AMENITY', params: { amenity: code } });
+      if (!required.has(code)) softUnknown += 1;
+    }
   }
   for (const code of brief.exclusions) {
     if (f.amenities.includes(code)) misses.push({ code: 'EXCLUDED', params: { amenity: code } });
@@ -178,9 +184,11 @@ export function assessProperty(p: AdvisorInput, brief: SearchIntelligenceBrief, 
   if (p.priceDiscrepancy?.significant) highlights.push({ code: 'PRICE_DIFFERS', params: { amount: Math.round(p.priceDiscrepancy.differenceUsd) } });
   for (const a of p.upgrade?.advantages ?? []) highlights.push({ code: `UPGRADE_${a.code}`, params: { n: a.delta !== null ? Math.abs(a.delta) : 0 } });
 
+  /* "Good match" is a claim: nothing the customer required may contradict it or be unknown.
+     A required criterion the listing does not state makes it "worth a look" (ask first). */
   const verdict: AdvisorVerdict = p.group === 'UPGRADE' || p.upgrade ? 'UPGRADE'
     : p.intelligence?.strong ? 'TOP'
-      : misses.length === 0 ? 'GOOD' : 'CONSIDER';
+      : misses.length === 0 && unknown.length === softUnknown ? 'GOOD' : 'CONSIDER';
   return { verdict, fits, misses, unknown, highlights };
 }
 

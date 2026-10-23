@@ -297,3 +297,17 @@ test('adaptive depth stops on the time budget and reports it; a server that filt
   assert.match(last.queryApplied.adaptiveDepth, /TIME_BUDGET$/);
   assert.ok(last.errors.some((e) => e.code === 'PAGE_CAP_REACHED' && /time budget/.test(e.message)));
 });
+
+test('a listing\'s floor is its own floor: "1/9" is 1, "-1" a basement, never digits glued together (2026-10-22)', async () => {
+  const { floorNumber } = await import('../src/marketplace/portals/html.mjs');
+  for (const [text, floor] of [['1', 1], ['1/9', 1], ['3/12', 3], ['2 / 12', 2], ['-1', -1], ['-1/9', -1], ['2 из 9', 2],
+    ['სარდაფი', -1], ['ნახევარსარდაფი', 0], ['ground floor', 0], [' 4 ', 4], ['', null], [null, null], ['უცნობი', null]]) {
+    assert.equal(floorNumber(text), floor, String(text));
+  }
+  /* The recorded pages keep reading exactly as before. */
+  assert.equal(homege.parseDetail(page('homege-detail')).floor, 4);
+  assert.equal(allhome.parseDetail(page('allhome-detail')).floor, 10);
+  /* The card's "N/M" form, with a basement sign. */
+  const card = page('place-list').replace('სართული 3/8', 'სართული -1/8');
+  assert.ok(placege.parseList(card, 'https://place.ge/ge/ads', {}).some((l) => l.floor === -1 && l.totalFloors === 8));
+});

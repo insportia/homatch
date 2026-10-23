@@ -62,6 +62,10 @@ export function summaryText(a: AdvisorAssessment, t: T, lang: string): string {
     if (!a.fits.length) return ask ? t('fpv_sum_ask_only', { ask }) : t('fpv_sum_top_plain');
     return ask ? t('fpv_sum_good', { list: fitNouns, ask }) : t('fpv_sum_good_plain', { list: fitNouns });
   }
+  if (!a.misses.length) {
+    /* Nothing contradicts the request, but something required is not stated: say what to ask. */
+    return t('fpv_sum_ask_only', { ask: listText(a.unknown.slice(0, 2).map((p) => nounText(p, t)), lang, t) });
+  }
   const miss = missText(a.misses[0], t);
   return a.fits.length ? t('fpv_sum_consider', { list: fitNouns, miss }) : miss;
 }

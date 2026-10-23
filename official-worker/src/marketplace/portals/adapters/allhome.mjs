@@ -1,4 +1,4 @@
-import { decode, dmy, int, meta, num, strip } from '../html.mjs';
+import { decode, dmy, floorNumber, int, meta, num, strip } from '../html.mjs';
 
 /*
  * ALLHOME.GE — its only search and list routes live under /index.php?…, which
@@ -62,7 +62,7 @@ export const allhome = {
       price: price ?? undefined, currency: price != null ? 'USD' : undefined,
       areaSqm: area > 0 ? area : undefined, pricePerSqm: price != null && area > 0 ? Math.round(price / area) : undefined,
       rooms: rooms ?? undefined, bedrooms: int(field('საძინებლის რაოდენობა')) ?? undefined, bathrooms: int(field('სველი წერტილები')) ?? undefined,
-      floor: int(field('სართული')) ?? undefined, totalFloors: int(field('სართულიანობა')) ?? undefined,
+      floor: floorNumber(field('სართული')) ?? undefined, totalFloors: int(field('სართულიანობა')) ?? undefined,
       city: field('ქალაქი') ?? undefined, district: district ?? undefined, address: street ?? undefined,
       publishedAt: dmy(head?.[2]) ?? undefined,
       buildingStatus: /მშენებარე/.test(built) ? 'UNDER_CONSTRUCTION' : /ახალი აშენებული/.test(built) ? 'NEW_BUILD' : /ძველი აშენებული/.test(built) ? 'OLD_BUILD' : undefined,

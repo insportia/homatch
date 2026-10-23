@@ -19,7 +19,7 @@ import { type PairDecision, resolveProperties } from './property-entity.ts';
 import { type SellerAssessment, classifySeller, isOwnerClass } from './seller.ts';
 import { type LocalComparison, type PriceDiscrepancy, localComparison, priceDiscrepancy } from './price-intel.ts';
 import {
-  type BudgetBand, type HardFilterResult, type PropertyFacts, type RankingComponents,
+  type BudgetBand, type ConstraintCheck, type HardFilterResult, type PropertyFacts, type RankingComponents,
   districtFit, hardFilter, rankProperty,
 } from './ranking.ts';
 import { type Gain, selectUpgrades } from './upgrade.ts';
@@ -129,6 +129,8 @@ export interface ResultProperty {
     components: RankingComponents;
     band: BudgetBand;
     violations: string[];
+    /** Every requested criterion: expected, observed, basis, PASS/FAIL/UNKNOWN, hard or soft. */
+    checks: ConstraintCheck[];
     resolutionEvidence: string[];
     resolutionTiers: string[];
     sellerEvidence: string[];
@@ -275,15 +277,17 @@ export function processSearch(input: PipelineInput): PipelineOutput {
     const seller = owner ?? all.sort((a, b) => b.confidence - a.confidence)[0];
     const verified = members.map((m) => m.lastVerifiedAt).filter((v): v is string => !!v).sort().reverse();
     const best = members.reduce((acc, m) => (FRESH_ORDER[m.freshness] > FRESH_ORDER[acc] ? m.freshness : acc), 'STALE' as NormalizedListing['freshness']);
+    const intelligence = resultEvidence(representative, members, facts, req, now);
     return {
       key: c.key, members, facts, rep: representative, sellers, seller,
-      filter: hardFilter(facts, req),
+      /* The listing's own description can confirm or deny a required amenity; silence stays unknown. */
+      filter: hardFilter(facts, req, intelligence.preferences),
       discrepancy: priceDiscrepancy(members),
       freshness: best,
       lastVerifiedAt: verified[0] ?? null,
       oldListing: members.every((m) => m.oldListing),
       sources: new Set(members.map((m) => m.source)).size,
-      intelligence: resultEvidence(representative, members, facts, req, now),
+      intelligence,
       cluster: { evidence: c.evidence, tiers: c.tiers },
     };
   });
@@ -361,7 +365,13 @@ export function processSearch(input: PipelineInput): PipelineOutput {
   const normal = eligible.filter(({ w }) => !upgradeOf.has(w.key)).sort(order);
   /* A property known only from social posts is unverified: it can rank, never be a Best Match on its own. */
   const socialOnly = (w: typeof ranked[number]['w']) => w.members.every((m) => isSocialSource(m.source));
-  const strong = normal.filter(({ w, r }) => r.components.criteria >= STRONG_CRITERIA && w.freshness !== 'STALE' && !socialOnly(w));
+  /* ONE definition of a strong match, used for the BEST group, the card badge and the saved count:
+     every hard criterion confirmed (no violation, nothing unverified), in budget, current, and
+     nothing about the listing itself left to check. */
+  const isStrong = (w: typeof ranked[number]['w'], r: typeof ranked[number]['r']) => w.filter.fits && w.filter.unverified.length === 0
+    && w.filter.band === 'IN_BUDGET' && r.components.criteria >= STRONG_CRITERIA && w.freshness !== 'STALE'
+    && !w.intelligence.verificationNeeded && !socialOnly(w);
+  const strong = normal.filter(({ w, r }) => isStrong(w, r));
   const best = strong.slice(0, BEST_LIMIT);
   const bestKeys = new Set(best.map(({ w }) => w.key));
   const owners = normal.filter(({ w }) => !bestKeys.has(w.key) && isOwnerClass(w.seller.classification)
@@ -377,7 +387,10 @@ export function processSearch(input: PipelineInput): PipelineOutput {
     const reasons: ResultProperty['reasons'] = [];
     if (districtFit(w.facts.district, req.districts) === 'MATCH') reasons.push({ code: 'DISTRICT_MATCH' });
     if (req.bedrooms && w.facts.bedrooms != null && !w.filter.unverified.includes('BEDROOMS')) reasons.push({ code: 'BEDROOM_MATCH' });
-    if ((req.floorRange || req.floorPreferences?.length) && w.facts.floor != null && !w.filter.unverified.some((code) => code.startsWith('FLOOR_'))) reasons.push({ code: 'FLOOR_MATCH' });
+    /* Only a floor check that actually ran and passed (production d3d859cc: vague LOW/MIDDLE/HIGH
+       produced FLOOR_MATCH for a first-floor flat while the customer asked for floors 2–8). */
+    const floorChecks = w.filter.checks.filter((c) => c.field === 'FLOOR_RANGE' || c.field === 'FLOOR_NOT_FIRST' || c.field === 'FLOOR_NOT_LAST');
+    if (floorChecks.length && floorChecks.every((c) => c.result === 'PASS')) reasons.push({ code: 'FLOOR_MATCH' });
     if (w.facts.elevator === true && req.mustHave.includes('ELEVATOR')) reasons.push({ code: 'ELEVATOR_CONFIRMED' });
     if (isOwnerClass(w.seller.classification) && w.seller.confidence >= OWNER_MIN_CONFIDENCE) reasons.push({ code: 'OWNER_LIKELY' });
     if (w.facts.renovationStatus === 'RENOVATED') reasons.push({ code: 'RENOVATED' });
@@ -399,8 +412,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
       score: r.score,
       title: w.rep.title,
       description: w.rep.description?.replace(/<[^>]*>/g, ' ').trim() ?? null,
-      intelligence: { ...w.intelligence, strong: group !== 'OTHER' && r.components.criteria >= STRONG_CRITERIA && w.filter.unverified.length === 0
-        && w.filter.band === 'IN_BUDGET' && w.freshness !== 'STALE' && !w.intelligence.verificationNeeded && !socialOnly(w) },
+      intelligence: { ...w.intelligence, strong: group !== 'OTHER' && group !== 'UPGRADE' && isStrong(w, r) },
       facts: w.facts,
       images: [...new Set([...w.rep.images, ...w.members.flatMap((m) => m.images)])].slice(0, 12),
       freshness: { state: w.freshness, lastVerifiedAt: w.lastVerifiedAt },
@@ -442,6 +454,7 @@ export function processSearch(input: PipelineInput): PipelineOutput {
         components: r.components,
         band: w.filter.band,
         violations: w.filter.violations,
+        checks: w.filter.checks,
         resolutionEvidence: w.cluster.evidence,
         resolutionTiers: w.cluster.tiers,
         sellerEvidence: w.seller.evidence,

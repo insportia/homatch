@@ -66,7 +66,7 @@ import { parseTranslateRequest } from '../../../src/verify/translation/textTrans
 import { translateTexts } from './translate.ts';
 import { costOperationFor, priceVerification, reportConsumption, reportCostRequestId, REPORT_STAGE, type ReportUsage } from '../../../src/verify/cogs.ts';
 import { pricingStateForDerivedCost } from '../_shared/providerCost.ts';
-import { reportRoutingFor } from '../../../src/verify/v2/researchRequest.ts';
+import { reportQualityFailures, reportRoutingFor } from '../../../src/verify/v2/researchRequest.ts';
 
 /**
  * GEL/USD context from the National Bank of Georgia.
@@ -224,7 +224,7 @@ function textOf(p: any): string {
 // through the secure viewer (research-agent `document_file`); the caller
 // already knows it, nothing new is disclosed.
 async function forCustomer(db: any, payload: Record<string, unknown>, jobId?: string): Promise<Record<string, unknown>> {
-  const { _usage: _droppedUsage, _timing: _droppedTiming, officialVisuals, ...stripped } = payload as Record<string, any>;
+  const { _usage: _droppedUsage, _timing: _droppedTiming, _usageFirstAttempt: _droppedFirst, _reportRouting: _droppedRouting, officialVisuals, ...stripped } = payload as Record<string, any>;
   const rest: Record<string, any> = jobId ? { ...stripped, jobId } : stripped;
   // Personal numbers never reach the browser, whatever an older build stored.
   if (rest.people) rest.people = redactPeopleSupport(rest.people);
@@ -738,7 +738,8 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   let rj: any = job.result_json ?? {};
   // V2 may route the report to a stronger model (VERIFY_V2 research routing, stamped on the job).
   const reportRouting = reportRoutingFor(rj, MODEL);
-  const reportModel = reportRouting.model;
+  // The model that wrote the report kept (the fallback, when the gate sent it there).
+  let reportModel = reportRouting.model;
   let registerSource: { jobId: string; asOf: string | null; reused: true; freshExtractAdvised: boolean } | null = null;
   if (!hasOwnRegister(rj)) {
     const reused = await loadEarlierRegister(writer, job, rj);
@@ -847,6 +848,9 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   // It used to be discarded, leaving the final synthesis unmetered.
   let usage: { model: string; inputTokens: number | null; outputTokens: number | null; cachedTokens: number | null } | null = null;
   const apiKey = Deno.env.get('OPENAI_API_KEY');
+  /* One report call: the model's text and usage, or null on a transport
+     failure. An availability refusal still throws (SILENT_FALLBACK = NO). */
+  let callReport: ((model: string) => Promise<{ raw: string; usage: NonNullable<typeof usage> } | null>) | null = null;
   if (apiKey) {
     // The asset class decides which sections this property can even have:
     // a plot of land has no building quality, and a heading with nothing
@@ -858,49 +862,84 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
       registerSource: registerSource ? { asOf: registerSource.asOf, reused: true, freshExtractAdvised: registerSource.freshExtractAdvised } : null,
       propertyKind: subjectKind,
     });
-    try {
-      timing.modelStartedAt = new Date().toISOString();
-      const res = await fetch('https://api.openai.com/v1/responses', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: reportModel,
-          input: [
-            { role: 'system', content: system },
-            { role: 'user', content: user },
-          ],
-        }),
-      });
-      timing.modelEndedAt = new Date().toISOString();
-      if (res.ok) {
-        const body = await res.json();
-        raw = textOf(body);
-        const u = body?.usage ?? null;
-        usage = {
-          model: reportModel,
-          inputTokens: typeof u?.input_tokens === 'number' ? u.input_tokens : null,
-          outputTokens: typeof u?.output_tokens === 'number' ? u.output_tokens : null,
-          cachedTokens: typeof u?.input_tokens_details?.cached_tokens === 'number' ? u.input_tokens_details.cached_tokens : null,
-        };
-      } else {
+    callReport = async (model: string) => {
+      try {
+        timing.modelStartedAt ??= new Date().toISOString();
+        const res = await fetch('https://api.openai.com/v1/responses', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model,
+            input: [
+              { role: 'system', content: system },
+              { role: 'user', content: user },
+            ],
+          }),
+        });
+        timing.modelEndedAt = new Date().toISOString();
+        if (res.ok) {
+          const body = await res.json();
+          const u = body?.usage ?? null;
+          return {
+            raw: textOf(body),
+            usage: {
+              model,
+              inputTokens: typeof u?.input_tokens === 'number' ? u.input_tokens : null,
+              outputTokens: typeof u?.output_tokens === 'number' ? u.output_tokens : null,
+              cachedTokens: typeof u?.input_tokens_details?.cached_tokens === 'number' ? u.input_tokens_details.cached_tokens : null,
+            },
+          };
+        }
         // The provider's own words, not a summary of them.
         const detail = (await res.text()).slice(0, 500);
-        const reason = `SYNTHESIS_MODEL_UNAVAILABLE: ${reportModel} refused: HTTP ${res.status} ${detail}`;
+        const reason = `SYNTHESIS_MODEL_UNAVAILABLE: ${model} refused: HTTP ${res.status} ${detail}`;
         if (MODEL_UNAVAILABLE_STATUSES.has(res.status)) throw new Error(reason);
         console.error(reason);
+        return null;
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : String(e);
+        // Re-throw the availability refusal raised just above; a transport
+        // failure is transient and degrades the prose, never the report.
+        if (reason.startsWith('SYNTHESIS_MODEL_UNAVAILABLE')) throw e;
+        console.error('synthesis model call failed', reason);
+        return null;
       }
-    } catch (e) {
-      const reason = e instanceof Error ? e.message : String(e);
-      // Re-throw the availability refusal raised just above; a transport
-      // failure is transient and degrades the prose, never the report.
-      if (reason.startsWith('SYNTHESIS_MODEL_UNAVAILABLE')) throw e;
-      console.error('synthesis model call failed', reason);
-    }
+    };
+    const first = await callReport(reportModel);
+    if (first) ({ raw, usage } = first);
   }
 
   // The bundle travels into finalize so the deterministic facts can veto a
   // model statement that contradicts them — see stripFalseScarcity.
-  const final = finalizeReport(pkg, raw, bundle);
+  let final = finalizeReport(pkg, raw, bundle);
+  /* V2 report policy AUTO: the cheap model's report failed the objective
+     gate, so the strong model gets the same prompt ONCE. The report with
+     fewer objective failures is kept; the other call's usage is recorded as
+     _usageFirstAttempt (verify_stage_cogs: report_first_attempt). */
+  let usageFirstAttempt: typeof usage = null;
+  let escalation: Record<string, unknown> | null = null;
+  const failures = reportQualityFailures(final, !!raw);
+  if (callReport && reportRouting.fallbackModel && failures.length) {
+    const second = await callReport(reportRouting.fallbackModel).catch((e) => {
+      console.error('synthesis fallback call failed', e instanceof Error ? e.message : String(e));
+      return null;
+    });
+    if (second) {
+      const final2 = finalizeReport(pkg, second.raw, bundle);
+      const failures2 = reportQualityFailures(final2, !!second.raw);
+      const keepSecond = !!second.raw && failures2.length < failures.length;
+      escalation = { from: reportModel, to: reportRouting.fallbackModel, reasons: failures.slice(0, 10), fallbackFailures: failures2.slice(0, 10), kept: keepSecond ? 'FALLBACK' : 'FIRST' };
+      if (keepSecond) {
+        usageFirstAttempt = usage;
+        ({ raw, usage } = second);
+        final = final2;
+        reportModel = reportRouting.fallbackModel;
+      } else {
+        usageFirstAttempt = second.usage;
+      }
+      console.log(JSON.stringify({ scope: 'verify_report_escalation', jobId: job.id, ...escalation }));
+    }
+  }
   if (final.mode === 'DETERMINISTIC' && final.rejectedBecause.length) {
     // Worth knowing about: a model that keeps failing the gate is a
     // prompt/model problem we want visible in logs, not silently absorbed.
@@ -917,7 +956,8 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     synthesisModel: reportModel,
     synthesisModelPinned: true,
     /* Why this model wrote it (V2 report policy AUTO/LUNA/TERRA, and the evidence triggers that chose the strong model). */
-    _reportRouting: reportRouting,
+    _reportRouting: { ...reportRouting, model: reportModel, escalation },
+    ...(usageFirstAttempt ? { _usageFirstAttempt: usageFirstAttempt } : {}),
     report: {
       // v3: summary + keyFindings replace overallView/executiveSummary, and
       // the pre-purchase checklist is gone rather than renamed.

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  budgetDecision, canonicalModel, escalationModelFor, marketCodeDecision, parseResearchTuning, reportEscalationReasons,
+  budgetDecision, canonicalModel, escalationModelFor, marketCodeDecision, parseResearchTuning, reportQualityFailures,
   reportRoutingFor, researchSpentUsd, searchLogBrief, searchQueriesOf, stageOutputUsable, v2ResearchRequest,
 } from '../researchRequest.ts';
 
@@ -72,15 +72,40 @@ test('escalation: only an unusable cheap answer, once per stage, only when enabl
   assert.equal(canonicalModel('gpt-5.6-terra'), 'gpt-5.6-terra');
 });
 
-test('the report: AUTO writes a plain report on the cheap model and a hard one on the strong model, with reasons', () => {
-  const plain = v2({ report: { policy: 'AUTO' } }, { legalStatus: { a: { status: 'CONFIRMED_POSITIVE' } }, conflicts: [{ severity: 'MINOR' }] });
-  assert.deepEqual(reportRoutingFor(plain, 'gpt-5.6-luna'), { model: 'gpt-5.6-luna', policy: 'AUTO', reasons: [] });
-  const hard = v2({ report: { policy: 'AUTO' } }, { materialAdverseFindings: [{}], conflicts: [{ severity: 'MATERIAL' }], legalStatus: { a: { status: 'CONFIRMED_ATTENTION' } } });
-  assert.deepEqual(reportRoutingFor(hard, 'gpt-5.6-luna'), { model: 'gpt-5.6-terra', policy: 'AUTO', reasons: ['MATERIAL_ADVERSE_FINDING', 'MATERIAL_CONFLICT', 'LEGAL_ATTENTION'] });
-  assert.deepEqual(reportEscalationReasons({ rightsAndRestrictions: { status: 'RESTRICTION_IDENTIFIED' }, materialRisks: { riskFlags: [{ severity: 'HIGH' }] } }), ['RESTRICTION_IDENTIFIED', 'HIGH_RISK_FLAG']);
-  assert.equal(reportRoutingFor(v2({ report: { policy: 'TERRA' } }), 'gpt-5.6-luna').model, 'gpt-5.6-terra');
-  assert.equal(reportRoutingFor(v2({ report: { policy: 'LUNA' } }, { materialAdverseFindings: [{}] }), 'gpt-5.6-luna').model, 'gpt-5.6-luna');
-  assert.deepEqual(reportRoutingFor({ _engine: { version: 'V1' } }, 'gpt-5.6-luna'), { model: 'gpt-5.6-luna', policy: 'DEFAULT', reasons: [] });
+test('the report: AUTO is Luna for every property, complex ones included; Terra is only the fallback', () => {
+  const complex = v2({ report: { policy: 'AUTO' } }, {
+    materialAdverseFindings: [{}, {}], conflicts: [{ severity: 'MATERIAL' }], rightsAndRestrictions: { status: 'RESTRICTION_IDENTIFIED' },
+    legalStatus: { a: { status: 'CONFIRMED_ATTENTION' } },
+  });
+  assert.deepEqual(reportRoutingFor(complex, 'gpt-5.6-luna'), { model: 'gpt-5.6-luna', policy: 'AUTO', fallbackModel: 'gpt-5.6-terra' });
+  assert.deepEqual(reportRoutingFor(v2({ report: { policy: 'LUNA' } }), 'gpt-5.6-luna'), { model: 'gpt-5.6-luna', policy: 'LUNA', fallbackModel: null });
+  assert.deepEqual(reportRoutingFor(v2({ report: { policy: 'TERRA' } }), 'gpt-5.6-luna'), { model: 'gpt-5.6-terra', policy: 'TERRA', fallbackModel: null });
+  assert.deepEqual(reportRoutingFor({ _engine: { version: 'V1' } }, 'gpt-5.6-luna'), { model: 'gpt-5.6-luna', policy: 'DEFAULT', fallbackModel: null });
+});
+
+test('the fallback fires only on an objective gate failure — never on style, never on an empty call', () => {
+  assert.deepEqual(reportQualityFailures({ mode: 'MODEL', rejectedBecause: [] }, true), []);
+  assert.deepEqual(reportQualityFailures({ mode: 'MODEL', rejectedBecause: ['contradicted by evidence: the plot is 5,000 m²'] }, true), ['contradicted by evidence: the plot is 5,000 m²']);
+  assert.deepEqual(reportQualityFailures({ mode: 'DETERMINISTIC', rejectedBecause: ['ungrounded citation E99 in sections', 'provenance phrase "according to" repeated 4 times'] }, true), ['ungrounded citation E99 in sections']);
+  assert.deepEqual(reportQualityFailures({ mode: 'DETERMINISTIC', rejectedBecause: ['provenance phrase "according to" repeated 4 times'] }, true), [], 'style alone never pays for a second report');
+  assert.deepEqual(reportQualityFailures({ mode: 'DETERMINISTIC', rejectedBecause: ['no summary statement'] }, false), [], 'no answer at all is a transport failure, not a quality one');
+});
+
+test('verify-synthesis: Luna first, the gate, ONE fallback call, the better report kept, both calls costed', () => {
+  const vs = readFileSync(fileURLToPath(new URL('../../../../supabase/functions/verify-synthesis/index.ts', import.meta.url)), 'utf8');
+  assert.match(vs, /const first = await callReport\(reportModel\);/);
+  assert.match(vs, /const failures = reportQualityFailures\(final, !!raw\);\n\s+if \(callReport && reportRouting\.fallbackModel && failures\.length\) \{/);
+  assert.match(vs, /const keepSecond = !!second\.raw && failures2\.length < failures\.length;/);
+  assert.match(vs, /\.\.\.\(usageFirstAttempt \? \{ _usageFirstAttempt: usageFirstAttempt \} : \{\}\),/);
+  // Internal, never sent to the customer.
+  assert.match(vs, /_usageFirstAttempt: _droppedFirst, _reportRouting: _droppedRouting/);
+  const mig = readFileSync(fileURLToPath(new URL('../../../../supabase/migrations/20261128090000_verify_report_first_attempt_cogs.sql', import.meta.url)), 'utf8');
+  assert.match(mig, /'report_first_attempt'::text/);
+  assert.match(mig, /where jsonb_typeof\(j\.synthesis_json->'_usageFirstAttempt'\) = 'object'/);
+  // The existing branches are kept verbatim.
+  const prev = readFileSync(fileURLToPath(new URL('../../../../supabase/migrations/20261120090100_verify_cogs_attribution.sql', import.meta.url)), 'utf8');
+  const body = (sql) => sql.slice(sql.indexOf('create or replace view public.verify_stage_cogs as'), sql.indexOf("  where jsonb_typeof(j.synthesis_json->'_usage') = 'object'"));
+  assert.equal(body(mig), body(prev));
 });
 
 test('research-agent and verify-synthesis wire every control for V2 jobs only', () => {
@@ -94,8 +119,8 @@ test('research-agent and verify-synthesis wire every control for V2 jobs only', 
   assert.match(ra, /return await launch\(sb, k, m, \{ \.\.\.j, result_json: prior \}, a\[1\] as Stage, l, \{ modelOverride: esc, persist: true \}\);/);
   assert.match(ra, /if \(noTools\) delete b\.tools;/);
   const vs = readFileSync(fileURLToPath(new URL('../../../../supabase/functions/verify-synthesis/index.ts', import.meta.url)), 'utf8');
-  assert.match(vs, /const reportRouting = reportRoutingFor\(rj, MODEL\);\n\s+const reportModel = reportRouting\.model;/);
-  assert.match(vs, /_reportRouting: reportRouting,/);
+  assert.match(vs, /const reportRouting = reportRoutingFor\(rj, MODEL\);\n[\s\S]{0,120}let reportModel = reportRouting\.model;/);
+  assert.match(vs, /_reportRouting: \{ \.\.\.reportRouting, model: reportModel, escalation \},/);
 });
 
 test('the Admin card stores exactly what the server reads back, audited with a reason, beside the engine card', () => {

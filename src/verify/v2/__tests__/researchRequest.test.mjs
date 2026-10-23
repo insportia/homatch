@@ -53,7 +53,7 @@ test('the report model is chosen per V2 job; V1 and unset keep the default', asy
   assert.equal(reportModelFor(null, 'gpt-5.6-luna'), 'gpt-5.6-luna');
   const vs = readFileSync(fileURLToPath(new URL('../../../../supabase/functions/verify-synthesis/index.ts', import.meta.url)), 'utf8');
   assert.match(vs, /const reportRouting = reportRoutingFor\(rj, MODEL\);/);
-  assert.match(vs, /model: reportModel,\n\s+input: \[/);
+  assert.match(vs, /const first = await callReport\(reportModel\);/);
   assert.match(vs, /synthesisModel: reportModel,/);
   assert.match(vs, /reportConsumption\(usage, usage\?\.model \|\| MODEL\)/, 'cost is priced at the model that wrote it');
 });

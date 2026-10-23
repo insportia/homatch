@@ -25,7 +25,14 @@ export const VERIFY_V2_RESEARCH_STRINGS = {
   adm_v2r_market_code: ['Code only', 'მხოლოდ კოდი', 'Только код', 'Yalnızca kod', 'الكود فقط', 'קוד בלבד'],
   adm_v2r_market_ai: ['Always AI', 'ყოველთვის AI', 'Всегда ИИ', 'Her zaman YZ', 'الذكاء الاصطناعي دائمًا', 'תמיד AI'],
   adm_v2r_report: ['Final report', 'საბოლოო ანგარიში', 'Итоговый отчёт', 'Nihai rapor', 'التقرير النهائي', 'הדוח הסופי'],
-  adm_v2r_report_auto: ['Auto (Terra only when complex)', 'ავტო (Terra მხოლოდ რთულ შემთხვევაში)', 'Авто (Terra только в сложных случаях)', 'Otomatik (yalnızca karmaşıksa Terra)', 'تلقائي (Terra فقط عند التعقيد)', 'אוטומטי (Terra רק כשמורכב)'],
+  adm_v2r_report_auto: [
+    'Auto (Luna; Terra only if Luna fails the quality check)',
+    'ავტო (Luna; Terra მხოლოდ თუ Luna ხარისხის შემოწმებას ვერ გაივლის)',
+    'Авто (Luna; Terra, только если Luna не прошла проверку качества)',
+    'Otomatik (Luna; yalnızca Luna kalite kontrolünü geçemezse Terra)',
+    'تلقائي (Luna؛ Terra فقط إذا لم يجتز Luna فحص الجودة)',
+    'אוטומטי (Luna; Terra רק אם Luna נכשל בבדיקת האיכות)',
+  ],
   adm_v2r_budget: ['Research budget', 'კვლევის ბიუჯეტი', 'Бюджет исследования', 'Araştırma bütçesi', 'ميزانية البحث', 'תקציב מחקר'],
   adm_v2r_ceiling: ['Ceiling, USD', 'ზღვარი, USD', 'Предел, USD', 'Tavan, USD', 'الحد، دولار', 'תקרה, USD'],
   adm_v2r_escalation: [

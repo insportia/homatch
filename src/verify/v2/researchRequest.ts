@@ -118,36 +118,38 @@ const tuningOf = (resultJson: unknown): ResearchTuning | null => {
 };
 
 /*
- * WHEN THE REPORT NEEDS THE STRONG MODEL.
+ * THE STRONG MODEL IS A FALLBACK, NOT A TIER (owner, 2026-10-23).
  *
- * Explicit, evidence-based triggers read from the finished research — never
- * a model's own judgement of itself. Any one is enough. A plain report (clean
- * registry, no conflicts) is written by the cheap model; the deterministic
- * parts of the report (tables, figures, statuses) are code either way.
+ * AUTO: the cheap model writes every report, complex properties included,
+ * from the complete verified evidence package. The strong model is called
+ * only when the report's own objective gate (finalizeReport: ungrounded or
+ * missing citations, claims the evidence contradicts, absence stated as
+ * fact, no summary, …) rejects what the cheap model wrote — never for a
+ * complexity label and never for style. Both calls are then paid and both
+ * are recorded (_usage + _usageFirstAttempt).
  */
-export function reportEscalationReasons(resultJson: unknown): string[] {
-  const r = resultJson && typeof resultJson === 'object' ? (resultJson as Record<string, any>) : {};
-  const reasons: string[] = [];
-  if (Array.isArray(r.materialAdverseFindings) && r.materialAdverseFindings.length) reasons.push('MATERIAL_ADVERSE_FINDING');
-  if ((Array.isArray(r.conflicts) ? r.conflicts : []).some((c: any) => String(c?.severity ?? '').toUpperCase() === 'MATERIAL')) reasons.push('MATERIAL_CONFLICT');
-  if (String(r.rightsAndRestrictions?.status ?? '') === 'RESTRICTION_IDENTIFIED') reasons.push('RESTRICTION_IDENTIFIED');
-  const ls = r.legalStatus && typeof r.legalStatus === 'object' ? Object.values(r.legalStatus as Record<string, any>) : [];
-  if (ls.some((e: any) => e?.status === 'CONFIRMED_ATTENTION')) reasons.push('LEGAL_ATTENTION');
-  if ((Array.isArray(r.materialRisks?.riskFlags) ? r.materialRisks.riskFlags : []).some((f: any) => f?.severity === 'HIGH')) reasons.push('HIGH_RISK_FLAG');
-  return reasons;
+export function reportRoutingFor(resultJson: unknown, fallback: string): { model: string; policy: string; fallbackModel: string | null } {
+  const t = tuningOf(resultJson);
+  if (!t?.report) return { model: fallback, policy: 'DEFAULT', fallbackModel: null };
+  if (t.report.policy === 'LUNA') return { model: CHEAP_MODEL, policy: 'LUNA', fallbackModel: null };
+  if (t.report.policy === 'TERRA') return { model: STRONG_MODEL, policy: 'TERRA', fallbackModel: null };
+  if (t.report.policy === 'AUTO') return { model: CHEAP_MODEL, policy: 'AUTO', fallbackModel: STRONG_MODEL };
+  return { model: t.report.model ?? fallback, policy: 'FIXED_MODEL', fallbackModel: null };
 }
 
-/** Which model writes a job's customer report, and why. V1 and an unset V2 keep the default. */
-export function reportRoutingFor(resultJson: unknown, fallback: string): { model: string; policy: string; reasons: string[] } {
-  const t = tuningOf(resultJson);
-  if (!t?.report) return { model: fallback, policy: 'DEFAULT', reasons: [] };
-  if (t.report.policy === 'LUNA') return { model: CHEAP_MODEL, policy: 'LUNA', reasons: [] };
-  if (t.report.policy === 'TERRA') return { model: STRONG_MODEL, policy: 'TERRA', reasons: [] };
-  if (t.report.policy === 'AUTO') {
-    const reasons = reportEscalationReasons(resultJson);
-    return { model: reasons.length ? STRONG_MODEL : CHEAP_MODEL, policy: 'AUTO', reasons };
-  }
-  return { model: t.report.model ?? fallback, policy: 'FIXED_MODEL', reasons: [] };
+/* Gate findings that are about wording, not facts: never a reason to pay twice. */
+const STYLE_ONLY = [/^provenance phrase /i];
+
+/**
+ * The objective failures in a finalised report, or [] when it passed.
+ * `hadModelOutput` false means the call returned nothing (a transport
+ * problem, not a quality one): no escalation for that.
+ */
+export function reportQualityFailures(final: { mode?: string; rejectedBecause?: unknown[] } | null | undefined, hadModelOutput: boolean): string[] {
+  if (!hadModelOutput || !final) return [];
+  return (Array.isArray(final.rejectedBecause) ? final.rejectedBecause : [])
+    .map((x) => String(x))
+    .filter((x) => x && !STYLE_ONLY.some((re) => re.test(x)));
 }
 
 /** The model that writes a job's customer report (see reportRoutingFor). */

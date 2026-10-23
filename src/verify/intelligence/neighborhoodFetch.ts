@@ -95,24 +95,143 @@ async function geocodeOnce(q: string, fetchImpl: FetchLike, diag?: string[]): Pr
   }
 }
 
-async function overpass(query: string, fetchImpl: FetchLike): Promise<unknown | null> {
-  for (const endpoint of OVERPASS_ENDPOINTS) {
+/*
+ * OVERPASS, BOUNDED AND ACCOUNTED FOR (V1.1, 2026-10-23).
+ *
+ * Every neighbourhood lookup after the F5 fix stored UNAVAILABLE (jobs
+ * 055a9868, a5be9fcd: four tries each, nothing logged). Reproduced from a
+ * workstation the same day: overpass-api.de answered "502 … server is at
+ * capacity" in 0.5 s, the mirror hung past 60 s, and a later retry of the
+ * main server returned the full answer (233 elements, 885 KB) in 37 s —
+ * past the old 30 s cap. So: one attempt may take up to 45 s, a fast
+ * capacity / rate answer is retried on the same server after a short pause,
+ * and the whole lookup never exceeds OVERPASS_BUDGET_MS. Every attempt is
+ * logged (host, outcome, ms, bytes). A failure is still stored as
+ * UNAVAILABLE: nothing is ever guessed.
+ */
+export const OVERPASS_BUDGET_MS = 80_000;
+export const OVERPASS_ATTEMPT_MS = 45_000;
+export const OVERPASS_BACKOFF_MS = 4_000;
+const OVERPASS_MAX_ATTEMPTS = 4;
+/** Answers that mean "busy, ask again", not "your query is wrong". */
+const OVERPASS_RETRYABLE = new Set([429, 502, 503, 504]);
+
+export interface OverpassAttempt {
+  host: string;
+  /** HTTP status, or TIMEOUT / NETWORK / BAD_JSON / REMARK / BUDGET. */
+  outcome: string;
+  ms: number;
+  bytes: number | null;
+}
+
+export interface OverpassOptions {
+  budgetMs?: number;
+  attemptMs?: number;
+  backoffMs?: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/** The Overpass answer, or null — with every attempt recorded in `attempts`. */
+export async function fetchOverpass(
+  query: string,
+  fetchImpl: FetchLike,
+  attempts: OverpassAttempt[] = [],
+  opts: OverpassOptions = {},
+): Promise<unknown | null> {
+  const now = opts.now ?? Date.now;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const budget = opts.budgetMs ?? OVERPASS_BUDGET_MS;
+  const attemptCap = opts.attemptMs ?? OVERPASS_ATTEMPT_MS;
+  const backoff = opts.backoffMs ?? OVERPASS_BACKOFF_MS;
+  const start = now();
+  // The main server first, and again after a pause: it sheds load with a fast
+  // 502 and then answers (live, 2026-10-23), while the mirror tends to hang.
+  const plan = [OVERPASS_ENDPOINTS[0], OVERPASS_ENDPOINTS[0], OVERPASS_ENDPOINTS[1], OVERPASS_ENDPOINTS[0]].slice(0, OVERPASS_MAX_ATTEMPTS);
+  for (let i = 0; i < plan.length; i++) {
+    const endpoint = plan[i];
+    const host = new URL(endpoint).host;
+    const left = budget - (now() - start);
+    if (left < 5_000) {
+      attempts.push({ host, outcome: 'BUDGET', ms: 0, bytes: null });
+      break;
+    }
+    const t0 = now();
+    let outcome = 'NETWORK';
+    let bytes: number | null = null;
     try {
-      const json = await timed(30000, async (signal) => {
+      const json = await timed(Math.min(attemptCap, left), async (signal) => {
         const res = await fetchImpl(endpoint, {
           method: 'POST',
           signal,
           headers: { 'User-Agent': NEIGHBORHOOD_USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
           body: `data=${encodeURIComponent(query)}`,
         });
-        return res.ok ? await res.json() : null;
+        if (!res.ok) {
+          outcome = String(res.status);
+          return null;
+        }
+        try {
+          if (typeof res.text !== 'function') return await res.json();
+          const text = await res.text();
+          bytes = text.length;
+          return JSON.parse(text);
+        } catch (e) {
+          if ((e as Error)?.name === 'AbortError') throw e;
+          outcome = 'BAD_JSON';
+          return null;
+        }
       });
-      if (json && !overpassFailed(json)) return json;
-    } catch {
-      /* try the mirror */
+      if (json && !overpassFailed(json)) {
+        attempts.push({ host, outcome: 'OK', ms: now() - t0, bytes });
+        return json;
+      }
+      if (json) outcome = 'REMARK';
+    } catch (e) {
+      outcome = (e as Error)?.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK';
     }
+    attempts.push({ host, outcome, ms: now() - t0, bytes });
+    // A busy server answers fast; give it a moment before the next try.
+    if (OVERPASS_RETRYABLE.has(Number(outcome)) && i < plan.length - 1) await sleep(backoff);
   }
   return null;
+}
+
+/*
+ * THE REPORT BUILD MAY NOT WAIT LONG (V1.1).
+ *
+ * verify-synthesis is called with a 150 s gateway limit, and the model call
+ * alone takes 70–100 s. Job 055a9868 (2026-10-23): two failing Overpass
+ * attempts (2 × 30 s) plus the model crossed it, the caller got 504 twice and
+ * the report landed on the third build, 8 minutes late. So inside the build
+ * the lookup is time-boxed; a centre left UNAVAILABLE is completed afterwards
+ * by completeNeighborhood() with the full OVERPASS_BUDGET_MS.
+ */
+export const SYNTHESIS_OVERPASS: OverpassOptions = { budgetMs: 25_000, attemptMs: 20_000, backoffMs: 3_000 };
+
+/**
+ * A stored lookup that has a verified centre but no map answer, completed with
+ * a full-budget Overpass call — the centre, candidates and conflict flag are
+ * kept exactly as stored. Null when there is nothing to complete or Overpass
+ * still fails (the stored UNAVAILABLE then stands; nothing is guessed).
+ */
+export async function completeNeighborhood(
+  stored: unknown,
+  fetchImpl: FetchLike = fetch,
+  opts: OverpassOptions = {},
+  now: () => Date = () => new Date(),
+): Promise<StoredNeighborhood | null> {
+  const n = stored as StoredNeighborhood | null;
+  if (!n || n.status !== 'UNAVAILABLE' || !n.center) return null;
+  const attempts: OverpassAttempt[] = [];
+  const json = await fetchOverpass(buildOverpassQuery(n.center), fetchImpl, attempts, opts);
+  console.log(JSON.stringify({ scope: 'verify_neighborhood', event: 'overpass_completion', ok: !!json, attempts }));
+  if (!json) return null;
+  return {
+    ...buildStoredNeighborhood({ status: 'OK', center: n.center, fetchedAt: now().toISOString(), parsed: parseOverpass(json, n.center) }),
+    ...(n.candidates ? { candidates: n.candidates } : {}),
+    ...(n.centerIssue !== undefined ? { centerIssue: n.centerIssue } : {}),
+  };
 }
 
 export interface ResolveNeighborhoodInput {
@@ -125,6 +244,8 @@ export interface ResolveNeighborhoodInput {
   earlierBrowserOfficial?: (parcel: string) => Promise<unknown[]>;
   fetchImpl?: FetchLike;
   now?: () => Date;
+  /** Overpass timing (tests shorten the waits). */
+  overpass?: OverpassOptions;
 }
 
 /** Official centres one browserOfficial block carries for `parcel`, each with provenance. */
@@ -221,20 +342,27 @@ export async function resolveNeighborhood(input: ResolveNeighborhoodInput): Prom
   const reused = reusableNeighborhood(input.previous, now().getTime());
   if (reused) return reused;
 
+  // Kept outside the try: a failure after the centre is known must not lose it.
+  let center: NeighborhoodCenter | null = null;
+  let extra: Partial<StoredNeighborhood> = {};
   try {
     const decided = await resolveSubjectCenter({ ...input, fetchImpl, now });
-    const { center, candidates, issue } = decided;
+    center = decided.center;
+    const { candidates, issue } = decided;
     console.log(JSON.stringify({
       scope: 'verify_neighborhood', event: 'center',
       basis: center?.basis ?? null, issue, candidates: candidates.map((c) => `${c.basis}${c.disagrees ? ':far' : ''}`), geocode: decided.geocode,
     }));
-    const extra = { candidates, centerIssue: issue };
+    extra = { candidates, centerIssue: issue };
     if (!center) return { ...buildStoredNeighborhood({ status: 'NO_LOCATION', center: null, fetchedAt: now().toISOString() }), ...extra };
 
-    const json = await overpass(buildOverpassQuery(center), fetchImpl);
+    const attempts: OverpassAttempt[] = [];
+    const json = await fetchOverpass(buildOverpassQuery(center), fetchImpl, attempts, input.overpass);
+    console.log(JSON.stringify({ scope: 'verify_neighborhood', event: 'overpass', ok: !!json, attempts }));
     if (!json) return { ...buildStoredNeighborhood({ status: 'UNAVAILABLE', center, fetchedAt: now().toISOString() }), ...extra };
     return { ...buildStoredNeighborhood({ status: 'OK', center, fetchedAt: now().toISOString(), parsed: parseOverpass(json, center) }), ...extra };
-  } catch {
-    return buildStoredNeighborhood({ status: 'UNAVAILABLE', center: null, fetchedAt: now().toISOString() });
+  } catch (e) {
+    console.log(JSON.stringify({ scope: 'verify_neighborhood', event: 'failed', error: e instanceof Error ? e.message.slice(0, 160) : 'unknown' }));
+    return { ...buildStoredNeighborhood({ status: 'UNAVAILABLE', center, fetchedAt: now().toISOString() }), ...extra };
   }
 }

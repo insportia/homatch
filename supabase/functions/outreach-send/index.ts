@@ -26,6 +26,8 @@ import {
 import { handleStudioAction, isStudioAction } from '../_shared/emailStudio.ts';
 import { broadcastStep } from '../_shared/emailMarketing/broadcast.ts';
 import { renderCampaignEmail } from '../../../src/emailMarketing/campaignTemplate.ts';
+import { emailSendGate } from '../../../src/emailMarketing/reviewState.ts';
+import { revalidateLinksBeforeDispatch } from '../_shared/emailMarketing/studioCampaigns.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const corsHeaders = {
@@ -162,7 +164,7 @@ async function outreachSend(req: Request): Promise<Response> {
     if (!['EMAIL', 'SMS', 'AI_CALL'].includes(campaign.campaign_type)) {
       return new Response(JSON.stringify({ error: `campaign_type ${campaign.campaign_type} not supported by outreach-send yet` }), { status: 400, headers: corsHeaders });
     }
-    if (!campaign.contact_list_id) {
+    if (!campaign.contact_list_id && !(campaign.campaign_type === 'EMAIL' && Array.isArray(campaign.contact_list_ids) && campaign.contact_list_ids.length)) {
       return new Response(JSON.stringify({ error: 'Campaign has no contact_list_id' }), { status: 400, headers: corsHeaders });
     }
     // SERVICE CONTROL: AI calls need `ai_call_center`; e-mail and SMS campaigns need
@@ -172,6 +174,20 @@ async function outreachSend(req: Request): Promise<Response> {
       const service = campaign.campaign_type === 'AI_CALL' ? 'ai_call_center' : 'email_campaigns';
       if (!(await serviceBackendEnabled(supabase, service))) {
         return new Response(JSON.stringify(serviceDisabledBody(service)), { status: 503, headers: corsHeaders });
+      }
+    }
+
+    /* EMAIL STUDIO REVIEW GATE (owner brief §10): an email campaign goes out only approved, and
+       only with the content it was approved with. Nothing is reserved or sent before this. */
+    if (campaign.campaign_type === 'EMAIL') {
+      const gate = emailSendGate(campaign);
+      if (!gate.ok) {
+        return new Response(JSON.stringify({
+          blocked: true, reason: `REVIEW_${gate.reason}`,
+          message: gate.reason === 'APPROVAL_STALE'
+            ? 'This campaign changed after it was approved. Submit it for review again.'
+            : 'This campaign has not been approved for sending.',
+        }), { status: 423, headers: corsHeaders });
       }
     }
 
@@ -307,11 +323,37 @@ async function outreachSend(req: Request): Promise<Response> {
     if (channel === 'EMAIL') contactsQuery = contactsQuery.eq('consent_status', 'CONSENTED');
     if (excludeIds.length) contactsQuery = contactsQuery.not('id', 'in', `(${excludeIds.join(',')})`);
 
-    const { data: contacts, error: contactsErr } = await contactsQuery;
+    /* Email: one SQL definition of the audience (outreach_email_campaign_batch): every list of the
+       campaign, its audience filter and exclusions, consented and reachable only, ONE message per
+       address across lists, nobody this campaign already reached. SMS/calls keep the list query. */
+    const { data: contacts, error: contactsErr } = channel === 'EMAIL'
+      ? await supabase.rpc('outreach_email_campaign_batch', { p_campaign: campaign_id, p_limit: BATCH_SIZE })
+      : await contactsQuery;
     if (contactsErr) return new Response(JSON.stringify({ error: contactsErr.message }), { status: 500, headers: corsHeaders });
 
     // Mark campaign RUNNING
-    if (['DRAFT', 'READY', 'PAUSED'].includes(campaign.status)) {
+    /* Email reaches here only approved (gate above); SMS/calls keep their historical start states. */
+    const startable = campaign.campaign_type === 'EMAIL' ? ['APPROVED', 'SCHEDULED', 'PAUSED'] : ['DRAFT', 'READY', 'PAUSED'];
+    {
+      /* Owner brief §8: destinations can change after approval, so an email campaign's links are
+         followed again right before its FIRST dispatch (nothing sent yet — a scheduled campaign
+         arrives here already RUNNING). A hard finding stops it for a human. */
+      if (campaign.campaign_type === 'EMAIL' && excludeIds.length === 0 && (contacts ?? []).length > 0 && campaign.html_body) {
+        const recheck = await revalidateLinksBeforeDispatch(String(campaign.html_body));
+        if (recheck.blocked) {
+          await supabase.from('outreach_campaigns').update({
+            status: 'COMPLIANCE_PAUSED', paused_reason: 'A link now leads to a prohibited or unsafe destination',
+            risk_level: 'BLOCKED', risk_reasons: recheck.findings, risk_checked_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+          }).eq('id', campaign_id);
+          await supabase.from('email_campaign_reviews').insert({
+            campaign_id, owner_id: campaign.owner_id, actor_kind: 'SYSTEM', action: 'BLOCKED',
+            reason: 'LINK_RECHECK', content_hash: campaign.content_hash, risk_level: 'BLOCKED', risk_findings: recheck.findings,
+          });
+          return new Response(JSON.stringify({ blocked: true, reason: 'REVIEW_LINK_RECHECK_FAILED' }), { status: 423, headers: corsHeaders });
+        }
+      }
+    }
+    if (startable.includes(campaign.status)) {
       await supabase.from('outreach_campaigns').update({ status: 'RUNNING', updated_at: new Date().toISOString() }).eq('id', campaign_id);
     }
 
@@ -504,7 +546,7 @@ async function outreachSend(req: Request): Promise<Response> {
           subject: mergeFields(campaign.subject || campaign.name, contact.full_name, false),
           bodyHtml: campaign.html_body ? mergeFields(campaign.html_body, contact.full_name, true) : null,
           bodyText: campaign.text_body ? mergeFields(campaign.text_body, contact.full_name, false) : null,
-          senderName: campaign.sender_name, lang: campaign.language, unsubscribeUrl: unsubUrl,
+          senderName: campaign.sender_name, lang: campaign.language, unsubscribeUrl: unsubUrl, preheader: campaign.preview_text ?? null,
         });
         /* Replies come back to HOMATCH through this recipient's own opaque route, unless the
            campaign deliberately names its own Reply-To. */

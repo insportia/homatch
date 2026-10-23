@@ -6,6 +6,8 @@
 // flex/grid, a bulletproof table button, a hidden preheader, and dir="rtl" for Arabic and
 // Hebrew. Owner text is escaped; owner HTML (html_body) is placed as written, as before.
 
+import { readDesignMarker } from './designer/render.ts';
+
 export type CampaignEmailLang = 'en' | 'ka' | 'ru' | 'tr' | 'ar' | 'he';
 
 export interface CampaignEmailInput {
@@ -66,6 +68,10 @@ export function renderCampaignEmail(input: CampaignEmailInput): { html: string; 
   const align = rtl ? 'right' : 'left';
   const f = FOOTER[lang];
   const sender = (input.senderName ?? '').trim() || 'HOMATCH';
+  /* A designed body (Email Studio designer) links its own unsubscribe block to {{unsubscribe_url}}. */
+  if (input.bodyHtml) input = { ...input, bodyHtml: input.bodyHtml.replace(/\{\{\s*unsubscribe_url\s*\}\}/g, safeHref(input.unsubscribeUrl)) };
+  const designed = readDesignMarker(input.bodyHtml);
+  if (designed) return renderDesigned(input, designed, { lang, dir, align, f, sender });
   const body = input.bodyHtml && input.bodyHtml.trim()
     ? `<div style="font-family:${FONT};font-size:16px;line-height:1.65;color:${TEXT};text-align:${align};">${input.bodyHtml}</div>`
     : paragraphs(input.bodyText ?? '', align);
@@ -121,5 +127,54 @@ export function renderCampaignEmail(input: CampaignEmailInput): { html: string; 
     input.cta && safeHref(input.cta.url) !== '#' ? `\n${input.cta.label}: ${input.cta.url}` : '',
     '', '—', f.sentBy(sender), f.why, `${f.unsubscribe}: ${input.unsubscribeUrl}`,
   ].join('\n').replace(/\n{3,}/g, '\n\n');
+  return { html, text };
+}
+
+/*
+ * A DESIGNED EMAIL (Email Studio designer, src/emailMarketing/designer/render.ts): the designer
+ * owns the card — its canvas colour, width and every block — and this shell adds only what every
+ * marketing email must carry and the sender may not remove: who sent it, why the reader gets it,
+ * and the one-click unsubscribe link. The mobile media query moves from the body into <head>.
+ */
+function renderDesigned(
+  input: CampaignEmailInput,
+  d: { canvas: string; card: string; width: number; radius: number },
+  ctx: { lang: CampaignEmailLang; dir: string; align: string; f: (typeof FOOTER)[CampaignEmailLang]; sender: string },
+): { html: string; text: string } {
+  const { lang, dir, align, f, sender } = ctx;
+  let body = String(input.bodyHtml ?? '');
+  const styles: string[] = [];
+  body = body.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (_m, css: string) => { styles.push(css.replace(/<\/?[a-z][^>]*>/gi, '')); return ''; });
+  const preheader = (input.preheader ?? '').trim();
+  const html = `<!DOCTYPE html>
+<html lang="${lang}" dir="${dir}">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="x-apple-disable-message-reformatting" />
+<title>${escapeHtml(input.subject)}</title>
+${styles.length ? `<style type="text/css">${styles.join('\n')}</style>` : ''}
+</head>
+<body style="margin:0;padding:0;background-color:${d.canvas};">
+${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(preheader)}</div>` : ''}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${d.canvas}" style="background-color:${d.canvas};" dir="${dir}">
+  <tr><td align="center" style="padding:24px 10px;">
+    <table role="presentation" class="hm-body" width="${d.width}" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:${d.width}px;">
+      <tr><td bgcolor="${d.card}" style="background-color:${d.card};border-radius:${d.radius}px;overflow:hidden;" dir="${dir}">
+${body.trim()}
+      </td></tr>
+      <tr><td style="padding:18px 24px 6px 24px;text-align:${align};">
+        <p style="margin:0 0 6px 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${MUTED};">${escapeHtml(f.sentBy(sender))}</p>
+        <p style="margin:0 0 10px 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${MUTED};">${escapeHtml(f.why)}</p>
+        <p style="margin:0;font-family:${FONT};font-size:12px;line-height:1.6;"><a href="${safeHref(input.unsubscribeUrl)}" style="color:${MUTED};text-decoration:underline;">${escapeHtml(f.unsubscribe)}</a></p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>`;
+  const bodyText = (input.bodyText ?? '').replace(/\{\{\s*unsubscribe_url\s*\}\}/g, input.unsubscribeUrl).trim();
+  const text = [input.subject, '', bodyText, '', '—', f.sentBy(sender), f.why, `${f.unsubscribe}: ${input.unsubscribeUrl}`]
+    .join('\n').replace(/\n{3,}/g, '\n\n');
   return { html, text };
 }

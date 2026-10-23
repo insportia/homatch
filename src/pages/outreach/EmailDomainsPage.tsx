@@ -10,6 +10,7 @@ import { CheckCircle2, Copy, Globe2, Loader2, Plus, RefreshCw, ShieldAlert, Tras
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
+import { EmailSettingsTabs } from '@/components/emailStudio/EmailSettingsTabs';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -129,6 +130,7 @@ export default function EmailDomainsPage() {
     <CommsWorkspace product="email" header={(
       <PageHeader eyebrow={t('dnav_email')} title={t('emd_title')} subtitle={t('emd_subtitle')} />
     )}>
+      <EmailSettingsTabs />
       <div className="space-y-4 pb-16">
         <form className="flex flex-col gap-2 rounded-2xl border bg-card p-4 sm:flex-row sm:items-end" onSubmit={(e) => { e.preventDefault(); void add(); }}>
           <label className="block min-w-0 flex-1 text-2xs font-semibold">{t('emd_add_label')}

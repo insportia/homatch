@@ -12,6 +12,7 @@ import { Check, CreditCard, Gauge, Loader2, RefreshCw, ShieldCheck, Sparkles } f
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
+import { EmailSettingsTabs } from '@/components/emailStudio/EmailSettingsTabs';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -87,6 +88,7 @@ export default function EmailPlanPage() {
         secondary={{ label: t('emx_refresh'), onClick: () => void load(), icon: RefreshCw }}
       />
     )}>
+      <EmailSettingsTabs />
       {!plan || !period ? (
         <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />{t('emx_loading')}</div>
       ) : (

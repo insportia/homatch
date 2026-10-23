@@ -24,3 +24,16 @@ export const CUSTOMER_ADMIN_PREFIXES: readonly string[] = ['admin_imp_', 'admin_
 export function isAdminOnlyKey(key: string): boolean {
   return key.startsWith(ADMIN_PREFIX) && !CUSTOMER_ADMIN_PREFIXES.some((p) => key.startsWith(p));
 }
+
+/*
+ * EMAIL STUDIO'S STRINGS, cut the same way into virtual:homatch-i18n/studio-<lang> and loaded with
+ * the Email Studio screens (loadStudioStrings in routes.tsx). The rail labels (ems_nav_) stay in
+ * the entry: every email screen, studio or not, shows the rail.
+ * tests/matrix/studioStringSplit.test.mjs fails if a screen outside Email Studio names one.
+ */
+export const STUDIO_PREFIX = 'ems_';
+export const STUDIO_ENTRY_PREFIXES: readonly string[] = ['ems_nav_'];
+
+export function isStudioOnlyKey(key: string): boolean {
+  return key.startsWith(STUDIO_PREFIX) && !STUDIO_ENTRY_PREFIXES.some((p) => key.startsWith(p));
+}

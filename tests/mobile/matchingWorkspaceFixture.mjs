@@ -108,7 +108,7 @@ const PRICES = { STANDARD: 3, EXACT: 5, PREMIUM: 10, active: true };
 
 export const SWITCHES_ON = { maintenance: false, internal: true, curated: true, unlockedLibrary: true };
 
-export async function boot(t, { port, width = 1440, height = 900, lang = 'en', switches = {}, curatedCount = 640, preUnlocked = 5 } = {}) {
+export async function boot(t, { port, width = 1440, height = 900, lang = 'en', switches = {}, curatedCount = 640, preUnlocked = 5, admin = false } = {}) {
   const BASE = `http://127.0.0.1:${port}`;
   const { chromium } = resolvePlaywright();
   const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(port), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
@@ -150,7 +150,9 @@ export async function boot(t, { port, width = 1440, height = 900, lang = 'en', s
     if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
     if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
     const wantsObject = (req.headers().accept ?? '').includes('pgrst.object');
-    if (url.includes('/rest/v1/users')) return r.fulfill(json(wantsObject ? profile : [profile]));
+    /* admin: true — the owner's own account is an admin; retired-screen tests prove even it sees nothing legacy. */
+    const who = admin ? { ...profile, is_admin: true, role: 'admin' } : profile;
+    if (url.includes('/rest/v1/users')) return r.fulfill(json(wantsObject ? who : [who]));
     if (url.includes('/rest/v1/properties')) {
       const p = { id: PROPERTY_ID, title: '3-room apartment, Krtsanisi St 6', homatch_id: 244486, facts: [{ address: 'Krtsanisi St 6', city: 'Tbilisi', district: 'Krtsanisi' }] };
       return r.fulfill(json(wantsObject ? p : [p]));

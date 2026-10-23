@@ -42,6 +42,7 @@ import { createRequire } from 'node:module';
 import { SYNTHESIS, STATUS_RESPONSE } from './fixture.mjs';
 import { propertyRows, matchRows } from './propertyFixture.mjs';
 import { SERVICE_CONTROLS_RPC, SERVICES_ALL_ON } from './serviceControlsFixture.mjs';
+import { curatedLeads, internalItems, SWITCHES_ON } from './matchingWorkspaceFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -187,24 +188,27 @@ const ROUTES = [
   { path: '/admin/buyer-intelligence?city=%E1%83%97%E1%83%91%E1%83%98%E1%83%9A%E1%83%98%E1%83%A1%E1%83%98&segments=PREMIUM,MIDDLE', name: 'admin buyer intelligence', auth: true, admin: true },
   { path: '/admin/market-segmentation', name: 'admin market segmentation', auth: true, admin: true },
   /*
-   * THE SCREEN THE PRODUCT IS SOLD ON, and it was not in this matrix.
+   * THE SCREEN THE PRODUCT IS SOLD ON.
    *
-   * /property/:id/matches is where a customer meets the locked preview, the
-   * unlock price in Credits and the match strength — the only screen where
-   * money changes hands. Every other customer route was being rendered at
-   * 320px and this one never had been, which is the combination most likely
-   * to overflow: a price, a strength badge and a redacted excerpt on one row,
-   * in Georgian, at the narrowest supported width.
+   * /property/:id/matches is the matching workspace (owner, 2026-10-24): the
+   * HOMATCH Internal and External Leads Database lists, masked rows, the unlock
+   * price in Credits, filters and the selection bar -- the screen where money
+   * changes hands, and the shape most likely to overflow: a price, a checkbox and
+   * a masked summary on one row, in Georgian, at the narrowest supported width.
    *
-   * The id is a stub; every non-local request is intercepted, so this
-   * exercises the page's own layout and its empty state rather than a
-   * backend.
+   * The old addresses (/buyers/external, /buyers/internal, /buyers/opportunity/…)
+   * are no longer screens of their own: LegacyMatchingRedirect sends each to the
+   * workspace with the right product. They stay in this list because bookmarks,
+   * notifications and e-mails still open them -- so what they measure is the
+   * REDIRECT TARGET, and the workspace-presence guard below refuses a run where
+   * the target did not render its rows.
+   *
+   * The id is a stub; every non-local request is intercepted and the workspace
+   * RPCs are answered with real rows (matchingWorkspaceFixture.mjs).
    */
-  { path: '/property/11111111-1111-4111-8111-111111111111/buyers/external', name: 'property external results', auth: true },
-  /* Find Buyers 3.0 (2026-10-15): the compact dashboard now lives on /matches, with the
-     internal results and a post opportunity on their own pages. */
-  { path: '/property/11111111-1111-4111-8111-111111111111/matches', name: 'find buyers dashboard', auth: true },
-  { path: '/property/11111111-1111-4111-8111-111111111111/buyers/internal', name: 'property internal results', auth: true },
+  { path: '/property/11111111-1111-4111-8111-111111111111/buyers/external', name: 'legacy external results address → workspace (External)', auth: true },
+  { path: '/property/11111111-1111-4111-8111-111111111111/matches', name: 'matching workspace', auth: true },
+  { path: '/property/11111111-1111-4111-8111-111111111111/buyers/internal', name: 'legacy internal results address → workspace (Internal)', auth: true },
   { path: '/property/11111111-1111-4111-8111-111111111111/buyers/opportunity/abc?job=x', name: 'post opportunity', auth: true },
   /* Homatch for Developers. The workspace shell, the screens a sales floor
      lives in, the sales file, and the buyer-facing shared apartment page.
@@ -355,6 +359,10 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
   for (let i = 0; i < 60; i += 1) {
     try { await fetch(BASE); break; } catch { await new Promise((r) => setTimeout(r, 250)); }
   }
+
+  /* The workspace fixture's rows, built once: 640 External leads, 3 Internal members. */
+  const WORKSPACE_LEADS = curatedLeads(640);
+  const WORKSPACE_INTERNAL = internalItems();
 
   /**
    * One page load: set the locale and session, stub the world, measure.
@@ -714,7 +722,54 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
       if (url.includes('/rest/v1/rpc/dev_generate_notifications')) return r.fulfill(json(0));
       if (url.includes('/rest/v1/rpc/dev_expire_offers')) return r.fulfill(json(0));
       /*
-       * A SETTLED SWEEP THAT LEFT SOURCES UNREAD, so Expand Search renders.
+       * THE MATCHING WORKSPACE (owner, 2026-10-24), answered with REAL ROWS.
+       *
+       * /property/:id/matches and every legacy matching address now render
+       * MatchingWorkspacePage. Without these stubs the catalog and the internal feed
+       * fall through to the empty answers below, the workspace renders its calm empty
+       * state, and every overflow check passes while measuring an absence -- the
+       * failure this file has already recorded three times. Shapes and rows come from
+       * matchingWorkspaceFixture.mjs (the fixture matchingWorkspace.test.mjs drives),
+       * so a row here is a row the workspace really renders: masked name, country,
+       * languages, interests, budget, channels, the price in Credits.
+       */
+      if (url.includes('/rest/v1/rpc/matching_workspace_state')) {
+        return r.fulfill(json({ ...SWITCHES_ON, externalDiscovery: false, curatedPrice: { credits: 1, cents: 10, active: true } }));
+      }
+      if (url.includes('/rest/v1/rpc/curated_leads_catalog')) {
+        const p = (() => { try { return JSON.parse(r.request().postData() ?? '{}').p ?? {}; } catch { return {}; } })();
+        const view = String(p.view ?? 'AVAILABLE').toUpperCase();
+        const leads = WORKSPACE_LEADS;
+        const items = view === 'UNLOCKED'
+          ? []
+          : leads.slice(0, 100).map((l) => ({
+            id: l.id, displayName: `${l.firstName} ${l.lastName[0]}.`, country: l.country, languages: l.languages, interests: l.interests,
+            category: l.category, city: l.city, region: l.region, preferredLocation: l.preferredLocation, budget: l.budget,
+            propertyType: l.propertyType, investmentPrefs: null, description: l.description, addedAt: l.addedAt, lastVerifiedAt: l.lastVerifiedAt,
+            channels: { email: true, phone: !!l.phone, whatsapp: !!l.whatsapp, telegram: !!l.telegram, facebook: false, linkedin: !!l.linkedin, otherSocial: false },
+          }));
+        const facet = (fn) => leads.reduce((acc, l) => { for (const k of fn(l)) acc[k] = (acc[k] ?? 0) + 1; return acc; }, {});
+        return r.fulfill(json({
+          view, page: 1, pageSize: 100, total: view === 'UNLOCKED' ? 0 : leads.length,
+          counts: { available: leads.length, unlocked: 0 },
+          facets: { countries: facet((l) => [l.country]), languages: facet((l) => (l.languages.length ? l.languages : ['unknown'])), interests: facet((l) => l.interests) },
+          price: { credits: 1, cents: 10, active: true }, items,
+        }));
+      }
+      if (url.includes('/rest/v1/rpc/internal_leads_feed_v2')) {
+        const p = (() => { try { return JSON.parse(r.request().postData() ?? '{}').p ?? {}; } catch { return {}; } })();
+        const all = WORKSPACE_INTERNAL;
+        const rows = (p.filters ?? []).map(String).includes('UNLOCKED') ? [] : all;
+        return r.fulfill(json({
+          total: rows.length,
+          counts: { ALL: all.length, LOCKED: all.length, UNLOCKED: 0, EXACT: 1, NEARBY: 1, VIP: 1, STRONG: 2, POTENTIAL: 1 },
+          facets: { districts: ['Krtsanisi', 'Ortachala'], propertyTypes: ['APARTMENT'], countries: { GE: all.length }, languages: { unknown: all.length }, interests: { BUY: 2, RENT: 1 } },
+          ids: null, prices: { STANDARD: 3, EXACT: 5, PREMIUM: 10, active: true }, preferences: null, lastSeenAt: null, items: rows,
+        }));
+      }
+      /*
+       * A SETTLED SWEEP THAT LEFT SOURCES UNREAD. (Legacy: this put the Expand Search
+       * panel on /buyers/external, which is no longer routed since 2026-10-24.)
        *
        * Without this, matching_jobs falls through to the empty array below,
        * getLastSettledSweep returns null and DeeperSearchPanel renders nothing —
@@ -835,23 +890,26 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
         /*
          * COVERAGE THAT CHECKS ITSELF.
          *
-         * A route can be measured at every width in every locale and still tell
-         * us nothing about the panel we added it for: DeeperSearchPanel renders
-         * only when a settled sweep recorded headroom, and if the stub for
-         * matching_jobs ever stops matching, the page renders WITHOUT it and
-         * every assertion below keeps passing. That is a clean run measuring an
-         * absence, which this file's own coverage floor exists to refuse.
+         * A route can be measured at every width in every locale and still tell us
+         * nothing about the screen we added it for. The matching workspace renders
+         * its rows only when the workspace RPCs answer with rows; if those stubs ever
+         * stop matching, the page renders its empty state (or a redirect, or an
+         * error card) and every overflow assertion below keeps passing. That is a
+         * clean run measuring an absence, which this file's coverage floor exists to
+         * refuse.
          *
-         * So the panel's presence is part of what a sample reports. Found by the
-         * icon-plus-counts structure rather than by a translated string, because
-         * the copy is different in all six languages and the point is to check it
-         * in all six.
+         * (Until 2026-10-24 this guarded the Expand Search panel on /buyers/external.
+         * That screen is no longer routed -- owner: the old external discovery is
+         * absent -- so the guard follows the screen customers actually reach.) Found
+         * by data-testid, not translated copy, because the copy differs in all six
+         * languages and the point is to check it in all six: the workspace root, its
+         * filters, and at least one real lead row with its checkbox and its price.
          */
-        expandPanel: [...document.querySelectorAll('dl')].some(
-          (dl) => dl.querySelectorAll('dt').length === 2
-            && dl.querySelectorAll('dd').length === 2
-            && [...dl.querySelectorAll('dd')].every((dd) => /^\d+$/.test(dd.textContent.trim())),
-        ),
+        workspacePanel: Boolean(document.querySelector('[data-testid="mw-page"]'))
+          && Boolean(document.querySelector('[data-testid="mw-filters"]'))
+          && document.querySelectorAll('[data-testid="mw-row"]').length > 0
+          && Boolean(document.querySelector('[data-testid="mw-row"] [data-testid="mw-row-check"]'))
+          && Boolean(document.querySelector('[data-testid="mw-row-price"]')),
         /*
          * The community intelligence panel: a five-tile total row of plain integers.
          * Found by that structure rather than by a translated heading, for the same
@@ -930,7 +988,7 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
     let result = null;
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const now = await page.evaluate(sample, width);
-      const shape = JSON.stringify([now.mounted, now.scrollWidth, now.clientWidth, now.offenders, now.expandPanel]);
+      const shape = JSON.stringify([now.mounted, now.scrollWidth, now.clientWidth, now.offenders, now.workspacePanel]);
       if (previous === shape) { result = { ...now, settled: true }; break; }
       previous = shape;
       result = { ...now, settled: false };
@@ -943,14 +1001,19 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
 
   const failures = [];
   const checked = [];
-  /* Where Expand Search was found, and where the matches route rendered without
-     it. The second list must stay empty or the coverage above is an illusion. */
+  /* Where the workspace rendered its rows, and where a matching route rendered
+     without them. The second list must stay empty or the coverage above is an
+     illusion. The workspace address and the legacy external address (which must
+     land on it) are both held to this. */
   const panelSeen = [];
   const panelMissing = [];
-  const MATCHES = '/property/11111111-1111-4111-8111-111111111111/buyers/external';
+  const MATCHES = new Set([
+    '/property/11111111-1111-4111-8111-111111111111/matches',
+    '/property/11111111-1111-4111-8111-111111111111/buyers/external',
+  ]);
   const notePanel = (route, label, present) => {
-    if (route.path !== MATCHES) return;
-    (present ? panelSeen : panelMissing).push(label);
+    if (!MATCHES.has(route.path)) return;
+    (present ? panelSeen : panelMissing).push(`${route.path.split('/').slice(3).join('/')}@${label}`);
   };
 
   /* The same discipline for the admin intelligence panel. An adminOnly route that
@@ -972,7 +1035,7 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
   for (const route of ROUTES) {
     const r = await measure(route, 320, 'ka');
     checked.push(`${route.path}@320/ka`);
-    notePanel(route, '320/ka', r.expandPanel);
+    notePanel(route, '320/ka', r.workspacePanel);
     noteIntel(route, '320/ka', r);
     if (!r.mounted) { failures.push(`${route.name} (${route.path}) @320 ka: rendered nothing`); continue; }
     if (!r.settled) { failures.push(`${route.name} (${route.path}) @320 ka: layout never settled`); continue; }
@@ -989,11 +1052,11 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
   const SPREAD = ROUTES.filter((r) =>
     ['/', '/dashboard', '/ai', '/verify', '/outreach/email', '/for-expats/georgia',
       /*
-       * The matches screen joins the spread because Expand Search lives on it,
-       * and that panel is the one new layout with two count tiles on one row and
-       * a budget ladder stacked underneath. It was covered at 320/ka alone --
-       * the width most likely to break and the ONLY one measured -- so 360, 390
-       * and 430 went unchecked on the screen a seller spends the most time on.
+       * The matching screen joins the spread because it is where a seller spends
+       * the most time and where money changes hands: dense rows with a checkbox,
+       * a masked summary and a price, a filter bar and a selection bar. Covered at
+       * 320/ka alone, 360, 390 and 430 would go unchecked. The legacy external
+       * address stays in the spread too: it must land on the same workspace.
        */
       '/property/11111111-1111-4111-8111-111111111111/buyers/external',
       '/property/11111111-1111-4111-8111-111111111111/matches',
@@ -1012,7 +1075,7 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
     for (const width of WIDTHS.filter((w) => w !== 320)) {
       const r = await measure(route, width, 'en');
       checked.push(`${route.path}@${width}/en`);
-      notePanel(route, `${width}/en`, r.expandPanel);
+      notePanel(route, `${width}/en`, r.workspacePanel);
       noteIntel(route, `${width}/en`, r);
       if (!r.settled) { failures.push(`${route.name} (${route.path}) @${width} en: layout never settled`); continue; }
       if (r.scrollWidth > r.clientWidth + 1 || r.offenders.length) {
@@ -1033,7 +1096,7 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
     for (const locale of ['he', 'ar']) {
       const r = await measure(route, 390, locale);
       checked.push(`${route.path}@390/${locale}`);
-      notePanel(route, `390/${locale}`, r.expandPanel);
+      notePanel(route, `390/${locale}`, r.workspacePanel);
       noteIntel(route, `390/${locale}`, r);
       if (!r.settled) {
         failures.push(`${route.name} (${route.path}) @390 ${locale}: layout never settled`);
@@ -1083,7 +1146,7 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
           const label = `${route.path}@${width}/${locale}`;
           checked.push(label);
           fullMatrixChecked.push(label);
-          notePanel(route, `${width}/${locale}`, r.expandPanel);
+          notePanel(route, `${width}/${locale}`, r.workspacePanel);
           noteIntel(route, `${width}/${locale}`, r);
 
           /*
@@ -1122,23 +1185,25 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
   assert.ok(checked.length >= 30, `the gate covered only ${checked.length} route/width/locale combinations`);
 
   /*
-   * AND THE PANEL WAS ACTUALLY THERE.
+   * AND THE WORKSPACE WAS ACTUALLY THERE.
    *
-   * Expand Search is the reason the matches route joined the spread. It renders
-   * only when a settled sweep recorded headroom, so if the matching_jobs stub
-   * ever stops matching, the page renders without it and every overflow
-   * assertion above still passes -- a green gate measuring an absence.
+   * The matching workspace is the reason the matches routes are in the spread. It
+   * renders its rows only when the workspace RPC stubs answer, so if they ever stop
+   * matching, the page renders its empty state and every overflow assertion above
+   * still passes -- a green gate measuring an absence.
    *
-   * Every width and both RTL locales, because the two count tiles sit on one row
-   * and that row is what a mirrored 320px layout breaks.
+   * Every width and both RTL locales (320/ka, 360, 390, 430 en, 390 he, 390 ar), for
+   * the workspace address and for the legacy address that redirects to it. (Until
+   * 2026-10-24 this asserted the Expand Search panel on /buyers/external; that screen
+   * is no longer routed -- owner change -- so the guard moved with the screen.)
    */
   assert.deepEqual(
     panelMissing, [],
-    `the matches screen rendered WITHOUT the Expand Search panel, so these `
+    'the matching workspace rendered WITHOUT its lead rows, filters and prices, so these '
     + `combinations proved nothing about it: ${panelMissing.join(', ')}`,
   );
   assert.ok(panelSeen.length >= 6,
-    `Expand Search was only measured in ${panelSeen.length} combination(s): ${panelSeen.join(', ')}`);
+    `the matching workspace was only measured in ${panelSeen.length} combination(s): ${panelSeen.join(', ')}`);
 
   /*
    * THE ADMIN PANEL, held to the same standard. An adminOnly route that rendered

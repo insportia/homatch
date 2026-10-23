@@ -4,16 +4,25 @@
 // The final report is the production report of campaign 70b0d32b (computed
 // by the find_buyers_campaign_report body, run read-only against production:
 // tests/fixtures/findBuyersReport-70b0d32b.json — a legacy campaign whose 37
-// leads predate match review). A live variant shows the partial report and
-// the leads grouped Strong → Potential → Weak with budget / location fit.
+// leads predate match review). A live variant shows the partial report.
+// The report is an operator diagnostic (Admin → Find Buyers → Campaigns).
 // Checked at 1440px and 390px, in en, ka and the RTL locales:
 //   * the report claims no full market coverage and shows no provider money;
 //   * every Research NOTE is a sentence with the record's numbers;
 //   * legacy leads are "not yet reviewed", never qualified; no best source is
 //     invented from them;
-//   * UNKNOWN fit reads "unknown", never "fits"; rejected leads never show;
 //   * no raw keys, no horizontal overflow; ar/he render RTL;
-//   * the admin Intelligence tab renders the cross-campaign view.
+//   * the admin Intelligence tab renders the cross-campaign view;
+//   * the customer never sees the report, notes, per-language or per-source
+//     lists: the old results address lands on the matching workspace.
+//
+// RETIRED 2026-10-24 (owner: "old external discovery absent"): the customer
+// results page (MatchesPage on /property/:id/buyers/external, its Strong →
+// Potential → Weak lead groups and tabs) and the lead detail page with its fit
+// badges (/buyers/lead/:leadId) are no longer routed — both addresses redirect
+// to /property/:id/matches?product=external (LegacyMatchingRedirect). The
+// assertions that drove those screens are removed with them; their files stay
+// in the repo, unrouted.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,6 +30,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
+import { boot as bootWorkspace, waitRows } from './matchingWorkspaceFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -313,7 +323,7 @@ test('390px phones (en, ka) and RTL (ar, he): the full report fits, RTL flips, n
   assert.deepEqual(failures, []);
 });
 
-test('live search: a partial report, leads grouped Strong → Potential → Weak, fit badges honest, rejected hidden', opts, async (t) => {
+test('live search: a partial report with live Research Notes, sources and set-aside reasons', opts, async (t) => {
   const { page, calls } = await boot(t, { status: LIVE_STATUS, report: LIVE_REPORT, leads: LIVE_LEADS });
   await openReport(page);
   assert.equal(await page.getAttribute('[data-testid="fbr-report"]', 'data-live'), 'true');
@@ -323,27 +333,9 @@ test('live search: a partial report, leads grouped Strong → Potential → Weak
   assert.match(notes[1], /Genuine purchase requests were found \(2\), but none matched both/);
   assert.match(notes[2], /renting, not buying \(78% of requests\)/);
   assert.match(notes[4], /Job-related posts surfaced in property groups \(12\)/);
-  /* Buyers tab (the customer's results page): STRONG and POTENTIAL only; the WEAK request is an interested person needing verification. */
-  await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('[data-testid="fbx-lead-group"]', { timeout: 20000 });
-  const groups = await page.$$eval('[data-testid="fbx-lead-group"]', (els) => els.map((e) => e.getAttribute('data-category')));
-  assert.deepEqual(groups, ['STRONG', 'POTENTIAL'], 'category order; WEAK is not a buyer; REJECTED never shown');
-  const main = await page.textContent('main');
-  assert.doesNotMatch(main, /Job Seeker/, 'a rejected lead never renders');
-  assert.match(await page.textContent('[data-testid="fbx-tab-direct"]'), /2/);
-  assert.match(await page.textContent('[data-testid="fbx-tab-interest"]'), /1/, 'counts are the cards listed (REJECTED not counted)');
-  await page.click('[data-testid="fbx-tab-interest"]');
-  await page.waitForSelector('[data-testid="fbx-lead-card"][data-verify="true"]', { timeout: 10000 });
-  assert.deepEqual(await page.$$eval('[data-testid="fbx-lead-group"]', (els) => els.map((e) => e.getAttribute('data-category'))), ['WEAK']);
-  /* Fit badges moved to the lead detail page: UNKNOWN reads unknown, never fits. */
-  const fitsOf = async (leadId) => {
-    await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/lead/${leadId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('[data-testid="fbld-compat"] [data-testid="fbx-fit-badges"] [data-fit]', { timeout: 20000 });
-    return page.$$eval('[data-testid="fbx-fit-badges"] [data-fit]', (els) => els.map((e) => `${e.getAttribute('data-fit')}:${e.textContent}`));
-  };
-  assert.deepEqual(await fitsOf('l1'), ['COMPATIBLE:Budget fits', 'COMPATIBLE:Location fits']);
-  assert.deepEqual(await fitsOf('l2'), ['UNKNOWN:Budget unknown', 'COMPATIBLE:Location fits']);
-  assert.deepEqual(await fitsOf('l3'), ['UNKNOWN:Budget unknown', 'UNKNOWN:Location unknown'], 'UNKNOWN reads unknown, never fits');
+  /* The customer-facing half of this test (Strong → Potential → Weak groups on /buyers/external,
+     fit badges on /buyers/lead/:id) is retired: those screens are no longer routed (owner,
+     2026-10-24). The report half below still reads the live record. */
   await openReport(page);
   await expand(page);
   const l = await layout(page);
@@ -385,15 +377,30 @@ test('admin: the Intelligence tab renders the cross-campaign view (en 1440, ar 3
   assert.deepEqual(failures, []);
 });
 
-test('nobody sees the search report, research notes, per-language or per-source lists on the results page (owner, 2026-10-18)', opts, async (t) => {
-  /* an admin account included: the owner's own account is an admin */
-  const { page } = await boot(t, { admin: true });
-  await page.goto(`${BASE}/property/${PROPERTY_ID}/buyers/external`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('[data-testid="fbl-details-toggle"]', { timeout: 30000 });
-  await page.click('[data-testid="fbl-details-toggle"]');
-  await page.waitForSelector('[data-testid="fbl-details"]', { timeout: 15000 });
-  await page.waitForTimeout(1500);
-  for (const id of ['fbr-report', 'fbl-source-outcomes', 'fbl-language-outcomes']) {
-    assert.equal(await page.locator(`[data-testid="${id}"]`).count(), 0, `${id} hidden from the owner`);
+/*
+ * Still true, and now by construction: since 2026-10-24 the old results address is not a screen at
+ * all — it redirects to the matching workspace. So the guarantee is asserted where the customer
+ * actually lands: the workspace renders (with its real rows), and none of the report, research
+ * notes, per-language / per-source lists or the legacy results page render there. An admin account
+ * included: the owner's own account is an admin.
+ */
+const LEGACY_RESULTS_MARKERS = ['fbr-report', 'fbr-research-notes', 'fbl-source-outcomes', 'fbl-language-outcomes',
+  'fbl-details-toggle', 'fbl-details', 'fbl-module', 'fbx-results', 'fbx-lead-group', 'fbx-lead-card', 'fbx-tab-direct', 'fbx-tab-interest'];
+test('nobody sees the search report, research notes, per-language or per-source lists on the results page (owner, 2026-10-18; workspace since 2026-10-24)', opts, async (t) => {
+  const { page, BASE: WS } = await bootWorkspace(t, { port: PORT, admin: true });
+  const reportCalls = [];
+  page.on('request', (req) => { if (/\/rpc\/find_buyers_campaign_(report|status)/.test(req.url())) reportCalls.push(req.url()); });
+  for (const path of ['/buyers/external', '/buyers/external?job=x&start=1', '/buyers/lead/l1']) {
+    await page.goto(`${WS}/property/${PROPERTY_ID}${path}`, { waitUntil: 'domcontentloaded' });
+    await page.locator('[data-testid="mw-page"]').waitFor({ timeout: 30000 });
+    await waitRows(page);
+    const u = new URL(page.url());
+    assert.equal(u.pathname, `/property/${PROPERTY_ID}/matches`, `${path}: lands on the workspace`);
+    assert.equal(u.searchParams.get('product'), 'external', `${path}: the External product`);
+    await page.waitForTimeout(500);
+    for (const id of LEGACY_RESULTS_MARKERS) {
+      assert.equal(await page.locator(`[data-testid="${id}"]`).count(), 0, `${path}: ${id} hidden from the owner`);
+    }
   }
+  assert.deepEqual(reportCalls, [], 'the campaign report and status are not even read for the customer');
 });

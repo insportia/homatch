@@ -31,6 +31,7 @@ import {
 import type { CommContact } from '@/types/communications';
 import { useServiceVisible } from '@/lib/serviceControls';
 import { EmailConsentCard } from '@/components/communications/EmailConsentCard';
+import { ContactSourceCard } from '@/components/communications/ContactSourceCard';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
 
@@ -268,6 +269,7 @@ export default function ContactProfilePage() {
             </CardContent></Card>
           </div>
 
+          <ContactSourceCard key={`${contact.id}:${contact.email ?? ''}:${contact.phone ?? ''}`} contact={contact} onChanged={() => void load()} />
           <EmailConsentCard contact={contact} onChanged={() => void load()} />
         </div>
     </CommsWorkspace>

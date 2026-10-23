@@ -247,6 +247,14 @@ export interface CommContact {
   consent_source: string | null;
   consent_lawful_basis?: string | null;
   consent_recorded_at?: string | null;
+  source_kind?: 'IMPORT' | 'MANUAL' | 'FIND_BUYERS' | null;
+  source_lead_id?: string | null;
+  source_property_id?: string | null;
+  source_platform?: string | null;
+  source_url?: string | null;
+  source_profile_url?: string | null;
+  source_match_category?: string | null;
+  contact_detail_origin?: string | null;
   lead_stage: LeadStage | null;
   lead_score: number | null;
   lead_type: string | null;

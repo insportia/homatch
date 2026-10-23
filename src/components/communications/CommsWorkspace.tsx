@@ -26,7 +26,7 @@ import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, PhoneCall, MessageCircle, Bot, Users, Megaphone,
-  Inbox as InboxIcon, BarChart3, Wallet, Menu, X, Hash, Mail, FileText, ListChecks, Globe,
+  Inbox as InboxIcon, BarChart3, Wallet, Menu, X, Hash, Mail, FileText, ListChecks, Send, LayoutTemplate, ShieldCheck,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { RouteGuard } from '@/components/common/RouteGuard';
@@ -73,6 +73,8 @@ interface NavEntry {
   labelKey: string;
   icon: React.ComponentType<{ className?: string }>;
   exact?: boolean;
+  /** Other paths that count as this entry (a grouped area, e.g. Email Settings). */
+  also?: string[];
 }
 
 /** The heading above each rail: the product you are in, not the category. */
@@ -128,13 +130,16 @@ const PRODUCT_NAV: Record<CommsProduct, NavEntry[]> = {
    * resolves for anything that links to it. It is simply no longer presented
    * as a second, rival destination.
    */
+  /* Email Studio (2026-10-24), within the six-entry ceiling: Dashboard (with Analytics) ·
+     Campaigns (wizard and designer, full page) · Templates · Inbox · Contacts & audiences ·
+     Settings (Deliverability & compliance · Sender settings · Plan & usage, as tabs). */
   email: [
-    { to: '/outreach/email', labelKey: 'comms_nav_overview', icon: Mail, exact: true },
+    { to: '/outreach/email', labelKey: 'ems_nav_dashboard', icon: Mail, exact: true, also: ['/outreach/email/analytics'] },
+    { to: '/outreach/email/campaigns', labelKey: 'ems_nav_campaigns', icon: Send },
+    { to: '/outreach/email/templates', labelKey: 'ems_nav_templates', icon: LayoutTemplate },
     { to: '/outreach/email/inbox', labelKey: 'emx_nav_inbox', icon: InboxIcon },
-    { to: '/outreach/email/contacts', labelKey: 'comms_nav_contacts', icon: Users },
-    { to: '/outreach/email/analytics', labelKey: 'comms_nav_analytics', icon: BarChart3 },
-    { to: '/outreach/email/plan', labelKey: 'emx_nav_plan', icon: Wallet },
-    { to: '/outreach/email/domains', labelKey: 'emx_nav_domains', icon: Globe },
+    { to: '/outreach/email/contacts', labelKey: 'ems_nav_audiences', icon: Users },
+    { to: '/outreach/email/deliverability', labelKey: 'ems_nav_settings', icon: ShieldCheck, also: ['/outreach/email/domains', '/outreach/email/plan'] },
   ],
   /* The audience surfaces are shared by all three channels and belong to
      none, so they carry the neutral rail rather than pretending to be part
@@ -149,6 +154,7 @@ const PRODUCT_NAV: Record<CommsProduct, NavEntry[]> = {
 };
 
 function isActive(pathname: string, item: NavEntry): boolean {
+  if (item.also?.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return true;
   if (item.exact) return pathname === item.to;
   // The inbox and templates live under /outreach/whatsapp, so the WhatsApp
   // entry must not claim them.

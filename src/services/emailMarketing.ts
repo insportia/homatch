@@ -161,3 +161,9 @@ export async function setContactEmailConsent(contactId: string, grant: boolean, 
   }
   return data as ContactConsent;
 }
+
+/* ── campaign test send ─────────────────────────────────────────────────── */
+
+/** One copy of a campaign to the owner's own account address, exactly as recipients will see it. */
+export const sendCampaignTest = (campaignId: string, requestId: string) =>
+  edge<{ sentTo: string }>('campaign_test', { campaignId, requestId });

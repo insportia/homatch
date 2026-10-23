@@ -95,16 +95,22 @@ export default function ContactsPage() {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { void listAudienceSegments().then(setSegments).catch(() => setSegments([])); }, []);
 
-  /* Counted from the rows in hand. Never extrapolated to the full table. */
+  /* Counted from the rows in hand. Never extrapolated to the full table. In the Email
+     workspace "reachable" means an address, consent recorded and no opt-out — the three
+     things an email send itself checks; elsewhere it is a valid phone number. */
+  const isEmail = channel === 'EMAIL';
   const stats = useMemo(() => {
-    const reachable = rows.filter((c) => c.phone_valid === true && !c.suppressed && !c.do_not_contact).length;
-    const suppressed = rows.filter((c) => c.suppressed || c.do_not_contact || c.unsubscribed).length;
-    const invalid = rows.filter((c) => c.phone_valid !== true).length;
+    const blocked = (c: CommContact) => Boolean(c.suppressed || c.do_not_contact || c.unsubscribed);
+    const reachable = rows.filter((c) => (isEmail
+      ? Boolean(c.email) && c.consent_status === 'CONSENTED' && !blocked(c)
+      : c.phone_valid === true && !c.suppressed && !c.do_not_contact)).length;
+    const suppressed = rows.filter(blocked).length;
+    const invalid = rows.filter((c) => (isEmail ? !c.email : c.phone_valid !== true)).length;
     const countries = new Set(rows.map((c) => c.country).filter(Boolean));
     const languages = new Set(rows.map((c) => c.language).filter(Boolean));
     const lists = new Set(rows.map((c) => c.list_id).filter(Boolean));
     return { reachable, suppressed, invalid, countries: countries.size, languages: languages.size, lists: lists.size };
-  }, [rows]);
+  }, [rows, isEmail]);
 
   return (
     <CommsWorkspace product={product}
@@ -227,7 +233,8 @@ export default function ContactsPage() {
               <thead className="border-b bg-muted/40">
                 <tr className="[&>th]:px-3 [&>th]:py-2 [&>th]:text-start [&>th]:font-medium [&>th]:text-muted-foreground">
                   <th>{t('comm_col_contact')}</th>
-                  <th>{t('comm_field_phone')}</th>
+                  <th>{t(isEmail ? 'emc_address' : 'comm_field_phone')}</th>
+                  {isEmail ? <th>{t('emc_status')}</th> : null}
                   <th>{t('comm_field_language')}</th>
                   <th>{t('comms_contacts_country')}</th>
                   <th>{t('comm_lead_stage')}</th>
@@ -244,9 +251,9 @@ export default function ContactsPage() {
                     <td className="font-medium">
                       {c.full_name || <span className="text-muted-foreground">{t('comms_contacts_unnamed')}</span>}
                     </td>
-                    <td className="font-mono">
+                    <td className={isEmail ? '' : 'font-mono'}>
                       <span className="flex items-center gap-1.5">
-                        {formatPhone(c.phone)}
+                        {isEmail ? <span className="max-w-[16rem] truncate" dir="ltr">{c.email ?? '·'}</span> : formatPhone(c.phone)}
                         {c.suppressed || c.do_not_contact ? (
                           <Badge variant="outline" className="text-2xs text-muted-foreground">
                             {t('comms_contacts_suppressed')}
@@ -254,6 +261,15 @@ export default function ContactsPage() {
                         ) : null}
                       </span>
                     </td>
+                    {isEmail ? (
+                      <td>
+                        <Badge variant="outline" className={c.consent_status === 'CONSENTED' && !(c.suppressed || c.do_not_contact || c.unsubscribed) ? 'border-emerald-600/30 text-2xs text-emerald-800' : 'text-2xs text-muted-foreground'}>
+                          {t(c.suppressed || c.do_not_contact || c.unsubscribed ? 'emc_status_opted_out'
+                            : c.consent_status === 'CONSENTED' ? 'emc_status_consented'
+                            : c.consent_status === 'WITHDRAWN' ? 'emc_status_withdrawn' : 'emc_status_none')}
+                        </Badge>
+                      </td>
+                    ) : null}
                     <td className="uppercase">{c.language ?? '·'}</td>
                     <td className="uppercase">{c.country ?? '·'}</td>
                     <td>{c.lead_stage ? t(`comm_stage_${c.lead_stage.toLowerCase()}` as TKey) : '·'}</td>

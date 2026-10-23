@@ -207,5 +207,15 @@
   "emc_withdrawn_toast": "Consent withdrawn. No more marketing email will go to this contact.",
   "emc_err_opted_out": "This person opted out or is suppressed. Only they can opt in again.",
   "emc_err_no_email": "This contact has no email address.",
-  "emc_err_failed": "Could not save the consent change."
+  "emc_err_failed": "Could not save the consent change.",
+  "emx_preview_title": "Email preview",
+  "emx_preview_note": "This is exactly how recipients will see this email, including the unsubscribe link.",
+  "emx_test_send": "Send a test to me",
+  "emx_test_sent": "Test sent to {{to}}.",
+  "emx_test_failed": "The test could not be sent. Try again in a moment.",
+  "emx_test_blocked": "Sending is switched off for your account, so no test was sent.",
+  "emx_test_empty": "Add a message before sending a test.",
+  "emx_test_no_email": "Your account has no email address to send the test to.",
+  "emx_test_rate": "Too many tests in the last hour. Try again later.",
+  "emx_test_quota": "Your email allowance is used up, so no test was sent."
 }

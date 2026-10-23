@@ -64,7 +64,7 @@ export function Kpi({ labelKey, value, sub, accent, loading, icon: Icon }: KpiPr
            * Georgian screen, which is how a KPI ends up reading "პასუხის მაჩ…".
            * Two lines of label is the correct answer; a clipped word is not.
            */}
-          <p data-kpi-label className="min-w-0 flex-1 text-[13px] font-medium uppercase leading-[1.25] tracking-wide text-muted-foreground [overflow-wrap:anywhere]">
+          <p data-kpi-label className="min-w-0 flex-1 hyphens-auto text-[13px] font-medium uppercase leading-[1.3] tracking-wide text-muted-foreground [overflow-wrap:break-word]">
             {t(labelKey as TKey)}
           </p>
           {Icon ? <Icon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', accent ? 'text-gold-ink' : 'text-muted-foreground')} aria-hidden="true" /> : null}
@@ -90,7 +90,9 @@ export function KpiRow({ children, cols = 6 }: { children: React.ReactNode; cols
       className={cn(
         'grid gap-2 sm:gap-3',
         'grid-cols-2 sm:grid-cols-3',
-        cols >= 6 ? 'lg:grid-cols-6' : cols === 5 ? 'lg:grid-cols-5' : cols === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3',
+        /* Six across only where a card is wide enough for a whole Georgian word (2xl, beside the
+           workspace rail); on a laptop that row is two rows of three, never words broken mid-way. */
+        cols >= 6 ? 'lg:grid-cols-3 2xl:grid-cols-6' : cols === 5 ? 'lg:grid-cols-3 2xl:grid-cols-5' : cols === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3',
       )}
     >
       {children}
@@ -291,33 +293,40 @@ export function PageHeader({
   eyebrow?: string;
   title: string;
   subtitle?: string;
-  primary?: { label: string; onClick: () => void; busy?: boolean };
-  secondary?: { label: string; onClick: () => void };
+  primary?: { label: string; onClick: () => void; busy?: boolean; icon?: React.ComponentType<{ className?: string }> };
+  secondary?: { label: string; onClick: () => void; icon?: React.ComponentType<{ className?: string }> };
   children?: React.ReactNode;
 }) {
   return (
     /* The navy structural header, same DNA as the approved Mortgage hero:
        dark frame, gold eyebrow, white title — then white workspace below. */
-    <div className="flex flex-wrap items-end justify-between gap-3 overflow-hidden rounded-2xl bg-[#0C1119] px-5 py-5 text-white shadow-hover sm:px-7 sm:py-6">
-      <div className="min-w-0">
+    <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4 overflow-hidden rounded-2xl bg-[#0C1119] px-5 py-5 text-white shadow-hover sm:px-7 sm:py-6">
+      {/* The text takes the room; the actions keep theirs at the end of the row and only drop
+          below the text when the row is genuinely too narrow for both. */}
+      <div className="min-w-0 flex-1 basis-[20rem]">
         {eyebrow ? (
           <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[hsl(38_92%_60%)]">{eyebrow}</p>
         ) : null}
-        <h1 className="truncate font-display text-2xl font-bold tracking-[-0.02em] text-white">{title}</h1>
-        {subtitle ? <p className="mt-1 max-w-[58ch] text-[15px] leading-relaxed text-white/80">{subtitle}</p> : null}
+        {/* Never `truncate`: a Georgian title is often twice the English length. It wraps, at
+            word boundaries first, with a line-height that keeps two lines clear of the subtitle. */}
+        <h1 className="mt-0.5 font-display text-2xl font-bold leading-[1.18] tracking-[-0.02em] text-white [overflow-wrap:break-word] sm:text-[1.75rem]">{title}</h1>
+        {subtitle ? <p className="mt-1.5 max-w-[46rem] text-[15px] leading-relaxed text-white/80 [overflow-wrap:break-word]">{subtitle}</p> : null}
         <span className="mt-3.5 block h-[3px] w-14 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2">
         {children}
         {secondary ? (
-          <Button size="sm" variant="outline" className="border-white/40 bg-white text-[#0C1119] hover:bg-white/90" onClick={secondary.onClick}>{secondary.label}</Button>
+          <Button size="sm" variant="outline" className="h-9 gap-1.5 border-white/40 bg-white text-[#0C1119] hover:bg-white/90" onClick={secondary.onClick}>
+            {secondary.icon ? <secondary.icon className="h-3.5 w-3.5" /> : null}
+            {secondary.label}
+          </Button>
         ) : null}
         {primary ? (
           /* Inside the navy frame, the primary action is the gold one — a
              near-black button on near-black ground would vanish. */
-          <Button size="sm" className="border-0 bg-[hsl(38_92%_54%)] font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)]" onClick={primary.onClick} disabled={primary.busy}>
+          <Button size="sm" className="h-9 gap-1.5 border-0 bg-[hsl(38_92%_54%)] px-4 font-bold text-[#161309] shadow-[0_6px_20px_-8px_hsl(38_92%_54%/0.7)] transition-[background-color,transform] hover:-translate-y-px hover:bg-[hsl(38_92%_60%)] focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_60%)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0C1119]" onClick={primary.onClick} disabled={primary.busy}>
             {/* §80: a mutation button shows progress and cannot be double-fired. */}
-            {primary.busy ? <Loader2 className="me-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            {primary.busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : primary.icon ? <primary.icon className="h-4 w-4" /> : null}
             {primary.label}
           </Button>
         ) : null}

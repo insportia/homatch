@@ -16,10 +16,11 @@ import {
   createDomain, deleteDomain, getDomain, getUsage, listUnsubscribeHeaders, mapDomainStatus, resendKeyNames, sendEmail, usageAlerts, verifyDomain,
 } from '../_shared/resend/client.ts';
 import {
-  createReplyRoute, isSuppressed, loadEmailSettings, loadTestMode, marketingKey, ownerFromAuth, purchasePlan, resolveSender,
-  testModeAllows,
+  createReplyRoute, isSuppressed, loadEmailSettings, loadTestMode, marketingKey, ownerFromAuth, purchasePlan, reserveQuota, resolveSender,
+  settleQuota, testModeAllows,
   type EmailSettings, type Owner,
 } from '../_shared/emailMarketing/core.ts';
+import { renderCampaignEmail } from '../../../src/emailMarketing/campaignTemplate.ts';
 
 type Sb = ReturnType<typeof serviceClient>;
 
@@ -60,6 +61,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       case 'domain_set_sender': return await domainSetSender(sb, owner, body);
       case 'domain_disconnect': return await domainDisconnect(sb, settings, owner, body);
       case 'inbox_reply': return await inboxReply(sb, settings, owner, body);
+      case 'campaign_test': return await campaignTest(sb, settings, owner, body);
       case 'usage_refresh': {
         const { data: admin } = await caller.sb.rpc('is_admin');
         if (admin !== true) return json({ ok: false, error: 'FORBIDDEN' }, 403);
@@ -260,6 +262,63 @@ async function domainDisconnect(sb: Sb, s: EmailSettings, owner: Owner, body: Re
 /* ── CRM inbox reply ─────────────────────────────────────────────────────── */
 
 const escapeHtml = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+/* ── campaign test send ──────────────────────────────────────────────────── */
+
+/**
+ * One copy of an outreach campaign, rendered exactly as recipients will get it, to the owner's
+ * OWN account address — never anyone else. The same switches as a real send apply (a
+ * controlled live test may lift them for an allowlisted owner), plus suppression, quota (one
+ * email) and a per-owner rate limit. Merge fields use the owner's first name.
+ */
+async function campaignTest(sb: Sb, s: EmailSettings, owner: Owner, body: Record<string, unknown>): Promise<Response> {
+  const requestId = String(body.requestId ?? '');
+  if (!/^[0-9a-f-]{36}$/i.test(requestId)) return json({ ok: false, error: 'REQUEST_ID_REQUIRED' }, 400);
+  const limit = await checkRateLimit(sb, 'email_campaign_test', 20, 3600, { userId: owner.authId });
+  if (!limit.allowed) return json({ ok: false, error: 'RATE_LIMITED' }, 429);
+  const { data: row } = await sb.from('outreach_campaigns')
+    .select('id, name, subject, html_body, text_body, sender_name, language, campaign_type')
+    .eq('id', String(body.campaignId ?? '')).eq('owner_id', owner.authId).maybeSingle();
+  const c = row as { id: string; name: string; subject: string | null; html_body: string | null; text_body: string | null; sender_name: string | null; language: string | null; campaign_type: string } | null;
+  if (!c || c.campaign_type !== 'EMAIL') return json({ ok: false, error: 'CAMPAIGN_NOT_FOUND' }, 404);
+  if (!c.text_body?.trim() && !c.html_body?.trim()) return json({ ok: false, error: 'EMPTY_CAMPAIGN' }, 422);
+  const to = owner.email;
+  if (!to) return json({ ok: false, error: 'NO_ACCOUNT_EMAIL' }, 422);
+
+  const testOk = testModeAllows(await loadTestMode(sb), owner.userId, [to]);
+  if (s.killSwitch && !testOk) return json({ ok: false, error: 'PROVIDER_KILL_SWITCH' }, 423);
+  if (!s.outreachEnabled && !testOk) return json({ ok: false, error: 'SENDING_DISABLED' }, 423);
+  if (await isSuppressed(sb, owner, to)) return json({ ok: false, error: 'RECIPIENT_OPTED_OUT' }, 422);
+  const key = marketingKey(s).key;
+  if (!key) return json({ ok: false, error: 'PROVIDER_NOT_CONFIGURED' }, 503);
+
+  const grant = await reserveQuota(sb, s, owner, 1, `campaign-test:${owner.userId}:${requestId}`, 'TEST');
+  if (!grant.reservationId || grant.granted < 1) return json({ ok: false, error: grant.reason ?? 'QUOTA_EXHAUSTED' }, 402);
+
+  const first = String(owner.name ?? '').trim().split(/\s+/)[0] || '';
+  const merge = (text: string) => text.replace(/\{\{\s*(first_name|name)\s*(?:\|([^}]{0,40}))?\}\}/g, (_m, _f, fb?: string) => first || String(fb ?? '').trim());
+  const rendered = renderCampaignEmail({
+    subject: `[TEST] ${merge(c.subject || c.name)}`,
+    bodyHtml: c.html_body ? merge(c.html_body) : null,
+    bodyText: c.text_body ? merge(c.text_body) : null,
+    senderName: c.sender_name, lang: c.language,
+    /* A test has no recipient row to sign: the footer link points at the owner's own settings. */
+    unsubscribeUrl: 'https://www.homatch.live/settings',
+  });
+  const sender = await resolveSender(sb, s, owner, null);
+  const result = await sendEmail(key, {
+    from: sender.from, to, subject: `[TEST] ${merge(c.subject || c.name)}`, html: rendered.html, text: rendered.text,
+    tags: [{ name: 'kind', value: 'campaign_test' }], idempotencyKey: `campaign-test:${requestId}`,
+  });
+  const accepted = result.ok && Boolean(result.json?.id);
+  await settleQuota(sb, grant.reservationId, accepted ? 1 : 0);
+  if (!accepted) {
+    logEvent('email-marketing', 'campaign_test_provider_error', { error: redact(String(result.error ?? '').slice(0, 200)) });
+    return json({ ok: false, error: 'PROVIDER_ERROR' }, 502);
+  }
+  logEvent('email-marketing', 'campaign_test_sent', { controlledTest: testOk });
+  return json({ ok: true, sentTo: to.replace(/^(.).*(@.*)$/, '$1***$2') });
+}
 
 async function inboxReply(sb: Sb, s: EmailSettings, owner: Owner, body: Record<string, unknown>): Promise<Response> {
   const text =String(body.text ?? '').replace(/\r\n/g, '\n').trim();

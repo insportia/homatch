@@ -1772,7 +1772,7 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
             portals: [], widened: false,
           },
           conflicts: p._marketConflicts || [],
-        } as any) + '\n\n'
+        } as any, { restate: engineOf(p) !== 'V2' }) + '\n\n'
       : '';
     return (
       // F6: when the deterministic gate found no reliable basis, the model is

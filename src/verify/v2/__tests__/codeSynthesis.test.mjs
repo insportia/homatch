@@ -54,6 +54,6 @@ test('research-agent: a V2 job skips the SYNTHESIS call and its budget hold; V1 
   // No usage is invented for a call that was never made.
   assert.match(src, /if \(!code\) \{\n\s+prior\._cost = /);
   assert.match(src, /summary: \(v2 \?\? z\)\.executiveSummary \|\| '',/);
-  // The engine is only ever read from the job's own stamp.
-  assert.equal((src.match(/engineOf\(/g) ?? []).length, 1);
+  // The engine is only ever read from the job's own stamp, never the live setting.
+  for (const m of src.matchAll(/engineOf\(([^)]*)\)/g)) assert.match(m[1], /^(j\.result_json|p)$/, m[0]);
 });

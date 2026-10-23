@@ -66,6 +66,8 @@ def _handle(event: dict) -> dict:
             version = None
         return {"ok": True, "gpu": _gpu(), "blender": version, "tools": {k: bool(v) for k, v in t.items()},
                 "warmSeconds": int(time.time() - _STARTED), "jobsServed": _JOBS["n"]}
+    if "contentStudio" in payload:
+        return _content(event, payload, t)
     try:
         job = parse_job(payload)
     except JobError as e:
@@ -91,6 +93,43 @@ def _handle(event: dict) -> dict:
         out = run_job(job, t, progress=progress)
     except Exception as e:  # noqa: BLE001 - the reason, never a stack with paths or URLs
         return {"ok": False, "error": f"FACTORY_FAILED: {str(e)[:300]}", "coldStart": cold}
+    out["ok"] = True
+    out["coldStart"] = cold
+    out["gpu"] = _gpu()
+    return out
+
+
+def _content(event: dict, payload: dict, t: dict) -> dict:
+    """A Content Studio job (HOMI): its own allowlisted schema and its own HOMATCH-owned Blender script.
+
+    A payload is one kind or the other: a content job that also carries scene-factory fields is refused,
+    so the factory's validation can never be skipped by adding a key.
+    """
+    from .content.schema import parse_content_job
+
+    if set(payload) != {"contentStudio"}:
+        return {"ok": False, "error": "INVALID_JOB: a content job carries only contentStudio"}
+    try:
+        job = parse_content_job(payload["contentStudio"])
+    except JobError as e:
+        return {"ok": False, "error": f"INVALID_JOB: {e}"}
+    from .content.pipeline import run_content_job
+
+    cold = _JOBS["n"] == 0
+    _JOBS["n"] += 1
+
+    def progress(stage: str) -> None:
+        try:
+            import runpod  # type: ignore
+
+            runpod.serverless.progress_update(event, {"stage": stage})
+        except Exception:  # noqa: BLE001 - progress is a courtesy, never a failure
+            pass
+
+    try:
+        out = run_content_job(job, t, progress=progress, revision=worker_info()["revision"])
+    except Exception as e:  # noqa: BLE001 - the reason, never a stack with paths or URLs
+        return {"ok": False, "error": f"CONTENT_FAILED: {str(e)[:300]}", "coldStart": cold}
     out["ok"] = True
     out["coldStart"] = cold
     out["gpu"] = _gpu()

@@ -21,6 +21,7 @@
 //   POST …/design-studio-reconstruct/walkthrough-retry     a failed one resumed from its saved work
 //   POST …/design-studio-reconstruct/walkthrough-tick      the reconciler (pg_cron, x-cron-token): due walkthroughs and unwatched factory jobs
 //   POST …/design-studio-reconstruct/walkthrough-geometry  a design revision on corrected geometry (the same drawing read again)
+//   POST …/design-studio-reconstruct/content-studio        HOMATCH's own assets (HOMI): admin-only, customers first (contentStudio.ts)
 //
 // One function because the project is on a plan that caps how many edge
 // functions it may have, and production is at that cap: two new functions
@@ -32,6 +33,8 @@
 // another's body.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { handleContentStudio } from './contentStudio.ts';
 import { handleDesign } from './design.ts';
 import { handleFloorplan } from './floorplan.ts';
 import { handlePhotoRooms, handlePhotos } from './photos.ts';
@@ -91,5 +94,6 @@ serve(async (req) => {
   if (route === 'walkthrough-retry') return handleWalkthroughRetry(req);
   if (route === 'walkthrough-tick') return handleWalkthroughTick(req);
   if (route === 'walkthrough-geometry') return handleWalkthroughGeometry(req);
+  if (route === 'content-studio') return handleContentStudio(req, { env: (k) => Deno.env.get(k), createClient });
   return handleReconstruct(req);
 });

@@ -25,6 +25,33 @@ by HOMATCH from the same canonical geometry so walls remain editable surfaces.
 No generative 3D, no model weights, no tokens: SAM/TRELLIS are not part of
 this worker.
 
+## Content Studio jobs (HOMI)
+
+The same image also builds HOMATCH's own character assets. A job whose input is exactly
+`{"contentStudio": {...}}` takes a separate path (`worker/handler.py` → `worker/content/`) and never
+touches the scene factory, its spec or its billing:
+
+- **Allowlisted:** asset `HOMI`, version `vNNN`, and three short stages (new stages are added only as
+  code). Render numbers are bounded. The job carries no code: Blender runs only
+  `worker/content/homi/build.py`, under the same no-eval/exec/shell test as the factory.
+  - `PREVIEW_360_BUILD`: master `.blend`, `.glb` (re-imported as a check), face close-up, and a
+    build report, uploaded last.
+  - `PREVIEW_360_FRAMES`: one chunk of at most 24 turntable frames.
+  - `PREVIEW_360_ASSEMBLE`: downloads the frames, face and report (bounded, PNG-checked) and
+    produces the turntable `.mp4`, the contact sheet and the manifest (size and sha256 of every file,
+    geometry stats, inferred parts, checks), uploaded last.
+- **URLs:** every signed URL must point inside `homatch-content/3D/characters/HOMI/versions/<vNNN>/`
+  with the right extension.
+- **Dispatch:** only through the admin-only `content-studio` route of `design-studio-reconstruct`
+  (`contentStudio.ts`), not a separate edge function, because the project is at its function cap.
+  - **Customers first:** a preview is eight short jobs. Each one starts only when no Design Studio job,
+    render or walkthrough is open and RunPod has nothing queued or running, so a customer waits at
+    most one step.
+  - **One content job at a time:** enforced with a GPU lock written to R2 with conditional PUTs.
+    Nothing starts until `lock-selftest` has proven on the real bucket that those PUTs are atomic.
+  - **Retries:** a failed step is retried alone, at most three times. Finished steps never run again,
+    and an approved version (its manifest exists) is never signed again.
+
 ## Security
 
 - The job carries **signed URLs only**, host-locked to

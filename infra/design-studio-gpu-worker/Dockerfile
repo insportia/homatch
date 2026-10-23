@@ -47,6 +47,14 @@ RUN mkdir -p /tmp/st && printf '{"spec":"/app/selftest/apartment.spec.json","tex
     && python3 -c "import json; r=json.load(open('/tmp/st/report.json')); assert r['ok'], r; print('factory selftest', r['counts'])" \
     && rm -rf /tmp/st
 
+# The same proof for Content Studio: HOMI builds, saves, exports, re-imports, renders its face and one frame on the CPU.
+RUN mkdir -p /tmp/hs && printf '{"stage":"BUILD","out":"/tmp/hs/out","report":"/tmp/hs/build.json","device":"CPU","size":512,"samples":4,"frames":8,"fps":8,"files":{"blend":"h.blend","glb":"h.glb","face":"h.png"}}' > /tmp/hs/build-params.json \
+    && printf '{"stage":"FRAMES","out":"/tmp/hs/out","report":"/tmp/hs/frames.json","device":"CPU","size":512,"samples":4,"frames":8,"fps":8,"start":0,"count":1}' > /tmp/hs/frames-params.json \
+    && /opt/blender/blender -b --factory-startup --python /app/worker/content/homi/build.py -- /tmp/hs/build-params.json \
+    && /opt/blender/blender -b --factory-startup --python /app/worker/content/homi/build.py -- /tmp/hs/frames-params.json \
+    && python3 -c "import json; b=json.load(open('/tmp/hs/build.json')); f=json.load(open('/tmp/hs/frames.json')); assert b['ok'] and f['ok'], (b, f); print('homi selftest', b['geometry']['objects'], b['geometry']['triangles'])" \
+    && rm -rf /tmp/hs
+
 # The commit this image was built from (the GHCR workflow passes github.sha); every job reports it
 # as result.worker.revision. Last, so a new commit never invalidates the layers above.
 ARG HM_IMAGE_REVISION=""

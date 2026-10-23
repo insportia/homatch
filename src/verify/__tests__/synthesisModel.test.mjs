@@ -47,7 +47,7 @@ test('the COGS row names the model that actually wrote the report', () => {
   assert.match(src, /const SYNTHESIS_MODEL_OVERRIDE = \(Deno\.env\.get\('OPENAI_SYNTHESIS_MODEL'\) \?\? ''\)\.trim\(\);/);
   assert.match(src, /const MODEL = SYNTHESIS_MODEL_OVERRIDE \|\| VERIFY_SYNTHESIS_MODEL;/);
   // The call and its usage name the same model: MODEL, or a V2 job's stamped report model.
-  assert.match(src, /const reportModel = reportModelFor\(rj, MODEL\);/);
+  assert.match(src, /const reportRouting = reportRoutingFor\(rj, MODEL\);\n\s+const reportModel = reportRouting\.model;/);
   assert.match(src, /const consumption = reportConsumption\(usage, usage\?\.model \|\| MODEL\);/);
   assert.match(src, /usage = \{\s*model: reportModel,/);
   assert.match(src, /model: reportModel,\n\s+input: \[/);

@@ -21414,6 +21414,28 @@ const en = {
 
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'A price range needs at least {{need}} comparable plots of the same land designation nearby. We found {{have}}, so we are not giving a number for this plot. Any listing shown is context, not a valuation.',
+
+  /* ── VERIFY V2 RESEARCH ── */
+  adm_v2r_title: 'V2 research spending',
+  adm_v2r_note: 'Applies only to V2 verifications. Each job reads these settings once, when it starts. Empty fields mean the same as V1.',
+  adm_v2r_stage_identity: 'Identity',
+  adm_v2r_stage_official: 'Official documents',
+  adm_v2r_stage_public: 'Public research',
+  adm_v2r_stage_market: 'Market',
+  adm_v2r_model: 'Model',
+  adm_v2r_default: 'As V1',
+  adm_v2r_max_searches: 'Max searches',
+  adm_v2r_market_mode: 'Market mode',
+  adm_v2r_market_auto: 'Code when enough comparables',
+  adm_v2r_market_code: 'Code only',
+  adm_v2r_market_ai: 'Always AI',
+  adm_v2r_report: 'Final report',
+  adm_v2r_report_auto: 'Auto (Terra only when complex)',
+  adm_v2r_budget: 'Research budget',
+  adm_v2r_ceiling: 'Ceiling, USD',
+  adm_v2r_escalation: 'Retry an unusable Luna answer once on Terra',
+  adm_v2r_save: 'Save V2 research settings',
+  adm_v2r_saved: 'V2 research settings saved',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -42742,6 +42764,28 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'ფასის დიაპაზონის დასადგენად საჭიროა მინიმუმ {{need}} იმავე დანიშნულების შესადარებელი მიწის ნაკვეთი ახლომდებარე ტერიტორიაზე. ვიპოვეთ {{have}}, ამიტომ ამ ნაკვეთისთვის ციფრს არ ვასახელებთ. ნაჩვენები განცხადებები მხოლოდ კონტექსტია და არა შეფასება.',
+
+  /* ── VERIFY V2 RESEARCH ── */
+  adm_v2r_title: 'V2 კვლევის ხარჯი',
+  adm_v2r_note: 'ვრცელდება მხოლოდ V2 ვერიფიკაციებზე. თითო job ამ პარამეტრებს ერთხელ კითხულობს, დაწყებისას. ცარიელი ველი ნიშნავს იმავეს, რაც V1-ში.',
+  adm_v2r_stage_identity: 'იდენტიფიკაცია',
+  adm_v2r_stage_official: 'ოფიციალური დოკუმენტები',
+  adm_v2r_stage_public: 'საჯარო კვლევა',
+  adm_v2r_stage_market: 'ბაზარი',
+  adm_v2r_model: 'მოდელი',
+  adm_v2r_default: 'როგორც V1',
+  adm_v2r_max_searches: 'მაქს. ძიება',
+  adm_v2r_market_mode: 'ბაზრის რეჟიმი',
+  adm_v2r_market_auto: 'კოდი, თუ საკმარისი ანალოგია',
+  adm_v2r_market_code: 'მხოლოდ კოდი',
+  adm_v2r_market_ai: 'ყოველთვის AI',
+  adm_v2r_report: 'საბოლოო ანგარიში',
+  adm_v2r_report_auto: 'ავტო (Terra მხოლოდ რთულ შემთხვევაში)',
+  adm_v2r_budget: 'კვლევის ბიუჯეტი',
+  adm_v2r_ceiling: 'ზღვარი, USD',
+  adm_v2r_escalation: 'Luna-ს გამოუსადეგარი პასუხი ერთხელ თავიდან Terra-ზე',
+  adm_v2r_save: 'V2 კვლევის პარამეტრების შენახვა',
+  adm_v2r_saved: 'V2 კვლევის პარამეტრები შენახულია',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -64061,6 +64105,28 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'Для ценового диапазона нужно не менее {{need}} сопоставимых участков того же назначения поблизости. Мы нашли {{have}}, поэтому не называем цифру для этого участка. Показанные объявления — контекст, а не оценка.',
+
+  /* ── VERIFY V2 RESEARCH ── */
+  adm_v2r_title: 'Расходы на исследование V2',
+  adm_v2r_note: 'Действует только для проверок V2. Каждое задание читает эти настройки один раз, при запуске. Пустое поле означает то же, что в V1.',
+  adm_v2r_stage_identity: 'Идентификация',
+  adm_v2r_stage_official: 'Официальные документы',
+  adm_v2r_stage_public: 'Открытое исследование',
+  adm_v2r_stage_market: 'Рынок',
+  adm_v2r_model: 'Модель',
+  adm_v2r_default: 'Как в V1',
+  adm_v2r_max_searches: 'Макс. поисков',
+  adm_v2r_market_mode: 'Режим рынка',
+  adm_v2r_market_auto: 'Код, если аналогов достаточно',
+  adm_v2r_market_code: 'Только код',
+  adm_v2r_market_ai: 'Всегда ИИ',
+  adm_v2r_report: 'Итоговый отчёт',
+  adm_v2r_report_auto: 'Авто (Terra только в сложных случаях)',
+  adm_v2r_budget: 'Бюджет исследования',
+  adm_v2r_ceiling: 'Предел, USD',
+  adm_v2r_escalation: 'Повторить непригодный ответ Luna один раз на Terra',
+  adm_v2r_save: 'Сохранить настройки V2',
+  adm_v2r_saved: 'Настройки V2 сохранены',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -85378,6 +85444,28 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'Bir fiyat aralığı için yakında aynı arazi niteliğinde en az {{need}} karşılaştırılabilir parsel gerekir. {{have}} bulduk, bu yüzden bu parsel için bir rakam vermiyoruz. Gösterilen ilanlar değerleme değil, bağlamdır.',
+
+  /* ── VERIFY V2 RESEARCH ── */
+  adm_v2r_title: 'V2 araştırma harcaması',
+  adm_v2r_note: 'Yalnızca V2 doğrulamalarına uygulanır. Her iş bu ayarları başlarken bir kez okur. Boş alanlar V1 ile aynı anlama gelir.',
+  adm_v2r_stage_identity: 'Kimlik',
+  adm_v2r_stage_official: 'Resmi belgeler',
+  adm_v2r_stage_public: 'Kamu araştırması',
+  adm_v2r_stage_market: 'Piyasa',
+  adm_v2r_model: 'Yapay zekâ modeli',
+  adm_v2r_default: 'V1 gibi',
+  adm_v2r_max_searches: 'En çok arama',
+  adm_v2r_market_mode: 'Piyasa modu',
+  adm_v2r_market_auto: 'Yeterli emsal varsa kod',
+  adm_v2r_market_code: 'Yalnızca kod',
+  adm_v2r_market_ai: 'Her zaman YZ',
+  adm_v2r_report: 'Nihai rapor',
+  adm_v2r_report_auto: 'Otomatik (yalnızca karmaşıksa Terra)',
+  adm_v2r_budget: 'Araştırma bütçesi',
+  adm_v2r_ceiling: 'Tavan, USD',
+  adm_v2r_escalation: 'Kullanılamayan Luna yanıtını Terra ile bir kez yeniden dene',
+  adm_v2r_save: 'V2 ayarlarını kaydet',
+  adm_v2r_saved: 'V2 ayarları kaydedildi',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -106695,6 +106783,28 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'يتطلب نطاق السعر ما لا يقل عن {{need}} قطع أراضٍ مماثلة بالتصنيف نفسه في المنطقة. وجدنا {{have}}، لذلك لا نذكر رقمًا لهذه القطعة. أي إعلان معروض هو سياق وليس تقييمًا.',
+
+  /* ── VERIFY V2 RESEARCH ── */
+  adm_v2r_title: 'إنفاق بحث V2',
+  adm_v2r_note: 'ينطبق على عمليات تحقق V2 فقط. تقرأ كل مهمة هذه الإعدادات مرة واحدة عند بدئها. الحقل الفارغ يعني نفس سلوك V1.',
+  adm_v2r_stage_identity: 'الهوية',
+  adm_v2r_stage_official: 'الوثائق الرسمية',
+  adm_v2r_stage_public: 'البحث العام',
+  adm_v2r_stage_market: 'السوق',
+  adm_v2r_model: 'النموذج',
+  adm_v2r_default: 'كما في V1',
+  adm_v2r_max_searches: 'أقصى عدد بحث',
+  adm_v2r_market_mode: 'وضع السوق',
+  adm_v2r_market_auto: 'الكود عند كفاية المقارنات',
+  adm_v2r_market_code: 'الكود فقط',
+  adm_v2r_market_ai: 'الذكاء الاصطناعي دائمًا',
+  adm_v2r_report: 'التقرير النهائي',
+  adm_v2r_report_auto: 'تلقائي (Terra فقط عند التعقيد)',
+  adm_v2r_budget: 'ميزانية البحث',
+  adm_v2r_ceiling: 'الحد، دولار',
+  adm_v2r_escalation: 'إعادة محاولة إجابة Luna غير الصالحة مرة واحدة على Terra',
+  adm_v2r_save: 'حفظ إعدادات بحث V2',
+  adm_v2r_saved: 'تم حفظ إعدادات بحث V2',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -128012,6 +128122,28 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY MARKET — LAND ── */
   vfm6_insufficient_body_land: 'טווח מחירים דורש לפחות {{need}} מגרשים דומים באותו ייעוד קרקע בסביבה. מצאנו {{have}}, ולכן איננו נוקבים במספר עבור המגרש הזה. מודעות שמוצגות הן הקשר, לא הערכת שווי.',
+
+  /* ── VERIFY V2 RESEARCH ── */
+  adm_v2r_title: 'הוצאות מחקר V2',
+  adm_v2r_note: 'חל רק על אימותי V2. כל משימה קוראת את ההגדרות פעם אחת, כשהיא מתחילה. שדה ריק פירושו כמו ב-V1.',
+  adm_v2r_stage_identity: 'זיהוי',
+  adm_v2r_stage_official: 'מסמכים רשמיים',
+  adm_v2r_stage_public: 'מחקר ציבורי',
+  adm_v2r_stage_market: 'שוק',
+  adm_v2r_model: 'מודל',
+  adm_v2r_default: 'כמו V1',
+  adm_v2r_max_searches: 'מקס׳ חיפושים',
+  adm_v2r_market_mode: 'מצב שוק',
+  adm_v2r_market_auto: 'קוד כשיש מספיק השוואות',
+  adm_v2r_market_code: 'קוד בלבד',
+  adm_v2r_market_ai: 'תמיד AI',
+  adm_v2r_report: 'הדוח הסופי',
+  adm_v2r_report_auto: 'אוטומטי (Terra רק כשמורכב)',
+  adm_v2r_budget: 'תקציב מחקר',
+  adm_v2r_ceiling: 'תקרה, USD',
+  adm_v2r_escalation: 'לנסות שוב פעם אחת ב-Terra תשובת Luna לא שמישה',
+  adm_v2r_save: 'שמירת הגדרות מחקר V2',
+  adm_v2r_saved: 'הגדרות מחקר V2 נשמרו',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

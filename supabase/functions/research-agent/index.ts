@@ -25,7 +25,7 @@ import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/perfor
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
 import { engineForNewJob, engineOf, parseEngineSetting, VERIFY_ENGINE_SETTING_KEY } from '../../../src/verify/engine.ts';
 import { codeSynthesis } from '../../../src/verify/v2/codeSynthesis.ts';
-import { marketOfficialContext, parseResearchTuning, v2ResearchRequest, VERIFY_V2_RESEARCH_SETTING_KEY, withoutEmpty } from '../../../src/verify/v2/researchRequest.ts';
+import { budgetDecision, canonicalModel, escalationModelFor, marketCodeDecision, marketOfficialContext, parseResearchTuning, searchQueriesOf, stageOutputUsable, v2ResearchRequest, VERIFY_V2_RESEARCH_SETTING_KEY, withoutEmpty } from '../../../src/verify/v2/researchRequest.ts';
 // Developer Advertising Intelligence: the shared memo23 Apify client (the one
 // seam Verify shares; the file itself is unchanged) with Verify's OWN
 // orchestration, setting, budget and cost rows — no Find Buyers campaign,
@@ -64,7 +64,7 @@ import { summariseSources } from '../../../src/verify/intelligence/sourceVersion
 import { buildResearchSeed } from '../../../src/verify/researchSeed.ts';
 import { runMarketLane, marketLaneBrief, type MarketLaneResult } from '../../../src/verify/marketLane.ts';
 import { foldMarketplaceIntoLane } from '../../../src/verify/marketplaceComparables.ts';
-import { applyMarketEligibility, eligibilitySummary, marketEligibilityBrief, marketplaceSearchPlan, rangeBasis, subjectMarketProfile, type SubjectMarketProfile } from '../../../src/verify/marketEligibility.ts';
+import { applyMarketEligibility, eligibilitySummary, marketEligibilityBrief, marketplaceSearchPlan, MIN_ELIGIBLE_FOR_RANGE, rangeBasis, subjectMarketProfile, type SubjectMarketProfile } from '../../../src/verify/marketEligibility.ts';
 import { NBG_RATES_URL, parseNbgUsd, type FxPoint } from '../../../src/verify/intelligence/fx.ts';
 import { MARKET_REFRESH_MAX_WAIT_MS, failedMarker, foldMarketRefresh, needsMarketRefresh, rebuildRequest, refreshProfile, startedMarker } from '../../../src/verify/marketRefresh.ts';
 import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
@@ -1875,7 +1875,9 @@ async function createOpenAIResponse(k: string, m: string, i: string, tools = tru
   if (tools) b.tools = [{ type: 'web_search' }];
   // V2 only (src/verify/v2/researchRequest.ts): cache key, and a stage's
   // stamped reasoning effort / search context size. Empty for V1.
-  Object.assign(b, extra);
+  const { noTools, ...rest } = extra as Record<string, unknown> & { noTools?: boolean };
+  Object.assign(b, rest);
+  if (noTools) delete b.tools;
   return openaiFetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { Authorization: `Bearer ${k}`, 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
 }
 async function getOpenAIResponse(k: string, id: string): Promise<any> {
@@ -1903,15 +1905,26 @@ async function wf(path: string, method = 'GET', body?: any): Promise<{ code: num
   return { code: r.status, data: z };
 }
 
-async function launch(sb: any, k: string, m: string, j: any, s: Stage, l: string): Promise<any> {
+async function launch(sb: any, k: string, m: string, j: any, s: Stage, l: string, opts: { modelOverride?: string | null; persist?: boolean } = {}): Promise<any> {
   const text = prompt(s, j, j.result_json || {}, l);
   const tools = s !== 'SYNTHESIS';
-  // V2: the stage's stamped routing, BASE first for the provider's prompt cache.
-  const v2 = engineOf(j.result_json) === 'V2' ? v2ResearchRequest(s, text, BASE, j.result_json?._engine?.research, m, tools) : null;
+  /* V2: the stage's stamped routing, BASE first for the provider's prompt
+     cache, the searches this run already made, and the research budget:
+     past its ceiling the stage still runs, with no paid searches, and says
+     why (_v2Decisions). An escalation relaunches on the strong model. */
+  const v2on = engineOf(j.result_json) === 'V2';
+  const p0 = j.result_json || {};
+  let persist = !!opts.persist;
+  const budget = v2on && tools ? budgetDecision(p0) : null;
+  if (budget?.searchesOff) {
+    p0._v2Decisions = [...(Array.isArray(p0._v2Decisions) ? p0._v2Decisions : []), { stage: s.toLowerCase(), decision: 'NO_PAID_SEARCH', reason: budget.reason, spentUsd: budget.spentUsd, at: now() }];
+    persist = true;
+  }
+  const v2 = v2on ? v2ResearchRequest(s, text, BASE, p0._engine?.research, m, tools, { modelOverride: opts.modelOverride ?? null, searchesOff: !!budget?.searchesOff, searchLog: p0._searchLog }) : null;
   const p = v2 ? await createOpenAIResponse(k, v2.model, v2.input, tools, v2.extra) : await createOpenAIResponse(k, m, text, tools);
   return sb
     .from('research_jobs')
-    .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL_COLLECTION' ? 40 : s === 'PUBLIC_RESEARCH' ? 62 : s === 'MARKET' ? 80 : 92, provider: 'openai', startedAt: now() }, error: null, updated_at: now() })
+    .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, ...(persist ? { result_json: p0 } : {}), progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL_COLLECTION' ? 40 : s === 'PUBLIC_RESEARCH' ? 62 : s === 'MARKET' ? 80 : 92, provider: 'openai', startedAt: now() }, error: null, updated_at: now() })
     .eq('id', j.id);
 }
 /** A jsonb admin setting, as the value it holds (adminSetting() stringifies). */
@@ -4383,8 +4396,13 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string, code = false
   if (!code) {
     prior._cost = { ...(prior._cost || {}), [s.toLowerCase()]: p?.usage || null };
     // The model the provider says ran this stage, so COGS prices what ran.
-    prior._models = { ...(prior._models || {}), [s.toLowerCase()]: typeof p?.model === 'string' ? p.model : null };
+    prior._models = { ...(prior._models || {}), [s.toLowerCase()]: typeof p?.model === 'string' ? (engineOf(prior) === 'V2' ? canonicalModel(p.model) : p.model) : null };
     prior._searches = { ...(prior._searches || {}), [s.toLowerCase()]: countWebSearches(p) };
+    // V2: what was searched, so later stages do not buy the same answer twice.
+    if (engineOf(prior) === 'V2') {
+      const queries = searchQueriesOf(p).map((query) => ({ stage: s.toLowerCase(), query }));
+      if (queries.length) prior._searchLog = [...(Array.isArray(prior._searchLog) ? prior._searchLog : []), ...queries].slice(-60);
+    }
   }
   // STAGE TIMINGS (internal). Each model stage's own span; the gaps between
   // consecutive spans are the browser, financial-queue and marketplace waits.
@@ -5205,6 +5223,15 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
       // the gate above has changed result_json (or the hold is being renewed).
       await sb.from('research_jobs').update({ result_json: j.result_json, updated_at: now() }).eq('id', j.id);
       if (stillWaiting) return;
+      /* V2: when the code lane already holds a defensible set, MARKET is
+         computed entirely in code (comparables, eligibility, range, position)
+         and no model is called. Otherwise the model runs, searches capped. */
+      if (engineOf(j.result_json) === 'V2') {
+        const eligible = Array.isArray(j.result_json._marketComparables) ? j.result_json._marketComparables.length : 0;
+        const d = marketCodeDecision(j.result_json, eligible, MIN_ELIGIBLE_FOR_RANGE);
+        j.result_json._v2Decisions = [...(Array.isArray(j.result_json._v2Decisions) ? j.result_json._v2Decisions : []), { stage: 'market', decision: d.code ? 'CODE_ONLY' : 'MODEL', reason: d.reason, at: now() }];
+        if (d.code) return await finish(sb, j, 'MARKET', null, l, true);
+      }
       if (await holdForBudget(sb, j, 'MARKET')) return;
       return await launch(sb, k, m, j, 'MARKET', l);
     }
@@ -5241,7 +5268,24 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     // "no-op, caller re-polls later" behavior), completed, failed,
     // cancelled, incomplete.
     const p = await getOpenAIResponse(k, j.response_id);
-    if (p.status === 'completed') return await finish(sb, j, a[1] as Stage, p, l);
+    if (p.status === 'completed') {
+      // V2: an unusable cheap-model answer is retried ONCE on the strong model;
+      // the first attempt's usage is kept under <stage>_escalated, so COGS counts it.
+      if (engineOf(j.result_json) === 'V2' && a[1] !== 'SYNTHESIS') {
+        const usable = stageOutputUsable(a[1], parse(extractOpenAIText(p)));
+        const esc = escalationModelFor(j.result_json, a[1], String(p?.model ?? ''), usable);
+        if (esc) {
+          const prior = j.result_json || {};
+          const key = `${a[1].toLowerCase()}_escalated`;
+          prior._cost = { ...(prior._cost || {}), [key]: p?.usage || null };
+          prior._models = { ...(prior._models || {}), [key]: canonicalModel(p?.model) };
+          prior._searches = { ...(prior._searches || {}), [key]: countWebSearches(p) };
+          prior._escalations = [...(Array.isArray(prior._escalations) ? prior._escalations : []), { stage: a[1].toLowerCase(), from: canonicalModel(p?.model), to: esc, reason: 'UNUSABLE_OUTPUT', at: now() }];
+          return await launch(sb, k, m, { ...j, result_json: prior }, a[1] as Stage, l, { modelOverride: esc, persist: true });
+        }
+      }
+      return await finish(sb, j, a[1] as Stage, p, l);
+    }
     if (['failed', 'cancelled', 'incomplete'].includes(p.status)) throw new Error(`OpenAI ${p.status}: ${JSON.stringify(p?.error || p?.incomplete_details || '').slice(0, 300)}`);
   } catch (e) {
     const s = String(e);

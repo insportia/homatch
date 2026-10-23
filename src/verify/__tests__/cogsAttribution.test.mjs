@@ -109,7 +109,8 @@ test('research-agent prices every costUsage key at the research model (or what i
   assert.doesNotMatch(fn, /reportModel|OPENAI_SYNTHESIS_MODEL/);
   assert.match(fn, /\.like\('operation_type', 'VERIFY_%'\)\s*\.neq\('operation_type', 'VERIFY_REPORT'\)/, 'the report row must not stop the research rows');
   const src = agent();
-  assert.match(src, /prior\._models = \{ \.\.\.\(prior\._models \|\| \{\}\), \[s\.toLowerCase\(\)\]: typeof p\?\.model === 'string' \? p\.model : null \};/);
+  // The model the response named (a V2 job stores its priced, canonical name; V1 the raw name, as before).
+  assert.match(src, /prior\._models = \{ \.\.\.\(prior\._models \|\| \{\}\), \[s\.toLowerCase\(\)\]: typeof p\?\.model === 'string' \? \(engineOf\(prior\) === 'V2' \? canonicalModel\(p\.model\) : p\.model\) : null \};/);
   assert.match(src, /costModels: prior\._models \?\? null,/);
   // Internal economics never reach a customer.
   assert.match(src, /delete r\._models;\s*delete r\.costModels;/);

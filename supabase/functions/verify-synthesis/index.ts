@@ -66,7 +66,7 @@ import { parseTranslateRequest } from '../../../src/verify/translation/textTrans
 import { translateTexts } from './translate.ts';
 import { costOperationFor, priceVerification, reportConsumption, reportCostRequestId, REPORT_STAGE, type ReportUsage } from '../../../src/verify/cogs.ts';
 import { pricingStateForDerivedCost } from '../_shared/providerCost.ts';
-import { reportModelFor } from '../../../src/verify/v2/researchRequest.ts';
+import { reportRoutingFor } from '../../../src/verify/v2/researchRequest.ts';
 
 /**
  * GEL/USD context from the National Bank of Georgia.
@@ -737,7 +737,8 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
      yielded none — the buyer's own earlier extract for the same exact unit. */
   let rj: any = job.result_json ?? {};
   // V2 may route the report to a stronger model (VERIFY_V2 research routing, stamped on the job).
-  const reportModel = reportModelFor(rj, MODEL);
+  const reportRouting = reportRoutingFor(rj, MODEL);
+  const reportModel = reportRouting.model;
   let registerSource: { jobId: string; asOf: string | null; reused: true; freshExtractAdvised: boolean } | null = null;
   if (!hasOwnRegister(rj)) {
     const reused = await loadEarlierRegister(writer, job, rj);
@@ -915,6 +916,8 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     /* Which model actually wrote this, for COGS and for inspection. */
     synthesisModel: reportModel,
     synthesisModelPinned: true,
+    /* Why this model wrote it (V2 report policy AUTO/LUNA/TERRA, and the evidence triggers that chose the strong model). */
+    _reportRouting: reportRouting,
     report: {
       // v3: summary + keyFindings replace overallView/executiveSummary, and
       // the pre-purchase checklist is gone rather than renamed.

@@ -20,7 +20,8 @@ import { getEmailAdapter, getSmsAdapter, getVoiceAdapter } from '../_shared/outr
 import { checkSpendCap } from '../_shared/spend_cap.ts';
 import { listUnsubscribeHeaders, sendEmail } from '../_shared/resend/client.ts';
 import {
-  createReplyRoute, isSuppressed, loadEmailSettings, marketingKey, ownerFromAuth, reserveQuota, resolveSender, settleQuota,
+  createReplyRoute, isSuppressed, loadEmailSettings, loadTestMode, marketingKey, ownerFromAuth, reserveQuota, resolveSender, settleQuota,
+  testModeAllows,
 } from '../_shared/emailMarketing/core.ts';
 import { handleStudioAction, isStudioAction } from '../_shared/emailStudio.ts';
 import { broadcastStep } from '../_shared/emailMarketing/broadcast.ts';
@@ -173,6 +174,22 @@ async function outreachSend(req: Request): Promise<Response> {
       }
     }
 
+    /* CONTROLLED LIVE TEST (email only; see loadTestMode in _shared/emailMarketing/core.ts): an
+       allowlisted owner's campaign whose EVERY list address is a Resend simulator or allowlisted
+       address may send while sending is off for everyone else. */
+    let testOverride = false;
+    if (campaign.campaign_type === 'EMAIL') {
+      const tm = await loadTestMode(supabase);
+      const tOwner = tm ? await ownerFromAuth(supabase, ownerId) : null;
+      if (tm && tOwner) {
+        const { data: listAddrs } = await supabase.from('outreach_contacts').select('email')
+          .eq('list_id', campaign.contact_list_id).eq('owner_id', ownerId).limit(201);
+        const addrs = (listAddrs ?? []).map((r: { email: string | null }) => r.email);
+        testOverride = addrs.length <= 200 && testModeAllows(tm, tOwner.userId, addrs);
+        if (testOverride) console.log('[outreach-send] controlled test send', JSON.stringify({ campaign_id, recipients: addrs.length }));
+      }
+    }
+
     // ── Safety flags ─────────────────────────────────────────
     const { data: settingsRows } = await supabase.from('admin_settings').select('key,value').in('key', [
       'provider_kill_switch', 'outreach_email_sending_enabled', 'outreach_sms_sending_enabled',
@@ -181,7 +198,7 @@ async function outreachSend(req: Request): Promise<Response> {
     ]);
     const fm = Object.fromEntries((settingsRows ?? []).map((s: { key: string; value: unknown }) => [s.key, s.value]));
     const truthy = (v: unknown) => v === true || v === 'true';
-    const killSwitch = truthy(fm['provider_kill_switch']);
+    const killSwitch = truthy(fm['provider_kill_switch']) && !testOverride;
     if (killSwitch) {
       return new Response(JSON.stringify({
         blocked: true, reason: 'PROVIDER_KILL_SWITCH_ACTIVE',
@@ -190,7 +207,7 @@ async function outreachSend(req: Request): Promise<Response> {
     }
 
     const channel = campaign.campaign_type as 'EMAIL' | 'SMS' | 'AI_CALL';
-    const emailEnabled = channel === 'EMAIL' && truthy(fm['outreach_email_sending_enabled']);
+    const emailEnabled = channel === 'EMAIL' && (truthy(fm['outreach_email_sending_enabled']) || testOverride);
     const smsEnabled = channel === 'SMS' && truthy(fm['outreach_sms_sending_enabled']);
     const callingEnabled = channel === 'AI_CALL' && truthy(fm['outreach_calling_enabled']);
     const realProviderName = channel === 'EMAIL' ? 'RESEND' : channel === 'SMS' ? 'TWILIO' : 'RETELL';

@@ -34,7 +34,7 @@
 import { authenticate, serviceClient, json, logEvent, redact } from './comm/auth.ts';
 import { listUnsubscribeHeaders, sendEmail } from './resend/client.ts';
 import {
-  createReplyRoute, loadEmailSettings, marketingKey, reserveQuota, resolveSender, settleQuota,
+  createReplyRoute, loadEmailSettings, loadTestMode, marketingKey, reserveQuota, resolveSender, settleQuota, testModeAllows,
   type EmailSettings, type Owner as MarketingOwner,
 } from './emailMarketing/core.ts';
 import { callLlm, llmAvailable } from './comm/llm.ts';
@@ -183,13 +183,16 @@ type Gate =
 
 const truthy = (v: unknown) => v === true || v === 'true';
 
-async function sendingGate(sb: Sb): Promise<Gate> {
+/* `test`: a controlled live test (loadTestMode) — only an owner's own test send uses it; a real
+   campaign send to members never does. */
+async function sendingGate(sb: Sb, test?: { ownerUserId: string; recipients: string[] }): Promise<Gate> {
   const { data: rows } = await sb.from('admin_settings').select('key, value').in('key', [
     'email_studio_sending_enabled', 'provider_kill_switch', 'outreach_email_provider', 'outreach_email_price_per_1k',
   ]);
   const s = Object.fromEntries((rows ?? []).map((r: { key: string; value: unknown }) => [r.key, r.value]));
-  if (!truthy(s['email_studio_sending_enabled'])) return { ok: false, state: 'SENDING_DISABLED' };
-  if (truthy(s['provider_kill_switch'])) return { ok: false, state: 'PROVIDER_KILL_SWITCH' };
+  const testOk = test ? testModeAllows(await loadTestMode(sb), test.ownerUserId, test.recipients) : false;
+  if (!truthy(s['email_studio_sending_enabled']) && !testOk) return { ok: false, state: 'SENDING_DISABLED' };
+  if (truthy(s['provider_kill_switch']) && !testOk) return { ok: false, state: 'PROVIDER_KILL_SWITCH' };
   if ((await loadDisabledProviders(sb)).has('RESEND')) return { ok: false, state: 'PROVIDER_DISABLED' };
   const provider = String(s['outreach_email_provider'] ?? 'RESEND').replace(/"/g, '');
   /* Marketing traffic uses the Email Marketing key (never simulated): no key is a refusal. */
@@ -365,7 +368,7 @@ async function actionReview(sb: Sb, callerSb: Sb, owner: Owner, body: Record<str
 async function actionTest(sb: Sb, owner: Owner, body: Record<string, unknown>): Promise<Response> {
   const campaign = await loadCampaign(sb, owner.id, body.campaignId);
   if (!campaign) return json({ ok: false, error: 'CAMPAIGN_NOT_FOUND' }, 404);
-  const gate = await sendingGate(sb);
+  const gate = await sendingGate(sb, owner.email ? { ownerUserId: owner.id, recipients: [owner.email] } : undefined);
   if (!gate.ok) return json({ ok: false, state: gate.state });
   if (!owner.email) return json({ ok: false, error: 'NO_ACCOUNT_EMAIL' }, 422);
   const property = campaign.property_id ? await loadProperty(sb, owner.id, campaign.property_id) : null;

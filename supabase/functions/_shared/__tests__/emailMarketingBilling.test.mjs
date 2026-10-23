@@ -129,3 +129,23 @@ test('only an Email Studio reply whose sender did not FAIL authentication reache
   assert.match(guard, /senderCheck !== 'FAIL'/);
   assert.ok(fn.indexOf("sb.rpc('comm_record_inbound'") < at, 'the message is recorded before the CRM moves');
 });
+
+test('controlled test mode: off unless enabled, owned, unexpired; only simulator or listed addresses', async () => {
+  const { parseTestMode, testModeAllows } = await import('../emailMarketing/core.ts');
+  const now = Date.parse('2026-10-23T12:00:00Z');
+  const owner = '5157044e-9158-437a-86a2-e34d5ada82f7';
+  const ok = { enabled: true, owner_user_ids: [owner], recipients: ['Admin@Example.test'], expires_at: '2026-10-24T12:00:00Z' };
+  assert.equal(parseTestMode(null, now), null);
+  assert.equal(parseTestMode({ ...ok, enabled: false }, now), null);
+  assert.equal(parseTestMode({ ...ok, expires_at: '2026-10-23T11:00:00Z' }, now), null, 'expired');
+  assert.equal(parseTestMode({ ...ok, expires_at: '2026-11-30T00:00:00Z' }, now), null, 'longer than 7 days is refused');
+  assert.equal(parseTestMode({ ...ok, owner_user_ids: [] }, now), null);
+  const t = parseTestMode(ok, now);
+  assert.ok(testModeAllows(t, owner, ['delivered@resend.dev', 'bounced+a1@resend.dev', 'complained@resend.dev', 'admin@example.test']));
+  assert.equal(testModeAllows(t, owner, ['delivered@resend.dev', 'someone@gmail.com']), false, 'one real address blocks the whole send');
+  assert.equal(testModeAllows(t, owner, ['anything@resend.dev']), false, 'only the simulator mailboxes');
+  assert.equal(testModeAllows(t, owner, ['delivered@resend.dev.evil.com']), false);
+  assert.equal(testModeAllows(t, '00000000-0000-0000-0000-000000000000', ['delivered@resend.dev']), false, 'another owner');
+  assert.equal(testModeAllows(t, owner, []), false, 'nothing to send is not a test');
+  assert.equal(testModeAllows(null, owner, ['delivered@resend.dev']), false);
+});

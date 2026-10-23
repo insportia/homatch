@@ -23,11 +23,25 @@ const MARKETING_KEY_CANDIDATES = [
 
 export interface ResolvedKey { key: string | null; envName: string | null; keyFallback: boolean }
 
+/** NAMES (never values) of the configured environment variables that mention Resend, for diagnostics. */
+export function resendKeyNames(): string[] {
+  try {
+    return Object.keys(Deno.env.toObject()).filter((n) => /RESEND/i.test(n)).sort().slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
 /** Which key to use. `configuredEnvName` comes from admin_settings (a name, never a secret). */
 export function resolveResendKey(purpose: ResendPurpose, configuredEnvName?: string | null): ResolvedKey {
   if (purpose === 'marketing') {
     const names = [configuredEnvName, ...MARKETING_KEY_CANDIDATES].filter((n): n is string => typeof n === 'string' && /^[A-Z][A-Z0-9_]{2,63}$/.test(n));
     for (const name of names) {
+      const v = Deno.env.get(name);
+      if (v) return { key: v, envName: name, keyFallback: false };
+    }
+    /* A dedicated marketing key stored under another name (…RESEND…MARKET…) is still found. */
+    for (const name of resendKeyNames().filter((n) => /MARKET/i.test(n) && !/WEBHOOK|SECRET|SIGNING/i.test(n))) {
       const v = Deno.env.get(name);
       if (v) return { key: v, envName: name, keyFallback: false };
     }

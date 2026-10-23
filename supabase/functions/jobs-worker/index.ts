@@ -846,9 +846,10 @@ export async function emailMarketingMaintenance(sb: Sb, url: string, cronToken: 
       console.error('[jobs-worker] email marketing', action, e instanceof Error ? e.message : String(e));
     }
   };
-  const { data: latest } = await sb.from('email_provider_usage_snapshots').select('captured_at')
+  const { data: latest } = await sb.from('email_provider_usage_snapshots').select('captured_at, ok')
     .order('captured_at', { ascending: false }).limit(1).maybeSingle();
-  const usage = usageSnapshotDue((latest as { captured_at?: string } | null)?.captured_at, now);
+  const l = latest as { captured_at?: string; ok?: boolean } | null;
+  const usage = usageSnapshotDue(l?.captured_at, now, l?.ok !== false);
   await call('plan_renew_due');
   if (usage) await call('usage_refresh_cron');
   return { renew: true, usage };

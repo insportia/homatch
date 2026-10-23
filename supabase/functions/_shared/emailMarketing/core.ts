@@ -92,12 +92,14 @@ export async function loadTestMode(sb: SupabaseClient): Promise<TestMode | null>
   return parseTestMode((data as { value?: unknown } | null)?.value);
 }
 
-/** A Resend usage snapshot is due when the latest one is older than this (or there is none). */
+/** A Resend usage snapshot is due when the latest one is older than this (or there is none);
+    after a FAILED snapshot (no key, restricted key) it is retried sooner, so a fixed key shows. */
 export const USAGE_SNAPSHOT_EVERY_MS = 55 * 60_000;
+export const USAGE_SNAPSHOT_RETRY_MS = 10 * 60_000;
 
-export function usageSnapshotDue(latestCapturedAt: string | null | undefined, now = new Date()): boolean {
+export function usageSnapshotDue(latestCapturedAt: string | null | undefined, now = new Date(), latestOk = true): boolean {
   const t = latestCapturedAt ? Date.parse(latestCapturedAt) : NaN;
-  return !Number.isFinite(t) || now.getTime() - t >= USAGE_SNAPSHOT_EVERY_MS;
+  return !Number.isFinite(t) || now.getTime() - t >= (latestOk ? USAGE_SNAPSHOT_EVERY_MS : USAGE_SNAPSHOT_RETRY_MS);
 }
 
 export function marketingKey(s: EmailSettings): ResolvedKey {

@@ -13,7 +13,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { authenticate, json, preflight, serviceClient, checkRateLimit, logEvent, redact } from '../_shared/comm/auth.ts';
 import {
-  createDomain, deleteDomain, getDomain, getUsage, listUnsubscribeHeaders, mapDomainStatus, sendEmail, usageAlerts, verifyDomain,
+  createDomain, deleteDomain, getDomain, getUsage, listUnsubscribeHeaders, mapDomainStatus, resendKeyNames, sendEmail, usageAlerts, verifyDomain,
 } from '../_shared/resend/client.ts';
 import {
   createReplyRoute, isSuppressed, loadEmailSettings, loadTestMode, marketingKey, ownerFromAuth, purchasePlan, resolveSender,
@@ -334,7 +334,7 @@ async function usageRefresh(sb: Sb): Promise<Response> {
   const k = marketingKey(s);
   /* Which key answered — the secret's NAME and whether it fell back to the shared key — is kept
      with every snapshot, so Admin can prove the dedicated marketing key is the one in use. */
-  const keyInfo = { keyEnv: k.envName ?? null, keyFallback: Boolean(k.keyFallback) };
+  const keyInfo = { keyEnv: k.envName ?? null, keyFallback: Boolean(k.keyFallback), available: resendKeyNames() };
   if (!k.key) {
     await sb.from('email_provider_usage_snapshots').insert({ ok: false, error: 'NO_RESEND_KEY', usage: { _key: keyInfo } });
     return json({ ok: false, error: 'NO_RESEND_KEY' });

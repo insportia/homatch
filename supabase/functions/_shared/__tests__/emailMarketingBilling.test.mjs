@@ -157,6 +157,8 @@ test('usage snapshots are taken by age, not by the clock minute (jobs-worker ski
   assert.equal(usageSnapshotDue('garbage', now), true);
   assert.equal(usageSnapshotDue('2026-10-23T11:15:00Z', now), true, '55 minutes old: due');
   assert.equal(usageSnapshotDue('2026-10-23T11:30:00Z', now), false, '40 minutes old: not yet');
+  assert.equal(usageSnapshotDue('2026-10-23T11:59:00Z', now, false), true, 'a failed snapshot is retried after 10 minutes');
+  assert.equal(usageSnapshotDue('2026-10-23T12:05:00Z', now, false), false);
 });
 
 test('jobs-worker asks for renewals every tick and gates the usage poll on snapshot age', async () => {

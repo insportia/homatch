@@ -105,7 +105,10 @@ test('every communications screen declares which product it is', () => {
      a channel must name it. */
   const channelScreens = [
     'CallsPage', 'WhatsAppPage', 'WhatsAppInboxPage', 'WhatsAppTemplatesPage',
-    'AgentsPage', 'CampaignsPage', 'EmailCampaignsPage',
+    'AgentsPage', 'CampaignsPage',
+    /* Email Studio (2026-10-24) replaced the single EmailCampaignsPage with these screens. */
+    'studio/EmailDashboardPage', 'studio/EmailCampaignListPage', 'studio/EmailCampaignWorkspacePage',
+    'studio/EmailTemplatesPage', 'studio/EmailAnalyticsPage', 'studio/EmailDeliverabilityPage',
   ];
   for (const name of channelScreens) {
     const src = readFileSync(`src/pages/outreach/${name}.tsx`, 'utf8');

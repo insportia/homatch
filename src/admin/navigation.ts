@@ -241,6 +241,10 @@ export const ADMIN_GROUPS: AdminGroup[] = [
         path: '/admin/risk', labelKey: 'admin_nav_risk', icon: ShieldAlert,
         keywords: ['risk', 'compliance', 'approval', 'review', 'blocked campaign'],
       },
+      {
+        path: '/admin/email-review', labelKey: 'admin_ems_nav', icon: ShieldAlert,
+        keywords: ['email', 'campaign', 'review', 'approval', 'spam', 'casino', 'phishing', 'email studio', 'sending limits'],
+      },
     ],
   },
   {

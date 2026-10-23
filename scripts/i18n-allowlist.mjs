@@ -16,6 +16,11 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   'emp_plan_scale',
   'admin_emx_net',
   'fbcrm_source_platform', // tr: "Platform" is the Turkish word
+  // Email Studio: the product name, social networks and font families are names in every language;
+  // Turkish writes Logo, Plan and Risk exactly as English does.
+  'ems_dash_title', 'ems_social_facebook', 'ems_social_instagram', 'ems_social_linkedin', 'ems_social_youtube',
+  'ems_social_tiktok', 'ems_social_telegram', 'ems_social_whatsapp', 'ems_d_font_georgia', 'ems_d_font_helvetica',
+  'ems_block_logo', 'ems_dl_allowance_sub', 'admin_ems_risk',
   // Find Buyers 2.0 outreach / logged-contact channels: messenger brand names, the same in Latin-script locales.
   'crm_channel_WHATSAPP', 'crm_channel_TELEGRAM', 'lo_channel_WHATSAPP', 'lo_channel_TELEGRAM',
   // Find Property paid campaign: social-network brand names, the same in Latin-script locales.

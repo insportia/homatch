@@ -42,7 +42,9 @@ interface BroadcastMeta {
 /** Our {{first_name|fallback}} merge fields in Resend's contact-property syntax. */
 export function toBroadcastMergeFields(text: string): string {
   return text.replace(/\{\{\s*(first_name|name)\s*(?:\|([^}]{0,40}))?\}\}/g, (_m, _field: string, fallback?: string) =>
-    `{{{contact.first_name|${String(fallback ?? '').replace(/[{}|]/g, '').trim()}}}}`);
+    `{{{contact.first_name|${String(fallback ?? '').replace(/[{}|]/g, '').trim()}}}}`)
+    /* A designed email's own unsubscribe block → Resend's per-contact unsubscribe link. */
+    .replace(/\{\{\s*unsubscribe_url\s*\}\}/g, '{{{RESEND_UNSUBSCRIBE_URL}}}');
 }
 
 export interface BroadcastStepResult {

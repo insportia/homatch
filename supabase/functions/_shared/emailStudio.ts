@@ -50,6 +50,7 @@ import {
 import { checkDraft, DRAFT_SYSTEM_PROMPT } from '../../../src/emailStudio/copyGuard.ts';
 import { galleryImages } from '../../../src/property/gallery.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from './serviceControl.ts';
+import { assessCampaign } from '../../../src/emailMarketing/risk/engine.ts';
 import {
   BODY_MAX, checkOutreachDraft, OUTREACH_SYSTEM_PROMPT, parseOutreachRequest,
 } from '../../../src/leads/outreachDraft.ts';
@@ -365,6 +366,23 @@ async function actionReview(sb: Sb, callerSb: Sb, owner: Owner, body: Record<str
   });
 }
 
+/*
+ * HARD PROHIBITIONS (owner brief 2026-10-24 §9). This studio has no customer URLs (images are the
+ * listing's own, the call to action always opens the listing), but its text blocks are the seller's
+ * words, so the Campaign Risk Engine's hard findings (gambling promotion, phishing, prohibited
+ * categories, active content) stop a test or a send here too — the same rule Email Studio
+ * campaigns follow. Static checks on the rendered email; nothing is claimed or sent first.
+ */
+function hardBlock(campaign: { content: unknown; template_id: string | null; language: string | null }, property: { data: PropertyEmailData; propertyId: string }, senderName: string): Response | null {
+  const out = renderEmail({
+    content: campaign.content, templateId: templateOf(campaign.template_id), lang: asEmailLang(campaign.language), property: property.data,
+    listingUrl: `${SITE}/property/${property.propertyId}`, senderName, unsubscribeUrl: `${SITE}/settings`,
+  });
+  const hard = assessCampaign({ subject: out.subject, html: out.html, text: out.text, senderVerified: true, hasPropertyContext: true })
+    .findings.filter((f) => f.severity === 'BLOCK');
+  return hard.length ? json({ ok: false, error: 'BLOCKED_CONTENT', findings: hard }, 422) : null;
+}
+
 async function actionTest(sb: Sb, owner: Owner, body: Record<string, unknown>): Promise<Response> {
   const campaign = await loadCampaign(sb, owner.id, body.campaignId);
   if (!campaign) return json({ ok: false, error: 'CAMPAIGN_NOT_FOUND' }, 404);
@@ -373,6 +391,8 @@ async function actionTest(sb: Sb, owner: Owner, body: Record<string, unknown>): 
   if (!owner.email) return json({ ok: false, error: 'NO_ACCOUNT_EMAIL' }, 422);
   const property = campaign.property_id ? await loadProperty(sb, owner.id, campaign.property_id) : null;
   if (!property) return json({ ok: false, error: 'PROPERTY_NOT_FOUND' }, 404);
+  const blocked = hardBlock(campaign, property, owner.displayName);
+  if (blocked) return blocked;
   const { data: allowed } = await sb.rpc('email_studio_record_test', { p_owner: owner.id, p_campaign_id: campaign.id });
   if (allowed !== true) return json({ ok: false, error: 'TEST_LIMIT_REACHED' }, 429);
 
@@ -414,6 +434,8 @@ async function actionSend(sb: Sb, owner: Owner, body: Record<string, unknown>): 
   if (!property) return json({ ok: false, error: 'PROPERTY_NOT_FOUND' }, 404);
   const templateId = templateOf(campaign.template_id);
   if (!templateAvailability(templateId, property.segment).available) return json({ ok: false, error: 'TEMPLATE_UNAVAILABLE' }, 422);
+  const blocked = hardBlock(campaign, property, owner.displayName);
+  if (blocked) return blocked;
 
   const { data: begin, error: beginErr } = await sb.rpc('email_studio_begin_send', {
     p_owner: owner.id, p_campaign_id: campaign.id, p_version_hash: String(body.versionHash ?? ''),

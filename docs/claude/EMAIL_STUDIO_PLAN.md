@@ -80,3 +80,44 @@ owner's explicit approval.
 ## Out of scope / not touched
 Verify, Find Buyers, Publishing Engine, Meta Ads; SMS/calls stay blocked by
 `provider_kill_switch`.
+
+## Release plan (owner approval required for every step below)
+
+Pre-check (read-only, done 2026-10-24): production has 3 EMAIL campaigns, all COMPLETED — nothing
+RUNNING/SCHEDULED/DRAFT that the new gate could strand. Re-run right before step 1:
+`select status, count(*) from outreach_campaigns where campaign_type='EMAIL' group by 1;`
+
+1. **Migration first** — `20261127090000_email_studio_review.sql` through the release path (or MCP
+   `apply_migration` with the exact file text, name `email_studio_review`), then verify the ledger
+   hash equals `sqlHash` of the file. It is additive and safe under the code now in production:
+   the old `outreach-send` keeps sending (it does not call the new RPC); the only old-UI action it
+   stops is the browser writing SCHEDULED directly, and no email campaign is in flight.
+2. **Merge #309** (green CI). The push deploys the frontend and the owed edge functions:
+   `email-marketing`, `outreach-send`, `comm-campaign-launch` (+ anything importing the changed
+   `_shared` files). Do not push again while it runs (a second push cancels the deploy).
+3. **Prove it**: `refs/deployed/edge` and `refs/deployed/frontend` contain the merge; Supabase
+   versions advanced for each owed function (N → N+1); the entry chunk served by www.homatch.live
+   belongs to the merge build; `email_review_policy` = MANUAL_ALL.
+4. **Rollback**: revert the merge (frontend + edge return); the migration stays (additive). If the
+   guard itself must go: `drop trigger outreach_campaigns_email_guard on public.outreach_campaigns;`
+   and restore `outreach_claim_due_campaigns` / `outreach_claim_running_campaigns` from
+   20260914234500 / their last migration.
+
+## Post-release authenticated end-to-end test (needs the owner signed in; nothing to customers)
+
+Audience: one list with ONLY the owner's own address and Resend simulator addresses
+(`delivered@`, `bounced@`, `complained@resend.dev`), consent recorded by the owner.
+
+| # | Step | Expected |
+|---|---|---|
+| 1 | New campaign → template → fill placeholders → Review → Run safety check | ALLOW/LOW, no problems |
+| 2 | Add a button to `https://1xbet.com` → check | BLOCK (LINK_GAMBLING) |
+| 3 | Button to `https://httpbin.org/redirect-to?url=https://1xbet.com` → check | BLOCK (REDIRECT_TO_GAMBLING); 1xbet never requested |
+| 4 | Remove them; Send a test to me | one email in the owner's inbox, [TEST], footer unsubscribe |
+| 5 | Submit | UNDER_REVIEW (policy MANUAL_ALL) |
+| 6 | Call outreach-send for it | 423 REVIEW_NOT_APPROVED |
+| 7 | Admin → Email review → Approve | APPROVED, audit row |
+| 8 | Edit the subject | back to DRAFT, APPROVAL_INVALIDATED logged; resubmit + approve |
+| 9 | **Send now (owner confirms)** | 4 accepted; delivered/bounced/complained webhooks; bounced+complained suppressed |
+| 10 | Click unsubscribe in the owner's copy | contact unsubscribed; a second campaign to the list skips it |
+| 11 | Analytics | counts equal `outreach_sends` rows |

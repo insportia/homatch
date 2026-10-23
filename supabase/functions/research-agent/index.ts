@@ -25,6 +25,7 @@ import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/perfor
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
 import { engineForNewJob, engineOf, parseEngineSetting, VERIFY_ENGINE_SETTING_KEY } from '../../../src/verify/engine.ts';
 import { codeSynthesis } from '../../../src/verify/v2/codeSynthesis.ts';
+import { marketOfficialContext, parseResearchTuning, v2ResearchRequest, VERIFY_V2_RESEARCH_SETTING_KEY, withoutEmpty } from '../../../src/verify/v2/researchRequest.ts';
 // Developer Advertising Intelligence: the shared memo23 Apify client (the one
 // seam Verify shares; the file itself is unchanged) with Verify's OWN
 // orchestration, setting, budget and cost rows — no Find Buyers campaign,
@@ -1644,6 +1645,9 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
    * spend what it is given; nothing here forbids a search.
    */
   const known = s === 'SYNTHESIS' ? '' : knownBriefFor(j, s) + searchBudgetFor(j, s);
+  // V2: embedded JSON without empty fields (lossless). V1: unchanged.
+  const v2 = engineOf(p) === 'V2';
+  const ctx = (x: any) => (v2 ? withoutEmpty(x) : x);
 
   if (s === 'IDENTITY') {
     return (
@@ -1679,7 +1683,7 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
       `A source counts as directly, officially checked ONLY when its state above is SEARCH_CONFIRMED or NO_RESULT_CONFIRMED. NO_RESULT_CONFIRMED is evidence ONLY that this one exact verified search returned no matching record on that specific source — NEVER evidence that the underlying property/record/company does not exist at all. Every other state means that source was NOT verified this run — for such a source you must simply not state a finding from it (positive or negative); do not explain why, do not name the state, do not describe any attempt.${trav}\n` +
       `Note on sources: MY.GOV.GE service 176 (naprweb.reestri.gov.ge) and NAPR are the SAME registry — never present them as two independent sources.${histNote}\n` +
       tasFactsBlock +
-      `Direct browser evidence payload=${b}. Identity=${JSON.stringify(p.identity || {}).slice(0, 12000)}.\n` +
+      `Direct browser evidence payload=${b}. Identity=${JSON.stringify(ctx(p.identity || {})).slice(0, 12000)}.\n` +
       `You may use Google Search / URL Context to research TAS, the MS cadastral map, MY.GOV.GE/NAPR, the Entrepreneur Registry and other municipal/government records as PUBLIC WEB leads — but any such finding is public-web information, not a direct registry verification, and must go in facts/unverified rather than officialEvidence unless it is itself a primary document you can cite with an exact URL.\n` +
       `If you identify a legal entity (developer/owner company) — from the browser evidence above, from a cited document, or from your own web research — populate companyProfile with everything evidence-backed you can find: legal name, identification code (idCode), legal form, registration date, status (active/liquidated/etc.), directors, representatives, historical changes, related projects. A discovered company with a name or an identification code MUST be reported in companyProfile even if your evidence about it is otherwise thin — leave individual fields null rather than omitting the whole object. For relatedProjects specifically, when your evidence supports it, write each entry with real detail rather than a bare name — e.g. "<project name> — <status/completion evidenced>, per <url>" — but never pad a bare name with an invented status just to look complete; a bare name is correct when that is all the evidence supports.\n` +
       `ADAPTIVE SCOPE (v28): Identity.assetClass=${JSON.stringify(p.identity?.assetClass || 'MIXED_OR_UNKNOWN')}. When it indicates a private individual resale, private house, or rental and nothing in the evidence above actually names a developer/managing company for this exact unit, do not go looking for one just to fill the field — companyProfile stays null in that case. When it indicates an apartment-in-project, under-construction, or company-owned unit, a developer/owner company is usually genuinely relevant and should be researched as normal.\n` +
@@ -1724,7 +1728,7 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
     const scope = publicResearchScope(i.assetClass);
     const scopeNoteLine = scope.scopeNote ? `${scope.scopeNote}\n` : '';
     return (
-      known + `${BASE}\nAnswer strings in ${L}. Query=${q}. Known identifiers for this exact property/project/company so far=${JSON.stringify(identifiers)}. Identity=${JSON.stringify(i).slice(0, 9000)}. OfficialContext=${compactOfficialContext(o)}.\n` +
+      known + `${BASE}\nAnswer strings in ${L}. Query=${q}. Known identifiers for this exact property/project/company so far=${JSON.stringify(identifiers)}. Identity=${JSON.stringify(ctx(i)).slice(0, 9000)}. OfficialContext=${compactOfficialContext(o)}.\n` +
       tasFactsNote +
       scopeNoteLine +
       `PUBLIC RESEARCH STAGE — this is a real, mandatory research stage, not optional enrichment. Do not stop after basic project/address/listing discovery. Using every identifier above, search in Georgian, English AND Russian for each of the following topics as they relate to this exact project/property/company: ${scope.targets.join(', ')}.\n` +
@@ -1777,7 +1781,7 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
     return (
       // F6: when the deterministic gate found no reliable basis, the model is
       // told not to value the subject; the rest of the prompt is unchanged.
-      known + marketEligibilityBrief(p._marketEligibility) + laneBrief + `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(p.identity || {}).slice(0, 9000)}. Official=${JSON.stringify(p.official || {}).slice(0, 16000)}. PublicResearch=${JSON.stringify(p.publicResearch || {}).slice(0, 9000)}. ` +
+      known + marketEligibilityBrief(p._marketEligibility) + laneBrief + `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(ctx(p.identity || {})).slice(0, 9000)}. Official=${JSON.stringify(v2 ? marketOfficialContext(p.official) : p.official || {}).slice(0, 16000)}. PublicResearch=${JSON.stringify(ctx(p.publicResearch || {})).slice(0, 9000)}. ` +
       // SEARCH THE WHOLE HIERARCHY, NOT JUST THE BUILDING.
       // A live report compared five units in one project to each other and
       // stopped. That answers "what do flats in this building cost", not
@@ -1863,12 +1867,15 @@ async function openaiFetch(url: string, init: any): Promise<any> {
   }
   throw new Error(`OpenAI retry exhausted ${last}`);
 }
-async function createOpenAIResponse(k: string, m: string, i: string, tools = true): Promise<any> {
+async function createOpenAIResponse(k: string, m: string, i: string, tools = true, extra: Record<string, unknown> = {}): Promise<any> {
   const b: any = { model: m, input: i, background: true };
   // Mandate: use ONLY the web_search tool (not Gemini's two-tool
   // google_search+url_context shape) — reasoning effort left at the API's
   // default for the main synthesis model rather than forced to max/xhigh.
   if (tools) b.tools = [{ type: 'web_search' }];
+  // V2 only (src/verify/v2/researchRequest.ts): cache key, and a stage's
+  // stamped reasoning effort / search context size. Empty for V1.
+  Object.assign(b, extra);
   return openaiFetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { Authorization: `Bearer ${k}`, 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
 }
 async function getOpenAIResponse(k: string, id: string): Promise<any> {
@@ -1897,7 +1904,11 @@ async function wf(path: string, method = 'GET', body?: any): Promise<{ code: num
 }
 
 async function launch(sb: any, k: string, m: string, j: any, s: Stage, l: string): Promise<any> {
-  const p = await createOpenAIResponse(k, m, prompt(s, j, j.result_json || {}, l), s !== 'SYNTHESIS');
+  const text = prompt(s, j, j.result_json || {}, l);
+  const tools = s !== 'SYNTHESIS';
+  // V2: the stage's stamped routing, BASE first for the provider's prompt cache.
+  const v2 = engineOf(j.result_json) === 'V2' ? v2ResearchRequest(s, text, BASE, j.result_json?._engine?.research, m, tools) : null;
+  const p = v2 ? await createOpenAIResponse(k, v2.model, v2.input, tools, v2.extra) : await createOpenAIResponse(k, m, text, tools);
   return sb
     .from('research_jobs')
     .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL_COLLECTION' ? 40 : s === 'PUBLIC_RESEARCH' ? 62 : s === 'MARKET' ? 80 : 92, provider: 'openai', startedAt: now() }, error: null, updated_at: now() })
@@ -8048,7 +8059,9 @@ Deno.serve(async (req) => {
     }
     const engine = engineForNewJob(engineSetting, now(), undefined, { isAdmin });
     if (engine.requested) console.log(JSON.stringify({ scope: 'verify_engine', event: 'requested_unavailable', requested: engine.requested, stamped: engine.version }));
-    const row = { ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang, _engine: engine, ...(reusePlan ? { _reusePlan: reusePlan } : {}) }, progress: { phase: 'queued', percent: 5 }, updated_at: now() };
+    // A V2 job also carries its research routing, read once like the engine.
+    const stamped = engine.version === 'V2' ? { ...engine, research: parseResearchTuning(await adminSettingJson(sb, VERIFY_V2_RESEARCH_SETTING_KEY)) } : engine;
+    const row = { ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang, _engine: stamped, ...(reusePlan ? { _reusePlan: reusePlan } : {}) }, progress: { phase: 'queued', percent: 5 }, updated_at: now() };
     let { data: j, error } = await sb.from('research_jobs').insert({ ...row, ...(clientRequestId ? { client_request_id: clientRequestId } : {}) }).select('*').single();
     // Before migration 20261026090000 the column does not exist: start as before.
     if (error?.code === '42703' && clientRequestId) ({ data: j, error } = await sb.from('research_jobs').insert(row).select('*').single());

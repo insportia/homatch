@@ -104,6 +104,34 @@ export type SubjectAssetClass =
 type SearchableKind = 'APARTMENT' | 'HOUSE' | 'COMMERCIAL' | 'LAND';
 const SEARCHABLE: readonly SubjectAssetClass[] = ['APARTMENT', 'HOUSE', 'COMMERCIAL', 'LAND'];
 
+/*
+ * LAND IS PRICED BY WHAT MAY BE BUILT ON IT (prod 176264ba, 2026-10-23).
+ *
+ * A 7,800 m² non-agricultural plot carrying two residential blocks was
+ * compared with agricultural plots on the same street, and one 4,200 m²
+ * $168,000 plot posted four times counted as four comparables: a "median"
+ * of $40/m². Agricultural and non-agricultural land are different markets.
+ * The designation is read from the register for the subject and from the
+ * listing's own address or title for a comparable; a listing that states
+ * neither is kept (unknown is not a mismatch).
+ */
+export type LandUse = 'AGRICULTURAL' | 'NON_AGRICULTURAL';
+
+export function landUseOf(...texts: unknown[]): LandUse | null {
+  const t = texts.filter((x) => typeof x === 'string').join(' ').toLowerCase();
+  if (!t) return null;
+  if (/არასასოფლო|არა\s*სასოფლო|ara-sasoflo|non[-\s]?agricultural/.test(t)) return 'NON_AGRICULTURAL';
+  if (/სასოფლო[-\s]?სამეურნეო|sasoflo-sameurneo|agricultural/.test(t)) return 'AGRICULTURAL';
+  return null;
+}
+
+/** One plot posted again under a new id: same area, same price, same street. */
+function repostKey(c: AnyComparable, area: number | null, price: number | null): string | null {
+  const street = typeof c.address === 'string' ? c.address.split(',')[0].replace(/\s+/g, ' ').trim().toLowerCase() : '';
+  if (!area || !price || !street) return null;
+  return `repost:${Math.round(area)}|${Math.round(price)}|${String(c.currency ?? '').toUpperCase()}|${street}`;
+}
+
 export interface SubjectMarketProfile {
   assetClass: SubjectAssetClass;
   /** REGISTRY when the NAPR extract decided the class; IDENTITY when only research text did. */
@@ -115,6 +143,8 @@ export interface SubjectMarketProfile {
   areaRejected?: Array<{ value: number; basis: NonNullable<SubjectMarketProfile['areaBasis']>; reason: 'IMPLAUSIBLE_FOR_CLASS' }>;
   /** The plot's registered area, whatever the class (context for a project). */
   landAreaSqm: number | null;
+  /** The register's land designation (ნაკვეთის ფუნქცია), when it states one. */
+  landUse?: LandUse | null;
   rooms: number | null;
   city: string | null;
   district: string | null;
@@ -268,6 +298,7 @@ export function subjectMarketProfile(input: {
     areaBasis,
     ...(areaRejected.length ? { areaRejected } : {}),
     landAreaSqm: pos(l.landAreaSqm),
+    landUse: landUseOf(l.landFunction),
     rooms: residential ? pos(obj(seed.property?.rooms).value) : null,
     city,
     district,
@@ -346,6 +377,7 @@ export type ExclusionReason =
   | 'PRICE_MISSING'
   | 'CURRENCY_UNKNOWN'
   | 'CURRENCY_UNCONVERTIBLE'
+  | 'LAND_USE_MISMATCH'
   | 'DUPLICATE';
 
 /** Any comparable shape the pipeline carries (lane, worker fold, or the MARKET model). */
@@ -483,6 +515,8 @@ export function applyMarketEligibility(
     /* identity: one listing, one vote */
     const keys = [listingKeyFromUrl(url), url ? `url:${url}` : null, ...((Array.isArray(c.alsoListedAt) ? c.alsoListedAt : []).map((a: any) => listingKeyFromUrl(a?.url)))]
       .filter((k): k is string => !!k);
+    const repost = repostKey(c, parseNum(c.area), parseNum(c.price));
+    if (repost) keys.push(repost);
     if (keys.some((k) => seen.has(k))) reasons.push('DUPLICATE');
 
     if (profileGap) reasons.push('SUBJECT_PROFILE_INSUFFICIENT');
@@ -524,6 +558,10 @@ export function applyMarketEligibility(
       if (OLD_BUILD.test(cls) && !NEW_BUILD.test(cls)) reasons.push('NOT_NEW_BUILD');
     } else if (searchable) {
       if (!kindsCompatible(searchable, ck)) reasons.push('PROPERTY_TYPE_MISMATCH');
+    }
+    if (kind === 'LAND' && subject.landUse) {
+      const lu = landUseOf(c.url, c.title, c.landUse, c.propertyType, c.description);
+      if (lu && lu !== subject.landUse) reasons.push('LAND_USE_MISMATCH');
     }
     const deal = dealOf(c, ppsm ?? undefined);
     if (deal !== 'UNKNOWN' && deal !== subjectDeal) reasons.push('DEAL_TYPE_MISMATCH');

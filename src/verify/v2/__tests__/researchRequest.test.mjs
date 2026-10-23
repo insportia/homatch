@@ -29,6 +29,35 @@ test('a stage setting routes only that stage', () => {
   assert.equal(v2ResearchRequest('MARKET', BASE, BASE, tuning, 'gpt-5.6-terra', true).model, 'gpt-5.6-terra');
 });
 
+test('a stage can cap its web searches (each $0.01 whatever the model); 0 sends no web tool', () => {
+  const tuning = parseResearchTuning({
+    identity: { model: 'gpt-5.6-luna', maxSearches: 2 }, public_research: { maxSearches: 0 },
+    market: { maxSearches: 11 }, official_collection: { maxSearches: 1.5 },
+  });
+  assert.deepEqual(tuning, { identity: { model: 'gpt-5.6-luna', maxSearches: 2 }, public_research: { maxSearches: 0 } }, 'out-of-range and fractional caps are dropped');
+  assert.equal(v2ResearchRequest('IDENTITY', BASE, BASE, tuning, 'gpt-5.6-terra', true).extra.max_tool_calls, 2);
+  const none = v2ResearchRequest('PUBLIC_RESEARCH', BASE, BASE, tuning, 'gpt-5.6-terra', true).extra;
+  assert.equal(none.noTools, true);
+  assert.equal(none.tools, undefined);
+  assert.equal(none.max_tool_calls, undefined);
+  assert.equal(v2ResearchRequest('MARKET', BASE, BASE, tuning, 'gpt-5.6-terra', true).extra.max_tool_calls, undefined);
+});
+
+test('the report model is chosen per V2 job; V1 and unset keep the default', async () => {
+  const { reportModelFor } = await import('../researchRequest.ts');
+  const v2 = (research) => ({ _engine: { version: 'V2', research } });
+  assert.equal(reportModelFor(v2({ report: { model: 'gpt-5.6-terra' } }), 'gpt-5.6-luna'), 'gpt-5.6-terra');
+  assert.equal(reportModelFor(v2({}), 'gpt-5.6-luna'), 'gpt-5.6-luna');
+  assert.equal(reportModelFor(v2({ report: { model: 'gpt-4o' } }), 'gpt-5.6-luna'), 'gpt-5.6-luna', 'only priced models');
+  assert.equal(reportModelFor({ _engine: { version: 'V1', research: { report: { model: 'gpt-5.6-terra' } } } }, 'gpt-5.6-luna'), 'gpt-5.6-luna');
+  assert.equal(reportModelFor(null, 'gpt-5.6-luna'), 'gpt-5.6-luna');
+  const vs = readFileSync(fileURLToPath(new URL('../../../../supabase/functions/verify-synthesis/index.ts', import.meta.url)), 'utf8');
+  assert.match(vs, /const reportRouting = reportRoutingFor\(rj, MODEL\);/);
+  assert.match(vs, /const first = await callReport\(reportModel\);/);
+  assert.match(vs, /synthesisModel: reportModel,/);
+  assert.match(vs, /reportConsumption\(usage, usage\?\.model \|\| MODEL\)/, 'cost is priced at the model that wrote it');
+});
+
 test('BASE moves to the front; what preceded it follows, in order; nothing is lost', () => {
   const text = `KNOWN\nELIGIBILITY\n${BASE}\nAnswer strings in English. Query=X.`;
   const out = stablePrefixPrompt(text, BASE);
@@ -58,7 +87,8 @@ test('MARKET reads the official stage\'s price-relevant fields; the documents li
 
 test('research-agent applies all of it to V2 jobs only', () => {
   const src = readFileSync(fileURLToPath(new URL('../../../../supabase/functions/research-agent/index.ts', import.meta.url)), 'utf8');
-  assert.match(src, /const v2 = engineOf\(j\.result_json\) === 'V2' \? v2ResearchRequest\(s, text, BASE, j\.result_json\?\._engine\?\.research, m, tools\) : null;/);
+  assert.match(src, /const v2on = engineOf\(j\.result_json\) === 'V2';/);
+  assert.match(src, /const v2 = v2on \? v2ResearchRequest\(s, text, BASE, p0\._engine\?\.research, m, tools, \{ modelOverride: opts\.modelOverride \?\? null, searchesOff: !!budget\?\.searchesOff, searchLog: p0\._searchLog \}\) : null;/);
   assert.match(src, /const p = v2 \? await createOpenAIResponse\(k, v2\.model, v2\.input, tools, v2\.extra\) : await createOpenAIResponse\(k, m, text, tools\);/);
   // V1 embeds are byte-identical: ctx() is the identity for V1.
   assert.match(src, /const ctx = \(x: any\) => \(v2 \? withoutEmpty\(x\) : x\);/);

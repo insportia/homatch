@@ -207,5 +207,15 @@
   "emc_withdrawn_toast": "İzin geri çekildi. Bu kişiye artık pazarlama e-postası gönderilmeyecek.",
   "emc_err_opted_out": "Bu kişi abonelikten çıktı veya engellendi. Yeniden yalnızca kendisi izin verebilir.",
   "emc_err_no_email": "Bu kişinin e-posta adresi yok.",
-  "emc_err_failed": "İzin değişikliği kaydedilemedi."
+  "emc_err_failed": "İzin değişikliği kaydedilemedi.",
+  "emx_preview_title": "E-posta önizlemesi",
+  "emx_preview_note": "Alıcılar bu e-postayı, abonelikten çıkma bağlantısı dahil tam olarak böyle görecek.",
+  "emx_test_send": "Bana test gönder",
+  "emx_test_sent": "Test gönderildi: {{to}}.",
+  "emx_test_failed": "Test gönderilemedi. Biraz sonra tekrar deneyin.",
+  "emx_test_blocked": "Hesabınız için gönderim kapalı, bu yüzden test gönderilmedi.",
+  "emx_test_empty": "Test göndermeden önce bir mesaj ekleyin.",
+  "emx_test_no_email": "Hesabınızda test gönderilecek bir e-posta adresi yok.",
+  "emx_test_rate": "Son bir saatte çok fazla test gönderildi. Daha sonra deneyin.",
+  "emx_test_quota": "E-posta hakkınız doldu, bu yüzden test gönderilmedi."
 }

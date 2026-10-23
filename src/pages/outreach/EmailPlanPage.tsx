@@ -18,6 +18,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { PageHeader } from '@/components/communications/primitives';
 import {
   type BillingEvent, type EmailPlanView, EmailMarketingError, getEmailPlan, listBillingEvents, purchasePlan, setAutoRenew, setOverage,
 } from '@/services/emailMarketing';
@@ -79,13 +80,12 @@ export default function EmailPlanPage() {
 
   return (
     <CommsWorkspace product="email" header={(
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="min-w-0">
-          <h1 className="flex items-center gap-2 text-xl font-semibold"><Gauge className="h-5 w-5 text-gold-ink" aria-hidden="true" />{t('emp_title')}</h1>
-          <p className="mt-0.5 max-w-prose text-sm text-muted-foreground">{t('emp_subtitle')}</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="me-2 h-4 w-4" aria-hidden="true" />{t('emx_refresh')}</Button>
-      </div>
+      <PageHeader
+        eyebrow={t('dnav_email')}
+        title={t('emp_title')}
+        subtitle={t('emp_subtitle')}
+        secondary={{ label: t('emx_refresh'), onClick: () => void load(), icon: RefreshCw }}
+      />
     )}>
       {!plan || !period ? (
         <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />{t('emx_loading')}</div>
@@ -137,9 +137,9 @@ export default function EmailPlanPage() {
                     <p className="text-sm">{t(p.period === 'MONTH' ? 'emp_emails_month' : 'emp_emails_lifetime', { n: n(p.includedEmails) })}</p>
                     <p className={cn('text-2xs', p.code === 'SCALE' ? 'text-white/70' : 'text-muted-foreground')}>{t('emp_vat_included')}</p>
                     {p.code !== 'FREE' && (
-                      <Button className="mt-auto" variant={p.code === 'SCALE' ? 'secondary' : 'default'} disabled={busy}
+                      <Button className="mt-auto h-auto min-h-10 whitespace-normal py-2 text-center leading-snug" variant={p.code === 'SCALE' ? 'secondary' : 'default'} disabled={busy}
                         onClick={() => setBuying(p.code as 'PRO' | 'SCALE')}>
-                        <CreditCard className="me-2 h-4 w-4" aria-hidden="true" />{t(current ? 'emp_buy_next_month' : 'emp_choose', { credits: n(p.credits) })}
+                        <CreditCard className="me-2 h-4 w-4 shrink-0" aria-hidden="true" />{t(current ? 'emp_buy_next_month' : 'emp_choose', { credits: n(p.credits) })}
                       </Button>
                     )}
                   </article>
@@ -154,23 +154,23 @@ export default function EmailPlanPage() {
             <div className="space-y-2 rounded-2xl border bg-card p-4">
               <h3 className="flex items-center gap-2 text-sm font-semibold"><RefreshCw className="h-4 w-4" aria-hidden="true" />{t('emp_auto_renew')}</h3>
               <p className="text-2xs text-muted-foreground">{t('emp_auto_renew_note')}</p>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={plan.autoRenew} disabled={busy || period.kind !== 'MONTHLY'} onChange={(e) => void toggleRenew(e.target.checked)} className="h-4 w-4 accent-[hsl(38_92%_50%)]" />
-                {t(plan.autoRenew ? 'emp_auto_renew_enabled' : 'emp_auto_renew_disabled')}
+              <label className="flex items-start gap-2.5 text-sm leading-snug">
+                <input type="checkbox" checked={plan.autoRenew} disabled={busy || period.kind !== 'MONTHLY'} onChange={(e) => void toggleRenew(e.target.checked)} className="mt-0.5 h-[18px] w-[18px] shrink-0 accent-[hsl(38_92%_50%)]" />
+                <span>{t(plan.autoRenew ? 'emp_auto_renew_enabled' : 'emp_auto_renew_disabled')}</span>
               </label>
               {period.kind === 'MONTHLY' && plan.autoRenew && <p className="text-2xs text-muted-foreground">{t('emp_next_renewal', { date: fmtDate(period.endsAt) })}</p>}
             </div>
             <div className="space-y-2 rounded-2xl border bg-card p-4">
               <h3 className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="h-4 w-4" aria-hidden="true" />{t('emp_overage')}</h3>
               <p className="text-2xs text-muted-foreground">{t('emp_overage_note', { price: plan.overagePricePer1kUsd.toFixed(2) })}</p>
-              <label className="flex items-center gap-2 text-2xs">
-                {t('emp_overage_cap')}
+              <label className="flex flex-wrap items-center justify-between gap-2 text-2xs">
+                <span className="min-w-0 flex-1">{t('emp_overage_cap')}</span>
                 <input type="number" min={1} max={1000} value={capInput} onChange={(e) => setCapInput(e.target.value)} disabled={busy}
-                  className="h-8 w-24 rounded-lg bg-background px-2 text-sm ring-1 ring-inset ring-border" aria-describedby="emp-cap-hint" />
+                  className="h-9 w-24 shrink-0 rounded-lg bg-background px-2 text-sm ring-1 ring-inset ring-border focus:outline-none focus:ring-2 focus:ring-ring" aria-describedby="emp-cap-hint" />
               </label>
               <p id="emp-cap-hint" className="text-2xs text-muted-foreground">{t('emp_overage_cap_hint')}</p>
-              <label className="flex items-start gap-2 text-sm">
-                <input type="checkbox" checked={plan.overageEnabled} disabled={busy || period.kind !== 'MONTHLY'} onChange={(e) => void toggleOverage(e.target.checked)} className="mt-1 h-4 w-4 accent-[hsl(38_92%_50%)]" />
+              <label className="flex items-start gap-2.5 text-sm leading-snug">
+                <input type="checkbox" checked={plan.overageEnabled} disabled={busy || period.kind !== 'MONTHLY'} onChange={(e) => void toggleOverage(e.target.checked)} className="mt-0.5 h-[18px] w-[18px] shrink-0 accent-[hsl(38_92%_50%)]" />
                 <span>{t('emp_overage_consent')}</span>
               </label>
               {plan.overageConsentedAt && <p className="flex items-center gap-1 text-2xs text-[hsl(158_64%_28%)]"><ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />{t('emp_overage_consented', { date: fmtDate(plan.overageConsentedAt) })}</p>}

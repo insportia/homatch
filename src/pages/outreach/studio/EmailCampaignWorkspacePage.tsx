@@ -387,7 +387,7 @@ export default function EmailCampaignWorkspacePage() {
     /* The design step needs the width: no product rail and no HOMI column (HOMI opens as a sheet). */
     <CommsWorkspace product="email" railless={step === 'design'} header={
       <div className="overflow-hidden rounded-2xl bg-[#0C1119] px-4 py-4 text-white sm:px-6 sm:py-5">
-        <nav aria-label={t('ems_breadcrumb')} className="mb-1.5 flex flex-wrap items-center gap-1 text-[12px] text-white/60">
+        <nav aria-label={t('ems_breadcrumb')} className="mb-1.5 flex flex-wrap items-center gap-1 text-2xs text-white/60">
           <button type="button" onClick={() => navigate('/outreach/email')} className="hover:text-white">{t('dnav_email')}</button>
           <ChevronRight className="h-3 w-3 rtl:rotate-180" aria-hidden="true" />
           <button type="button" onClick={() => navigate('/outreach/email/campaigns')} className="hover:text-white">{t('ems_nav_campaigns')}</button>
@@ -397,7 +397,7 @@ export default function EmailCampaignWorkspacePage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 flex-1 basis-[16rem]">
             <h1 className="font-display text-xl font-bold leading-tight [overflow-wrap:break-word] sm:text-2xl">{w.name || t('ems_new_campaign')}</h1>
-            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-white/70">
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-2xs text-white/70">
               <PhaseBadge status={campaign?.status ?? 'DRAFT'} className="border-white/20" />
               <SaveIndicator state={saving} />
             </div>
@@ -418,9 +418,9 @@ export default function EmailCampaignWorkspacePage() {
           {STEPS.map((s, i) => (
             <li key={s}>
               <button type="button" onClick={() => goStep(i)} aria-current={i === stepIndex ? 'step' : undefined}
-                className={cn('flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-start text-[12px] leading-tight transition-colors',
+                className={cn('flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-start text-2xs leading-tight transition-colors',
                   i === stepIndex ? 'bg-white text-[#0C1119]' : 'text-white/75 hover:bg-white/10')}>
-                <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold',
+                <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-2xs font-bold',
                   done[s] ? 'bg-[hsl(38_92%_54%)] text-[#161309]' : i === stepIndex ? 'bg-[#0C1119] text-white' : 'border border-white/40')}>
                   {done[s] ? <Check className="h-3 w-3" /> : i + 1}
                 </span>
@@ -552,10 +552,10 @@ function F({ id, label, hint, children, counter }: { id?: string; label: string;
     <div className="space-y-1.5">
       <div className="flex items-end justify-between gap-2">
         <Label htmlFor={id} className="text-[13px] font-medium">{label}</Label>
-        {counter ? <span className="text-[11px] tabular-nums text-muted-foreground">{counter}</span> : null}
+        {counter ? <span className="text-2xs tabular-nums text-muted-foreground">{counter}</span> : null}
       </div>
       {children}
-      {hint ? <p className="text-[12px] leading-snug text-muted-foreground">{hint}</p> : null}
+      {hint ? <p className="text-2xs leading-snug text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -607,7 +607,7 @@ function Chips({ options, value, onChange, label, disabled }: { options: Array<{
         const on = value.includes(o.v);
         return (
           <button key={o.v} type="button" disabled={disabled} aria-pressed={on} onClick={() => onChange(on ? value.filter((x) => x !== o.v) : [...value, o.v])}
-            className={cn('rounded-full border px-2.5 py-1 text-[12px] leading-tight transition-colors', on ? 'border-[#0C1119] bg-[#0C1119] text-white' : 'bg-card text-foreground/80 hover:border-foreground/40')}>
+            className={cn('rounded-full border px-2.5 py-1 text-2xs leading-tight transition-colors', on ? 'border-[#0C1119] bg-[#0C1119] text-white' : 'bg-card text-foreground/80 hover:border-foreground/40')}>
             {o.l}
           </button>
         );
@@ -655,7 +655,7 @@ function RecipientsStep({ w, update, lists, estimate, estimating, readOnly }: St
           <F label={t('ems_seg_languages')}><Chips label={t('ems_seg_languages')} disabled={readOnly} value={f.languages ?? []} onChange={(v) => setF({ languages: v })} options={[...LANGS, 'unknown'].map((l) => ({ v: l, l: t(`ems_lang_${l}`) }))} /></F>
           <F label={t('ems_seg_interest')}><Chips label={t('ems_seg_interest')} disabled={readOnly} value={f.leadTypes ?? []} onChange={(v) => setF({ leadTypes: v })} options={LEAD_TYPES.map((l) => ({ v: l, l: t(`ems_lead_${l.toLowerCase()}`) }))} /></F>
           <F label={t('ems_seg_countries')} hint={t('ems_seg_countries_hint')}>
-            <Input value={countryText} disabled={readOnly} dir="ltr" placeholder="GE, DE, AE" onChange={(e) => setCountryText(e.target.value)}
+            <Input value={countryText} disabled={readOnly} dir="ltr" placeholder={t('ems_seg_countries_example')} onChange={(e) => setCountryText(e.target.value)}
               onBlur={() => setF({ countries: [...new Set(countryText.split(/[\s,;]+/).map((x) => x.trim().toUpperCase()).filter((x) => /^[A-Z]{2}$/.test(x)))] })} />
           </F>
           {lists && lists.length > 1 ? (
@@ -682,7 +682,7 @@ function RecipientsStep({ w, update, lists, estimate, estimating, readOnly }: St
               <div><dt className="text-white/55">{t('ems_estimate_dupes')}</dt><dd className="tabular-nums">{estimate.duplicates}</dd></div>
               <div><dt className="text-white/55">{t('ems_estimate_suppressed')}</dt><dd className="tabular-nums">{estimate.suppressed}</dd></div>
             </dl>
-            {estimate.consentUnknown > 0 ? <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-white/10 p-2.5 text-[12px] text-white/85"><ShieldCheck className="mt-px h-3.5 w-3.5 shrink-0" />{t('ems_consent_note')}</p> : null}
+            {estimate.consentUnknown > 0 ? <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-white/10 p-2.5 text-2xs text-white/85"><ShieldCheck className="mt-px h-3.5 w-3.5 shrink-0" />{t('ems_consent_note')}</p> : null}
           </>
         ) : <p className="mt-2 text-sm text-white/70">{t('ems_estimate_pick')}</p>}
       </section>
@@ -710,9 +710,9 @@ function SenderStep({ w, update, senders, domains, readOnly }: StepProps & { sen
                   <span className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded-full border', on && 'border-[#0C1119] bg-[#0C1119]')}>{on ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium [overflow-wrap:anywhere]" dir="ltr">{s.custom ? s.address ?? s.domain : t('ems_sender_homatch')}</span>
-                    <span className="block text-[12px] text-muted-foreground">{s.custom ? s.domain : t('ems_sender_homatch_note')}</span>
+                    <span className="block text-2xs text-muted-foreground">{s.custom ? s.domain : t('ems_sender_homatch_note')}</span>
                   </span>
-                  <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold', s.verified ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900')}>
+                  <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-2xs font-semibold', s.verified ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900')}>
                     {s.verified ? t('ems_verified') : t('ems_not_verified')}
                   </span>
                 </button>
@@ -730,7 +730,7 @@ function SenderStep({ w, update, senders, domains, readOnly }: StepProps & { sen
           </div>
           <div className="rounded-xl border bg-muted/30 p-3">
             <p className="mb-2 text-[13px] font-medium">{t('ems_auth_title')}</p>
-            <div className="grid grid-cols-3 gap-2 text-center text-[12px]">
+            <div className="grid grid-cols-3 gap-2 text-center text-2xs">
               {(['spf', 'dkim', 'dmarc'] as const).map((k) => {
                 const ok = auth[k] === 'OK';
                 return (
@@ -741,7 +741,7 @@ function SenderStep({ w, update, senders, domains, readOnly }: StepProps & { sen
                 );
               })}
             </div>
-            {current?.custom && auth.dmarc !== 'OK' ? <p className="mt-2 text-[12px] text-muted-foreground">{t('ems_auth_dmarc_note')}</p> : null}
+            {current?.custom && auth.dmarc !== 'OK' ? <p className="mt-2 text-2xs text-muted-foreground">{t('ems_auth_dmarc_note')}</p> : null}
           </div>
         </div>
       )}
@@ -761,7 +761,7 @@ function SubjectStep({ w, update, readOnly }: StepProps) {
           <Input id="ems-prev" value={w.preview_text} maxLength={200} disabled={readOnly} onChange={(e) => update({ preview_text: e.target.value })} />
         </F>
         <div className="rounded-xl border bg-[#F6F3EE] p-3">
-          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('ems_inbox_preview')}</p>
+          <p className="mb-1.5 text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('ems_inbox_preview')}</p>
           <div className="rounded-lg bg-white p-3 shadow-sm">
             <p className="text-sm font-semibold [overflow-wrap:anywhere]">{w.sender_name || 'HOMATCH'}</p>
             <p className="text-sm [overflow-wrap:anywhere]">{w.subject || t('ems_subject_placeholder')}</p>
@@ -793,19 +793,19 @@ function DesignStep({ w, update, readOnly, templates, sections, onSaveTemplate, 
       <Card title={t('ems_pick_start')} sub={t('ems_pick_start_sub')} icon={LayoutTemplate}>
         <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
           <button type="button" onClick={() => pick(emptyDoc())} className="flex min-h-[6.5rem] flex-col justify-between rounded-xl border border-dashed p-3 text-start hover:border-foreground/40">
-            <span className="text-sm font-semibold">{t('ems_tpl_blank')}</span><span className="text-[12px] text-muted-foreground">{t('ems_tpl_blank_sub')}</span>
+            <span className="text-sm font-semibold">{t('ems_tpl_blank')}</span><span className="text-2xs text-muted-foreground">{t('ems_tpl_blank_sub')}</span>
           </button>
           {TEMPLATE_KINDS.map((k: TemplateKind) => (
             <button key={k} type="button" onClick={() => pick(builtInTemplate(k, w.language), templateSubject(k, w.language))}
               className="flex min-h-[6.5rem] flex-col justify-between rounded-xl border bg-card p-3 text-start transition-colors hover:border-[hsl(38_70%_60%)] hover:bg-[hsl(38_90%_98%)]">
               <span className="text-sm font-semibold">{t(`ems_tpl_${k.toLowerCase()}`)}</span>
-              <span className="text-[12px] leading-snug text-muted-foreground">{t(`ems_tpl_${k.toLowerCase()}_sub`)}</span>
+              <span className="text-2xs leading-snug text-muted-foreground">{t(`ems_tpl_${k.toLowerCase()}_sub`)}</span>
             </button>
           ))}
           {mine.map((x) => (
             <button key={x.id} type="button" onClick={() => pick(x.design, x.subject, x.preview_text)}
               className="flex min-h-[6.5rem] flex-col justify-between rounded-xl border bg-card p-3 text-start hover:border-foreground/40">
-              <span className="text-sm font-semibold [overflow-wrap:anywhere]">{x.name}</span><span className="text-[12px] text-muted-foreground">{t('ems_tpl_mine')}</span>
+              <span className="text-sm font-semibold [overflow-wrap:anywhere]">{x.name}</span><span className="text-2xs text-muted-foreground">{t('ems_tpl_mine')}</span>
             </button>
           ))}
         </div>
@@ -818,7 +818,7 @@ function DesignStep({ w, update, readOnly, templates, sections, onSaveTemplate, 
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setPicker(true)}><LayoutTemplate className="h-3.5 w-3.5" />{t('ems_change_template')}</Button>
         {placeholders.length ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] text-amber-900"><AlertTriangle className="h-3.5 w-3.5" />{t('ems_placeholders_left', { n: placeholders.length })}</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-2xs text-amber-900"><AlertTriangle className="h-3.5 w-3.5" />{t('ems_placeholders_left', { n: placeholders.length })}</span>
         ) : null}
       </div>
       <Suspense fallback={<Skeleton className="h-[32rem] w-full rounded-2xl" />}>
@@ -858,7 +858,7 @@ function ReviewStep(p: {
             <li key={c.key} className="flex items-center gap-2.5 text-sm">
               {c.ok ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <X className="h-4 w-4 shrink-0 text-red-600" />}
               <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{t(c.key, c.vars)}</span>
-              {!c.ok && c.step != null ? <button type="button" className="shrink-0 text-[12px] font-medium underline-offset-2 hover:underline" onClick={() => p.goStep(c.step!)}>{t('ems_fix')}</button> : null}
+              {!c.ok && c.step != null ? <button type="button" className="shrink-0 text-2xs font-medium underline-offset-2 hover:underline" onClick={() => p.goStep(c.step!)}>{t('ems_fix')}</button> : null}
             </li>
           ))}
         </ul>
@@ -921,9 +921,9 @@ function ReviewStep(p: {
             {p.history.map((h) => (
               <li key={h.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
                 <span className="font-medium">{t(`ems_rev_${h.action.toLowerCase()}`)}</span>
-                <span className="text-[12px] text-muted-foreground">{t(`ems_actor_${h.actor_kind.toLowerCase()}`)} · {new Date(h.created_at).toLocaleString(lang)}</span>
+                <span className="text-2xs text-muted-foreground">{t(`ems_actor_${h.actor_kind.toLowerCase()}`)} · {new Date(h.created_at).toLocaleString(lang)}</span>
                 {h.reason ? <span className="w-full text-[13px] text-muted-foreground">{reasonText(t, h.reason)}</span> : null}
-                {h.risk_findings?.length ? <span className="w-full text-[12px] text-muted-foreground">{h.risk_findings.slice(0, 3).map((f) => findingText(t, f)).join(' · ')}</span> : null}
+                {h.risk_findings?.length ? <span className="w-full text-2xs text-muted-foreground">{h.risk_findings.slice(0, 3).map((f) => findingText(t, f)).join(' · ')}</span> : null}
               </li>
             ))}
           </ol>

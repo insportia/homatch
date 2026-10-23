@@ -77,20 +77,20 @@ export function HomiPanel({ ctx, actions, className }: { ctx: HomiContext; actio
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[hsl(38_92%_54%)] text-[#161309]"><Sparkles className="h-4 w-4" aria-hidden="true" /></span>
         <div className="min-w-0">
           <p className="text-sm font-semibold">HOMI</p>
-          <p className="text-[12px] leading-snug text-white/70">{t('ems_homi_tagline')}</p>
+          <p className="text-2xs leading-snug text-white/70">{t('ems_homi_tagline')}</p>
         </div>
       </div>
 
       <div className="flex flex-wrap gap-1.5">
         {QUICK.map((q) => (
           <button key={q.task} type="button" disabled={busy} onClick={() => ask(q.task, t(q.key))}
-            className="rounded-full border bg-card px-2.5 py-1 text-[12px] leading-tight text-foreground/80 transition-colors hover:border-[hsl(38_70%_60%)] hover:bg-[hsl(38_90%_97%)] disabled:opacity-50">
+            className="rounded-full border bg-card px-2.5 py-1 text-2xs leading-tight text-foreground/80 transition-colors hover:border-[hsl(38_70%_60%)] hover:bg-[hsl(38_90%_97%)] disabled:opacity-50">
             {t(q.key)}
           </button>
         ))}
         {ctx.findings?.length ? (
           <button type="button" disabled={busy} onClick={() => ask('review', t('ems_homi_q_review'))}
-            className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[12px] text-amber-900 disabled:opacity-50">
+            className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-2xs text-amber-900 disabled:opacity-50">
             {t('ems_homi_q_review')}
           </button>
         ) : null}
@@ -111,7 +111,7 @@ export function HomiPanel({ ctx, actions, className }: { ctx: HomiContext; actio
       <div className="space-y-1.5">
         <Textarea value={instruction} onChange={(e) => setInstruction(e.target.value)} rows={3} maxLength={1500}
           placeholder={t('ems_homi_placeholder')} className="text-sm" />
-        <button type="button" className="text-[12px] text-muted-foreground underline-offset-2 hover:underline" onClick={() => setShowFacts((v) => !v)} aria-expanded={showFacts}>
+        <button type="button" className="text-2xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setShowFacts((v) => !v)} aria-expanded={showFacts}>
           {showFacts ? t('ems_homi_facts_hide') : t('ems_homi_facts_show')}
         </button>
         {showFacts ? (
@@ -125,7 +125,7 @@ export function HomiPanel({ ctx, actions, className }: { ctx: HomiContext; actio
             {t('ems_homi_edit_current')}
           </Button>
         </div>
-        <p className="text-[11px] leading-snug text-muted-foreground">{t('ems_homi_rules')}</p>
+        <p className="text-2xs leading-snug text-muted-foreground">{t('ems_homi_rules')}</p>
       </div>
 
       <div className="space-y-2.5" aria-live="polite">
@@ -145,7 +145,7 @@ function ProposalCard({ turn, actions, onApplied, onDismiss }: { turn: Turn; act
   return (
     <div className={cn('rounded-xl border bg-card p-3 text-sm', turn.applied && 'opacity-70')}>
       <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="min-w-0 text-[12px] font-medium text-muted-foreground [overflow-wrap:anywhere]">{turn.ask}</p>
+        <p className="min-w-0 text-2xs font-medium text-muted-foreground [overflow-wrap:anywhere]">{turn.ask}</p>
         <button type="button" onClick={onDismiss} aria-label={t('ems_homi_dismiss')} className="shrink-0 text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
       </div>
       {!p && !turn.error ? <p className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{t('ems_homi_thinking')}</p> : null}
@@ -155,7 +155,7 @@ function ProposalCard({ turn, actions, onApplied, onDismiss }: { turn: Turn; act
           {p.warnings.length ? (
             <ul className="space-y-1">
               {p.warnings.map((w, i) => (
-                <li key={i} className="flex items-start gap-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-[12px] text-amber-900">
+                <li key={i} className="flex items-start gap-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-2xs text-amber-900">
                   <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />{findingText(t, w)}
                 </li>
               ))}
@@ -164,7 +164,7 @@ function ProposalCard({ turn, actions, onApplied, onDismiss }: { turn: Turn; act
           {p.message ? <p className="whitespace-pre-line leading-relaxed">{p.message}</p> : null}
           {p.ideas?.length ? p.ideas.map((idea, i) => (
             <div key={i} className="flex items-start justify-between gap-2 rounded-lg border px-2.5 py-2">
-              <div className="min-w-0"><p className="font-medium">{idea.name}</p><p className="text-[12px] text-muted-foreground">{idea.objective}</p></div>
+              <div className="min-w-0"><p className="font-medium">{idea.name}</p><p className="text-2xs text-muted-foreground">{idea.objective}</p></div>
               {actions.applyIdea ? <ApplyBtn onClick={() => { actions.applyIdea?.(idea); onApplied(); }} /> : null}
             </div>
           )) : null}
@@ -183,7 +183,7 @@ function ProposalCard({ turn, actions, onApplied, onDismiss }: { turn: Turn; act
           {p.edits?.length ? (
             <div className="space-y-1.5">
               {p.edits.slice(0, 6).map((e, i) => <p key={i} className="rounded-md bg-muted/60 px-2 py-1.5 text-[13px] [overflow-wrap:anywhere]">{e.value}</p>)}
-              {p.edits.length > 6 ? <p className="text-[12px] text-muted-foreground">{t('ems_homi_more_edits', { n: p.edits.length - 6 })}</p> : null}
+              {p.edits.length > 6 ? <p className="text-2xs text-muted-foreground">{t('ems_homi_more_edits', { n: p.edits.length - 6 })}</p> : null}
               {actions.applyEdits ? (
                 <Button type="button" size="sm" className="h-8 gap-1.5" disabled={turn.applied} onClick={() => { actions.applyEdits?.(p.edits!); if (turn.task === 'translate' && turn.target) actions.applyLanguage?.(turn.target); onApplied(); }}>
                   <Check className="h-3.5 w-3.5" />{t('ems_homi_apply_edits', { n: p.edits.length })}
@@ -200,7 +200,7 @@ function ProposalCard({ turn, actions, onApplied, onDismiss }: { turn: Turn; act
               ))}
               {actions.applyBlocks ? (
                 confirmReplace ? (
-                  <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-amber-50 p-2 text-[12px] text-amber-900">
+                  <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-amber-50 p-2 text-2xs text-amber-900">
                     <span className="me-auto">{t('ems_homi_replace_confirm')}</span>
                     <Button type="button" size="sm" className="h-7" onClick={() => { actions.applyBlocks?.(p.blocks!, 'replace'); onApplied(); setConfirmReplace(false); }}>{t('ems_homi_replace_yes')}</Button>
                     <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => setConfirmReplace(false)}>{t('ems_homi_cancel')}</Button>
@@ -214,7 +214,7 @@ function ProposalCard({ turn, actions, onApplied, onDismiss }: { turn: Turn; act
               ) : null}
             </div>
           ) : null}
-          {turn.applied ? <p className="flex items-center gap-1 text-[12px] text-emerald-700"><Check className="h-3.5 w-3.5" />{t('ems_homi_applied')}</p> : null}
+          {turn.applied ? <p className="flex items-center gap-1 text-2xs text-emerald-700"><Check className="h-3.5 w-3.5" />{t('ems_homi_applied')}</p> : null}
         </div>
       ) : null}
     </div>

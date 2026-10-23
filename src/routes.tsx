@@ -18,7 +18,7 @@ import React from 'react';
 import { ServiceGate } from '@/components/serviceControls/ServiceGate';
 import { serviceForPath } from '@/lib/serviceControls/routes';
 import { lazyRoute } from '@/lib/lazyRoute';
-import { loadAdminStrings } from '@/i18n/bundles';
+import { loadAdminStrings, loadStudioStrings } from '@/i18n/bundles';
 import { Navigate } from 'react-router-dom';
 import { FEATURES } from '@/config/features';
 import HomePage from './pages/HomePage';
@@ -148,14 +148,16 @@ const AdminMetaAdsPage = lazyRoute(() => import('./pages/admin/AdminMetaAdsPage'
 const AdminDiscoveryPage = lazyRoute(() => import('./pages/admin/AdminDiscoveryPage'));
 const CommunitiesPage = lazyRoute(() => import('./pages/outreach/CommunitiesPage'));
 const ContactListsPage = lazyRoute(() => import('./pages/outreach/ContactListsPage'));
-/* Email Studio (owner brief 2026-10-24): the email product's screens. */
-const EmailDashboardPage = lazyRoute(() => import('./pages/outreach/studio/EmailDashboardPage'));
-const EmailCampaignListPage = lazyRoute(() => import('./pages/outreach/studio/EmailCampaignListPage'));
-const EmailCampaignWorkspacePage = lazyRoute(() => import('./pages/outreach/studio/EmailCampaignWorkspacePage'));
-const EmailTemplatesPage = lazyRoute(() => import('./pages/outreach/studio/EmailTemplatesPage'));
-const EmailAnalyticsPage = lazyRoute(() => import('./pages/outreach/studio/EmailAnalyticsPage'));
-const EmailDeliverabilityPage = lazyRoute(() => import('./pages/outreach/studio/EmailDeliverabilityPage'));
-const AdminEmailReviewPage = lazyRoute(() => import('./pages/admin/AdminEmailReviewPage'));
+/* Email Studio (owner brief 2026-10-24): the email product's screens. Each waits for Email
+   Studio's own strings (src/i18n/adminSplit.ts, isStudioOnlyKey), which are not in the entry. */
+const withStudioStrings = <T,>(load: () => Promise<T>) => () => Promise.all([load(), loadStudioStrings()]).then(([mod]) => mod);
+const EmailDashboardPage = lazyRoute(withStudioStrings(() => import('./pages/outreach/studio/EmailDashboardPage')));
+const EmailCampaignListPage = lazyRoute(withStudioStrings(() => import('./pages/outreach/studio/EmailCampaignListPage')));
+const EmailCampaignWorkspacePage = lazyRoute(withStudioStrings(() => import('./pages/outreach/studio/EmailCampaignWorkspacePage')));
+const EmailTemplatesPage = lazyRoute(withStudioStrings(() => import('./pages/outreach/studio/EmailTemplatesPage')));
+const EmailAnalyticsPage = lazyRoute(withStudioStrings(() => import('./pages/outreach/studio/EmailAnalyticsPage')));
+const EmailDeliverabilityPage = lazyRoute(withStudioStrings(() => import('./pages/outreach/studio/EmailDeliverabilityPage')));
+const AdminEmailReviewPage = lazyRoute(withStudioStrings(() => import('./pages/admin/AdminEmailReviewPage')));
 const EmailInboxPage = lazyRoute(() => import('./pages/outreach/EmailInboxPage'));
 const EmailPlanPage = lazyRoute(() => import('./pages/outreach/EmailPlanPage'));
 const EmailDomainsPage = lazyRoute(() => import('./pages/outreach/EmailDomainsPage'));

@@ -201,7 +201,7 @@ export default function EmailDesigner({
   const palette = (
     <div className="space-y-4">
       <div>
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('ems_d_blocks')}</p>
+        <p className="mb-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('ems_d_blocks')}</p>
         <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 xl:grid-cols-2">
           {PALETTE.map(({ type, icon: Icon }) => (
             <button
@@ -209,7 +209,7 @@ export default function EmailDesigner({
               onDragStart={() => { dragRef.current = { kind: 'new', type }; }}
               onDragEnd={() => { dragRef.current = null; setDropAt(null); }}
               onClick={() => addBlock(type)}
-              className="flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-lg border bg-card px-1.5 py-2 text-center text-[12px] leading-tight text-foreground/80 transition-colors hover:border-[hsl(38_70%_60%)] hover:bg-[hsl(38_90%_97%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_80%_55%)]"
+              className="flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-lg border bg-card px-1.5 py-2 text-center text-2xs leading-tight text-foreground/80 transition-colors hover:border-[hsl(38_70%_60%)] hover:bg-[hsl(38_90%_97%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_80%_55%)]"
             >
               <Icon className="h-4 w-4 text-[hsl(32_60%_38%)]" aria-hidden="true" />
               <span className="[overflow-wrap:anywhere]">{t(`ems_block_${type}`)}</span>
@@ -218,7 +218,7 @@ export default function EmailDesigner({
         </div>
       </div>
       <div>
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('ems_d_sections')}</p>
+        <p className="mb-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('ems_d_sections')}</p>
         {sections.length ? (
           <div className="space-y-1">
             {sections.map((s) => (
@@ -428,7 +428,7 @@ function ColorField({ label, value, onChange, allowEmpty = false }: { label: str
       <div className="flex items-center gap-2">
         <input type="color" aria-label={label} value={value ?? '#FFFFFF'} onChange={(e) => onChange(e.target.value.toUpperCase())}
           className="h-8 w-10 shrink-0 cursor-pointer rounded border bg-transparent p-0.5" />
-        <Input value={text} dir="ltr" className="h-8 font-mono text-xs" placeholder={allowEmpty ? t('ems_d_none') : '#RRGGBB'}
+        <Input value={text} dir="ltr" className="h-8 font-mono text-xs" placeholder={allowEmpty ? t('ems_d_none') : t('ems_d_hex_placeholder')}
           onChange={(e) => setText(e.target.value)}
           onBlur={() => { const v = text.trim(); if (/^#[0-9a-f]{6}$/i.test(v)) onChange(v.toUpperCase()); else if (!v && allowEmpty) onChange(null); else setText(value ?? ''); }} />
         {allowEmpty && value ? <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={t('ems_d_clear')} onClick={() => onChange(null)}><X className="h-3.5 w-3.5" /></Button> : null}
@@ -475,9 +475,9 @@ function UrlField({ label, value, onChange, kind = 'a', text }: { label: string;
   return (
     <Field label={label} hint={
       <div className="space-y-0.5">
-        {draft.trim() && !accepted ? <p className="text-[11px] text-red-700">{t(kind === 'img' ? 'ems_d_url_https_image' : 'ems_d_url_https')}</p> : null}
+        {draft.trim() && !accepted ? <p className="text-2xs text-red-700">{t(kind === 'img' ? 'ems_d_url_https_image' : 'ems_d_url_https')}</p> : null}
         {findings.map((f) => (
-          <p key={f.code} className={cn('flex items-start gap-1 text-[11px]', f.severity === 'BLOCK' ? 'text-red-700' : 'text-amber-800')}>
+          <p key={f.code} className={cn('flex items-start gap-1 text-2xs', f.severity === 'BLOCK' ? 'text-red-700' : 'text-amber-800')}>
             <Link2 className="mt-px h-3 w-3 shrink-0" aria-hidden="true" />{findingText(t, f)}
           </p>
         ))}
@@ -506,9 +506,9 @@ function TextField({ label, value, onChange, rows = 5, max }: { label: string; v
     <Field label={label} hint={
       <div className="flex flex-wrap items-center gap-1 pt-0.5">
         {MERGE_FIELDS.map((m) => (
-          <button key={m} type="button" onClick={() => insert(m)} className="rounded border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground hover:text-foreground" dir="ltr">{m}</button>
+          <button key={m} type="button" onClick={() => insert(m)} className="rounded border bg-muted/50 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground hover:text-foreground" dir="ltr">{m}</button>
         ))}
-        <span className="ms-auto text-[10px] text-muted-foreground">{t('ems_d_markup_hint')}</span>
+        <span className="ms-auto text-2xs text-muted-foreground">{t('ems_d_markup_hint')}</span>
       </div>
     }>
       <Textarea ref={ref} value={draft} rows={rows} maxLength={max} className="text-sm"
@@ -652,7 +652,7 @@ function BlockProperties({ block, onPatch, onClose, onRemove }: { block: Block |
       </>) : null}
 
       {b.type === 'unsubscribe' ? (<>
-        <Field label={t('ems_d_label')} hint={<p className="text-[11px] text-muted-foreground">{t('ems_d_unsubscribe_hint')}</p>}>
+        <Field label={t('ems_d_label')} hint={<p className="text-2xs text-muted-foreground">{t('ems_d_unsubscribe_hint')}</p>}>
           <Input value={b.text} maxLength={200} placeholder={t('ems_d_unsubscribe_default')} className="h-8 text-xs" onChange={(e) => onPatch({ text: e.target.value })} />
         </Field>
         <AlignField value={b.align} onChange={(a) => onPatch({ align: a })} />
@@ -670,7 +670,7 @@ function BlockProperties({ block, onPatch, onClose, onRemove }: { block: Block |
       </>) : null}
 
       <div className="space-y-3 border-t pt-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('ems_d_section_style')}</p>
+        <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('ems_d_section_style')}</p>
         <ColorField label={t('ems_d_background')} value={b.background} allowEmpty onChange={(v) => onPatch({ background: v })} />
         <PaddingField value={b.padding} onChange={(p) => onPatch({ padding: p })} />
         <div className="grid grid-cols-2 gap-2">

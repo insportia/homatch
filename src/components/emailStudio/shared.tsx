@@ -34,7 +34,7 @@ export function PhaseBadge({ status, className }: { status: string | null | unde
   const { t } = useLanguage();
   const phase = emailPhase(status);
   return (
-    <Badge variant="outline" className={cn('whitespace-nowrap text-[12px] font-semibold', PHASE_TONE[phase], className)}>
+    <Badge variant="outline" className={cn('whitespace-nowrap text-2xs font-semibold', PHASE_TONE[phase], className)}>
       {t(`ems_phase_${phase.toLowerCase()}`)}
     </Badge>
   );
@@ -80,10 +80,10 @@ export function RiskReport({ findings, compact = false }: { findings: Finding[];
             <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
               <p className="font-medium">{findingText(t, f)}</p>
               {!compact && f.where && !['body', 'subject', 'sender', 'audience', 'account'].includes(f.where) ? (
-                <p className="mt-0.5 break-all text-[12px] opacity-75" dir="ltr">{f.where}</p>
+                <p className="mt-0.5 break-all text-2xs opacity-75" dir="ltr">{f.where}</p>
               ) : null}
             </div>
-            <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide opacity-70">{t(`ems_sev_${f.severity.toLowerCase()}`)}</span>
+            <span className="shrink-0 text-2xs font-semibold uppercase tracking-wide opacity-70">{t(`ems_sev_${f.severity.toLowerCase()}`)}</span>
           </li>
         );
       })}

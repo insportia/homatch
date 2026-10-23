@@ -124,7 +124,7 @@ export default function EmailDashboardPage() {
                     </div>
                   ))}
                 </div>
-                <div className="mt-2 flex flex-wrap gap-4 text-[12px] text-muted-foreground">
+                <div className="mt-2 flex flex-wrap gap-4 text-2xs text-muted-foreground">
                   <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#0C1119]/15" />{t('ems_k_accepted')}</span>
                   <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[hsl(38_85%_52%)]" />{t('ems_k_delivered')}</span>
                 </div>
@@ -145,7 +145,7 @@ export default function EmailDashboardPage() {
                       <button type="button" onClick={() => navigate(`/outreach/email/campaigns/${c.id}`)} className="flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-muted/40">
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-medium [overflow-wrap:anywhere]">{c.name || t('ems_untitled')}</span>
-                          <span className="block text-[12px] text-muted-foreground">{new Date(c.updated_at).toLocaleDateString(lang)}</span>
+                          <span className="block text-2xs text-muted-foreground">{new Date(c.updated_at).toLocaleDateString(lang)}</span>
                         </span>
                         <PhaseBadge status={c.status} />
                         <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground rtl:rotate-180" aria-hidden="true" />
@@ -156,13 +156,13 @@ export default function EmailDashboardPage() {
               )}
             {events.length ? (
               <div className="border-t px-4 py-3">
-                <p className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"><Activity className="h-3.5 w-3.5" />{t('ems_review_events')}</p>
+                <p className="mb-1.5 flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground"><Activity className="h-3.5 w-3.5" />{t('ems_review_events')}</p>
                 <ul className="space-y-1">
                   {events.slice(0, 5).map((e) => (
                     <li key={e.id} className="flex flex-wrap items-baseline gap-x-2 text-[13px]">
                       <span className="font-medium">{t(`ems_rev_${e.action.toLowerCase()}`)}</span>
                       <span className="min-w-0 text-muted-foreground [overflow-wrap:anywhere]">{names.get(e.campaign_id) ?? ''}</span>
-                      <span className="ms-auto text-[11px] text-muted-foreground">{new Date(e.created_at).toLocaleDateString(lang)}</span>
+                      <span className="ms-auto text-2xs text-muted-foreground">{new Date(e.created_at).toLocaleDateString(lang)}</span>
                     </li>
                   ))}
                 </ul>
@@ -180,7 +180,7 @@ export default function EmailDashboardPage() {
         ].map(({ icon: Icon, k, to }) => (
           <button key={k} type="button" onClick={() => navigate(to)} className="flex items-start gap-3 rounded-2xl border bg-card p-4 text-start transition-colors hover:border-[hsl(38_70%_60%)]">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[hsl(38_90%_95%)] text-[hsl(32_70%_32%)]"><Icon className="h-[18px] w-[18px]" /></span>
-            <span className="min-w-0"><span className="block text-sm font-semibold">{t(`${k}`)}</span><span className="block text-[12px] leading-snug text-muted-foreground">{t(`${k}_sub`)}</span></span>
+            <span className="min-w-0"><span className="block text-sm font-semibold">{t(`${k}`)}</span><span className="block text-2xs leading-snug text-muted-foreground">{t(`${k}_sub`)}</span></span>
           </button>
         ))}
       </div>

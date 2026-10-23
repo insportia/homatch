@@ -168,6 +168,7 @@ export const PART_1 = {
   ems_seg_interest: ['Interest', 'ინტერესი', 'Интерес', 'İlgi', 'الاهتمام', 'עניין'],
   ems_seg_countries: ['Countries', 'ქვეყნები', 'Страны', 'Ülkeler', 'الدول', 'מדינות'],
   ems_seg_countries_hint: ['Two-letter codes separated by commas, e.g. GE, DE, AE.', 'ორასოიანი კოდები მძიმით, მაგ. GE, DE, AE.', 'Двухбуквенные коды через запятую, например GE, DE, AE.', 'Virgülle ayrılmış iki harfli kodlar, ör. GE, DE, AE.', 'رموز من حرفين مفصولة بفواصل، مثل GE, DE, AE.', 'קודים בני שתי אותיות מופרדים בפסיקים, למשל GE, DE, AE.'],
+  ems_seg_countries_example: ['e.g. GE, DE, AE', 'მაგ. GE, DE, AE', 'например GE, DE, AE', 'ör. GE, DE, AE', 'مثلًا GE, DE, AE', 'למשל GE, DE, AE'],
   ems_seg_exclude: ['Exclude these lists', 'ამ სიების გამორიცხვა', 'Исключить списки', 'Bu listeleri hariç tut', 'استبعاد هذه القوائم', 'החרגת הרשימות'],
   ems_seg_exclude_hint: ['Anyone on these lists is left out.', 'ამ სიებში მყოფი ყველა კონტაქტი გამოირიცხება.', 'Все контакты из этих списков будут исключены.', 'Bu listelerdeki herkes hariç tutulur.', 'يُستبعد كل من في هذه القوائم.', 'כל מי שברשימות אלה לא ייכלל.'],
   ems_src_import: ['Uploaded by me', 'ჩემ მიერ ატვირთული', 'Загружены мной', 'Benim yüklediklerim', 'رفعتُها بنفسي', 'הועלו על ידי'],

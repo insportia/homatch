@@ -65,23 +65,23 @@ export default function AdminEmailReviewPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('ems_admin_title')}</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t('ems_admin_subtitle')}</p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('admin_ems_title')}</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t('admin_ems_subtitle')}</p>
         </div>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={() => void load()}><RefreshCw className="h-4 w-4" />{t('ems_refresh')}</Button>
       </div>
 
       <Tabs defaultValue="queue">
         <TabsList>
-          <TabsTrigger value="queue">{t('ems_admin_queue')} {queue ? `(${queue.length})` : ''}</TabsTrigger>
-          <TabsTrigger value="active">{t('ems_admin_active')}</TabsTrigger>
-          <TabsTrigger value="log">{t('ems_admin_log')}</TabsTrigger>
-          <TabsTrigger value="governance">{t('ems_admin_governance')}</TabsTrigger>
+          <TabsTrigger value="queue">{t('admin_ems_queue')} {queue ? `(${queue.length})` : ''}</TabsTrigger>
+          <TabsTrigger value="active">{t('admin_ems_active')}</TabsTrigger>
+          <TabsTrigger value="log">{t('admin_ems_log')}</TabsTrigger>
+          <TabsTrigger value="governance">{t('admin_ems_governance')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="queue" className="mt-4">
           {queue === null ? <Skeleton className="h-32 w-full" /> : queue.length === 0 ? (
-            <div className="flex items-center gap-2 rounded-xl border bg-card p-6 text-sm text-muted-foreground"><MailCheck className="h-5 w-5" />{t('ems_admin_queue_empty')}</div>
+            <div className="flex items-center gap-2 rounded-xl border bg-card p-6 text-sm text-muted-foreground"><MailCheck className="h-5 w-5" />{t('admin_ems_queue_empty')}</div>
           ) : (
             <ul className="space-y-2">
               {queue.map((r) => <CampaignRowItem key={r.id} r={r} owner={owners.get(r.owner_id)} onOpen={() => setOpen(r)} />)}
@@ -90,7 +90,7 @@ export default function AdminEmailReviewPage() {
         </TabsContent>
 
         <TabsContent value="active" className="mt-4">
-          {active.length === 0 ? <p className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">{t('ems_admin_active_empty')}</p> : (
+          {active.length === 0 ? <p className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">{t('admin_ems_active_empty')}</p> : (
             <ul className="space-y-2">{active.map((r) => <CampaignRowItem key={r.id} r={r} owner={owners.get(r.owner_id)} onOpen={() => setOpen(r)} />)}</ul>
           )}
         </TabsContent>
@@ -100,12 +100,12 @@ export default function AdminEmailReviewPage() {
             {decisions.map((d) => (
               <li key={d.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-4 py-2.5 text-sm">
                 <span className="font-medium">{t(`ems_rev_${d.action.toLowerCase()}`)}</span>
-                <span className="text-[12px] text-muted-foreground">{t(`ems_actor_${d.actor_kind.toLowerCase()}`)} · {owners.get(d.owner_id) ?? d.owner_id.slice(0, 8)}</span>
-                <span className="ms-auto text-[12px] text-muted-foreground">{new Date(d.created_at).toLocaleString(lang)}</span>
+                <span className="text-2xs text-muted-foreground">{t(`ems_actor_${d.actor_kind.toLowerCase()}`)} · {owners.get(d.owner_id) ?? d.owner_id.slice(0, 8)}</span>
+                <span className="ms-auto text-2xs text-muted-foreground">{new Date(d.created_at).toLocaleString(lang)}</span>
                 {d.reason ? <span className="w-full text-[13px] text-muted-foreground">{reasonText(t, d.reason)}</span> : null}
               </li>
             ))}
-            {decisions.length === 0 ? <li className="p-6 text-sm text-muted-foreground">{t('ems_admin_log_empty')}</li> : null}
+            {decisions.length === 0 ? <li className="p-6 text-sm text-muted-foreground">{t('admin_ems_log_empty')}</li> : null}
           </ul>
         </TabsContent>
 
@@ -129,13 +129,13 @@ function CampaignRowItem({ r, owner, onOpen }: { r: QueueRow; owner?: string; on
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium [overflow-wrap:anywhere]">{r.name}</span><PhaseBadge status={r.status} />
-            {r.risk_level ? <Badge variant="outline" className={cn('text-[11px]', r.risk_level === 'HIGH' || r.risk_level === 'BLOCKED' ? 'border-red-300 text-red-700' : r.risk_level === 'MEDIUM' ? 'border-amber-300 text-amber-800' : 'text-emerald-700')}>{t(`ems_level_${r.risk_level.toLowerCase()}`)} · {r.risk_score ?? 0}</Badge> : null}
+            {r.risk_level ? <Badge variant="outline" className={cn('text-2xs', r.risk_level === 'HIGH' || r.risk_level === 'BLOCKED' ? 'border-red-300 text-red-700' : r.risk_level === 'MEDIUM' ? 'border-amber-300 text-amber-800' : 'text-emerald-700')}>{t(`ems_level_${r.risk_level.toLowerCase()}`)} · {r.risk_score ?? 0}</Badge> : null}
           </div>
           <p className="text-[13px] text-muted-foreground [overflow-wrap:anywhere]">{r.subject}</p>
         </div>
-        <div className="text-end text-[12px] text-muted-foreground">
+        <div className="text-end text-2xs text-muted-foreground">
           <p>{owner ?? r.owner_id.slice(0, 8)}</p>
-          <p>{t('ems_admin_recipients', { n: r.audience_count ?? 0 })} · {r.submitted_at ? new Date(r.submitted_at).toLocaleString(lang) : ''}</p>
+          <p>{t('admin_ems_recipients', { n: r.audience_count ?? 0 })} · {r.submitted_at ? new Date(r.submitted_at).toLocaleString(lang) : ''}</p>
         </div>
       </button>
     </li>
@@ -155,11 +155,11 @@ function ReviewDetail({ row, owner, onDone }: { row: QueueRow; owner?: string; o
   const findings = row.risk_reasons ?? [];
   const blocked = row.risk_level === 'BLOCKED';
   const decide = async (decision: 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED' | 'PAUSED') => {
-    if (decision !== 'APPROVED' && !reason.trim()) { toast.error(t('ems_admin_reason_required')); return; }
+    if (decision !== 'APPROVED' && !reason.trim()) { toast.error(t('admin_ems_reason_required')); return; }
     setBusy(decision);
     const { error } = await supabase.rpc('email_campaign_review_decide', { p_campaign: row.id, p_decision: decision, p_reason: reason.trim() || null });
     setBusy(null);
-    if (error) { toast.error(/HARD_PROHIBITION/.test(error.message) ? t('ems_admin_hard_prohibition') : t('ems_admin_decide_failed')); return; }
+    if (error) { toast.error(/HARD_PROHIBITION/.test(error.message) ? t('admin_ems_hard_prohibition') : t('admin_ems_decide_failed')); return; }
     toast.success(t(`ems_rev_${decision.toLowerCase()}`));
     onDone();
   };
@@ -169,12 +169,12 @@ function ReviewDetail({ row, owner, onDone }: { row: QueueRow; owner?: string; o
     <div className="space-y-5">
       <SheetHeader><SheetTitle className="pe-8 [overflow-wrap:anywhere]">{row.name}</SheetTitle></SheetHeader>
       <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-        <div><dt className="text-[12px] text-muted-foreground">{t('ems_admin_owner')}</dt><dd>{owner ?? row.owner_id}</dd></div>
-        <div><dt className="text-[12px] text-muted-foreground">{t('ems_admin_status')}</dt><dd><PhaseBadge status={row.status} /></dd></div>
-        <div><dt className="text-[12px] text-muted-foreground">{t('ems_admin_sender')}</dt><dd dir="ltr" className="break-all">{row.sender_name ?? '—'} &lt;{row.sender_email ?? 'HOMATCH'}&gt;</dd></div>
-        <div><dt className="text-[12px] text-muted-foreground">{t('ems_f_reply_to')}</dt><dd dir="ltr" className="break-all">{row.reply_to ?? '—'}</dd></div>
-        <div><dt className="text-[12px] text-muted-foreground">{t('ems_admin_recipients_label')}</dt><dd>{row.audience_count ?? 0} · {t('ems_admin_lists', { n: row.contact_list_ids?.length ?? (row.contact_list_id ? 1 : 0) })}</dd></div>
-        <div><dt className="text-[12px] text-muted-foreground">{t('ems_admin_risk')}</dt><dd>{row.risk_level ? `${t(`ems_level_${row.risk_level.toLowerCase()}`)} · ${row.risk_score ?? 0}` : '—'}</dd></div>
+        <div><dt className="text-2xs text-muted-foreground">{t('admin_ems_owner')}</dt><dd>{owner ?? row.owner_id}</dd></div>
+        <div><dt className="text-2xs text-muted-foreground">{t('admin_ems_status')}</dt><dd><PhaseBadge status={row.status} /></dd></div>
+        <div><dt className="text-2xs text-muted-foreground">{t('admin_ems_sender')}</dt><dd dir="ltr" className="break-all">{row.sender_name ?? '—'} &lt;{row.sender_email ?? 'HOMATCH'}&gt;</dd></div>
+        <div><dt className="text-2xs text-muted-foreground">{t('ems_f_reply_to')}</dt><dd dir="ltr" className="break-all">{row.reply_to ?? '—'}</dd></div>
+        <div><dt className="text-2xs text-muted-foreground">{t('admin_ems_recipients_label')}</dt><dd>{row.audience_count ?? 0} · {t('admin_ems_lists', { n: row.contact_list_ids?.length ?? (row.contact_list_id ? 1 : 0) })}</dd></div>
+        <div><dt className="text-2xs text-muted-foreground">{t('admin_ems_risk')}</dt><dd>{row.risk_level ? `${t(`ems_level_${row.risk_level.toLowerCase()}`)} · ${row.risk_score ?? 0}` : '—'}</dd></div>
       </dl>
 
       <section>
@@ -183,16 +183,16 @@ function ReviewDetail({ row, owner, onDone }: { row: QueueRow; owner?: string; o
       </section>
 
       <section>
-        <h3 className="mb-2 text-sm font-semibold">{t('ems_admin_links', { n: links.length })}</h3>
-        {links.length === 0 ? <p className="text-sm text-muted-foreground">{t('ems_admin_no_links')}</p> : (
+        <h3 className="mb-2 text-sm font-semibold">{t('admin_ems_links', { n: links.length })}</h3>
+        {links.length === 0 ? <p className="text-sm text-muted-foreground">{t('admin_ems_no_links')}</p> : (
           <ul className="space-y-1 text-[13px]">
             {links.map((l, i) => {
               const own = findings.filter((f) => f.where === l.url || (f.where ?? '').startsWith(l.url));
               return (
                 <li key={i} className="rounded-lg border px-2.5 py-1.5">
-                  <p className="break-all font-mono text-[12px]" dir="ltr">{l.url}</p>
-                  {l.text ? <p className="text-[12px] text-muted-foreground">{t('ems_admin_link_text')}: {l.text}</p> : null}
-                  {own.map((f, j) => <p key={j} className="text-[12px] text-red-700">{findingText(t, f)}</p>)}
+                  <p className="break-all font-mono text-2xs" dir="ltr">{l.url}</p>
+                  {l.text ? <p className="text-2xs text-muted-foreground">{t('admin_ems_link_text')}: {l.text}</p> : null}
+                  {own.map((f, j) => <p key={j} className="text-2xs text-red-700">{findingText(t, f)}</p>)}
                 </li>
               );
             })}
@@ -203,20 +203,20 @@ function ReviewDetail({ row, owner, onDone }: { row: QueueRow; owner?: string; o
       <EmailPreviewFrame subject={row.subject ?? row.name} html={row.html_body} text={row.text_body} senderName={row.sender_name} language={row.language} previewText={row.preview_text} />
 
       <section className="space-y-2 rounded-xl border bg-muted/30 p-3.5">
-        <Label htmlFor="ems-reason" className="text-sm font-semibold">{t('ems_admin_reason')}</Label>
-        <Textarea id="ems-reason" rows={3} value={reason} maxLength={2000} onChange={(e) => setReason(e.target.value)} placeholder={t('ems_admin_reason_placeholder')} />
-        {blocked ? <p className="flex items-center gap-1.5 text-[13px] text-red-700"><ShieldAlert className="h-4 w-4" />{t('ems_admin_hard_prohibition')}</p> : null}
+        <Label htmlFor="ems-reason" className="text-sm font-semibold">{t('admin_ems_reason')}</Label>
+        <Textarea id="ems-reason" rows={3} value={reason} maxLength={2000} onChange={(e) => setReason(e.target.value)} placeholder={t('admin_ems_reason_placeholder')} />
+        {blocked ? <p className="flex items-center gap-1.5 text-[13px] text-red-700"><ShieldAlert className="h-4 w-4" />{t('admin_ems_hard_prohibition')}</p> : null}
         <div className="flex flex-wrap gap-2">
           {inQueue ? (
             <>
               <Button className="gap-1.5 bg-emerald-700 text-white hover:bg-emerald-800" disabled={Boolean(busy) || blocked} onClick={() => void decide('APPROVED')}>
-                {busy === 'APPROVED' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{t('ems_admin_approve')}
+                {busy === 'APPROVED' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{t('admin_ems_approve')}
               </Button>
-              <Button variant="outline" className="gap-1.5" disabled={Boolean(busy)} onClick={() => void decide('CHANGES_REQUESTED')}><PencilLine className="h-4 w-4" />{t('ems_admin_request_changes')}</Button>
-              <Button variant="outline" className="gap-1.5 border-red-300 text-red-700 hover:bg-red-50" disabled={Boolean(busy)} onClick={() => void decide('REJECTED')}><XCircle className="h-4 w-4" />{t('ems_admin_reject')}</Button>
+              <Button variant="outline" className="gap-1.5" disabled={Boolean(busy)} onClick={() => void decide('CHANGES_REQUESTED')}><PencilLine className="h-4 w-4" />{t('admin_ems_request_changes')}</Button>
+              <Button variant="outline" className="gap-1.5 border-red-300 text-red-700 hover:bg-red-50" disabled={Boolean(busy)} onClick={() => void decide('REJECTED')}><XCircle className="h-4 w-4" />{t('admin_ems_reject')}</Button>
             </>
           ) : null}
-          {pausable ? <Button variant="outline" className="gap-1.5" disabled={Boolean(busy)} onClick={() => void decide('PAUSED')}><PauseCircle className="h-4 w-4" />{t('ems_admin_pause')}</Button> : null}
+          {pausable ? <Button variant="outline" className="gap-1.5" disabled={Boolean(busy)} onClick={() => void decide('PAUSED')}><PauseCircle className="h-4 w-4" />{t('admin_ems_pause')}</Button> : null}
         </div>
       </section>
 
@@ -224,7 +224,7 @@ function ReviewDetail({ row, owner, onDone }: { row: QueueRow; owner?: string; o
         <h3 className="mb-2 text-sm font-semibold">{t('ems_history_title')}</h3>
         <ol className="space-y-1.5 text-sm">
           {history.map((h) => (
-            <li key={h.id}><span className="font-medium">{t(`ems_rev_${h.action.toLowerCase()}`)}</span> <span className="text-[12px] text-muted-foreground">· {t(`ems_actor_${h.actor_kind.toLowerCase()}`)} · {new Date(h.created_at).toLocaleString(lang)}</span>{h.reason ? <p className="text-[13px] text-muted-foreground">{reasonText(t, h.reason)}</p> : null}</li>
+            <li key={h.id}><span className="font-medium">{t(`ems_rev_${h.action.toLowerCase()}`)}</span> <span className="text-2xs text-muted-foreground">· {t(`ems_actor_${h.actor_kind.toLowerCase()}`)} · {new Date(h.created_at).toLocaleString(lang)}</span>{h.reason ? <p className="text-[13px] text-muted-foreground">{reasonText(t, h.reason)}</p> : null}</li>
           ))}
         </ol>
       </section>
@@ -248,49 +248,49 @@ function Governance() {
   }, []);
   useEffect(() => { void load(); }, [load]);
   const set = async (key: string, value: unknown) => {
-    const reason = window.prompt(t('ems_admin_setting_reason'));
+    const reason = window.prompt(t('admin_ems_setting_reason'));
     if (!reason?.trim()) return;
     setBusy(key);
-    try { await updateAdminSetting(key, value, reason.trim()); toast.success(t('ems_admin_saved')); await load(); }
-    catch { toast.error(t('ems_admin_save_failed')); } finally { setBusy(null); }
+    try { await updateAdminSetting(key, value, reason.trim()); toast.success(t('admin_ems_saved')); await load(); }
+    catch { toast.error(t('admin_ems_save_failed')); } finally { setBusy(null); }
   };
   if (!s) return <Skeleton className="h-48 w-full" />;
   const truthy = (v: unknown) => v === true || v === 'true';
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="space-y-3 rounded-xl border bg-card p-4">
-        <h3 className="text-sm font-semibold">{t('ems_admin_policy')}</h3>
-        <p className="text-[13px] text-muted-foreground">{t('ems_admin_policy_sub')}</p>
+        <h3 className="text-sm font-semibold">{t('admin_ems_policy')}</h3>
+        <p className="text-[13px] text-muted-foreground">{t('admin_ems_policy_sub')}</p>
         <div className="flex flex-col gap-2">
           {(['MANUAL_ALL', 'AUTO_LOW_RISK'] as const).map((p) => (
             <button key={p} type="button" disabled={Boolean(busy)} onClick={() => s.email_review_policy !== p && void set('email_review_policy', p)}
               className={cn('rounded-lg border p-3 text-start', s.email_review_policy === p ? 'border-[#0C1119] ring-1 ring-[#0C1119]' : 'hover:border-foreground/40')}>
-              <p className="text-sm font-medium">{t(`ems_policy_${p.toLowerCase()}`)}</p>
-              <p className="text-[12px] text-muted-foreground">{t(`ems_policy_${p.toLowerCase()}_sub`)}</p>
+              <p className="text-sm font-medium">{t(`admin_ems_policy_${p.toLowerCase()}`)}</p>
+              <p className="text-2xs text-muted-foreground">{t(`admin_ems_policy_${p.toLowerCase()}_sub`)}</p>
             </button>
           ))}
         </div>
-        <p className="text-[12px] text-muted-foreground">{t('ems_admin_hard_rules_note')}</p>
+        <p className="text-2xs text-muted-foreground">{t('admin_ems_hard_rules_note')}</p>
       </section>
 
       <section className="space-y-3 rounded-xl border bg-card p-4">
-        <h3 className="text-sm font-semibold">{t('ems_admin_switches')}</h3>
+        <h3 className="text-sm font-semibold">{t('admin_ems_switches')}</h3>
         {['email_marketing_live', 'email_studio_sending_enabled', 'outreach_email_sending_enabled'].map((k) => (
           <label key={k} className="flex items-center justify-between gap-3 text-sm">
-            <span><span className="font-medium">{t(`ems_set_${k}`)}</span><span className="block text-[12px] text-muted-foreground">{t(`ems_set_${k}_sub`)}</span></span>
+            <span><span className="font-medium">{t(`admin_ems_set_${k}`)}</span><span className="block text-2xs text-muted-foreground">{t(`admin_ems_set_${k}_sub`)}</span></span>
             <Switch checked={truthy(s[k])} disabled={Boolean(busy)} onCheckedChange={(v) => void set(k, v)} />
           </label>
         ))}
-        <p className="rounded-lg bg-muted/50 p-2.5 text-[12px] text-muted-foreground">{t('ems_admin_kill_note', { state: truthy(s.provider_kill_switch) ? t('ems_on') : t('ems_off') })}</p>
+        <p className="rounded-lg bg-muted/50 p-2.5 text-2xs text-muted-foreground">{t('admin_ems_kill_note', { state: truthy(s.provider_kill_switch) ? t('ems_on') : t('ems_off') })}</p>
       </section>
 
       <section className="space-y-3 rounded-xl border bg-card p-4 lg:col-span-2">
-        <h3 className="text-sm font-semibold">{t('ems_admin_limits')}</h3>
-        <p className="text-[13px] text-muted-foreground">{t('ems_admin_limits_sub')}</p>
+        <h3 className="text-sm font-semibold">{t('admin_ems_limits')}</h3>
+        <p className="text-[13px] text-muted-foreground">{t('admin_ems_limits_sub')}</p>
         <div className="grid gap-3 sm:grid-cols-3">
           {([['daily', 'email_marketing_provider_daily_cap'], ['monthly', 'email_marketing_provider_monthly_cap'], ['tenant', 'email_marketing_tenant_daily_cap']] as const).map(([k, key]) => (
             <div key={k} className="space-y-1">
-              <Label htmlFor={`cap-${k}`} className="text-[13px]">{t(`ems_cap_${k}`)}</Label>
+              <Label htmlFor={`cap-${k}`} className="text-[13px]">{t(`admin_ems_cap_${k}`)}</Label>
               <div className="flex gap-1.5">
                 <Input id={`cap-${k}`} type="number" min={0} value={caps[k] ?? ''} onChange={(e) => setCaps((c) => ({ ...c, [k]: e.target.value }))} />
                 <Button variant="outline" disabled={Boolean(busy) || caps[k] === String(s[key] ?? '') || !(Number(caps[k]) >= 0)} onClick={() => void set(key, Math.floor(Number(caps[k])))}>{t('ems_save')}</Button>

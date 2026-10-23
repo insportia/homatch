@@ -83,17 +83,17 @@ export default function EmailDeliverabilityPage() {
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3.5">
             <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600" />
-            <div className="min-w-0 flex-1"><p className="text-sm font-medium">{t('ems_sender_homatch')}</p><p className="text-[12px] text-muted-foreground">{t('ems_dl_homatch_auth')}</p></div>
+            <div className="min-w-0 flex-1"><p className="text-sm font-medium">{t('ems_sender_homatch')}</p><p className="text-2xs text-muted-foreground">{t('ems_dl_homatch_auth')}</p></div>
             <AuthPills auth={{ spf: 'OK', dkim: 'OK', dmarc: 'OK' }} />
           </div>
           {domains === null ? <Skeleton className="h-16 w-full rounded-xl" /> : domains.filter((d) => d.status !== 'DISCONNECTED').map((d) => (
             <div key={d.id} className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3.5">
               <Globe className="h-5 w-5 shrink-0 text-muted-foreground" />
-              <div className="min-w-0 flex-1"><p className="text-sm font-medium" dir="ltr">{d.domain}</p><p className="text-[12px] text-muted-foreground">{t(`emd_status_${d.status.toLowerCase()}`)}</p></div>
+              <div className="min-w-0 flex-1"><p className="text-sm font-medium" dir="ltr">{d.domain}</p><p className="text-2xs text-muted-foreground">{t(`emd_status_${d.status.toLowerCase()}`)}</p></div>
               <AuthPills auth={domainAuth(d)} />
             </div>
           ))}
-          <p className="text-[12px] text-muted-foreground">{t('ems_auth_dmarc_note')}</p>
+          <p className="text-2xs text-muted-foreground">{t('ems_auth_dmarc_note')}</p>
         </div>
       </Section>
 
@@ -112,12 +112,12 @@ export default function EmailDeliverabilityPage() {
                 {optOuts.recent.map((r, i) => (
                   <li key={i} className="flex flex-wrap items-center justify-between gap-2 py-2">
                     <span className="min-w-0 break-all" dir="ltr">{r.email ?? '—'}</span>
-                    <span className="text-[12px] text-muted-foreground">{r.suppressed_reason ? t('ems_dl_suppressed') : t('ems_dl_unsubscribed_one')}{r.unsubscribed_at ? ` · ${new Date(r.unsubscribed_at).toLocaleDateString(lang)}` : ''}</span>
+                    <span className="text-2xs text-muted-foreground">{r.suppressed_reason ? t('ems_dl_suppressed') : t('ems_dl_unsubscribed_one')}{r.unsubscribed_at ? ` · ${new Date(r.unsubscribed_at).toLocaleDateString(lang)}` : ''}</span>
                   </li>
                 ))}
               </ul>
             )}
-            {optOuts ? <p className="mt-2 text-[12px] text-muted-foreground">{t('ems_dl_suppressed_total', { n: optOuts.suppressed })}</p> : null}
+            {optOuts ? <p className="mt-2 text-2xs text-muted-foreground">{t('ems_dl_suppressed_total', { n: optOuts.suppressed })}</p> : null}
           </div>
         </Section>
       </div>
@@ -132,7 +132,7 @@ function AuthPills({ auth }: { auth: Record<'spf' | 'dkim' | 'dmarc', 'OK' | 'PE
   return (
     <div className="flex gap-1.5">
       {(['spf', 'dkim', 'dmarc'] as const).map((k) => (
-        <span key={k} className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase', auth[k] === 'OK' ? 'bg-emerald-100 text-emerald-800' : auth[k] === 'PENDING' ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-600')}
+        <span key={k} className={cn('rounded-full px-2 py-0.5 text-2xs font-semibold uppercase', auth[k] === 'OK' ? 'bg-emerald-100 text-emerald-800' : auth[k] === 'PENDING' ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-600')}
           title={t(`ems_auth_${auth[k] === 'OK' ? 'ok' : auth[k] === 'PENDING' ? 'pending' : 'missing'}`)}>
           {k}
         </span>

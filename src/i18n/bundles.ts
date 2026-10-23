@@ -39,6 +39,8 @@ export function bundleFor(lang: SupportedLanguage): Bundle | undefined {
   /* In the admin console a language is only "here" with its admin half, so a
      switch waits for both (LanguageContext loads before it applies). */
   if (adminWanted && lang !== 'en' && !adminLoaded[lang]) return undefined;
+  /* Likewise in Email Studio: a language is here with its studio half. */
+  if (studioWanted && lang !== 'en' && !studioLoaded[lang]) return undefined;
   return loaded[lang];
 }
 
@@ -63,11 +65,13 @@ const adminLoaded: Partial<Record<SupportedLanguage, Bundle>> = {};
 const adminInFlight = new Map<SupportedLanguage, Promise<void>>();
 let adminWanted = false;
 
-/** Put a language's admin half into its bundle once both halves are here. */
+/** Put a language's admin and studio halves into its bundle once the base is here. */
 function mergeAdmin(lang: SupportedLanguage): void {
   const base = loaded[lang];
   const admin = adminLoaded[lang];
   if (base && admin) Object.assign(base, admin);
+  const studio = studioLoaded[lang];
+  if (base && studio) Object.assign(base, studio);
 }
 
 function loadAdminHalf(lang: SupportedLanguage): Promise<void> {
@@ -103,8 +107,46 @@ export function loadAdminStrings(): Promise<void> {
  */
 export function loadLanguage(lang: SupportedLanguage): Promise<Bundle> {
   const base = loadBase(lang);
-  if (!adminWanted) return base;
-  return Promise.all([base, loadAdminHalf(lang)]).then(([bundle]) => bundle);
+  if (!adminWanted && !studioWanted) return base;
+  return Promise.all([base, adminWanted ? loadAdminHalf(lang) : null, studioWanted ? loadStudioHalf(lang) : null]).then(([bundle]) => bundle);
+}
+
+/*
+ * EMAIL STUDIO'S OWN STRINGS (src/i18n/adminSplit.ts, isStudioOnlyKey).
+ *
+ * The same cut as the admin console's, for the Email Studio screens (dashboard, campaigns,
+ * workspace, designer, HOMI, templates, analytics, deliverability) and the admin email review
+ * page: ~55KB of English a visitor who never opens Email Studio no longer downloads. The rail
+ * labels (ems_nav_*) stay in the entry because every email screen shows them.
+ */
+const studioLoaders: Record<SupportedLanguage, () => Promise<{ default: Bundle }>> = {
+  en: () => import('virtual:homatch-i18n/studio-en'),
+  ka: () => import('virtual:homatch-i18n/studio-ka'),
+  ru: () => import('virtual:homatch-i18n/studio-ru'),
+  tr: () => import('virtual:homatch-i18n/studio-tr'),
+  ar: () => import('virtual:homatch-i18n/studio-ar'),
+  he: () => import('virtual:homatch-i18n/studio-he'),
+};
+const studioLoaded: Partial<Record<SupportedLanguage, Bundle>> = {};
+const studioInFlight = new Map<SupportedLanguage, Promise<void>>();
+let studioWanted = false;
+
+function loadStudioHalf(lang: SupportedLanguage): Promise<void> {
+  if (studioLoaded[lang]) { mergeAdmin(lang); return Promise.resolve(); }
+  const pending = studioInFlight.get(lang);
+  if (pending) return pending;
+  const p = studioLoaders[lang]()
+    .then((m) => { studioLoaded[lang] = m.default; mergeAdmin(lang); })
+    .finally(() => { studioInFlight.delete(lang); });
+  studioInFlight.set(lang, p);
+  return p;
+}
+
+/** Email Studio's strings for every language this tab has; resolves when merged. */
+export function loadStudioStrings(): Promise<void> {
+  studioWanted = true;
+  const langs = new Set<SupportedLanguage>(['en', ...(Object.keys(loaded) as SupportedLanguage[]), ...inFlight.keys()]);
+  return Promise.all([...langs].map(loadStudioHalf)).then(() => undefined);
 }
 
 function loadBase(lang: SupportedLanguage): Promise<Bundle> {

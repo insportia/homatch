@@ -130,7 +130,7 @@ export default function EmailAnalyticsPage() {
           <div className="rounded-2xl border bg-card">
             <ScrollTable minWidth={720}>
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-[12px] text-muted-foreground">
+                <thead className="bg-muted/40 text-2xs text-muted-foreground">
                   <tr>{['ems_col_campaign', 'ems_col_accepted', 'ems_col_delivered', 'ems_k_bounced', 'ems_k_complaints', 'ems_k_unsubscribes'].map((k) => <th key={k} scope="col" className="px-3 py-2 text-start font-medium">{t(k)}</th>)}</tr>
                 </thead>
                 <tbody>
@@ -149,7 +149,7 @@ export default function EmailAnalyticsPage() {
             </ScrollTable>
           </div>
         )}
-        <p className="mt-2 text-[12px] text-muted-foreground">{t('ems_an_range_note', { since: range ? new Date(Date.now() - range * 86_400_000).toLocaleDateString(lang) : t('ems_range_all') })}</p>
+        <p className="mt-2 text-2xs text-muted-foreground">{t('ems_an_range_note', { since: range ? new Date(Date.now() - range * 86_400_000).toLocaleDateString(lang) : t('ems_range_all') })}</p>
       </Section>
     </CommsWorkspace>
   );

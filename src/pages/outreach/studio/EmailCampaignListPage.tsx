@@ -84,7 +84,7 @@ export default function EmailCampaignListPage() {
             <button key={tb.key} type="button" role="tab" aria-selected={tab.key === tb.key} onClick={() => setTab(tb.key)}
               className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px]', tab.key === tb.key ? 'bg-[#0C1119] text-white' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
               {t(`ems_tab_${tb.key}`)}
-              <span className={cn('rounded-full px-1.5 text-[11px] tabular-nums', tab.key === tb.key ? 'bg-white/15' : 'bg-muted')}>{rows ? counts[tb.key] : '·'}</span>
+              <span className={cn('rounded-full px-1.5 text-2xs tabular-nums', tab.key === tb.key ? 'bg-white/15' : 'bg-muted')}>{rows ? counts[tb.key] : '·'}</span>
             </button>
           ))}
         </div>
@@ -112,14 +112,14 @@ export default function EmailCampaignListPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="min-w-0 text-[15px] font-semibold leading-snug [overflow-wrap:anywhere]">{c.name || t('ems_untitled')}</span>
                     <PhaseBadge status={c.status} />
-                    {c.send_eligibility === 'LEGACY_MOCK' ? <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{t('ems_legacy')}</span> : null}
+                    {c.send_eligibility === 'LEGACY_MOCK' ? <span className="rounded-full bg-muted px-2 py-0.5 text-2xs text-muted-foreground">{t('ems_legacy')}</span> : null}
                   </div>
                   <p className="mt-0.5 text-[13px] text-muted-foreground [overflow-wrap:anywhere]">{c.subject || t('ems_no_subject')}</p>
-                  <p className="mt-1 text-[12px] text-muted-foreground">
+                  <p className="mt-1 text-2xs text-muted-foreground">
                     {ph === 'SCHEDULED' && c.scheduled_at ? t('ems_scheduled_for', { when: new Date(c.scheduled_at).toLocaleString(lang) }) : t('ems_updated', { when: new Date(c.updated_at).toLocaleDateString(lang) })}
                   </p>
                 </button>
-                <dl className="grid shrink-0 grid-cols-3 gap-4 text-center text-[12px] lg:w-64">
+                <dl className="grid shrink-0 grid-cols-3 gap-4 text-center text-2xs lg:w-64">
                   <div><dt className="text-muted-foreground">{t('ems_col_audience')}</dt><dd className="text-sm font-semibold tabular-nums">{c.audience_count ?? '—'}</dd></div>
                   <div><dt className="text-muted-foreground">{t('ems_col_accepted')}</dt><dd className="text-sm font-semibold tabular-nums">{sent || '—'}</dd></div>
                   <div><dt className="text-muted-foreground">{t('ems_col_delivered')}</dt><dd className="text-sm font-semibold tabular-nums">{sent ? pct((c.delivered_count ?? 0) / sent) : '—'}</dd></div>

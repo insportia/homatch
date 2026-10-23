@@ -88,7 +88,7 @@ export default function EmailTemplatesPage() {
                 </div>
                 <div className="flex flex-1 flex-col p-3.5">
                   <h3 className="text-sm font-semibold">{title}</h3>
-                  <p className="mt-0.5 flex-1 text-[12px] leading-snug text-muted-foreground">{t(`ems_tpl_${k.toLowerCase()}_sub`)}</p>
+                  <p className="mt-0.5 flex-1 text-2xs leading-snug text-muted-foreground">{t(`ems_tpl_${k.toLowerCase()}_sub`)}</p>
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setPreview({ title, doc, subject: templateSubject(k, tplLang), language: tplLang })}><Eye className="h-3.5 w-3.5" />{t('ems_preview')}</Button>
                     <Button size="sm" className="h-auto min-h-8 flex-1 whitespace-normal bg-[#0C1119] text-white hover:bg-[#1B2230]" disabled={busy === title}
@@ -116,7 +116,7 @@ export default function EmailTemplatesPage() {
                 </button>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium [overflow-wrap:anywhere]">{x.name}</p>
-                  <p className="text-[12px] text-muted-foreground">{x.language ? t(`ems_lang_${x.language}`) : ''} · {new Date(x.updated_at).toLocaleDateString(lang)}</p>
+                  <p className="text-2xs text-muted-foreground">{x.language ? t(`ems_lang_${x.language}`) : ''} · {new Date(x.updated_at).toLocaleDateString(lang)}</p>
                 </div>
                 <Button size="sm" variant="outline" className="h-8" onClick={() => setPreview({ title: x.name, doc: x.design, subject: x.subject ?? x.name, language: x.language ?? 'en' })}>{t('ems_preview')}</Button>
                 <Button size="sm" className="h-8 bg-[#0C1119] text-white hover:bg-[#1B2230]" disabled={busy === x.name}

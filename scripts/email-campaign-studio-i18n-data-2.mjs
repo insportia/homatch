@@ -38,6 +38,7 @@ export const PART_2 = {
   ems_d_delete: ['Delete', 'წაშლა', 'Удалить', 'Sil', 'حذف', 'מחיקה'],
   ems_d_close: ['Close', 'დახურვა', 'Закрыть', 'Kapat', 'إغلاق', 'סגירה'],
   ems_d_clear: ['Clear', 'გასუფთავება', 'Очистить', 'Temizle', 'مسح', 'ניקוי'],
+  ems_d_hex_placeholder: ['#RRGGBB (hex colour)', '#RRGGBB (ფერის კოდი)', '#RRGGBB (код цвета)', '#RRGGBB (renk kodu)', '#RRGGBB (رمز اللون)', '#RRGGBB (קוד צבע)'],
   ems_d_none: ['None', 'არცერთი', 'Нет', 'Yok', 'لا شيء', 'ללא'],
   ems_d_save_section: ['Save as section', 'სექციად შენახვა', 'Сохранить как секцию', 'Bölüm olarak kaydet', 'حفظ كقسم', 'שמירה כמקטע'],
   ems_d_save_template: ['Save as template', 'შაბლონად შენახვა', 'Сохранить как шаблон', 'Şablon olarak kaydet', 'حفظ كقالب', 'שמירה כתבנית'],

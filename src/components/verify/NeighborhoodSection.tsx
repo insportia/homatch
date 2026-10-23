@@ -73,7 +73,9 @@ export const NeighborhoodSection: React.FC<{ n: StoredNeighborhood; intro?: bool
       {intro ? <LocationIntro /> : null}
       <div className="rounded-xl border border-border bg-card p-4" data-neighborhood-status={view.status}>
         <p className="text-sm leading-6 text-muted-foreground break-words">
-          {t(view.status === 'NO_LOCATION' ? 'verify_nb_no_location' : 'verify_nb_unavailable')}
+          {t(n.centerIssue === 'CENTER_CONFLICT'
+            ? 'verify_nb_center_conflict'
+            : view.status === 'NO_LOCATION' ? 'verify_nb_no_location' : 'verify_nb_unavailable')}
         </p>
       </div>
       </>
@@ -96,6 +98,9 @@ export const NeighborhoodSection: React.FC<{ n: StoredNeighborhood; intro?: bool
         </div>
         {n.center?.basis ? (
           <p className="text-xs leading-5 text-muted-foreground break-words">{t(`verify_nb_basis_${n.center.basis}`)}</p>
+        ) : null}
+        {n.centerIssue === 'DRAWING_SET_ASIDE' ? (
+          <p className="text-xs leading-5 text-muted-foreground break-words" data-center-issue="DRAWING_SET_ASIDE">{t('verify_nb_drawing_set_aside')}</p>
         ) : null}
       </div>
 

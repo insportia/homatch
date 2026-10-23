@@ -74,19 +74,25 @@ const txt = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? 
 /**
  * The comparable-search profile, from what is verified or clearly identified.
  * Returns null when there is no city: a market search without a place is not
- * a comparable search and is not run.
+ * a comparable search and is not run. Nor is one without a stated type: an
+ * unknown type used to become APARTMENT here (job 61c1c38c searched flats for
+ * a 2,509 m² plot). Verify's own request now comes from marketEligibility's
+ * marketplaceSearchPlan(), which also reads the register.
  */
 export function marketProfileFromSeed(seed: SeedLike, subjectPriceUsd: number | null = null): MarketProfileRequest | null {
   const city = txt(seed?.location?.city?.value) ?? null;
   if (!city) return null;
   const rawType = String(seed?.property?.propertyType?.value ?? '').toUpperCase();
-  const propertyType: MarketProfileRequest['propertyType'] = /HOUSE|VILLA|TOWNHOUSE|სახლ/.test(rawType)
+  const propertyType: MarketProfileRequest['propertyType'] | null = /HOUSE|VILLA|TOWNHOUSE|სახლ/.test(rawType)
     ? 'HOUSE'
     : /COMMERCIAL|OFFICE|კომერც/.test(rawType)
       ? 'COMMERCIAL'
       : /LAND|მიწ/.test(rawType)
         ? 'LAND'
-        : 'APARTMENT';
+        : /APARTMENT|FLAT|ბინა/.test(rawType)
+          ? 'APARTMENT'
+          : null;
+  if (!propertyType) return null;
   return {
     city,
     district: txt(seed?.location?.subDistrict?.value) ?? txt(seed?.location?.district?.value),
@@ -237,6 +243,8 @@ export function toReportComparable(c: DedupeResult['unique'][number], subject: M
     district: c.district ?? null,
     distanceM: placed.distanceM,
     discoveryMethod: 'MARKETPLACE_WORKER_SEARCH',
+    sourcePropertyType: c.propertyType ?? null,
+    transactionType: c.transactionType ?? null,
     marketplaceSource: c.source,
     ...(c.alsoListedAt.length
       ? { alsoListedAt: c.alsoListedAt.map((a) => ({ url: a.url, source: fam(a.source), price: a.price != null ? String(Math.round(a.price)) : null })) }

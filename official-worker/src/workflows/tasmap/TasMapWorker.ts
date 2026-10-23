@@ -53,6 +53,23 @@ export async function runTasMapWorker(
   let finalText = '';
   let finalUrl: string | null = null;
   let mapPage: Page | null = null;
+  /*
+   * F5 (2026-10-22): the map views after the parcel was focused. ms.gov.ge
+   * keeps its view in the URL hash ("#C=<lng>-<lat>@Z=<zoom>"); the result
+   * used to carry only the start view (finalUrl, later the NAPR page) and
+   * frameUrls: [], so no Verify job ever stored the parcel centre. Recorded
+   * here, returned as frameUrls; the reader (src/verify/intelligence/
+   * neighborhood.ts) still refuses the start view and any city-wide zoom.
+   */
+  const mapViews: string[] = [];
+  const noteMapView = () => {
+    try {
+      const u = String((mapPage as any)?.url?.() ?? '');
+      if (/ms\.gov\.ge\/msmap\/#C=/.test(u) && u !== MS_MAP_URL && !mapViews.includes(u)) mapViews.push(u);
+    } catch {
+      /* a closed page has no view to record */
+    }
+  };
   // P0 Browserless lifecycle audit (2026-09-08): openPublicRegistryLink()
   // opens the NAPR registry list as a NEW popup Page in the shared job
   // context (via context().waitForEvent('page') — see TasMapPage.ts). Every
@@ -167,6 +184,7 @@ export async function runTasMapWorker(
       return buildResult('FAILED', signals, documents, trace, finalText, finalUrl, 'parcel focus/redraw not confirmed', query);
     }
     fsm.transition('PARCEL_FOCUSED');
+    noteMapView();
 
     // Only now open "საკადასტრო მონაცემები" and enable the two layers.
     fsm.transition('CADASTRAL_SECTION_EXPANDED', 'open only the cadastral data layer category');
@@ -225,6 +243,7 @@ export async function runTasMapWorker(
       return buildResult('FAILED', signals, documents, trace, finalText, finalUrl, 'parcel info window did not open after retries', query);
     }
     fsm.transition('INFO_POPUP_OPENED');
+    noteMapView();
     finalText = infoRes.windowText || '';
 
     const naprRes = await pageObj.openPublicRegistryLink(mapPage);
@@ -402,7 +421,7 @@ export async function runTasMapWorker(
       sourceUrl: SOURCE_META.url,
       startUrl: SOURCE_META.url,
       finalUrl: url,
-      frameUrls: [],
+      frameUrls: [...mapViews],
       searchControlUsed: sig.queryEntered ? MAP_SEARCH_INPUT_SELECTOR : null,
       queryEntered: sig.queryEntered ? q : null,
       submitAction: sig.queryEntered ? 'ENTER_KEY_THEN_SUGGESTION_CLICK' : null,

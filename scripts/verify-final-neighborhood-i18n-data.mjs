@@ -117,6 +117,42 @@ export const VERIFY_FINAL_NEIGHBORHOOD_STRINGS = {
     'تعذّر تحديد الموقع الدقيق للعقار على الخريطة، لذا لا نذكر مسافات أو خطوطًا.',
     'לא ניתן היה לקבוע את המיקום המדויק של הנכס במפה, ולכן איננו מציינים מרחקים או קווים.',
   ],
+  /* F5 (2026-10-22): two sources placed the property far apart; neither is used. */
+  verify_nb_center_conflict: [
+    'The official drawing and the address point to places more than a kilometre apart, so we do not state distances or routes until the position is confirmed.',
+    'ოფიციალური ნახაზი და მისამართი რუკაზე ერთმანეთისგან კილომეტრზე მეტით დაშორებულ ადგილებს უთითებს, ამიტომ მდებარეობის დადასტურებამდე მანძილებსა და მარშრუტებს არ ვუთითებთ.',
+    'Официальный чертёж и адрес указывают на места, удалённые друг от друга более чем на километр, поэтому до подтверждения местоположения мы не указываем расстояния и маршруты.',
+    'Resmi çizim ile adres, birbirinden bir kilometreden fazla uzak yerleri gösteriyor; konum doğrulanana kadar mesafe ve hat bilgisi vermiyoruz.',
+    'يشير المخطط الرسمي والعنوان إلى موقعين يفصل بينهما أكثر من كيلومتر، لذا لا نذكر مسافات أو خطوطًا حتى يتأكد الموقع.',
+    'השרטוט הרשמי והכתובת מצביעים על מקומות המרוחקים זה מזה יותר מקילומטר, ולכן איננו מציינים מרחקים או קווים עד שהמיקום יאומת.',
+  ],
+  /* F5: a centre from a NAPR situational drawing, used only when the address agrees. */
+  verify_nb_basis_SITUATIONAL_DRAWING: [
+    'Measured from the centre of the Public Registry situational drawing (UTM coordinates), which the address on the map confirms; distances are accurate to about a hundred metres.',
+    'მანძილი გაზომილია საჯარო რეესტრის სიტუაციური ნახაზის ცენტრიდან (UTM კოორდინატები), რასაც რუკაზე მისამართიც ადასტურებს; სიზუსტე დაახლოებით ასი მეტრია.',
+    'Расстояния измерены от центра ситуационного чертежа Публичного реестра (координаты UTM), что подтверждается адресом на карте; точность около ста метров.',
+    'Mesafeler, Kamu Sicili durum çiziminin merkezinden (UTM koordinatları) ölçülmüştür ve haritadaki adresle doğrulanmıştır; hassasiyet yaklaşık yüz metredir.',
+    'قيست المسافات من مركز المخطط الموقعي للسجل العام (إحداثيات UTM)، ويؤكده العنوان على الخريطة؛ الدقة في حدود مئة متر تقريبًا.',
+    'המרחקים נמדדו ממרכז השרטוט המצבי של המרשם הציבורי (קואורדינטות UTM), והכתובת שבמפה מאשרת אותו; הדיוק כמאה מטרים.',
+  ],
+  /* F5 (2026-10-23): a drawing far from the house-validated address geocode was set aside, kept on record. */
+  verify_nb_drawing_set_aside: [
+    'An official drawing in the case file points to a place more than a kilometre away. It names an application, not this parcel, so it was set aside and kept on record; distances here are measured from the registry address on the map and are approximate.',
+    'საქმის მასალებში არსებული ოფიციალური ნახაზი კილომეტრზე მეტით დაშორებულ ადგილს უთითებს. ის განცხადებას ეხება და არა ამ ნაკვეთს, ამიტომ გვერდზე გადავდეთ და ჩანაწერში შევინახეთ; აქ მანძილები გაზომილია რეესტრის მისამართის მიხედვით რუკაზე და მიახლოებითია.',
+    'Официальный чертёж из материалов дела указывает на место более чем в километре отсюда. Он относится к заявлению, а не к этому участку, поэтому отложен и сохранён в записи; расстояния здесь измерены от адреса из реестра на карте и приблизительны.',
+    'Dosyadaki resmi bir çizim bir kilometreden daha uzak bir yeri gösteriyor. Bu parseli değil bir başvuruyu adlandırdığı için bir kenara konuldu ve kayıtta tutuldu; buradaki mesafeler sicil adresinin haritadaki noktasından ölçülmüştür ve yaklaşıktır.',
+    'يشير مخطط رسمي في ملف القضية إلى مكان يبعد أكثر من كيلومتر. وهو يخص طلبًا لا هذه القطعة، لذا وُضع جانبًا مع الاحتفاظ به في السجل؛ والمسافات هنا مقيسة من عنوان السجل على الخريطة وهي تقريبية.',
+    'שרטוט רשמי בתיק מצביע על מקום המרוחק יותר מקילומטר. הוא מתייחס לבקשה ולא לחלקה הזו, ולכן הונח בצד ונשמר ברשומה; המרחקים כאן נמדדו מכתובת המרשם במפה והם משוערים.',
+  ],
+  /* F5: places public descriptions named, shown apart from measured ones and never with a distance. */
+  verify_place_mentioned_label: [
+    'Mentioned in public descriptions · not measured',
+    'ნახსენებია საჯარო აღწერებში · არ არის გაზომილი',
+    'Упомянуто в открытых описаниях · не измерено',
+    'Kamuya açık tanıtımlarda geçiyor · ölçülmedi',
+    'مذكور في الأوصاف العامة · غير مُقاس',
+    'מוזכר בתיאורים פומביים · לא נמדד',
+  ],
 
   /* ── pros ── */
   verify_nb_pro_transit: [

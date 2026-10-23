@@ -280,7 +280,7 @@ export function buildIntelligenceBundle(
    */
   // The ONE place the market headline is computed, at synthesis, after every
   // acquisition lane has finished and been folded into m.comparables.
-  const market = buildMarketIntelligence(subject, arr<RawComparable>(m.comparables), quality);
+  const market = buildMarketIntelligence(subject, arr<RawComparable>(m.comparables), quality, m.eligibility && typeof m.eligibility === 'object' ? m.eligibility : null);
 
   /* ---- people ---- */
 

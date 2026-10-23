@@ -194,6 +194,16 @@ export function VerifyCostPanel() {
                 <span className="text-muted-foreground">{t('vcogs_measured_total')}</span>
               </div>
 
+              {/* What the total is made of: OpenAI (per stage, below) and every other provider. */}
+              <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                <div className="min-w-0 break-words"><span className="text-muted-foreground">{t('vcogs_col_model_cost')}: </span><span className="tabular-nums">{usd(detail.modelCostUsd, 6)}</span></div>
+                <div className="min-w-0 break-words"><span className="text-muted-foreground">{t('vcogs_col_search_cost')}: </span><span className="tabular-nums">{usd(detail.searchCostUsd, 6)}</span></div>
+                <div className="min-w-0 break-words"><span className="text-muted-foreground">{t('vcogs_captcha_cost')}: </span><span className="tabular-nums">{usd(detail.captchaCostUsd, 6)}</span></div>
+                <div className="min-w-0 break-words"><span className="text-muted-foreground">{t('vcogs_apify_cost')}: </span><span className="tabular-nums">{usd(detail.apifyCostUsd, 6)}</span></div>
+                <div className="min-w-0 break-words"><span className="text-muted-foreground">{t('vcogs_other_cost')}: </span><span className="tabular-nums">{usd(detail.otherProviderCostUsd, 6)}</span></div>
+              </div>
+              <p className="text-xs text-muted-foreground">{t('vcogs_recomputed_note')}</p>
+
               {/* Per stage. Wide by nature, so it scrolls in its own box
                   rather than pushing the page sideways on a phone. */}
               <div className="-mx-1 overflow-x-auto px-1">

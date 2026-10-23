@@ -40,7 +40,9 @@ export type VisualCategory = 'BUILDING' | 'APARTMENT' | 'ARCHITECTURE' | 'STRUCT
 
 export type VisualScope = 'EXACT_UNIT' | 'BUILDING' | 'TYPICAL_FLOOR' | 'PROJECT' | 'UNRELATED_SUSPECT';
 
-export type VisualExtraction = 'NATIVE_IMAGE' | 'PDF_EMBEDDED_IMAGE' | 'PDF_PAGE_RENDER';
+/** PDF_TILES_STITCHED: one picture the PDF stored as tiles, assembled by the worker (official-worker pdfTiles.ts). */
+export type VisualExtraction = 'NATIVE_IMAGE' | 'PDF_EMBEDDED_IMAGE' | 'PDF_PAGE_RENDER' | 'PDF_TILES_STITCHED';
+export const VISUAL_EXTRACTIONS: readonly VisualExtraction[] = ['NATIVE_IMAGE', 'PDF_EMBEDDED_IMAGE', 'PDF_PAGE_RENDER', 'PDF_TILES_STITCHED'];
 
 /** Per-asset explanation written by synthesis (report language). */
 export interface VisualExplanation {
@@ -61,6 +63,8 @@ export interface VisualDocumentRef {
   documentId: string | null;
   attachedFileId: string | null;
   extraction: VisualExtraction | null;
+  /** sha256 of every PDF tile an assembled image was made from, in page order. */
+  sourceTiles?: string[];
 }
 
 /**
@@ -75,6 +79,8 @@ export interface VerifyVisualAsset {
   url: string;
   kind: VisualAssetKind;
   category: VisualCategory;
+  /** What kind of evidence the image is (evidenceCategoryOf); mapped from `kind`, never a substitute for it. */
+  evidenceCategory: VisualEvidenceCategory;
   scope: Exclude<VisualScope, 'UNRELATED_SUSPECT'>;
   /** Building / block id ('01', '03', 'A') when detectable. */
   block: string | null;
@@ -137,6 +143,56 @@ export const CATEGORY_OF_KIND: Record<VisualAssetKind, VisualCategory> = {
   ENGINEERING: 'STRUCTURE',
   OTHER: 'BUILDING',
 };
+
+/**
+ * WHAT KIND OF EVIDENCE an image is, for the reader — mapped from the kind,
+ * never replacing it. A render or photomontage is an OFFICIAL_DOCUMENT (a
+ * design filed in a case), never a PROPERTY_PHOTO: only a photograph
+ * (official PHOTO / CONSTRUCTION_PHOTO after the file-name correction, or a
+ * fresh photo judged to show the building itself) is one.
+ */
+export type VisualEvidenceCategory = 'OFFICIAL_DOCUMENT' | 'CADASTRAL_MAP' | 'FLOOR_PLAN' | 'PROPERTY_PHOTO' | 'LOCATION_IMAGERY';
+
+export const EVIDENCE_CATEGORY_OF_KIND: Record<VisualAssetKind, VisualEvidenceCategory> = {
+  PHOTO: 'PROPERTY_PHOTO',
+  CONSTRUCTION_PHOTO: 'PROPERTY_PHOTO',
+  RENDER: 'OFFICIAL_DOCUMENT',
+  SITE_PLAN: 'CADASTRAL_MAP',
+  MASTER_PLAN: 'CADASTRAL_MAP',
+  LOCATION_DIAGRAM: 'LOCATION_IMAGERY',
+  FLOOR_PLAN: 'FLOOR_PLAN',
+  UNIT_PLAN: 'FLOOR_PLAN',
+  SECTION: 'OFFICIAL_DOCUMENT',
+  ELEVATION: 'OFFICIAL_DOCUMENT',
+  FACADE: 'OFFICIAL_DOCUMENT',
+  STRUCTURAL: 'OFFICIAL_DOCUMENT',
+  ENGINEERING: 'OFFICIAL_DOCUMENT',
+  OTHER: 'OFFICIAL_DOCUMENT',
+};
+
+/**
+ * The evidence category of an image. `fileName` applies the render
+ * correction first ("fotomontaji" stored as PHOTO is a render). A fresh
+ * photo is a PROPERTY_PHOTO only when it was judged to show the building
+ * (scope BUILDING); one of the development at large is LOCATION_IMAGERY.
+ */
+export function evidenceCategoryOf(kind: unknown, opts: { fileName?: unknown; freshScope?: 'BUILDING' | 'DEVELOPMENT' | null } = {}): VisualEvidenceCategory {
+  if (opts.freshScope !== undefined) return opts.freshScope === 'BUILDING' ? 'PROPERTY_PHOTO' : 'LOCATION_IMAGERY';
+  const k = correctVisualKind(normalizeVisualKind(kind), opts.fileName) as VisualAssetKind;
+  return EVIDENCE_CATEGORY_OF_KIND[k] ?? 'OFFICIAL_DOCUMENT';
+}
+
+/**
+ * Stored official visuals the customer gallery does not show (blank /
+ * strip / unsignable), given how many it does show. UNRELATED_SUSPECT
+ * assets are not counted: they are not about this property. Lets the
+ * gallery say "images were found but could not be presented" instead of
+ * implying none existed.
+ */
+export function withheldVisualCount(records: unknown, shown: number): number {
+  const list = (Array.isArray(records) ? records : []).filter((v: any) => v && SHA.test(String(v.id)) && v.scope !== 'UNRELATED_SUSPECT');
+  return Math.max(0, new Set(list.map((v: any) => String(v.id))).size - Math.max(0, shown));
+}
 
 /** Older worker vocabulary (≤ 2026-10-10) → current kinds. */
 const LEGACY_KIND: Record<string, VisualAssetKind> = { LANDSCAPE: 'SITE_PLAN', OTHER_DRAWING: 'OTHER' };
@@ -445,6 +501,7 @@ export async function toCustomerVisualAssets(
       url,
       kind,
       category,
+      evidenceCategory: evidenceCategoryOf(kind, { fileName: v.fileName }),
       scope: scope as VerifyVisualAsset['scope'],
       block: typeof v.block === 'string' && v.block ? v.block : null,
       page: n(v.page),
@@ -458,7 +515,8 @@ export async function toCustomerVisualAssets(
         usage: 'OFFICIAL_RECORD_REFERENCE',
         documentId: v.documentId ? String(v.documentId) : null,
         attachedFileId: v.attachedFileId ? String(v.attachedFileId) : null,
-        extraction: ['NATIVE_IMAGE', 'PDF_EMBEDDED_IMAGE', 'PDF_PAGE_RENDER'].includes(v.extraction) ? v.extraction : null,
+        extraction: (VISUAL_EXTRACTIONS as readonly string[]).includes(v.extraction) ? v.extraction : null,
+        ...(Array.isArray(v.sourceTiles) && v.sourceTiles.length ? { sourceTiles: v.sourceTiles.filter((s: unknown) => SHA.test(String(s))).slice(0, 64) } : {}),
       },
       captionKey: `verify.visual.kind.${kind}`,
       ...(expl.has(v.id) ? { explanation: expl.get(v.id)! } : {}),

@@ -202,7 +202,7 @@ export function readExif(bytes: Uint8Array): ExifHints | null {
  */
 export function refineWithImage(
   meta: VisualClassification,
-  img: { exif: ExifHints | null; extraction: 'NATIVE_IMAGE' | 'PDF_EMBEDDED_IMAGE' | 'PDF_PAGE_RENDER'; pageText?: string | null; context?: string | null },
+  img: { exif: ExifHints | null; extraction: 'NATIVE_IMAGE' | 'PDF_EMBEDDED_IMAGE' | 'PDF_PAGE_RENDER' | 'PDF_TILES_STITCHED'; pageText?: string | null; context?: string | null },
 ): VisualClassification {
   if (img.extraction === 'PDF_PAGE_RENDER') {
     const page = classifyPageText(img.pageText);

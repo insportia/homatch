@@ -107,3 +107,25 @@ export function isHeartbeatStale(lastHeartbeatIso: string | null | undefined, no
   if (!Number.isFinite(beat)) return false;
   return nowMs - beat > HEARTBEAT_STALE_MS;
 }
+
+/*
+ * THE STATE WINS OVER THE STAGE.
+ *
+ * Until 20261120090000 a finished job kept whatever stage it was last
+ * mirrored at: every completed Verify read COMPLETED with current_stage
+ * SYNTHESIS_WAITING. Those rows are not rewritten, so the reader decides: a
+ * terminal job never presents a working stage, and a completed one is at 100.
+ */
+const TERMINAL_STAGES: readonly string[] = ['COMPLETE', 'COMPLETED', 'DONE', 'FAILED', 'CANCELLED'];
+
+/** The stage a job may present, or null when its stage is stale. */
+export function presentableStage(state: JobState, stage: string | null | undefined): string | null {
+  const s = typeof stage === 'string' && stage.trim() ? stage : null;
+  if (!isTerminal(state)) return s;
+  return s && TERMINAL_STAGES.includes(s.toUpperCase()) ? s : null;
+}
+
+/** Progress a job may present: a completed job is finished, whatever was stored. */
+export function presentableProgress(state: JobState, progress: number): number {
+  return state === 'COMPLETED' ? 100 : progress;
+}

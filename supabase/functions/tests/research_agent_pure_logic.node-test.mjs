@@ -240,6 +240,9 @@ function customerSourceStatus(rawStatus) {
     case 'FAILED':
     case 'TIMEOUT':
     case 'PARSE_FAILED':
+    case 'VERIFICATION_FAILED':
+    case 'TEMPORARILY_UNAVAILABLE':
+    case 'SUBMITTED_UNPARSED':
       return 'TECHNICAL_FAILED';
     default:
       return 'NOT_CONFIRMED';
@@ -264,7 +267,8 @@ test('customerSourceStatus: maps every real worker terminal status to one of the
   assert.equal(customerSourceStatus('SKIPPED_HUMAN_VERIFICATION'), 'CAPTCHA_REQUIRED');
   assert.equal(customerSourceStatus('WAITING_HUMAN'), 'CAPTCHA_REQUIRED');
   assert.equal(customerSourceStatus('BLOCKED'), 'BLOCKED');
-  for (const raw of ['SUBMIT_FAILED', 'AUTH_REQUIRED', 'SEARCH_CONTROL_NOT_FOUND', 'WRONG_SEARCH_CONTEXT', 'SUBMITTED_UNCONFIRMED', 'FAILED']) {
+  // VERIFICATION_FAILED / TEMPORARILY_UNAVAILABLE: RS.ge's failure states (job 61c1c38c counted them as nothing).
+  for (const raw of ['SUBMIT_FAILED', 'AUTH_REQUIRED', 'SEARCH_CONTROL_NOT_FOUND', 'WRONG_SEARCH_CONTEXT', 'SUBMITTED_UNCONFIRMED', 'FAILED', 'VERIFICATION_FAILED', 'TEMPORARILY_UNAVAILABLE', 'SUBMITTED_UNPARSED']) {
     assert.equal(customerSourceStatus(raw), 'TECHNICAL_FAILED', `expected ${raw} -> TECHNICAL_FAILED`);
   }
   assert.equal(customerSourceStatus(undefined), 'NOT_CONFIRMED');

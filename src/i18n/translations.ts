@@ -1159,6 +1159,10 @@ const en = {
   vcogs_inspect_go: 'Inspect',
   vcogs_not_found: 'No completed verification with that ID.',
   vcogs_measured_total: 'measured provider COGS',
+  vcogs_captcha_cost: 'CAPTCHA (2Captcha)',
+  vcogs_apify_cost: 'APIFY',
+  vcogs_other_cost: 'Other providers',
+  vcogs_recomputed_note: 'Recomputed from stored usage at the price book in force: every AI stage at the model that ran it, the report-writing call, CAPTCHA and APIFY included. Customer charges are unchanged.',
   vcogs_price_book: 'Price book from',
   vcogs_stage: 'Stage',
   vcogs_stage_model: 'Model',
@@ -17290,6 +17294,7 @@ const en = {
   vrx_explore_title: 'Explore the property',
   vrx_explore_lede: 'Images and drawings found in the official records, each labelled for what it is — a photo, an illustrative render or a technical drawing.',
   vrx_explore_empty: 'No official images or drawings of this property were found in the records read. HOMATCH does not substitute stock photos.',
+  vrx_explore_unpresentable: 'Official images were found in the records read, but none can be shown reliably (for example, only fragments or blank layers of a picture). HOMATCH does not substitute stock photos.',
   vrx_explore_open: 'View full screen',
   vrx_explore_tabs: 'Image categories',
   vrx_visual_block: 'Block {{block}}',
@@ -21095,6 +21100,14 @@ const en = {
   fin_v2_status_partial: 'Partially priced',
   fin_v2_status_unpriced: 'Unpriced',
 
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_center_conflict: 'The official drawing and the address point to places more than a kilometre apart, so we do not state distances or routes until the position is confirmed.',
+  verify_nb_basis_SITUATIONAL_DRAWING: 'Measured from the centre of the Public Registry situational drawing (UTM coordinates), which the address on the map confirms; distances are accurate to about a hundred metres.',
+  verify_place_mentioned_label: 'Mentioned in public descriptions · not measured',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_drawing_set_aside: 'An official drawing in the case file points to a place more than a kilometre away. It names an application, not this parcel, so it was set aside and kept on record; distances here are measured from the registry address on the map and are approximate.',
+
   /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_v21_cost_incomplete: 'Profit is not final: some costs are missing',
   fin_v21_cost_incomplete_hint: 'The figures below include every cost HOMATCH can price. The items listed are not (fully) in them yet.',
@@ -22297,6 +22310,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   vcogs_inspect_go: 'ნახვა',
   vcogs_not_found: 'ამ ID-ით დასრულებული გადამოწმება ვერ მოიძებნა.',
   vcogs_measured_total: 'გაზომილი პროვაიდერის ხარჯი',
+  vcogs_captcha_cost: 'CAPTCHA (2Captcha)',
+  vcogs_apify_cost: 'APIFY',
+  vcogs_other_cost: 'სხვა პროვაიდერები',
+  vcogs_recomputed_note: 'ხელახლა გამოთვლილია შენახული მოხმარებიდან მოქმედი ფასების მიხედვით: ყოველი AI ეტაპი იმ მოდელით, რომელმაც ის შეასრულა, ანგარიშის დაწერის გამოძახება, CAPTCHA და APIFY ჩათვლით. მომხმარებლის გადასახადი არ შეცვლილა.',
   vcogs_price_book: 'ტარიფები თარიღიდან',
   vcogs_stage: 'ეტაპი',
   vcogs_stage_model: 'მოდელი',
@@ -38316,6 +38333,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   vrx_explore_title: 'გაეცანით ქონებას',
   vrx_explore_lede: 'ოფიციალურ ჩანაწერებში ნაპოვნი გამოსახულებები და ნახაზები — თითოეულს აწერია, რა არის: ფოტო, დიზაინის ვიზუალიზაცია თუ ტექნიკური ნახაზი.',
   vrx_explore_empty: 'წაკითხულ ჩანაწერებში ამ ქონების ოფიციალური გამოსახულება ან ნახაზი არ მოიძებნა. HOMATCH მათ ნაცვლად სხვა ფოტოებს არ აჩვენებს.',
+  vrx_explore_unpresentable: 'წაკითხულ ჩანაწერებში ოფიციალური გამოსახულებები მოიძებნა, მაგრამ ვერცერთი სანდოდ ვერ გამოჩნდება (მაგალითად, მხოლოდ სურათის ფრაგმენტები ან ცარიელი ფენები). HOMATCH მათ ნაცვლად სხვა ფოტოებს არ აჩვენებს.',
   vrx_explore_open: 'სრულ ეკრანზე',
   vrx_explore_tabs: 'გამოსახულებების კატეგორიები',
   vrx_visual_block: 'კორპუსი {{block}}',
@@ -42121,6 +42139,14 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_partial: 'ნაწილობრივ ფასდადგენილი',
   fin_v2_status_unpriced: 'ფასდაუდგენელი',
 
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_center_conflict: 'ოფიციალური ნახაზი და მისამართი რუკაზე ერთმანეთისგან კილომეტრზე მეტით დაშორებულ ადგილებს უთითებს, ამიტომ მდებარეობის დადასტურებამდე მანძილებსა და მარშრუტებს არ ვუთითებთ.',
+  verify_nb_basis_SITUATIONAL_DRAWING: 'მანძილი გაზომილია საჯარო რეესტრის სიტუაციური ნახაზის ცენტრიდან (UTM კოორდინატები), რასაც რუკაზე მისამართიც ადასტურებს; სიზუსტე დაახლოებით ასი მეტრია.',
+  verify_place_mentioned_label: 'ნახსენებია საჯარო აღწერებში · არ არის გაზომილი',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_drawing_set_aside: 'საქმის მასალებში არსებული ოფიციალური ნახაზი კილომეტრზე მეტით დაშორებულ ადგილს უთითებს. ის განცხადებას ეხება და არა ამ ნაკვეთს, ამიტომ გვერდზე გადავდეთ და ჩანაწერში შევინახეთ; აქ მანძილები გაზომილია რეესტრის მისამართის მიხედვით რუკაზე და მიახლოებითია.',
+
   /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_v21_cost_incomplete: 'მოგება საბოლოო არ არის: ზოგი ხარჯი აკლია',
   fin_v21_cost_incomplete_hint: 'ქვემოთ მოცემული ციფრები მოიცავს ყველა ხარჯს, რომლის შეფასებაც HOMATCH-ს შეუძლია. ჩამოთვლილი პუნქტები მათში (სრულად) ჯერ არ შედის.',
@@ -43317,6 +43343,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   vcogs_inspect_go: 'Открыть',
   vcogs_not_found: 'Завершённая проверка с таким ID не найдена.',
   vcogs_measured_total: 'измеренные расходы на провайдеров',
+  vcogs_captcha_cost: 'CAPTCHA (2Captcha)',
+  vcogs_apify_cost: 'APIFY',
+  vcogs_other_cost: 'Другие провайдеры',
+  vcogs_recomputed_note: 'Пересчитано по сохранённому потреблению по действующему прайсу: каждый этап ИИ — по модели, которая его выполнила, включая вызов написания отчёта, CAPTCHA и APIFY. Списания с клиентов не изменились.',
   vcogs_price_book: 'Тарифы с',
   vcogs_stage: 'Этап',
   vcogs_stage_model: 'Модель',
@@ -59333,6 +59363,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   vrx_explore_title: 'Рассмотрите объект',
   vrx_explore_lede: 'Изображения и чертежи из официальных документов — у каждого указано, что это: фото, иллюстративная визуализация или технический чертёж.',
   vrx_explore_empty: 'В прочитанных документах официальных изображений или чертежей этого объекта не нашлось. HOMATCH не подставляет стоковые фото.',
+  vrx_explore_unpresentable: 'В прочитанных документах официальные изображения нашлись, но ни одно нельзя надёжно показать (например, только фрагменты или пустые слои изображения). HOMATCH не подставляет стоковые фото.',
   vrx_explore_open: 'На весь экран',
   vrx_explore_tabs: 'Категории изображений',
   vrx_visual_block: 'Корпус {{block}}',
@@ -63138,6 +63169,14 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_partial: 'Частично оценено',
   fin_v2_status_unpriced: 'Без цены',
 
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_center_conflict: 'Официальный чертёж и адрес указывают на места, удалённые друг от друга более чем на километр, поэтому до подтверждения местоположения мы не указываем расстояния и маршруты.',
+  verify_nb_basis_SITUATIONAL_DRAWING: 'Расстояния измерены от центра ситуационного чертежа Публичного реестра (координаты UTM), что подтверждается адресом на карте; точность около ста метров.',
+  verify_place_mentioned_label: 'Упомянуто в открытых описаниях · не измерено',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_drawing_set_aside: 'Официальный чертёж из материалов дела указывает на место более чем в километре отсюда. Он относится к заявлению, а не к этому участку, поэтому отложен и сохранён в записи; расстояния здесь измерены от адреса из реестра на карте и приблизительны.',
+
   /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_v21_cost_incomplete: 'Прибыль не окончательная: часть расходов не учтена',
   fin_v21_cost_incomplete_hint: 'Цифры ниже включают все расходы, которые HOMATCH может оценить. Перечисленные пункты в них пока (полностью) не входят.',
@@ -64332,6 +64371,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   vcogs_inspect_go: 'İncele',
   vcogs_not_found: 'Bu kimlikle tamamlanmış doğrulama bulunamadı.',
   vcogs_measured_total: 'ölçülen sağlayıcı maliyeti',
+  vcogs_captcha_cost: 'CAPTCHA (2Captcha)',
+  vcogs_apify_cost: 'APIFY',
+  vcogs_other_cost: 'Diğer sağlayıcılar',
+  vcogs_recomputed_note: 'Kayıtlı kullanımdan, geçerli fiyat listesiyle yeniden hesaplandı: her yapay zekâ aşaması onu çalıştıran modelle; rapor yazma çağrısı, CAPTCHA ve APIFY dahil. Müşteri ücretleri değişmedi.',
   vcogs_price_book: 'Tarife başlangıcı',
   vcogs_stage: 'Aşama',
   vcogs_stage_model: 'Model',
@@ -80348,6 +80391,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   vrx_explore_title: 'Mülkü keşfedin',
   vrx_explore_lede: 'Resmî kayıtlarda bulunan görseller ve çizimler; her birinin ne olduğu belirtilmiştir: fotoğraf, temsili görselleştirme ya da teknik çizim.',
   vrx_explore_empty: 'Okunan kayıtlarda bu mülke ait resmî görsel veya çizim bulunamadı. HOMATCH yerine hazır fotoğraf koymaz.',
+  vrx_explore_unpresentable: 'Okunan kayıtlarda resmî görseller bulundu, ancak hiçbiri güvenilir biçimde gösterilemiyor (örneğin yalnızca bir görselin parçaları veya boş katmanları). HOMATCH yerine hazır fotoğraf koymaz.',
   vrx_explore_open: 'Tam ekran',
   vrx_explore_tabs: 'Görsel kategorileri',
   vrx_visual_block: 'Blok {{block}}',
@@ -84153,6 +84197,14 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_partial: 'Kısmen fiyatlandırıldı',
   fin_v2_status_unpriced: 'Fiyatlandırılmamış',
 
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_center_conflict: 'Resmi çizim ile adres, birbirinden bir kilometreden fazla uzak yerleri gösteriyor; konum doğrulanana kadar mesafe ve hat bilgisi vermiyoruz.',
+  verify_nb_basis_SITUATIONAL_DRAWING: 'Mesafeler, Kamu Sicili durum çiziminin merkezinden (UTM koordinatları) ölçülmüştür ve haritadaki adresle doğrulanmıştır; hassasiyet yaklaşık yüz metredir.',
+  verify_place_mentioned_label: 'Kamuya açık tanıtımlarda geçiyor · ölçülmedi',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_drawing_set_aside: 'Dosyadaki resmi bir çizim bir kilometreden daha uzak bir yeri gösteriyor. Bu parseli değil bir başvuruyu adlandırdığı için bir kenara konuldu ve kayıtta tutuldu; buradaki mesafeler sicil adresinin haritadaki noktasından ölçülmüştür ve yaklaşıktır.',
+
   /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_v21_cost_incomplete: 'Kâr kesin değil: bazı maliyetler eksik',
   fin_v21_cost_incomplete_hint: 'Aşağıdaki rakamlar HOMATCH’in fiyatlayabildiği tüm maliyetleri içerir. Listelenen kalemler henüz (tamamen) dahil değildir.',
@@ -85347,6 +85399,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   vcogs_inspect_go: 'فحص',
   vcogs_not_found: 'لا توجد عملية تحقق مكتملة بهذا المعرّف.',
   vcogs_measured_total: 'تكلفة المزوّدين المقاسة',
+  vcogs_captcha_cost: 'CAPTCHA (2Captcha)',
+  vcogs_apify_cost: 'APIFY',
+  vcogs_other_cost: 'مزوّدون آخرون',
+  vcogs_recomputed_note: 'أُعيد حسابها من الاستخدام المخزّن وفق قائمة الأسعار السارية: كل مرحلة ذكاء اصطناعي بالنموذج الذي نفّذها، مع استدعاء كتابة التقرير وCAPTCHA وAPIFY. رسوم العملاء لم تتغيّر.',
   vcogs_price_book: 'التسعيرة من',
   vcogs_stage: 'المرحلة',
   vcogs_stage_model: 'النموذج',
@@ -101363,6 +101419,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   vrx_explore_title: 'استكشف العقار',
   vrx_explore_lede: 'صور ورسومات وُجدت في السجلات الرسمية، وكلٌّ منها موسوم بما هو عليه: صورة فوتوغرافية أو تصوّر توضيحي أو رسم فني.',
   vrx_explore_empty: 'لم تُعثر في السجلات المقروءة على صور أو رسومات رسمية لهذا العقار. لا يستبدلها HOMATCH بصور جاهزة.',
+  vrx_explore_unpresentable: 'عُثر في السجلات المقروءة على صور رسمية، لكن لا يمكن عرض أيٍّ منها بشكل موثوق (مثل أجزاء من صورة فقط أو طبقات فارغة). لا يستبدلها HOMATCH بصور جاهزة.',
   vrx_explore_open: 'عرض بملء الشاشة',
   vrx_explore_tabs: 'فئات الصور',
   vrx_visual_block: 'المبنى {{block}}',
@@ -105168,6 +105225,14 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_partial: 'مسعّر جزئيًا',
   fin_v2_status_unpriced: 'غير مسعّر',
 
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_center_conflict: 'يشير المخطط الرسمي والعنوان إلى موقعين يفصل بينهما أكثر من كيلومتر، لذا لا نذكر مسافات أو خطوطًا حتى يتأكد الموقع.',
+  verify_nb_basis_SITUATIONAL_DRAWING: 'قيست المسافات من مركز المخطط الموقعي للسجل العام (إحداثيات UTM)، ويؤكده العنوان على الخريطة؛ الدقة في حدود مئة متر تقريبًا.',
+  verify_place_mentioned_label: 'مذكور في الأوصاف العامة · غير مُقاس',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_drawing_set_aside: 'يشير مخطط رسمي في ملف القضية إلى مكان يبعد أكثر من كيلومتر. وهو يخص طلبًا لا هذه القطعة، لذا وُضع جانبًا مع الاحتفاظ به في السجل؛ والمسافات هنا مقيسة من عنوان السجل على الخريطة وهي تقريبية.',
+
   /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_v21_cost_incomplete: 'الربح غير نهائي: بعض التكاليف ناقصة',
   fin_v21_cost_incomplete_hint: 'تشمل الأرقام أدناه كل التكاليف التي يستطيع HOMATCH تسعيرها. البنود المدرجة غير مشمولة (بالكامل) بعد.',
@@ -106362,6 +106427,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   vcogs_inspect_go: 'בדוק',
   vcogs_not_found: 'לא נמצא אימות שהושלם עם מזהה זה.',
   vcogs_measured_total: 'עלות ספקים נמדדת',
+  vcogs_captcha_cost: 'CAPTCHA (2Captcha)',
+  vcogs_apify_cost: 'APIFY',
+  vcogs_other_cost: 'ספקים אחרים',
+  vcogs_recomputed_note: 'חושב מחדש מהשימוש השמור לפי מחירון בתוקף: כל שלב בינה מלאכותית לפי המודל שהריץ אותו, כולל קריאת כתיבת הדוח, CAPTCHA ו-APIFY. החיובים ללקוחות לא השתנו.',
   vcogs_price_book: 'תעריפון מתאריך',
   vcogs_stage: 'שלב',
   vcogs_stage_model: 'מודל',
@@ -122378,6 +122447,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   vrx_explore_title: 'הכירו את הנכס',
   vrx_explore_lede: 'תמונות ושרטוטים שנמצאו ברשומות הרשמיות, וכל אחד מסומן במה שהוא: צילום, הדמיה להמחשה או שרטוט טכני.',
   vrx_explore_empty: 'ברשומות שנקראו לא נמצאו תמונות או שרטוטים רשמיים של הנכס. HOMATCH אינו מציג במקומם תמונות מאגר.',
+  vrx_explore_unpresentable: 'ברשומות שנקראו נמצאו תמונות רשמיות, אך אף אחת מהן אינה ניתנת להצגה אמינה (למשל רק מקטעים של תמונה או שכבות ריקות). HOMATCH אינו מציג במקומן תמונות מאגר.',
   vrx_explore_open: 'מסך מלא',
   vrx_explore_tabs: 'קטגוריות תמונות',
   vrx_visual_block: 'בניין {{block}}',
@@ -126182,6 +126252,14 @@ const he: Partial<Record<TranslationKey, string>> = {
   fin_v2_status_estimated: 'מוערך',
   fin_v2_status_partial: 'מתומחר חלקית',
   fin_v2_status_unpriced: 'ללא תמחור',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_center_conflict: 'השרטוט הרשמי והכתובת מצביעים על מקומות המרוחקים זה מזה יותר מקילומטר, ולכן איננו מציינים מרחקים או קווים עד שהמיקום יאומת.',
+  verify_nb_basis_SITUATIONAL_DRAWING: 'המרחקים נמדדו ממרכז השרטוט המצבי של המרשם הציבורי (קואורדינטות UTM), והכתובת שבמפה מאשרת אותו; הדיוק כמאה מטרים.',
+  verify_place_mentioned_label: 'מוזכר בתיאורים פומביים · לא נמדד',
+
+  /* ── VERIFY FINAL NEIGHBORHOOD ── */
+  verify_nb_drawing_set_aside: 'שרטוט רשמי בתיק מצביע על מקום המרוחק יותר מקילומטר. הוא מתייחס לבקשה ולא לחלקה הזו, ולכן הונח בצד ונשמר ברשומה; המרחקים כאן נמדדו מכתובת המרשם במפה והם משוערים.',
 
   /* ── HOMATCH ADMIN CONTROL CENTRE ────────────────────────────────── */
   fin_v21_cost_incomplete: 'הרווח אינו סופי: חלק מהעלויות חסרות',

@@ -120,6 +120,9 @@ const BANDS: Record<string, Band> = {
   SYNTHESIS_READY: { phase: 'SYNTHESIS', floor: 86, ceiling: 96 },
   SYNTHESIS_WAITING: { phase: 'SYNTHESIS', floor: 88, ceiling: 97 },
   COMPLETE: { phase: 'SYNTHESIS', floor: 90, ceiling: 98 },
+  // background_jobs only (jobs-worker, src/jobs/verifyMirror.ts): research is
+  // COMPLETE and verify-synthesis is still writing the report.
+  REPORT_WRITING: { phase: 'SYNTHESIS', floor: 90, ceiling: 98 },
 };
 
 const UNKNOWN_BAND: Band = { phase: 'OFFICIAL', floor: 28, ceiling: 62 };

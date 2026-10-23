@@ -13,8 +13,8 @@
 //   - classifyPayload (magic bytes decide what a reply is);
 //   - classifyVisualMeta → refineWithImage (EXIF) → identityHints, the
 //     same classification chain makeVisual() applies in TasApiWorkflow;
-//   - extractImagesFromPdf for a PDF (embedded rasters only; no page
-//     rendering on this path — Chromium stays with the full run);
+//   - scanPdfPictures for a PDF (embedded rasters only, tiles and strips
+//     left out; no page rendering on this path — Chromium stays with the full run);
 //   - the bytes go into the SAME bounded visual cache (cacheTasVisual), so
 //     GET /research/visual/:sha serves them to the existing copy path.
 //
@@ -23,7 +23,8 @@
 import { createHash } from 'node:crypto';
 import { TasApiClient, TasDeadline, TasPayloadTooLarge, attachmentUrl } from './TasApiClient.js';
 import { bytesToBuffer, classifyPayload, fileNameFromDisposition } from './tasModel.js';
-import { extractImagesFromPdf, imageSize } from './visuals.js';
+import { imageSize } from './visuals.js';
+import { scanPdfPictures } from './pdfTiles.js';
 import { classifyVisualMeta, identityHints, readExif, refineWithImage } from './visualClassify.js';
 import { cacheTasVisual, type VisualRecord } from './TasApiWorkflow.js';
 
@@ -169,7 +170,9 @@ export async function recoverTasFiles(files: TasFileRequest[], options: TasFileR
       }
       const outs: Array<{ bytes: Uint8Array; extraction: VisualRecord['extraction'] }> = [];
       if (cls.kind === 'IMAGE' && (cls.format === 'jpeg' || cls.format === 'png')) outs.push({ bytes: r.bytes, extraction: 'NATIVE_IMAGE' });
-      else if (cls.kind === 'PDF') for (const i of extractImagesFromPdf(r.bytes, { maxImages: 4 })) outs.push({ bytes: i.bytes, extraction: 'PDF_EMBEDDED_IMAGE' });
+      // Tiles of a picture (pdfTiles.ts) and lone strips are never recovered as
+      // slices; with no page renderer on this path they are left out.
+      else if (cls.kind === 'PDF') for (const i of scanPdfPictures(r.bytes, { maxImages: 4 }).singles) outs.push({ bytes: i.bytes, extraction: 'PDF_EMBEDDED_IMAGE' });
       else {
         // webp / gif / tiff / archives: nothing here can show them safely.
         res.outcome = 'UNSUPPORTED_FORMAT';

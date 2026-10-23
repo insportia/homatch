@@ -237,8 +237,8 @@ test('executor: human verification is final, a failed source is retried, success
     { result: { status: 'SEARCH_CONFIRMED', documents: [{ id: 'x', fullText: 'z'.repeat(DOC_EXCERPT_CHARS + 1) }] }, keep: false },
   ];
   const exec = createVerifyExecutor({ ...noBrowser, orchestrator: {}, mygov: async () => outs.shift() });
-  assert.deepEqual(await exec(mkTask(), ctxFor(gw)), { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED:NONE', retryable: false });
-  assert.deepEqual(await exec(mkTask(), ctxFor(gw)), { type: 'fail', error: 'timeout', retryable: true });
+  assert.deepEqual(await exec(mkTask(), ctxFor(gw)), { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED:NONE sourceOutcome=CAPTCHA_BLOCKED reason=CAPTCHA_NONE', retryable: false });
+  assert.deepEqual(await exec(mkTask(), ctxFor(gw)), { type: 'fail', error: 'timeout sourceOutcome=PROVIDER_UNAVAILABLE reason=FAILED', retryable: true });
   const ok = await exec(mkTask(), ctxFor(gw));
   assert.equal(ok.type, 'complete');
   assert.equal(ok.cacheScope, 'mygov:01.18');
@@ -271,9 +271,9 @@ test('executor: a transient CAPTCHA give-up gets ONE fresh retry; a rejection or
   const rejected = { result: { status: 'WAITING_HUMAN', captchaResolution: [{ outcome: 'REJECTED' }] }, keep: false };
   const outs = [noChange, noChange, rejected];
   const exec = createVerifyExecutor({ ...noBrowser, orchestrator: {}, mygov: async () => outs.shift() });
-  assert.deepEqual(await exec(mkTask({ attempts: 1 }), ctxFor(gw)), { type: 'fail', error: 'CAPTCHA_NO_CHANGE', retryable: true, retryAfterSeconds: 20 });
-  assert.deepEqual(await exec(mkTask({ attempts: 2 }), ctxFor(gw)), { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED:NO_CHANGE', retryable: false });
-  assert.deepEqual(await exec(mkTask({ attempts: 1 }), ctxFor(gw)), { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED:REJECTED', retryable: false });
+  assert.deepEqual(await exec(mkTask({ attempts: 1 }), ctxFor(gw)), { type: 'fail', error: 'CAPTCHA_NO_CHANGE sourceOutcome=CAPTCHA_BLOCKED reason=CAPTCHA_NO_CHANGE', retryable: true, retryAfterSeconds: 20 });
+  assert.deepEqual(await exec(mkTask({ attempts: 2 }), ctxFor(gw)), { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED:NO_CHANGE sourceOutcome=CAPTCHA_BLOCKED reason=CAPTCHA_NO_CHANGE', retryable: false });
+  assert.deepEqual(await exec(mkTask({ attempts: 1 }), ctxFor(gw)), { type: 'fail', error: 'HUMAN_VERIFICATION_REQUIRED:REJECTED sourceOutcome=CAPTCHA_BLOCKED reason=CAPTCHA_REJECTED', retryable: false });
 });
 
 test('a completed result carries the final attempt\'s execution span (performance only)', async () => {
@@ -320,14 +320,14 @@ test('executor (rstax): the redacted answer is stored as evidence on EVERY outco
   const rejected = await exec(rs(), ctxFor(gw));
   assert.equal(rejected.type, 'fail');
   assert.equal(rejected.retryable, false);
-  assert.match(rejected.error, /^RS_VERIFICATION_FAILED rs=VERIFICATION_FAILED outcome=REJECTED http=200 evidence=[0-9a-f]{64}$/);
+  assert.match(rejected.error, /^RS_VERIFICATION_FAILED rs=VERIFICATION_FAILED outcome=REJECTED http=200 evidence=[0-9a-f]{64} sourceOutcome=CAPTCHA_BLOCKED reason=CAPTCHA_REJECTED$/);
 
   const transient = await exec(rs({ attempts: 1 }), ctxFor(gw));
   assert.deepEqual({ ...transient, error: transient.error.replace(/ evidence=.*/, '') }, { type: 'fail', error: 'RS_TEMPORARILY_UNAVAILABLE rs=TEMPORARILY_UNAVAILABLE outcome=HTTP_ERROR http=503', retryable: true, retryAfterSeconds: 30 });
   const second = await exec(rs({ attempts: 2 }), ctxFor(gw));
   assert.equal(second.retryable, false, 'at most one retry');
   const crash = await exec(rs({ attempts: 2 }), ctxFor(gw));
-  assert.deepEqual(crash, { type: 'fail', error: 'RS_TEMPORARILY_UNAVAILABLE rs=TEMPORARILY_UNAVAILABLE outcome=NONE http=-', retryable: false });
+  assert.deepEqual(crash, { type: 'fail', error: 'RS_TEMPORARILY_UNAVAILABLE rs=TEMPORARILY_UNAVAILABLE outcome=NONE http=- sourceOutcome=PROVIDER_UNAVAILABLE reason=NO_RESPONSE', retryable: false });
   const pending = await exec(rs(), ctxFor(gw));
   assert.match(pending.error, /^HUMAN_VERIFICATION_REQUIRED:DISABLED rs=PENDING_VERIFICATION /);
   assert.equal(pending.retryable, false);

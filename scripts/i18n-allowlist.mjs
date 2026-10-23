@@ -153,6 +153,9 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // above; ka/ru/ar/he all carry their own real forms. Same collision, same
   // single locale, same admin-only technical column header.
   'vcogs_stage_model',
+  // The CAPTCHA vendor line of the Verify COGS breakdown: "CAPTCHA (2Captcha)"
+  // is an acronym plus a company name, written identically in all six locales.
+  'vcogs_captcha_cost',
   // The three advertising platforms, by their own names. Meta, Google and
   // TikTok are written identically in all six locales because they are
   // company names, not words — the same reason WhatsApp is allowlisted below.

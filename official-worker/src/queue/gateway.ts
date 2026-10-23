@@ -20,6 +20,8 @@ export interface QueueTask {
   maxAttempts: number;
   fencingToken: number;
   leaseSeconds: number;
+  /** The previous attempt's error on a retry (verify_task_json carries it). */
+  error?: string | null;
 }
 
 export interface EvidenceRef {

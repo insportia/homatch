@@ -42,10 +42,26 @@ export function rsStatusFromTaskError(error: unknown): RsVerificationStatus {
   return 'TEMPORARILY_UNAVAILABLE';
 }
 
+/**
+ * A record stored as VERIFIED / NO_RESULT only because the PAGE read "no
+ * result" while RS.ge's own captured answer was unreadable (reason
+ * PAGE_READ_UNPARSEABLE, PAGE_READ_HTTP_ERROR …). The grid's empty state is
+ * what an unreadable answer leaves on screen, so this is not a confirmed
+ * absence. Production 2026-10-22: company 405456359, a registered LLC.
+ * Mirrors official-worker RsTaxpayerResponse.rsDomOnlyNoResult; it also
+ * corrects results cached (24 h) or stored before the worker fix.
+ */
+export function rsDomOnlyNoResult(rsVerification: unknown): boolean {
+  const v = obj(rsVerification);
+  if (v.status !== 'VERIFIED' || v.serverOutcome !== 'NO_RESULT') return false;
+  return /^PAGE_READ_(?!NO_RESULT$|ACCEPTED$)[A-Z_]+$/.test(String(v.reason ?? ''));
+}
+
 /** The state of one stored rstax result. Null when there is no result at all. */
 export function rsVerificationStatusOf(result: unknown): RsVerificationStatus | null {
   const r = obj(result);
   if (!Object.keys(r).length) return null;
+  if (rsDomOnlyNoResult(r.rsVerification)) return 'VERIFICATION_FAILED';
   const own = String(obj(r.rsVerification).status ?? '');
   if (STATUSES.has(own)) return own as RsVerificationStatus;
   const st = String(r.status ?? '');

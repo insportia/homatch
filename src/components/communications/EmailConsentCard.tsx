@@ -79,7 +79,7 @@ export function EmailConsentCard({ contact, onChanged }: { contact: CommContact;
         <div className="flex items-center justify-between gap-3">
           <dt className="text-muted-foreground">{t('emc_status')}</dt>
           <dd>
-            <Badge variant={consented && !optedOut ? 'default' : 'outline'} className="text-[12px]">
+            <Badge variant={consented && !optedOut ? 'default' : 'outline'} className="text-2xs">
               {t(optedOut ? 'emc_status_opted_out' : consented ? 'emc_status_consented'
                 : contact.consent_status === 'WITHDRAWN' ? 'emc_status_withdrawn' : 'emc_status_none')}
             </Badge>
@@ -92,10 +92,10 @@ export function EmailConsentCard({ contact, onChanged }: { contact: CommContact;
           </div>
         ) : null}
         {recorded ? (
-          <p className="text-[12px] text-muted-foreground">{t('emc_recorded_on', { date: recorded })}</p>
+          <p className="text-2xs text-muted-foreground">{t('emc_recorded_on', { date: recorded })}</p>
         ) : null}
       </dl>
-      <p className="text-[12px] text-muted-foreground">{t('emc_explainer')}</p>
+      <p className="text-2xs text-muted-foreground">{t('emc_explainer')}</p>
       <div className="flex flex-wrap gap-2">
         {!consented ? (
           <Button size="sm" disabled={busy || optedOut || !contact.email} onClick={() => setOpen(true)}>

@@ -387,9 +387,9 @@ async function outreachSend(req: Request): Promise<Response> {
 
     /*
      * ── EMAIL: PLAN QUOTA, SENDER, KEY ────────────────────────────────
-     * The batch reserves plan quota under a key derived from exactly these contacts,
-     * so a retried invocation finds its own reservation instead of a second one. Only
-     * as many contacts as the plan (or consented overage) allows are sent.
+     * The batch reserves plan quota under one key per invocation (see below). Only as
+     * many contacts as the plan (or consented overage) allows are sent; a run that dies
+     * leaves its reservation to email_quota_release_stale.
      */
     let quotaReservationId: string | null = null;
     let quotaRefusal: string | null = null;

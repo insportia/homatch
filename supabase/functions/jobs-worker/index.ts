@@ -51,6 +51,7 @@ import type { DeadlineBasis, PlanStage, TaskCategory } from '../../../src/expats
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 import { verifyMirror } from '../../../src/jobs/verifyMirror.ts';
 import { sweepExpiredReservations } from '../_shared/walletSweeper.ts';
+import { usageSnapshotDue } from '../_shared/emailMarketing/core.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -796,7 +797,10 @@ serve(async (req) => {
         .then((r) => r.data)
         .catch(() => null),
       dispatchDueCampaigns(sb, url, expected),
-      emailMarketingMaintenance(url, expected),
+      emailMarketingMaintenance(sb, url, expected).catch((e) => {
+        console.error('[jobs-worker] email maintenance failed', e instanceof Error ? e.message : String(e));
+        return { renew: false, usage: false };
+      }),
       /* Isolated: a reminder failure must not cost the other six steps
          their tick. See the comment on sendExpatReminders. */
       sendExpatReminders(sb, new Date()).catch((e) => {
@@ -823,15 +827,14 @@ serve(async (req) => {
 
 
 /*
- * EMAIL MARKETING MAINTENANCE. Opted-in plan renewals (idempotent per ending period) every
- * ten minutes, and one Resend usage snapshot an hour. Both run in email-marketing under the
- * jobs-worker token; a failure here never touches the other tick work.
+ * EMAIL MARKETING MAINTENANCE. jobs-worker does not run every minute (ticks are skipped under
+ * load), so nothing here waits for a particular minute. Every tick asks email-marketing for due
+ * renewals (idempotent per ending period; also lapses ended plans and releases stale quota
+ * reservations — cheap SQL when nothing is due). A Resend usage snapshot is taken whenever the
+ * latest one is older than 55 minutes. Both run under the jobs-worker token; a failure here never
+ * touches the other tick work.
  */
-export async function emailMarketingMaintenance(url: string, cronToken: string, now = new Date()): Promise<{ renew: boolean; usage: boolean }> {
-  const minute = now.getUTCMinutes();
-  const firstHalf = now.getUTCSeconds() < 30;
-  const renew = firstHalf && minute % 10 === 0;
-  const usage = firstHalf && minute === 5;
+export async function emailMarketingMaintenance(sb: Sb, url: string, cronToken: string, now = new Date()): Promise<{ renew: boolean; usage: boolean }> {
   const call = async (action: string) => {
     try {
       await fetch(`${url}/functions/v1/email-marketing`, {
@@ -843,7 +846,10 @@ export async function emailMarketingMaintenance(url: string, cronToken: string, 
       console.error('[jobs-worker] email marketing', action, e instanceof Error ? e.message : String(e));
     }
   };
-  if (renew) await call('plan_renew_due');
+  const { data: latest } = await sb.from('email_provider_usage_snapshots').select('captured_at')
+    .order('captured_at', { ascending: false }).limit(1).maybeSingle();
+  const usage = usageSnapshotDue((latest as { captured_at?: string } | null)?.captured_at, now);
+  await call('plan_renew_due');
   if (usage) await call('usage_refresh_cron');
-  return { renew, usage };
+  return { renew: true, usage };
 }

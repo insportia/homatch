@@ -149,3 +149,23 @@ test('controlled test mode: off unless enabled, owned, unexpired; only simulator
   assert.equal(testModeAllows(t, owner, []), false, 'nothing to send is not a test');
   assert.equal(testModeAllows(null, owner, ['delivered@resend.dev']), false);
 });
+
+test('usage snapshots are taken by age, not by the clock minute (jobs-worker skips ticks)', async () => {
+  const { usageSnapshotDue } = await import('../emailMarketing/core.ts');
+  const now = new Date('2026-10-23T12:10:00Z');
+  assert.equal(usageSnapshotDue(null, now), true, 'never taken: due');
+  assert.equal(usageSnapshotDue('garbage', now), true);
+  assert.equal(usageSnapshotDue('2026-10-23T11:15:00Z', now), true, '55 minutes old: due');
+  assert.equal(usageSnapshotDue('2026-10-23T11:30:00Z', now), false, '40 minutes old: not yet');
+});
+
+test('jobs-worker asks for renewals every tick and gates the usage poll on snapshot age', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync('supabase/functions/jobs-worker/index.ts', 'utf8');
+  const fn = src.slice(src.indexOf('export async function emailMarketingMaintenance'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.ok(!/getUTCMinutes|getUTCSeconds/.test(body), 'no clock-minute window');
+  assert.match(body, /await call\('plan_renew_due'\);/);
+  assert.match(body, /if \(usage\) await call\('usage_refresh_cron'\)/);
+  assert.match(body, /usageSnapshotDue\(/);
+});

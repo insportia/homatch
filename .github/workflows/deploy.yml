@@ -632,6 +632,11 @@ jobs:
             # as hand-deployed on every run, in a warning whose own text says a
             # repository change to it does not reach production.
             "outreach-campaign-preview"
+            # Read-only sending status for the Email/SMS pages (verify_jwt=true,
+            # as in production). Hand-deployed until 2026-10-23, when the email
+            # go-live switch (email_marketing_live) changed it and an owed,
+            # unlisted function failed the whole edge deploy.
+            "outreach-provider-status"
             # The assistant, and the anonymous session it needs.
             #
             # homatch-ai has been production since day one and was NEVER listed

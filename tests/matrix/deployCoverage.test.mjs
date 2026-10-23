@@ -258,7 +258,7 @@ test('every function the frontend calls by name is deployed', () => {
    */
   const PRE_EXISTING_HAND_DEPLOYED = new Set([
     'classify-signals-v2', 'impersonate-user',
-    'outreach-provider-status', 'seed-demo-matches',
+    'seed-demo-matches',
   ]);
 
   const known = undeployed.filter((fn) => PRE_EXISTING_HAND_DEPLOYED.has(fn));

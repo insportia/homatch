@@ -172,6 +172,9 @@ export async function handleContentStudio(req: Request, deps: Deps): Promise<Res
   };
   const reply = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers });
   if (!ORIGINS.has(origin)) return reply({ code: 'ORIGIN_DENIED' }, 403);
+  // Dark until the owner turns it on (Supabase secret CONTENT_STUDIO_ENABLED=1): merging deploys this route with
+  // design-studio-reconstruct, and a controlled rollout must not depend on nobody calling it.
+  if (deps.env('CONTENT_STUDIO_ENABLED') !== '1') return reply({ code: 'CONTENT_STUDIO_DISABLED' }, 503);
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers });
   if (req.method !== 'POST') return reply({ code: 'METHOD_DENIED' }, 405);
   const auth = req.headers.get('authorization') || '';

@@ -17,7 +17,7 @@ const SELFTEST = 'homatch-content/jobs/LOCK_SELFTEST.json';
 const PROVEN = { [SELFTEST]: JSON.stringify({ ok: true }) };
 
 function world({ admin = true, customerJobs = [], renders = [], walkthroughs = [], endpoint = { inQueue: 0, inProgress: 0 }, designStudio = true,
-  objects = PROVEN, statusOf = {}, runStatus = 200, honoursConditions = true } = {}) {
+  objects = PROVEN, statusOf = {}, runStatus = 200, honoursConditions = true, enabled = true } = {}) {
   resetServiceControlCache();
   const tables = {
     service_controls: [{ service_key: 'design_studio', frontend_enabled: designStudio, backend_enabled: designStudio }],
@@ -80,7 +80,7 @@ function world({ admin = true, customerJobs = [], renders = [], walkthroughs = [
     remove: async (key) => { delete store.objects[key]; },
     configured: () => true,
   };
-  const env = { RUNPOD_API_KEY: RUNPOD_KEY, RUNPOD_DS_ENDPOINT_ID: 'ep123abc', RUNPOD_DS_USD_PER_SECOND: '0.00031' };
+  const env = { RUNPOD_API_KEY: RUNPOD_KEY, RUNPOD_DS_ENDPOINT_ID: 'ep123abc', RUNPOD_DS_USD_PER_SECOND: '0.00031', CONTENT_STUDIO_ENABLED: enabled ? '1' : undefined };
   const deps = {
     env: (k) => env[k], db: { from },
     caller: () => ({ auth: { getUser: async () => ({ data: { user: { id: 'auth-admin' } }, error: null }) }, rpc: async () => ({ data: admin, error: null }) }),
@@ -111,6 +111,17 @@ const call = async (w, body, { origin = ORIGIN, auth = 'Bearer token' } = {}) =>
 };
 const START = { action: 'start', version: 'v001', plan: 'PREVIEW_360', confirm: 'HOMI v001 PREVIEW_360' };
 const ADVANCE = { action: 'advance', version: 'v001' };
+
+test('the route is dark until the owner sets CONTENT_STUDIO_ENABLED=1 — not even an admin reaches it', async () => {
+  for (const action of ['preflight', 'lock-selftest', 'start', 'advance', 'cancel', 'reference']) {
+    const w = world({ enabled: false });
+    const r = await call(w, { ...START, action });
+    assert.equal(r.status, 503);
+    assert.equal(r.body.code, 'CONTENT_STUDIO_DISABLED');
+    assert.equal(w.calls.length, 0, 'no RunPod call');
+    assert.deepEqual(Object.keys(w.store.objects), [SELFTEST], 'no R2 write');
+  }
+});
 
 test('only an admin, with a token, from a HOMATCH origin', async () => {
   assert.equal((await call(world({ admin: false }), { action: 'preflight' })).status, 403);

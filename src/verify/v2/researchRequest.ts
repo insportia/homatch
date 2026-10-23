@@ -35,8 +35,15 @@ export interface StageTuning {
   model?: (typeof RESEARCH_MODELS)[number];
   reasoningEffort?: (typeof EFFORTS)[number];
   searchContextSize?: (typeof SEARCH_CONTEXT)[number];
+  /** Most web searches this stage may make (sent as max_tool_calls). Each costs $0.01 whatever the model. */
+  maxSearches?: number;
 }
-export type ResearchTuning = Partial<Record<ResearchStageKey, StageTuning>>;
+/** The customer report (verify-synthesis): which model writes it for a V2 job. */
+export interface ReportTuning {
+  model?: (typeof RESEARCH_MODELS)[number];
+}
+export type ResearchTuning = Partial<Record<ResearchStageKey, StageTuning>> & { report?: ReportTuning };
+const MAX_SEARCHES_CAP = 10;
 
 const pick = <T extends readonly string[]>(allowed: T, v: unknown): T[number] | undefined =>
   typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T[number]) : undefined;
@@ -55,9 +62,20 @@ export function parseResearchTuning(value: unknown): ResearchTuning {
     if (model) t.model = model;
     if (effort) t.reasoningEffort = effort;
     if (size) t.searchContextSize = size;
+    const n = Number(s.maxSearches);
+    if (Number.isInteger(n) && n >= 0 && n <= MAX_SEARCHES_CAP) t.maxSearches = n;
     if (Object.keys(t).length) out[k] = t;
   }
+  const reportModel = pick(RESEARCH_MODELS, o.report?.model);
+  if (reportModel) out.report = { model: reportModel };
   return out;
+}
+
+/** The model that writes a job's customer report: the V2 job's stamped choice, else the default. */
+export function reportModelFor(resultJson: unknown, fallback: string): string {
+  const e = resultJson && typeof resultJson === 'object' ? (resultJson as Record<string, any>)._engine : null;
+  if (e?.version !== 'V2') return fallback;
+  return parseResearchTuning(e.research).report?.model ?? fallback;
 }
 
 /** BASE first, everything that varies after it; unchanged when BASE is not found exactly once. */
@@ -84,6 +102,9 @@ export function v2ResearchRequest(stage: string, text: string, base: string, tun
   const extra: Record<string, unknown> = { prompt_cache_key: RESEARCH_PROMPT_CACHE_KEY };
   if (t.reasoningEffort) extra.reasoning = { effort: t.reasoningEffort };
   if (tools && t.searchContextSize) extra.tools = [{ type: 'web_search', search_context_size: t.searchContextSize }];
+  // 0 searches: the stage reasons over what it was given, with no web tool at all.
+  if (tools && t.maxSearches === 0) extra.tools = [];
+  else if (tools && t.maxSearches != null) extra.max_tool_calls = t.maxSearches;
   return { model: t.model ?? defaultModel, input: stablePrefixPrompt(text, base), extra };
 }
 

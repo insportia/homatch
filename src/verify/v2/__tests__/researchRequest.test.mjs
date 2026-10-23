@@ -29,6 +29,34 @@ test('a stage setting routes only that stage', () => {
   assert.equal(v2ResearchRequest('MARKET', BASE, BASE, tuning, 'gpt-5.6-terra', true).model, 'gpt-5.6-terra');
 });
 
+test('a stage can cap its web searches (each $0.01 whatever the model); 0 sends no web tool', () => {
+  const tuning = parseResearchTuning({
+    identity: { model: 'gpt-5.6-luna', maxSearches: 2 }, public_research: { maxSearches: 0 },
+    market: { maxSearches: 11 }, official_collection: { maxSearches: 1.5 },
+  });
+  assert.deepEqual(tuning, { identity: { model: 'gpt-5.6-luna', maxSearches: 2 }, public_research: { maxSearches: 0 } }, 'out-of-range and fractional caps are dropped');
+  assert.equal(v2ResearchRequest('IDENTITY', BASE, BASE, tuning, 'gpt-5.6-terra', true).extra.max_tool_calls, 2);
+  const none = v2ResearchRequest('PUBLIC_RESEARCH', BASE, BASE, tuning, 'gpt-5.6-terra', true).extra;
+  assert.deepEqual(none.tools, []);
+  assert.equal(none.max_tool_calls, undefined);
+  assert.equal(v2ResearchRequest('MARKET', BASE, BASE, tuning, 'gpt-5.6-terra', true).extra.max_tool_calls, undefined);
+});
+
+test('the report model is chosen per V2 job; V1 and unset keep the default', async () => {
+  const { reportModelFor } = await import('../researchRequest.ts');
+  const v2 = (research) => ({ _engine: { version: 'V2', research } });
+  assert.equal(reportModelFor(v2({ report: { model: 'gpt-5.6-terra' } }), 'gpt-5.6-luna'), 'gpt-5.6-terra');
+  assert.equal(reportModelFor(v2({}), 'gpt-5.6-luna'), 'gpt-5.6-luna');
+  assert.equal(reportModelFor(v2({ report: { model: 'gpt-4o' } }), 'gpt-5.6-luna'), 'gpt-5.6-luna', 'only priced models');
+  assert.equal(reportModelFor({ _engine: { version: 'V1', research: { report: { model: 'gpt-5.6-terra' } } } }, 'gpt-5.6-luna'), 'gpt-5.6-luna');
+  assert.equal(reportModelFor(null, 'gpt-5.6-luna'), 'gpt-5.6-luna');
+  const vs = readFileSync(fileURLToPath(new URL('../../../../supabase/functions/verify-synthesis/index.ts', import.meta.url)), 'utf8');
+  assert.match(vs, /const reportModel = reportModelFor\(rj, MODEL\);/);
+  assert.match(vs, /model: reportModel,\n\s+input: \[/);
+  assert.match(vs, /synthesisModel: reportModel,/);
+  assert.match(vs, /reportConsumption\(usage, usage\?\.model \|\| MODEL\)/, 'cost is priced at the model that wrote it');
+});
+
 test('BASE moves to the front; what preceded it follows, in order; nothing is lost', () => {
   const text = `KNOWN\nELIGIBILITY\n${BASE}\nAnswer strings in English. Query=X.`;
   const out = stablePrefixPrompt(text, BASE);

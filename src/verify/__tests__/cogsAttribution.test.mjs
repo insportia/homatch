@@ -120,7 +120,8 @@ test('research-agent prices every costUsage key at the research model (or what i
 test('verify-synthesis writes one VERIFY_REPORT cost_events row, after the report is saved, priced from the book', () => {
   const src = read('supabase/functions/verify-synthesis/index.ts');
   const fn = src.slice(src.indexOf('async function recordReportCost'), src.indexOf('A REPORT ALREADY WRITTEN CAN STILL BE WRONG'));
-  assert.match(fn, /reportConsumption\(usage, MODEL\)/, 'the model that wrote the report');
+  // A V2 job may route its report to another model (reportModelFor): the row names the model the usage says ran.
+  assert.match(fn, /reportConsumption\(usage, usage\?\.model \|\| MODEL\)/, 'the model that wrote the report');
   assert.match(fn, /from\('provider_price_book'\)/);
   assert.match(fn, /\.eq\('request_id', requestId\);\s*if \(\(count \?\? 0\) > 0\) return;/, 'checked before written');
   assert.match(fn, /provider: 'OPENAI',/, 'OPENAI: outside the customer meter (verify_job_cost counts non-OpenAI rows only)');

@@ -66,6 +66,7 @@ import { parseTranslateRequest } from '../../../src/verify/translation/textTrans
 import { translateTexts } from './translate.ts';
 import { costOperationFor, priceVerification, reportConsumption, reportCostRequestId, REPORT_STAGE, type ReportUsage } from '../../../src/verify/cogs.ts';
 import { pricingStateForDerivedCost } from '../_shared/providerCost.ts';
+import { reportModelFor } from '../../../src/verify/v2/researchRequest.ts';
 
 /**
  * GEL/USD context from the National Bank of Georgia.
@@ -431,7 +432,8 @@ async function persist(db: any, jobId: string, payload: unknown): Promise<void> 
  */
 async function recordReportCost(db: any, jobId: string, usage: ReportUsage | null, claimedAt: string | null): Promise<void> {
   try {
-    const consumption = reportConsumption(usage, MODEL);
+    // The model that actually wrote it (a V2 job may route the report to another model).
+    const consumption = reportConsumption(usage, usage?.model || MODEL);
     if (!consumption) return;
     const { data: row } = await db.from('research_jobs').select('synthesis_attempts').eq('id', jobId).maybeSingle();
     const requestId = reportCostRequestId(jobId, row?.synthesis_attempts ?? 0, claimedAt);
@@ -734,6 +736,8 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   /* The unit's register: this job's own, or — when its Service 176 task
      yielded none — the buyer's own earlier extract for the same exact unit. */
   let rj: any = job.result_json ?? {};
+  // V2 may route the report to a stronger model (VERIFY_V2 research routing, stamped on the job).
+  const reportModel = reportModelFor(rj, MODEL);
   let registerSource: { jobId: string; asOf: string | null; reused: true; freshExtractAdvised: boolean } | null = null;
   if (!hasOwnRegister(rj)) {
     const reused = await loadEarlierRegister(writer, job, rj);
@@ -859,7 +863,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: MODEL,
+          model: reportModel,
           input: [
             { role: 'system', content: system },
             { role: 'user', content: user },
@@ -872,7 +876,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
         raw = textOf(body);
         const u = body?.usage ?? null;
         usage = {
-          model: MODEL,
+          model: reportModel,
           inputTokens: typeof u?.input_tokens === 'number' ? u.input_tokens : null,
           outputTokens: typeof u?.output_tokens === 'number' ? u.output_tokens : null,
           cachedTokens: typeof u?.input_tokens_details?.cached_tokens === 'number' ? u.input_tokens_details.cached_tokens : null,
@@ -880,7 +884,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
       } else {
         // The provider's own words, not a summary of them.
         const detail = (await res.text()).slice(0, 500);
-        const reason = `SYNTHESIS_MODEL_UNAVAILABLE: ${MODEL} refused: HTTP ${res.status} ${detail}`;
+        const reason = `SYNTHESIS_MODEL_UNAVAILABLE: ${reportModel} refused: HTTP ${res.status} ${detail}`;
         if (MODEL_UNAVAILABLE_STATUSES.has(res.status)) throw new Error(reason);
         console.error(reason);
       }
@@ -909,7 +913,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   const propertyStory = keepStoryOnRebuild(job.synthesis_json, final.propertyStory, { autoUpgrade: opts.autoUpgrade, evolution: projectSignals?.evolution, kind: subjectKind?.kind ?? null });
   const built = {
     /* Which model actually wrote this, for COGS and for inspection. */
-    synthesisModel: MODEL,
+    synthesisModel: reportModel,
     synthesisModelPinned: true,
     report: {
       // v3: summary + keyFindings replace overallView/executiveSummary, and

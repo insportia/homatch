@@ -26,6 +26,7 @@ import {
 import { handleStudioAction, isStudioAction } from '../_shared/emailStudio.ts';
 import { broadcastStep } from '../_shared/emailMarketing/broadcast.ts';
 import { renderCampaignEmail } from '../../../src/emailMarketing/campaignTemplate.ts';
+import { emailSendGate } from '../../../src/emailMarketing/reviewState.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const corsHeaders = {
@@ -175,6 +176,20 @@ async function outreachSend(req: Request): Promise<Response> {
       }
     }
 
+    /* EMAIL STUDIO REVIEW GATE (owner brief §10): an email campaign goes out only approved, and
+       only with the content it was approved with. Nothing is reserved or sent before this. */
+    if (campaign.campaign_type === 'EMAIL') {
+      const gate = emailSendGate(campaign);
+      if (!gate.ok) {
+        return new Response(JSON.stringify({
+          blocked: true, reason: `REVIEW_${gate.reason}`,
+          message: gate.reason === 'APPROVAL_STALE'
+            ? 'This campaign changed after it was approved. Submit it for review again.'
+            : 'This campaign has not been approved for sending.',
+        }), { status: 423, headers: corsHeaders });
+      }
+    }
+
     /* CONTROLLED LIVE TEST (email only; see loadTestMode in _shared/emailMarketing/core.ts): an
        allowlisted owner's campaign whose EVERY list address is a Resend simulator or allowlisted
        address may send while sending is off for everyone else. */
@@ -311,7 +326,9 @@ async function outreachSend(req: Request): Promise<Response> {
     if (contactsErr) return new Response(JSON.stringify({ error: contactsErr.message }), { status: 500, headers: corsHeaders });
 
     // Mark campaign RUNNING
-    if (['DRAFT', 'READY', 'PAUSED'].includes(campaign.status)) {
+    /* Email reaches here only approved (gate above); SMS/calls keep their historical start states. */
+    const startable = campaign.campaign_type === 'EMAIL' ? ['APPROVED', 'SCHEDULED', 'PAUSED'] : ['DRAFT', 'READY', 'PAUSED'];
+    if (startable.includes(campaign.status)) {
       await supabase.from('outreach_campaigns').update({ status: 'RUNNING', updated_at: new Date().toISOString() }).eq('id', campaign_id);
     }
 

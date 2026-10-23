@@ -116,7 +116,7 @@ export function assessCampaign(input: RiskInput): RiskResult {
     for (const f of r.findings) push(f);
     if (!r.ok) push({ code: 'LINK_UNREACHABLE', severity: 'MEDIUM', where: r.url, detail: r.error ?? String(r.status ?? '') });
   }
-  if (/<script\b|\son[a-z]+\s*=|<iframe\b|<object\b|<embed\b|<form\b/i.test(input.html)) {
+  if (/<script\b|<[^>]*\son[a-z]+\s*=|<iframe\b|<object\b|<embed\b|<form\b|<meta\b[^>]*http-equiv/i.test(input.html)) {
     push({ code: 'HTML_ACTIVE_CONTENT', severity: 'BLOCK', where: 'body' });
   }
 
@@ -145,6 +145,8 @@ export function assessCampaign(input: RiskInput): RiskResult {
   if (domain.verdict !== 'ALLOW' && !findings.some((f) => f.severity === 'BLOCK' || f.code.startsWith('GAMBLING_'))) {
     push({ code: 'OFF_DOMAIN', severity: 'MEDIUM', where: 'body', detail: 'not clearly real estate' });
   }
+  const placeholders = [...all.matchAll(/\[([^\]\n]{2,60})\](?!\()/g)].map((m) => m[1]);
+  if (placeholders.length) push({ code: 'TEMPLATE_PLACEHOLDER', severity: 'HIGH', where: 'body', detail: [...new Set(placeholders)].slice(0, 4).join(', ') });
   if (capsRatio(input.subject) > 0.6) push({ code: 'SUBJECT_ALL_CAPS', severity: 'LOW', where: 'subject' });
   if (/[!?]{3,}/.test(input.subject)) push({ code: 'SUBJECT_PUNCTUATION', severity: 'LOW', where: 'subject' });
   if (!input.subject.trim()) push({ code: 'SUBJECT_MISSING', severity: 'HIGH', where: 'subject' });

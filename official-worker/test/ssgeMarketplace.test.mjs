@@ -114,8 +114,8 @@ test('a listing that does not match the search is filtered with its reason, not 
  reports=[];result=await acquireSsge(request(s),{...options(s),client:clientFor([inactive]),report:async r=>reports.push(r)});
  assert.equal(result.status,'PARTIAL');assert.equal(result.delivered,0);
 });
-test('SS.ge reads only its first 3 result pages and reports the cap as a normal completion',async()=>{
- const s=fixture.scenarios[0];assert.equal(SSGE_PAGE_CAP,3);
+test('SS.ge reads only result pages 1 and 2 and reports the cap as a normal completion',async()=>{
+ const s=fixture.scenarios[0];assert.equal(SSGE_PAGE_CAP,2);
  // 4,829 matches (production search 72050455): far more pages than the cap allows.
  const pages=[],details=[];
  const client=new SsgePublicClient({locations:fixture.locations,session:{authorize:async r=>r},http:{fetchImpl:async(url,init)=>{
@@ -127,17 +127,17 @@ test('SS.ge reads only its first 3 result pages and reports the cap as a normal 
  }}});
  const reports=[];
  const result=await acquireSsge(request(s),{...options(s),client,report:async r=>{assert.equal(validateWorkerReport(r,'ss-ge').ok,true);reports.push(r);}});
- assert.deepEqual(pages,[1,2,3],'page 4 is never requested');
- assert.equal(details.length,3,'detail reads are bounded to the listings on the capped pages');
- assert.equal(result.status,'COMPLETE');assert.equal(result.delivered,3);assert.equal(result.pagesVisited,3);
+ assert.deepEqual(pages,[1,2],'page 3 is never requested');
+ assert.equal(details.length,2,'detail reads are bounded to the listings on the capped pages');
+ assert.equal(result.status,'COMPLETE');assert.equal(result.delivered,2);assert.equal(result.pagesVisited,2);
  const last=reports.at(-1);
  assert.equal(last.status,'COMPLETE');assert.equal(last.discoveredCount,4829);
  assert.deepEqual(last.errors.map(e=>e.code),['PAGE_CAP_REACHED']);
- assert.equal(last.queryApplied.pagesRead,'3');assert.equal(last.queryApplied.pageCap,'3');
+ assert.equal(last.queryApplied.pagesRead,'2');assert.equal(last.queryApplied.pageCap,'2');
  // A source with fewer pages than the cap still ends on its own last page, without a cap note.
  const short=[];await acquireSsge(request(s),{...options(s),report:async r=>short.push(r)});
  assert.ok(!short.at(-1).errors.some(e=>e.code==='PAGE_CAP_REACHED'));
- await assert.rejects(acquireSsge(request(s),{...options(s),pageCap:4,report:async()=>{}}),/page cap/);
+ for(const pageCap of [3,4,100])await assert.rejects(acquireSsge(request(s),{...options(s),pageCap,report:async()=>{}}),/page cap/);
 });
 test('expired deadline, cancelled run, disabled or unconfigured runtime do not make source requests',async()=>{
  let calls=0;const reports=[];
@@ -193,4 +193,22 @@ test('the start-up probe reports status and server only, never a token',async()=
  const thrown=await probeSsgePublicPage({fetchImpl:async()=>{throw Error('connect ECONNREFUSED');}});
  assert.equal(thrown.ok,false);assert.match(thrown.error,/ECONNREFUSED/);
  assert.ok(!JSON.stringify(denied).includes('eyJ'));
+});
+test('page 2 failing keeps page 1: PARTIAL with page-1 listings ingested, page 3 never requested',async()=>{
+ const s=fixture.scenarios[0];const pages=[];
+ const client=new SsgePublicClient({locations:fixture.locations,session:{authorize:async r=>r},http:{fetchImpl:async(url,init)=>{
+  if(String(url).includes('legend-search-count'))return Response.json({cardCount:4829,applicationCount:4829});
+  if(String(url).includes('LegendSearch')){const {page}=JSON.parse(init.body);pages.push(page);
+   if(page===2)return new Response('upstream error',{status:502});
+   const id=String(Number(s.list.applicationId)+page);
+   return Response.json({realStateItemModel:[{...s.list,applicationId:id,detailUrl:s.list.detailUrl.replace(/\d+$/,id)}],totalCount:4829});}
+  if(String(url).includes('/details')){const id=new URL(url).searchParams.get('applicationId');return Response.json({...s.detail,applicationId:id});}
+  throw Error('Unexpected fixture request');
+ }}});
+ const reports=[];
+ const result=await acquireSsge(request(s),{...options(s),client,report:async r=>reports.push(r)});
+ assert.ok(!pages.includes(3),'page 3 is never requested, not even after a failure');
+ assert.equal(result.delivered,1,'page 1 listing kept');
+ assert.equal(result.status,'PARTIAL');
+ assert.equal(reports.filter(r=>r.listings.length).flatMap(r=>r.listings).length,1);
 });

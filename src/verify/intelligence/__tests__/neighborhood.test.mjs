@@ -404,6 +404,34 @@ test('timeouts and capacity errors exhaust the bounded plan and return null — 
   assert.equal(f.calls.length, 4, 'never more than four requests');
 });
 
+test('a hung main server is hedged: the mirror answers and its answer is used (prod 176264ba)', async () => {
+  const calls = [];
+  const f = async (url, init = {}) => {
+    const host = new URL(url).host;
+    calls.push(host);
+    if (host === 'overpass-api.de') {
+      return await new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))));
+    }
+    return { ok: true, status: 200, text: async () => JSON.stringify(OVERPASS_KRTSANISI_FIXTURE) };
+  };
+  const attempts = [];
+  const json = await fetchOverpass('q', f, attempts, { backoffMs: 1, attemptMs: 2_000, budgetMs: 10_000, hedgeMs: 20 });
+  assert.ok(json, 'the mirror answer is returned');
+  assert.deepEqual(calls, ['overpass-api.de', 'overpass.private.coffee']);
+  assert.deepEqual(attempts.map((a) => [a.host, a.outcome]), [['overpass.private.coffee', 'OK'], ['overpass-api.de', 'TIMEOUT']]);
+});
+
+test('a fast answer is never hedged: one request', async () => {
+  const f = overpassResponder([OVERPASS_KRTSANISI_FIXTURE]);
+  const attempts = [];
+  assert.ok(await fetchOverpass('q', f, attempts, { ...fast, hedgeMs: 5_000 }));
+  assert.deepEqual(f.calls, ['overpass-api.de']);
+});
+
+test('the build-time box hedges inside its 25 s', () => {
+  assert.ok((SYNTHESIS_OVERPASS.hedgeMs ?? 8_000) < SYNTHESIS_OVERPASS.attemptMs, 'the mirror would never start inside the build');
+});
+
 test('the lookup stops when its total budget is spent', async () => {
   let t = 0;
   const f = overpassResponder([503]);

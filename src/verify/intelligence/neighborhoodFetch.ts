@@ -112,6 +112,7 @@ async function geocodeOnce(q: string, fetchImpl: FetchLike, diag?: string[]): Pr
 export const OVERPASS_BUDGET_MS = 80_000;
 export const OVERPASS_ATTEMPT_MS = 45_000;
 export const OVERPASS_BACKOFF_MS = 4_000;
+export const OVERPASS_HEDGE_MS = 8_000;
 const OVERPASS_MAX_ATTEMPTS = 4;
 /** Answers that mean "busy, ask again", not "your query is wrong". */
 const OVERPASS_RETRYABLE = new Set([429, 502, 503, 504]);
@@ -128,6 +129,8 @@ export interface OverpassOptions {
   budgetMs?: number;
   attemptMs?: number;
   backoffMs?: number;
+  /** A request unanswered this long is joined by one to the other server. */
+  hedgeMs?: number;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -144,55 +147,105 @@ export async function fetchOverpass(
   const budget = opts.budgetMs ?? OVERPASS_BUDGET_MS;
   const attemptCap = opts.attemptMs ?? OVERPASS_ATTEMPT_MS;
   const backoff = opts.backoffMs ?? OVERPASS_BACKOFF_MS;
+  const hedgeMs = opts.hedgeMs ?? OVERPASS_HEDGE_MS;
   const start = now();
   // The main server first, and again after a pause: it sheds load with a fast
   // 502 and then answers (live, 2026-10-23), while the mirror tends to hang.
   const plan = [OVERPASS_ENDPOINTS[0], OVERPASS_ENDPOINTS[0], OVERPASS_ENDPOINTS[1], OVERPASS_ENDPOINTS[0]].slice(0, OVERPASS_MAX_ATTEMPTS);
-  for (let i = 0; i < plan.length; i++) {
-    const endpoint = plan[i];
+  let sent = 0;
+
+  /** One request, never throwing: its outcome, and an abort for the loser of a hedge. */
+  const request = (endpoint: string, cap: number) => {
     const host = new URL(endpoint).host;
-    const left = budget - (now() - start);
-    if (left < 5_000) {
-      attempts.push({ host, outcome: 'BUDGET', ms: 0, bytes: null });
-      break;
-    }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), cap);
     const t0 = now();
-    let outcome = 'NETWORK';
-    let bytes: number | null = null;
-    try {
-      const json = await timed(Math.min(attemptCap, left), async (signal) => {
+    sent++;
+    const done = (async (): Promise<{ attempt: OverpassAttempt; json: unknown | null }> => {
+      let outcome = 'NETWORK';
+      let bytes: number | null = null;
+      try {
         const res = await fetchImpl(endpoint, {
           method: 'POST',
-          signal,
+          signal: ctrl.signal,
           headers: { 'User-Agent': NEIGHBORHOOD_USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
           body: `data=${encodeURIComponent(query)}`,
         });
-        if (!res.ok) {
-          outcome = String(res.status);
-          return null;
+        let json: unknown | null = null;
+        if (!res.ok) outcome = String(res.status);
+        else {
+          try {
+            if (typeof res.text !== 'function') json = await res.json();
+            else {
+              const text = await res.text();
+              bytes = text.length;
+              json = JSON.parse(text);
+            }
+          } catch (e) {
+            if ((e as Error)?.name === 'AbortError') throw e;
+            outcome = 'BAD_JSON';
+          }
         }
-        try {
-          if (typeof res.text !== 'function') return await res.json();
-          const text = await res.text();
-          bytes = text.length;
-          return JSON.parse(text);
-        } catch (e) {
-          if ((e as Error)?.name === 'AbortError') throw e;
-          outcome = 'BAD_JSON';
-          return null;
+        if (json && !overpassFailed(json)) return { attempt: { host, outcome: 'OK', ms: now() - t0, bytes }, json };
+        if (json) outcome = 'REMARK';
+      } catch (e) {
+        outcome = (e as Error)?.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK';
+      } finally {
+        clearTimeout(timer);
+      }
+      return { attempt: { host, outcome, ms: now() - t0, bytes }, json: null };
+    })();
+    return { done, abort: () => ctrl.abort() };
+  };
+
+  for (let i = 0; sent < plan.length && i < plan.length; i++) {
+    const endpoint = plan[i];
+    const left = budget - (now() - start);
+    if (left < 5_000) {
+      attempts.push({ host: new URL(endpoint).host, outcome: 'BUDGET', ms: 0, bytes: null });
+      break;
+    }
+    const cap = Math.min(attemptCap, left);
+    const first = request(endpoint, cap);
+    /* A HUNG SERVER IS HEDGED, NOT WAITED OUT (prod 176264ba, 2026-10-23):
+       overpass-api.de timed out on every try (20 s, 45 s, 35 s) and the
+       mirror never got its turn. A request still unanswered after hedgeMs is
+       joined by one to the other server; the first good answer wins and the
+       other is aborted. Fast refusals keep the plan above. */
+    let hedgeTimer: ReturnType<typeof setTimeout> | undefined;
+    const hedged = new Promise<'HEDGE'>((r) => { hedgeTimer = setTimeout(() => r('HEDGE'), hedgeMs); });
+    const early = await Promise.race([first.done, hedged]);
+    clearTimeout(hedgeTimer);
+    let results: { attempt: OverpassAttempt; json: unknown | null }[];
+    if (early !== 'HEDGE' || sent >= plan.length || budget - (now() - start) < 5_000) {
+      results = [early !== 'HEDGE' ? early : await first.done];
+    } else {
+      const other = endpoint === OVERPASS_ENDPOINTS[0] ? OVERPASS_ENDPOINTS[1] : OVERPASS_ENDPOINTS[0];
+      const second = request(other, Math.min(attemptCap, budget - (now() - start)));
+      const pair = [first, second];
+      results = [];
+      const winner = await new Promise<{ attempt: OverpassAttempt; json: unknown | null } | null>((resolve) => {
+        let pending = 2;
+        for (const r of pair) {
+          r.done.then((out) => {
+            results.push(out);
+            if (out.json) resolve(out);
+            else if (--pending === 0) resolve(null);
+          });
         }
       });
-      if (json && !overpassFailed(json)) {
-        attempts.push({ host, outcome: 'OK', ms: now() - t0, bytes });
-        return json;
+      if (winner) {
+        for (const r of pair) r.abort();
+        // The loser settles as TIMEOUT once aborted; it is recorded too.
+        await Promise.all(pair.map((r) => r.done));
       }
-      if (json) outcome = 'REMARK';
-    } catch (e) {
-      outcome = (e as Error)?.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK';
     }
-    attempts.push({ host, outcome, ms: now() - t0, bytes });
+    attempts.push(...results.map((r) => r.attempt));
+    const ok = results.find((r) => r.json);
+    if (ok) return ok.json;
     // A busy server answers fast; give it a moment before the next try.
-    if (OVERPASS_RETRYABLE.has(Number(outcome)) && i < plan.length - 1) await sleep(backoff);
+    const last = results.at(-1)?.attempt.outcome;
+    if (OVERPASS_RETRYABLE.has(Number(last)) && sent < plan.length) await sleep(backoff);
   }
   return null;
 }

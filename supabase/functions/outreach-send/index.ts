@@ -27,6 +27,7 @@ import { handleStudioAction, isStudioAction } from '../_shared/emailStudio.ts';
 import { broadcastStep } from '../_shared/emailMarketing/broadcast.ts';
 import { renderCampaignEmail } from '../../../src/emailMarketing/campaignTemplate.ts';
 import { emailSendGate } from '../../../src/emailMarketing/reviewState.ts';
+import { revalidateLinksBeforeDispatch } from '../_shared/emailMarketing/studioCampaigns.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const corsHeaders = {
@@ -333,6 +334,25 @@ async function outreachSend(req: Request): Promise<Response> {
     // Mark campaign RUNNING
     /* Email reaches here only approved (gate above); SMS/calls keep their historical start states. */
     const startable = campaign.campaign_type === 'EMAIL' ? ['APPROVED', 'SCHEDULED', 'PAUSED'] : ['DRAFT', 'READY', 'PAUSED'];
+    {
+      /* Owner brief §8: destinations can change after approval, so an email campaign's links are
+         followed again right before its FIRST dispatch (nothing sent yet — a scheduled campaign
+         arrives here already RUNNING). A hard finding stops it for a human. */
+      if (campaign.campaign_type === 'EMAIL' && excludeIds.length === 0 && (contacts ?? []).length > 0 && campaign.html_body) {
+        const recheck = await revalidateLinksBeforeDispatch(String(campaign.html_body));
+        if (recheck.blocked) {
+          await supabase.from('outreach_campaigns').update({
+            status: 'COMPLIANCE_PAUSED', paused_reason: 'A link now leads to a prohibited or unsafe destination',
+            risk_level: 'BLOCKED', risk_reasons: recheck.findings, risk_checked_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+          }).eq('id', campaign_id);
+          await supabase.from('email_campaign_reviews').insert({
+            campaign_id, owner_id: campaign.owner_id, actor_kind: 'SYSTEM', action: 'BLOCKED',
+            reason: 'link re-check before dispatch', content_hash: campaign.content_hash, risk_level: 'BLOCKED', risk_findings: recheck.findings,
+          });
+          return new Response(JSON.stringify({ blocked: true, reason: 'REVIEW_LINK_RECHECK_FAILED' }), { status: 423, headers: corsHeaders });
+        }
+      }
+    }
     if (startable.includes(campaign.status)) {
       await supabase.from('outreach_campaigns').update({ status: 'RUNNING', updated_at: new Date().toISOString() }).eq('id', campaign_id);
     }
@@ -526,7 +546,7 @@ async function outreachSend(req: Request): Promise<Response> {
           subject: mergeFields(campaign.subject || campaign.name, contact.full_name, false),
           bodyHtml: campaign.html_body ? mergeFields(campaign.html_body, contact.full_name, true) : null,
           bodyText: campaign.text_body ? mergeFields(campaign.text_body, contact.full_name, false) : null,
-          senderName: campaign.sender_name, lang: campaign.language, unsubscribeUrl: unsubUrl,
+          senderName: campaign.sender_name, lang: campaign.language, unsubscribeUrl: unsubUrl, preheader: campaign.preview_text ?? null,
         });
         /* Replies come back to HOMATCH through this recipient's own opaque route, unless the
            campaign deliberately names its own Reply-To. */

@@ -21,6 +21,9 @@ import {
   type EmailSettings, type Owner,
 } from '../_shared/emailMarketing/core.ts';
 import { renderCampaignEmail } from '../../../src/emailMarketing/campaignTemplate.ts';
+import { handleStudioCampaignAction } from '../_shared/emailMarketing/studioCampaigns.ts';
+import { handleCopilot } from '../_shared/emailMarketing/copilot.ts';
+import { assessCampaign } from '../../../src/emailMarketing/risk/engine.ts';
 
 type Sb = ReturnType<typeof serviceClient>;
 
@@ -62,6 +65,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       case 'domain_disconnect': return await domainDisconnect(sb, settings, owner, body);
       case 'inbox_reply': return await inboxReply(sb, settings, owner, body);
       case 'campaign_test': return await campaignTest(sb, settings, owner, body);
+      case 'campaign_save': case 'campaign_check': case 'campaign_submit':
+        return await handleStudioCampaignAction(action, { sb, callerSb: caller.sb, settings, owner, body });
+      case 'copilot': return await handleCopilot(sb, owner, body);
       case 'usage_refresh': {
         const { data: admin } = await caller.sb.rpc('is_admin');
         if (admin !== true) return json({ ok: false, error: 'FORBIDDEN' }, 403);
@@ -277,11 +283,16 @@ async function campaignTest(sb: Sb, s: EmailSettings, owner: Owner, body: Record
   const limit = await checkRateLimit(sb, 'email_campaign_test', 20, 3600, { userId: owner.authId });
   if (!limit.allowed) return json({ ok: false, error: 'RATE_LIMITED' }, 429);
   const { data: row } = await sb.from('outreach_campaigns')
-    .select('id, name, subject, html_body, text_body, sender_name, language, campaign_type')
+    .select('id, name, subject, preview_text, html_body, text_body, sender_name, language, campaign_type')
     .eq('id', String(body.campaignId ?? '')).eq('owner_id', owner.authId).maybeSingle();
-  const c = row as { id: string; name: string; subject: string | null; html_body: string | null; text_body: string | null; sender_name: string | null; language: string | null; campaign_type: string } | null;
+  const c = row as { id: string; name: string; subject: string | null; preview_text?: string | null; html_body: string | null; text_body: string | null; sender_name: string | null; language: string | null; campaign_type: string } | null;
   if (!c || c.campaign_type !== 'EMAIL') return json({ ok: false, error: 'CAMPAIGN_NOT_FOUND' }, 404);
   if (!c.text_body?.trim() && !c.html_body?.trim()) return json({ ok: false, error: 'EMPTY_CAMPAIGN' }, 422);
+  /* Not even to the owner's own inbox: a hard prohibition (gambling, phishing, unsafe link) is
+     refused before anything is sent. Static checks only; the full engine runs on submit. */
+  const statics = assessCampaign({ subject: c.subject ?? c.name, html: c.html_body ?? '', text: c.text_body, senderVerified: true });
+  const hard = statics.findings.filter((f) => f.severity === 'BLOCK');
+  if (hard.length) return json({ ok: false, error: 'BLOCKED_CONTENT', findings: hard }, 422);
   const to = owner.email;
   if (!to) return json({ ok: false, error: 'NO_ACCOUNT_EMAIL' }, 422);
 
@@ -301,7 +312,7 @@ async function campaignTest(sb: Sb, s: EmailSettings, owner: Owner, body: Record
     subject: `[TEST] ${merge(c.subject || c.name)}`,
     bodyHtml: c.html_body ? merge(c.html_body) : null,
     bodyText: c.text_body ? merge(c.text_body) : null,
-    senderName: c.sender_name, lang: c.language,
+    senderName: c.sender_name, lang: c.language, preheader: c.preview_text ?? null,
     /* A test has no recipient row to sign: the footer link points at the owner's own settings. */
     unsubscribeUrl: 'https://www.homatch.live/settings',
   });

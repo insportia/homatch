@@ -83,6 +83,7 @@ async function save({ sb, callerSb, owner, body }: Ctx): Promise<Response> {
   if (has('name')) patch.name = str(p.name, 160) || 'Untitled campaign';
   if (has('objective')) patch.objective = str(p.objective, 300) || null;
   if (has('description')) patch.description = str(p.description, 1000) || null;
+  if (has('audience_note')) patch.audience_note = str(p.audience_note, 300) || null;
   if (has('language')) patch.language = LANGS.includes(String(p.language)) ? p.language : 'en';
   if (has('subject')) patch.subject = str(p.subject, 200) || null;
   if (has('preview_text')) patch.preview_text = str(p.preview_text, 200) || null;
@@ -121,7 +122,7 @@ async function save({ sb, callerSb, owner, body }: Ctx): Promise<Response> {
   if (has('property_id')) patch.property_id = UUID.test(String(p.property_id ?? '')) ? p.property_id : null;
   patch.updated_at = new Date().toISOString();
 
-  const cols = 'id, name, objective, description, language, subject, preview_text, sender_name, sender_email, reply_to, contact_list_id, contact_list_ids, audience_filter, design, status, content_hash, approved_content_hash, risk_level, risk_score, risk_reasons, review_note, scheduled_at, timezone, updated_at, created_at, sent_count, delivered_count, bounce_count, complaint_count, unsubscribe_count, failed_count, audience_count';
+  const cols = 'id, name, objective, description, audience_note, language, subject, preview_text, sender_name, sender_email, reply_to, contact_list_id, contact_list_ids, audience_filter, design, status, content_hash, approved_content_hash, risk_level, risk_score, risk_reasons, review_note, scheduled_at, timezone, updated_at, created_at, sent_count, delivered_count, bounce_count, complaint_count, unsubscribe_count, failed_count, audience_count';
   if (!id) {
     const { data, error } = await callerSb.from('outreach_campaigns')
       .insert({ ...patch, owner_id: owner.authId, campaign_type: 'EMAIL', status: 'DRAFT', name: patch.name ?? 'Untitled campaign' })
@@ -236,7 +237,7 @@ async function submit(ctx: Ctx): Promise<Response> {
     risk_reasons: risk.findings.slice(0, 60), risk_checked_at: now,
     approved_content_hash: outcome === 'APPROVED' ? c.content_hash : null,
     approved_at: outcome === 'APPROVED' ? now : null, approved_by: null,
-    review_note: outcome === 'REJECTED' ? 'Blocked by the Campaign Risk Engine' : null,
+    review_note: null, /* a system rejection is explained by its findings, not a note */
     audience_count: Number(audience?.eligible ?? 0), updated_at: now,
   }).eq('id', c.id).eq('content_hash', c.content_hash ?? '').in('status', SUBMITTABLE).select('id, status').maybeSingle();
   if (error) return json({ ok: false, error: 'SUBMIT_FAILED' }, 500);
@@ -247,7 +248,8 @@ async function submit(ctx: Ctx): Promise<Response> {
     {
       campaign_id: c.id, owner_id: owner.authId, actor_id: null, actor_kind: 'SYSTEM',
       action: outcome === 'APPROVED' ? 'AUTO_APPROVED' : outcome === 'REJECTED' ? 'BLOCKED' : 'HELD_FOR_REVIEW',
-      reason: outcome === 'UNDER_REVIEW' ? (policy === 'MANUAL_ALL' && risk.verdict === 'ALLOW' ? 'review policy: every campaign is reviewed' : 'risk findings need a human') : null,
+      /* Reason CODES for system decisions; the UI words them in the reader's language (ems_reason_*). */
+      reason: outcome === 'UNDER_REVIEW' ? (policy === 'MANUAL_ALL' && risk.verdict === 'ALLOW' ? 'POLICY_MANUAL_ALL' : 'RISK_FINDINGS') : null,
       content_hash: c.content_hash, risk_level: level, risk_score: risk.score, risk_findings: risk.findings.slice(0, 60),
     },
   ];

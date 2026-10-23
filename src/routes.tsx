@@ -148,7 +148,14 @@ const AdminMetaAdsPage = lazyRoute(() => import('./pages/admin/AdminMetaAdsPage'
 const AdminDiscoveryPage = lazyRoute(() => import('./pages/admin/AdminDiscoveryPage'));
 const CommunitiesPage = lazyRoute(() => import('./pages/outreach/CommunitiesPage'));
 const ContactListsPage = lazyRoute(() => import('./pages/outreach/ContactListsPage'));
-const EmailCampaignsPage = lazyRoute(() => import('./pages/outreach/EmailCampaignsPage'));
+/* Email Studio (owner brief 2026-10-24): the email product's screens. */
+const EmailDashboardPage = lazyRoute(() => import('./pages/outreach/studio/EmailDashboardPage'));
+const EmailCampaignListPage = lazyRoute(() => import('./pages/outreach/studio/EmailCampaignListPage'));
+const EmailCampaignWorkspacePage = lazyRoute(() => import('./pages/outreach/studio/EmailCampaignWorkspacePage'));
+const EmailTemplatesPage = lazyRoute(() => import('./pages/outreach/studio/EmailTemplatesPage'));
+const EmailAnalyticsPage = lazyRoute(() => import('./pages/outreach/studio/EmailAnalyticsPage'));
+const EmailDeliverabilityPage = lazyRoute(() => import('./pages/outreach/studio/EmailDeliverabilityPage'));
+const AdminEmailReviewPage = lazyRoute(() => import('./pages/admin/AdminEmailReviewPage'));
 const EmailInboxPage = lazyRoute(() => import('./pages/outreach/EmailInboxPage'));
 const EmailPlanPage = lazyRoute(() => import('./pages/outreach/EmailPlanPage'));
 const EmailDomainsPage = lazyRoute(() => import('./pages/outreach/EmailDomainsPage'));
@@ -524,7 +531,7 @@ const routeTable: RouteConfig[] = [
   { name: 'Outreach Hub',      path: '/outreach/hub',             element: <OutreachHubPage />,  visible: false },
   { name: 'Communities',       path: '/outreach/communities',     element: <CommunitiesPage /> },
   { name: 'Contact Lists',     path: '/outreach/contact-lists',   element: <ContactListsPage /> },
-  { name: 'Email Campaigns',   path: '/outreach/email',           element: <EmailCampaignsPage /> },
+  { name: 'Email Campaigns',   path: '/outreach/email',           element: <EmailDashboardPage /> },
   { name: 'SMS Campaigns',     path: '/outreach/sms',             element: <SmsCampaignsPage /> },
   /*
    * /outreach/calls IS the AI Call Center, and it mounts CallsPage.
@@ -602,7 +609,12 @@ const routeTable: RouteConfig[] = [
 
   { name: 'Email Contacts',    path: '/outreach/email/contacts',     element: <ContactsPage />,         visible: false },
   { name: 'Email Lists',       path: '/outreach/email/lists',        element: <ContactListsPage />,     visible: false },
-  { name: 'Email Analytics',   path: '/outreach/email/analytics',    element: <CommunicationsAnalyticsPage />, visible: false },
+  { name: 'Email Analytics',   path: '/outreach/email/analytics',    element: <EmailAnalyticsPage />,   visible: false },
+  { name: 'Email Campaign List', path: '/outreach/email/campaigns',  element: <EmailCampaignListPage />, visible: false },
+  { name: 'Email New Campaign', path: '/outreach/email/campaigns/new', element: <EmailCampaignWorkspacePage />, visible: false },
+  { name: 'Email Campaign Workspace', path: '/outreach/email/campaigns/:id', element: <EmailCampaignWorkspacePage />, visible: false },
+  { name: 'Email Templates',   path: '/outreach/email/templates',    element: <EmailTemplatesPage />,   visible: false },
+  { name: 'Email Deliverability', path: '/outreach/email/deliverability', element: <EmailDeliverabilityPage />, visible: false },
   /* Email Marketing: replies (reply-routed CRM inbox), plan & usage (wallet-paid plans), sending domains. */
   { name: 'Email Inbox',       path: '/outreach/email/inbox',        element: <EmailInboxPage />,       visible: false },
   { name: 'Email Plan',        path: '/outreach/email/plan',         element: <EmailPlanPage />,        visible: false },
@@ -702,6 +714,7 @@ const routeTable: RouteConfig[] = [
   { name: 'Admin Settings',    path: '/admin/settings',           element: adminWrap(<AdminSettingsPage />),    adminOnly: true },
   { name: 'Admin Health',      path: '/admin/health',             element: adminWrap(<AdminHealthPage />),      adminOnly: true },
   { name: 'Admin Risk',        path: '/admin/risk',               element: adminWrap(<AdminRiskPage />),        adminOnly: true },
+  { name: 'Admin Email Review', path: '/admin/email-review',       element: adminWrap(<AdminEmailReviewPage />), adminOnly: true },
   { name: 'Site Studio',       path: '/admin/site-studio',        element: adminWrap(<SiteStudioPage />),       adminOnly: true },
   /* The other 4,773 strings. Site Studio edits nine marketing pages;
      everything a signed-in customer reads lived only in the bundle. */

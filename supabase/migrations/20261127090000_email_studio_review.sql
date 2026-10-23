@@ -30,6 +30,7 @@ alter table public.outreach_campaigns
   add column if not exists preview_text text,
   add column if not exists objective text,
   add column if not exists description text,
+  add column if not exists audience_note text,
   add column if not exists contact_list_ids uuid[],
   add column if not exists audience_filter jsonb,
   add column if not exists content_hash text,
@@ -159,7 +160,7 @@ begin
     if old.status = any (v_review_states) or old.approved_content_hash is not null then
       new.status := 'DRAFT'; new.approved_content_hash := null; new.approved_at := null; new.approved_by := null;
       new.scheduled_at := null;
-      perform public.email_campaign_log_owner(old.id, 'APPROVAL_INVALIDATED', 'content changed after submission', new.content_hash);
+      perform public.email_campaign_log_owner(old.id, 'APPROVAL_INVALIDATED', 'CONTENT_CHANGED', new.content_hash);
       return new;
     end if;
   end if;
@@ -175,7 +176,7 @@ begin
       raise exception 'EMAIL_STATUS_TRANSITION_NOT_ALLOWED: % -> %', old.status, new.status using errcode = '42501';
     end if;
     if new.status = 'DRAFT' and old.status in ('READY_FOR_REVIEW', 'UNDER_REVIEW', 'REVIEW_REQUIRED') then
-      perform public.email_campaign_log_owner(old.id, 'APPROVAL_INVALIDATED', 'withdrawn from review', new.content_hash);
+      perform public.email_campaign_log_owner(old.id, 'APPROVAL_INVALIDATED', 'WITHDRAWN', new.content_hash);
     elsif new.status in ('SCHEDULED', 'APPROVED', 'PAUSED', 'CANCELLED') then
       perform public.email_campaign_log_owner(old.id,
               case new.status when 'SCHEDULED' then 'SCHEDULED' when 'APPROVED' then 'UNSCHEDULED' when 'PAUSED' then 'PAUSED' else 'CANCELLED' end,

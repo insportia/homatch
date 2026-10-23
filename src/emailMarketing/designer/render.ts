@@ -124,6 +124,20 @@ function columnsHtml(b: ColumnsBlock, theme: Theme, width: number, dirAlign: 'le
 </tr></table>`;
 }
 
+/**
+ * One block as the designer canvas shows it: the SAME renderer output (escaped, inline-styled,
+ * no <style>, no script) inside its padded cell, so what the canvas shows is what is sent.
+ */
+export function renderBlockHtml(b: Block, theme: Theme, rtl = false): string {
+  const dirAlign = rtl ? 'right' : 'left';
+  const inner = b.type === 'columns'
+    ? columnsHtml(b, theme, theme.width, dirAlign)
+    : leafHtml(b, theme, theme.width - (b.padding ? b.padding.l + b.padding.r : 64), dirAlign);
+  const bg = b.background ? `background-color:${b.background};` : '';
+  const border = b.borderWidth && b.borderColor ? `border:${b.borderWidth}px solid ${b.borderColor};` : '';
+  return `<div style="padding:${padCss(b.padding)};${bg}${border}">${inner}</div>`;
+}
+
 export interface RenderedBody { html: string; text: string; theme: Theme }
 
 /** The designed body: one self-contained table (plus the marker carrying canvas/width). */

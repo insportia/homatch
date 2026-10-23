@@ -35,7 +35,8 @@ const hook = readFileSync('src/hooks/useOutreachProviderStatus.ts', 'utf8');
  * deleted along with the third one.
  */
 const PAGES = {
-  email: readFileSync('src/pages/outreach/EmailCampaignsPage.tsx', 'utf8'),
+  /* The email sending-status strip lives on the Email Studio dashboard (it replaced EmailCampaignsPage). */
+  email: readFileSync('src/pages/outreach/studio/EmailDashboardPage.tsx', 'utf8'),
   sms: readFileSync('src/pages/outreach/SmsCampaignsPage.tsx', 'utf8'),
 };
 

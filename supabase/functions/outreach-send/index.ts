@@ -347,7 +347,7 @@ async function outreachSend(req: Request): Promise<Response> {
           }).eq('id', campaign_id);
           await supabase.from('email_campaign_reviews').insert({
             campaign_id, owner_id: campaign.owner_id, actor_kind: 'SYSTEM', action: 'BLOCKED',
-            reason: 'link re-check before dispatch', content_hash: campaign.content_hash, risk_level: 'BLOCKED', risk_findings: recheck.findings,
+            reason: 'LINK_RECHECK', content_hash: campaign.content_hash, risk_level: 'BLOCKED', risk_findings: recheck.findings,
           });
           return new Response(JSON.stringify({ blocked: true, reason: 'REVIEW_LINK_RECHECK_FAILED' }), { status: 423, headers: corsHeaders });
         }

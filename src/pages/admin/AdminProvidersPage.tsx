@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { CommunicationsRoutingPanel } from '@/components/admin/CommunicationsRoutingPanel';
 import { VerifyOfficialSourcesPanel } from '@/components/admin/VerifyOfficialSourcesPanel';
+import { VerifyEngineCard } from '@/components/admin/VerifyEngineCard';
 
 const STATUS_CONFIG = {
   NOT_CONFIGURED:        { labelKey: 'admin_providers_not_configured', color: 'bg-muted text-muted-foreground',              icon: MinusCircle },
@@ -443,6 +444,7 @@ export default function AdminProvidersPage() {
       {/* Communications routing (§54). A section here rather than a new Admin
           nav entry: it is provider configuration, and this is the provider
           screen (§105). */}
+      <VerifyEngineCard />
       <VerifyOfficialSourcesPanel />
       <CommunicationsRoutingPanel />
     </div>

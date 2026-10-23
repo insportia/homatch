@@ -21346,6 +21346,19 @@ const en = {
   /* ── HOMATCH LEADS CRM (buyer relationships, lead contact preferences, Leads notifications) ── */
   crm_event_EMAIL_REPLIED: 'Replied by email',
   crm_open_email_thread: 'Open email thread',
+
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_title: 'Verify engine',
+  adm_engine_active: 'New jobs run on',
+  adm_engine_v1: 'V1 — Original',
+  adm_engine_v2: 'V2 — Code-First',
+  adm_engine_new_jobs_only: 'A switch applies to new verifications only. A verification already running finishes on the engine it started with.',
+  adm_engine_v2_unavailable: 'V2 is not deployed yet, so it cannot be selected.',
+  adm_engine_confirm_title: 'Switch new verifications to {{engine}}?',
+  adm_engine_confirm_body: 'Running verifications are not affected. The change is recorded in the audit log with your reason.',
+  adm_engine_confirm: 'Switch engine',
+  adm_engine_reason: 'Reason (required)',
+  adm_engine_saved: 'Engine updated for new verifications',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -42606,6 +42619,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH LEADS CRM (buyer relationships, lead contact preferences, Leads notifications) ── */
   crm_event_EMAIL_REPLIED: 'უპასუხა ელფოსტით',
   crm_open_email_thread: 'ელფოსტის მიმოწერის გახსნა',
+
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_title: 'Verify-ის ძრავა',
+  adm_engine_active: 'ახალი job-ები მუშაობს',
+  adm_engine_v1: 'V1 — ორიგინალი',
+  adm_engine_v2: 'V2 — კოდზე დაფუძნებული',
+  adm_engine_new_jobs_only: 'გადართვა მხოლოდ ახალ ვერიფიკაციებზე ვრცელდება. უკვე დაწყებული ვერიფიკაცია იმავე ძრავაზე სრულდება, რომლითაც დაიწყო.',
+  adm_engine_v2_unavailable: 'V2 ჯერ არ არის გაშვებული, ამიტომ მისი არჩევა შეუძლებელია.',
+  adm_engine_confirm_title: 'გადავრთოთ ახალი ვერიფიკაციები {{engine}}-ზე?',
+  adm_engine_confirm_body: 'მიმდინარე ვერიფიკაციებზე გავლენა არ ექნება. ცვლილება თქვენი მიზეზით აუდიტის ჟურნალში ჩაიწერება.',
+  adm_engine_confirm: 'ძრავის გადართვა',
+  adm_engine_reason: 'მიზეზი (სავალდებულო)',
+  adm_engine_saved: 'ძრავა განახლდა ახალი ვერიფიკაციებისთვის',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -63857,6 +63883,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH LEADS CRM (buyer relationships, lead contact preferences, Leads notifications) ── */
   crm_event_EMAIL_REPLIED: 'Ответил по эл. почте',
   crm_open_email_thread: 'Открыть переписку',
+
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_title: 'Движок Verify',
+  adm_engine_active: 'Новые задания выполняются на',
+  adm_engine_v1: 'V1 — Оригинал',
+  adm_engine_v2: 'V2 — На основе кода',
+  adm_engine_new_jobs_only: 'Переключение действует только для новых проверок. Уже запущенная проверка завершается на том движке, на котором началась.',
+  adm_engine_v2_unavailable: 'V2 ещё не развёрнут, поэтому его нельзя выбрать.',
+  adm_engine_confirm_title: 'Переключить новые проверки на {{engine}}?',
+  adm_engine_confirm_body: 'Текущие проверки не затрагиваются. Изменение записывается в журнал аудита вместе с причиной.',
+  adm_engine_confirm: 'Переключить движок',
+  adm_engine_reason: 'Причина (обязательно)',
+  adm_engine_saved: 'Движок обновлён для новых проверок',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -85106,6 +85145,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH LEADS CRM (buyer relationships, lead contact preferences, Leads notifications) ── */
   crm_event_EMAIL_REPLIED: 'E-postayla yanıtladı',
   crm_open_email_thread: 'E-posta yazışmasını aç',
+
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_title: 'Verify motoru',
+  adm_engine_active: 'Yeni işler şunda çalışır',
+  adm_engine_v1: 'V1 — Orijinal',
+  adm_engine_v2: 'V2 — Kod öncelikli',
+  adm_engine_new_jobs_only: 'Değişiklik yalnızca yeni doğrulamalara uygulanır. Başlamış bir doğrulama, başladığı motorla tamamlanır.',
+  adm_engine_v2_unavailable: 'V2 henüz devreye alınmadı, bu yüzden seçilemez.',
+  adm_engine_confirm_title: 'Yeni doğrulamalar {{engine}} motoruna geçirilsin mi?',
+  adm_engine_confirm_body: 'Devam eden doğrulamalar etkilenmez. Değişiklik, gerekçenizle birlikte denetim kaydına yazılır.',
+  adm_engine_confirm: 'Motoru değiştir',
+  adm_engine_reason: 'Gerekçe (zorunlu)',
+  adm_engine_saved: 'Yeni doğrulamalar için motor güncellendi',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -106355,6 +106407,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH LEADS CRM (buyer relationships, lead contact preferences, Leads notifications) ── */
   crm_event_EMAIL_REPLIED: 'ردّ عبر البريد الإلكتروني',
   crm_open_email_thread: 'فتح محادثة البريد',
+
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_title: 'محرك Verify',
+  adm_engine_active: 'المهام الجديدة تعمل على',
+  adm_engine_v1: 'V1 — الأصلي',
+  adm_engine_v2: 'V2 — قائم على الكود',
+  adm_engine_new_jobs_only: 'ينطبق التبديل على عمليات التحقق الجديدة فقط. أما عملية التحقق الجارية فتكتمل على المحرك الذي بدأت به.',
+  adm_engine_v2_unavailable: 'لم يُنشر V2 بعد، لذا لا يمكن اختياره.',
+  adm_engine_confirm_title: 'هل تريد تحويل عمليات التحقق الجديدة إلى {{engine}}؟',
+  adm_engine_confirm_body: 'لا تتأثر عمليات التحقق الجارية. يُسجَّل التغيير في سجل التدقيق مع السبب الذي تذكره.',
+  adm_engine_confirm: 'تبديل المحرك',
+  adm_engine_reason: 'السبب (مطلوب)',
+  adm_engine_saved: 'تم تحديث المحرك لعمليات التحقق الجديدة',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -127604,6 +127669,19 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH LEADS CRM (buyer relationships, lead contact preferences, Leads notifications) ── */
   crm_event_EMAIL_REPLIED: 'השיב בדוא"ל',
   crm_open_email_thread: 'פתיחת שרשור הדוא"ל',
+
+  /* ── VERIFY ENGINE SELECTOR ── */
+  adm_engine_title: 'מנוע Verify',
+  adm_engine_active: 'משימות חדשות רצות על',
+  adm_engine_v1: 'V1 — מקורי',
+  adm_engine_v2: 'V2 — מבוסס קוד',
+  adm_engine_new_jobs_only: 'ההחלפה חלה על אימותים חדשים בלבד. אימות שכבר רץ מסתיים במנוע שבו התחיל.',
+  adm_engine_v2_unavailable: 'V2 עדיין לא הופעל, ולכן אי אפשר לבחור בו.',
+  adm_engine_confirm_title: 'להעביר אימותים חדשים ל-{{engine}}?',
+  adm_engine_confirm_body: 'אימותים שכבר רצים לא מושפעים. השינוי נרשם ביומן הביקורת יחד עם הסיבה שלך.',
+  adm_engine_confirm: 'החלפת מנוע',
+  adm_engine_reason: 'סיבה (חובה)',
+  adm_engine_saved: 'המנוע עודכן לאימותים חדשים',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

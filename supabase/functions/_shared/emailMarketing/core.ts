@@ -33,16 +33,27 @@ export interface EmailSettings {
 const truthy = (v: unknown) => v === true || v === 'true';
 const str = (v: unknown, d: string) => (typeof v === 'string' && v.trim() ? v.trim() : d);
 
+/*
+ * EMAIL GO-LIVE SWITCH (owner, 2026-10-23). provider_kill_switch also holds back paid discovery
+ * and marketplace workers, so lifting it to send email would start those too. email_marketing_live
+ * = true lifts the kill switch for EMAIL ONLY; every other reader of provider_kill_switch is
+ * unaffected, and the sending flags, quota, consent and suppression still apply.
+ */
+export const EMAIL_LIVE_SETTING = 'email_marketing_live';
+export function emailKillSwitchOn(providerKillSwitch: unknown, emailLive: unknown): boolean {
+  return truthy(providerKillSwitch) && !truthy(emailLive);
+}
+
 export async function loadEmailSettings(sb: SupabaseClient): Promise<EmailSettings> {
   const { data } = await sb.from('admin_settings').select('key,value').in('key', [
-    'provider_kill_switch', 'email_studio_sending_enabled', 'outreach_email_sending_enabled', 'email_marketing_route',
+    'provider_kill_switch', EMAIL_LIVE_SETTING, 'email_studio_sending_enabled', 'outreach_email_sending_enabled', 'email_marketing_route',
     'email_marketing_reply_domain', 'email_marketing_default_sender', 'email_marketing_resend_key_env',
     'email_marketing_provider_alert_pct', 'credits_per_usd',
   ]);
   const m = Object.fromEntries((data ?? []).map((r: { key: string; value: unknown }) => [r.key, r.value]));
   const cpu = Number(m.credits_per_usd);
   return {
-    killSwitch: truthy(m.provider_kill_switch),
+    killSwitch: emailKillSwitchOn(m.provider_kill_switch, m[EMAIL_LIVE_SETTING]),
     studioEnabled: truthy(m.email_studio_sending_enabled),
     outreachEnabled: truthy(m.outreach_email_sending_enabled),
     route: m.email_marketing_route === 'BROADCAST' ? 'BROADCAST' : 'TRANSACTIONAL',

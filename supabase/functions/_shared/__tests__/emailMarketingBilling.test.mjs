@@ -182,3 +182,21 @@ test('a capacity ceiling leaves a campaign RUNNING (it resumes when room returns
   assert.doesNotMatch(block.slice(0, block.indexOf('continue;')), /status: /, 'the status is not changed');
   assert.ok(at < src.indexOf("status: quotaStop ? 'PAUSED' : 'FAILED'"), 'checked before the pause/fail decision');
 });
+
+test('email_marketing_live lifts the kill switch for email only; SMS, calls and discovery keep it', async () => {
+  const { emailKillSwitchOn, EMAIL_LIVE_SETTING } = await import('../emailMarketing/core.ts');
+  assert.equal(EMAIL_LIVE_SETTING, 'email_marketing_live');
+  assert.equal(emailKillSwitchOn(true, false), true);
+  assert.equal(emailKillSwitchOn(true, undefined), true, 'a missing setting keeps email off');
+  assert.equal(emailKillSwitchOn('true', 'false'), true);
+  assert.equal(emailKillSwitchOn(true, true), false);
+  assert.equal(emailKillSwitchOn(true, 'true'), false);
+  assert.equal(emailKillSwitchOn(false, false), false);
+  const { readFileSync } = await import('node:fs');
+  const send = readFileSync('supabase/functions/outreach-send/index.ts', 'utf8');
+  assert.match(send, /campaign\.campaign_type === 'EMAIL'\s*\?\s*emailKillSwitchOn/, 'outreach-send applies it to EMAIL campaigns only');
+  assert.match(send, /:\s*truthy\(fm\['provider_kill_switch'\]\)\) && !testOverride/, 'SMS and calls still read the global switch');
+  const status = readFileSync('supabase/functions/outreach-provider-status/index.ts', 'utf8');
+  assert.match(status, /smsEnabled = truthy\(fm\['outreach_sms_sending_enabled'\]\) && !killSwitch/);
+  assert.match(status, /emailEnabled = truthy\(fm\['outreach_email_sending_enabled'\]\) && !emailKilled/);
+});

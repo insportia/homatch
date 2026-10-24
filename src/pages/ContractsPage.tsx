@@ -76,7 +76,7 @@ export default function ContractsPage() {
         // Keep the intent across the sign-in round trip rather than dropping
         // the customer back on a page with no memory of what they wanted.
         rememberPendingPath('/contracts');
-        navigate('/login');
+        navigate('/auth/login');
         return;
       }
       setBusy(true);

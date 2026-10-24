@@ -27,6 +27,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ContractProgress } from '@/components/contracts/ContractProgress';
 import { ContractResult } from '@/components/contracts/ContractResult';
+import { ContractReview } from '@/components/contracts/ContractReview';
 import { typesDisagree, type ContractTypeId } from '@/components/contracts/contractTypes';
 import { getContract, listContracts, type ContractSummary } from '@/services/contracts';
 import {
@@ -39,6 +40,11 @@ import type { CompanyIntelligence } from '@/verify/intelligence/companyIntellige
 
 const TERMINAL = new Set<AnalysisState>(['DONE', 'FAILED', 'UNSUPPORTED', 'REQUIRES_OCR']);
 const POLL_MS = 3_000;
+/* A row still at NONE after this many polls was stored but never picked up: ask once, then stop waiting. */
+const NONE_KICK_AFTER = 5;
+const NONE_GIVE_UP_AFTER = 20;
+/** Engineering reasons the customer should see in words, never as codes. */
+const FAILURE_KEYS: Record<string, string> = { BILLING_REQUIRED: 'ct_fail_billing', retry_failed: 'ct_fail_retry', stalled: 'ct_fail_stalled' };
 
 export default function ContractResultPage() {
   const { id } = useParams<{ id: string }>();
@@ -94,6 +100,7 @@ export default function ContractResultPage() {
     if (!id) return;
     let alive = true;
 
+    let nonePolls = 0;
     const read = async () => {
       try {
         const r = await getDocumentAnalysis(id);
@@ -102,6 +109,11 @@ export default function ContractResultPage() {
         setAnalysis(r.analysis);
         setFailure(r.error);
         if (TERMINAL.has(r.state)) { stopPolling(); return; }
+        if (r.state === 'NONE') {
+          nonePolls += 1;
+          if (nonePolls === NONE_KICK_AFTER) void analyzeDocument(id, { language: lang }).catch(() => {});
+          if (nonePolls >= NONE_GIVE_UP_AFTER) { setState('FAILED'); setFailure('stalled'); stopPolling(); return; }
+        }
       } catch {
         // A transient read failure must not end the wait: the analysis is
         // running server-side regardless of whether this poll succeeded.
@@ -111,7 +123,7 @@ export default function ContractResultPage() {
 
     void read();
     return () => { alive = false; stopPolling(); };
-  }, [id, stopPolling]);
+  }, [id, stopPolling, lang]);
 
   /* ---- what the verification knows, when there is one ---- */
 
@@ -221,8 +233,11 @@ export default function ContractResultPage() {
                     : t('ct_fail_generic')}
                 </span>
               </p>
-              {failure ? (
-                <p className="min-w-0 break-words text-2xs text-muted-foreground">{failure}</p>
+              {failure && FAILURE_KEYS[failure] ? (
+                <p className="min-w-0 break-words text-sm text-muted-foreground">{t(FAILURE_KEYS[failure])}</p>
+              ) : null}
+              {failure === 'BILLING_REQUIRED' ? (
+                <Button size="sm" onClick={() => navigate('/credits')}>{t('ct_fail_billing_cta')}</Button>
               ) : null}
               {state === 'FAILED' ? (
                 <Button size="sm" variant="outline" disabled={retrying} onClick={() => { void retry(); }}>
@@ -241,6 +256,11 @@ export default function ContractResultPage() {
 
           {state === 'DONE' && analysis ? (
             <ContractResult analysis={analysis} comparison={comparison} />
+          ) : null}
+
+          {/* What could be better, as choices the signer makes; exports and history. */}
+          {state === 'DONE' && analysis && id ? (
+            <ContractReview documentId={id} title={contract?.label || t('ct_untitled')} analysis={analysis} />
           ) : null}
 
           {/* Move between contracts without going back to a list each time. */}

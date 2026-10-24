@@ -1,14 +1,35 @@
 /*
  * THE WAITING SCREEN FOR A CONTRACT BEING READ.
  *
- * The arithmetic, and the reasoning behind refusing to show a fake 100%,
- * lives in ./progressEstimate.ts. This file is only what that looks like.
+ * The analyser reports STATES, not a percentage, so the screen shows the
+ * states: uploaded, waiting its turn, being read, ready. Each step is lit
+ * only when the server has actually reached it. The elapsed time is real.
+ * There is no percentage: nothing server-side knows what fraction of a
+ * contract has been read, and a number nobody measured is decoration.
+ *
+ * The optional Snake game is a separate component in its own chunk. It
+ * shares nothing with the analysis: closing it, losing at it or never
+ * opening it changes nothing about the document.
  */
-import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Suspense, lazy, useEffect, useState } from 'react';
+import { Check, FileText, Gamepad2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { cn } from '@/lib/utils';
 import type { AnalysisState } from '@/services/dealRoomDocuments';
-import { estimatedPercent, formatElapsed } from './progressEstimate';
+import { formatElapsed } from './progressEstimate';
+
+const SnakeGame = lazy(() => import('./SnakeGame'));
+
+const STAGES = ['UPLOADED', 'QUEUED', 'RUNNING', 'DONE'] as const;
+type Stage = (typeof STAGES)[number];
+
+/** How far the server has really got. NONE means the upload is stored and the request not yet picked up. */
+export function reachedStage(state: AnalysisState): Stage {
+  if (state === 'DONE') return 'DONE';
+  if (state === 'RUNNING') return 'RUNNING';
+  if (state === 'QUEUED') return 'QUEUED';
+  return 'UPLOADED';
+}
 
 export function ContractProgress({
   state,
@@ -20,6 +41,7 @@ export function ContractProgress({
 }) {
   const { t } = useLanguage();
   const [now, setNow] = useState(() => Date.now());
+  const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
     if (state === 'DONE') return;
@@ -28,42 +50,53 @@ export function ContractProgress({
   }, [state]);
 
   const elapsed = Math.max(0, now - startedAt);
-  const percent = estimatedPercent(elapsed, state);
-
-  const labelKey =
-    state === 'DONE' ? 'ct_progress_done'
-    : state === 'RUNNING' ? 'ct_progress_reading'
-    : 'ct_progress_queued';
+  const reached = STAGES.indexOf(reachedStage(state));
 
   return (
-    <div className="min-w-0 space-y-3 rounded-xl border border-border bg-card p-4 sm:p-5">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        {state !== 'DONE' ? (
-          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
-        ) : null}
-        <span className="min-w-0 break-words text-sm font-medium text-foreground">{t(labelKey)}</span>
-        <span className="ms-auto shrink-0 text-sm font-medium tabular-nums text-muted-foreground">
-          {formatElapsed(elapsed)}
-        </span>
+    <div className="min-w-0 space-y-4 overflow-hidden rounded-2xl bg-[#0C1119] p-5 text-white shadow-hover sm:p-6" data-testid="contract-progress" data-stage={STAGES[reached]}>
+      <div className="flex items-center gap-4">
+        <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-white/20 bg-white/5" aria-hidden="true">
+          <FileText className="absolute inset-0 m-auto h-6 w-6 text-white/60" />
+          {state !== 'DONE' ? <span className="hm-doc-scan absolute inset-x-0 h-[2px] bg-[hsl(38_92%_60%)] shadow-[0_0_12px_hsl(38_92%_60%)]" /> : null}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-base font-semibold">{t(state === 'DONE' ? 'ct_progress_done' : state === 'RUNNING' ? 'ct_progress_reading' : 'ct_progress_queued')}</p>
+          <p className="mt-0.5 text-sm tabular-nums text-white/70">{t('ct_stage_elapsed', { time: formatElapsed(elapsed) })}</p>
+        </div>
       </div>
 
-      <div
-        className="h-2 w-full overflow-hidden rounded-full bg-muted"
-        role="progressbar"
-        aria-valuenow={percent}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={t(labelKey)}
-      >
-        <div
-          className="h-full rounded-full bg-primary transition-[width] duration-1000 ease-linear"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
+      <ol className="grid gap-2 sm:grid-cols-4" aria-label={t('ct_stage_list')}>
+        {STAGES.map((stage, i) => {
+          const done = i < reached || (i === reached && stage === 'DONE');
+          const current = i === reached && stage !== 'DONE';
+          return (
+            <li key={stage} aria-current={current ? 'step' : undefined}
+              className={cn('flex items-center gap-2 rounded-xl px-3 py-2 text-sm',
+                done ? 'bg-white/10 text-white' : current ? 'bg-[hsl(38_92%_56%)]/15 text-[hsl(38_92%_70%)]' : 'text-white/40')}>
+              <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
+                done ? 'border-[hsl(38_92%_56%)] bg-[hsl(38_92%_56%)] text-[#0C1119]' : current ? 'border-[hsl(38_92%_60%)]' : 'border-white/25')}>
+                {done ? <Check className="h-3 w-3" aria-hidden="true" /> : current ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[hsl(38_92%_60%)] motion-reduce:animate-none" /> : null}
+              </span>
+              {t(`ct_stage_${stage.toLowerCase()}`)}
+            </li>
+          );
+        })}
+      </ol>
 
-      <p className="min-w-0 break-words text-2xs leading-relaxed text-muted-foreground">
-        {state === 'DONE' ? t('ct_progress_done_hint') : t('ct_progress_estimate_hint')}
-      </p>
+      <p className="text-2xs leading-relaxed text-white/60">{state === 'DONE' ? t('ct_progress_done_hint') : t('ct_stage_hint')}</p>
+
+      {state !== 'DONE' ? (
+        playing ? (
+          <Suspense fallback={null}>
+            <SnakeGame onClose={() => setPlaying(false)} />
+          </Suspense>
+        ) : (
+          <button type="button" onClick={() => setPlaying(true)}
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 px-4 text-sm font-medium text-white/90 hover:border-[hsl(38_92%_56%)]">
+            <Gamepad2 className="h-4 w-4" aria-hidden="true" />{t('ct_snake_invite')}
+          </button>
+        )
+      ) : null}
     </div>
   );
 }

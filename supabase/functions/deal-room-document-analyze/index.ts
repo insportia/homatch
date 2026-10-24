@@ -564,7 +564,7 @@ serve(async (req) => {
         title: 'Your document has been analysed',
         body: 'The analysis is ready to read.',
         priority: 'NORMAL',
-        deepLink: `/verify/${doc.deal_room_id}?tab=documents&doc=${documentId}`,
+        deepLink: `/contracts/${documentId}`,
         entityType: 'deal_room_document',
         entityId: documentId,
         dedupeKey: `document-analyzed:${documentId}:${sha}`,

@@ -143,6 +143,9 @@ export async function listFindings(roomId: string): Promise<DocumentFinding[]> {
 
 /** What the analyst produced for one document. Mirrors the `analysis` jsonb
  * written by the deal-room-document-analyze function. */
+/** A proposal for a flagged clause: risk, who it favours, replacement wording, trade-offs. */
+export interface ClauseReview { risk: string; why: string; favours: string; suggestion: string; tradeoffs: string | null }
+
 export interface DocumentAnalysis {
   documentType: string | null;
   summary: string[];
@@ -152,6 +155,7 @@ export interface DocumentAnalysis {
     quote: string;
     page: number | null;
     attention: 'NORMAL' | 'ONE_SIDED' | 'UNUSUAL' | 'AMBIGUOUS' | 'MISSING_PROTECTION';
+    review?: ClauseReview;
   }[];
   obligations: {
     party: 'BUYER' | 'SELLER' | 'DEVELOPER' | 'BOTH' | 'UNCLEAR';
@@ -162,7 +166,7 @@ export interface DocumentAnalysis {
   }[];
   deadlines: { label: string; value: string | null; quote: string; page: number | null }[];
   financial: { label: string; value: string | null; quote: string; page: number | null }[];
-  missingProtections: { label: string; plain: string }[];
+  missingProtections: { label: string; plain: string; review?: ClauseReview }[];
   questions: string[];
   pages: number;
   containsInstructionLikeText: boolean;

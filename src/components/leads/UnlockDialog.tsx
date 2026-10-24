@@ -110,6 +110,12 @@ export function UnlockDialog({
                   <dd className="font-semibold tabular-nums" dir="ltr">{cr(quote.exactCredits)}</dd>
                 </div>
               ) : null}
+              {quote.mortgageCount > 0 ? (
+                <div className="flex items-baseline justify-between gap-3 px-3 py-2.5 text-sm" data-testid="unlock-mortgage-row">
+                  <dt>{t('hl_bulk_mortgage', { n: quote.mortgageCount, price: cr(quote.prices.MORTGAGE) })}</dt>
+                  <dd className="font-semibold tabular-nums" dir="ltr">{cr(quote.mortgageCredits)}</dd>
+                </div>
+              ) : null}
               {quote.premiumCount > 0 ? (
                 <div className="flex items-baseline justify-between gap-3 px-3 py-2.5 text-sm">
                   <dt>{t('hl_bulk_premium', { n: quote.premiumCount, price: cr(quote.prices.PREMIUM) })}</dt>

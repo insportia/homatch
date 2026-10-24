@@ -10,7 +10,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
 import { judgeActiveDemand } from '../../../src/research-core/discovery/freshness-policy.ts';
-import { parseCuratedUnlockRequest, parseMortgageUnlockRequest, parseUnlockRequest, unlockErrorCode } from '../_shared/internalLeads.ts';
+import { parseCuratedUnlockRequest, parseUnlockRequest, unlockErrorCode } from '../_shared/internalLeads.ts';
 import { serviceBackendEnabled } from '../_shared/serviceControl.ts';
 
 const CORS = {
@@ -47,11 +47,6 @@ serve(async (req) => {
     /* The External Leads Database: a third product, its own entitlements and price (CURATED_LEAD). */
     if (body && (body as { kind?: unknown }).kind === 'curated_leads') {
       return await unlockCuratedLeads(supabaseUser, supabaseAdmin, authHeader, body);
-    }
-    /* Mortgage-interested buyers who opted in: same entitlement table as HOMATCH Leads
-       (one charge per account per member), product MORTGAGE_BUYER_LEAD. */
-    if (body && (body as { kind?: unknown }).kind === 'mortgage_leads') {
-      return await unlockMortgageLeads(supabaseUser, supabaseAdmin, authHeader, body);
     }
     const { matchId } = (body ?? {}) as { matchId?: string };
     if (!matchId) return json({ error: 'matchId required' }, 400);
@@ -305,35 +300,6 @@ async function unlockInternalLeads(req: Request, supabaseUser: any, supabaseAdmi
     return json({ error: code }, code === 'INSUFFICIENT_CREDITS' ? 402 : code === 'INTERNAL' ? 500 : 409);
   }
   void req;
-  return json({ success: true, ...(data as Record<string, unknown>) });
-}
-
-/*
- * Mortgage buyer unlock — mortgage_leads_unlock() is all-or-nothing, idempotent on the caller's
- * key, serialised per account with the same lock as internal leads, never charges a member the
- * account already holds by any route, and refuses a charge above the confirmed total.
- */
-// deno-lint-ignore no-explicit-any
-async function unlockMortgageLeads(supabaseUser: any, supabaseAdmin: any, authHeader: string, body: unknown) {
-  const { data: { user }, error: authErr } = await supabaseUser.auth.getUser();
-  if (authErr || !user) return json({ error: 'UNAUTHORIZED' }, 401);
-  const impersonating = await refuseIfImpersonating(supabaseAdmin, authHeader, CORS);
-  if (impersonating) return impersonating;
-  const { data: hmUser } = await supabaseAdmin.from('users').select('id,suspended_at').eq('auth_id', user.id).maybeSingle();
-  if (!hmUser) return json({ error: 'USER_NOT_FOUND' }, 404);
-  if (hmUser.suspended_at) return json({ error: 'ACCOUNT_SUSPENDED' }, 403);
-  const parsed = parseMortgageUnlockRequest(body);
-  if (!parsed.ok) return json({ error: parsed.error }, 400);
-  if (!(await internalMatchingOpen(supabaseAdmin))) return json({ error: 'SERVICE_DISABLED' }, 503);
-  const { data, error } = await supabaseAdmin.rpc('mortgage_leads_unlock', {
-    p_user_id: hmUser.id, p_property_id: parsed.propertyId, p_refs: parsed.refs,
-    p_idempotency_key: parsed.idempotencyKey, p_expected_credits: parsed.expectedCredits,
-  });
-  if (error) {
-    const code = unlockErrorCode(error.message);
-    if (code === 'INTERNAL') console.error('[atomic-unlock:mortgage_leads]', error.message);
-    return json({ error: code }, code === 'INSUFFICIENT_CREDITS' ? 402 : code === 'SERVICE_DISABLED' ? 503 : code === 'INTERNAL' ? 500 : 409);
-  }
   return json({ success: true, ...(data as Record<string, unknown>) });
 }
 

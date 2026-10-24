@@ -104,11 +104,20 @@ export function internalItems() {
     { ...base, matchId: uuid('aaaaaaaa', 3), score: 71, band: 'POTENTIAL', category: 'NEARBY_SIMILAR', priceKey: 'STANDARD', priceCredits: 3, kind: 'NEARBY_AREA', interest: 'RENT', transaction: 'RENT' },
   ];
 }
-const PRICES = { STANDARD: 3, EXACT: 5, PREMIUM: 10, active: true };
+/* A member who opted in from Home Financing: the MORTGAGE segment, 3 credits, with the signals the feed sends. */
+export function mortgageItem() {
+  const [base] = internalItems();
+  return {
+    ...base, matchId: uuid('aaaaaaaa', 4), score: 90, category: 'EXACT', segment: 'MORTGAGE', priceKey: 'MORTGAGE', priceCredits: 3,
+    origin: 'MORTGAGE', mortgage: { calculatorUse: 'REPEATED', lastUseMonth: '2026-10', thisListing: true, timeframe: 'MONTHS_3' },
+    budget: { min: null, max: 130000, currency: 'GEL' }, contactOptions: { message: true, phone: true, email: false },
+  };
+}
+const PRICES = { STANDARD: 3, EXACT: 5, PREMIUM: 10, MORTGAGE: 3, active: true, mortgageActive: true };
 
 export const SWITCHES_ON = { maintenance: false, internal: true, curated: true, unlockedLibrary: true };
 
-export async function boot(t, { port, width = 1440, height = 900, lang = 'en', switches = {}, curatedCount = 640, preUnlocked = 5, admin = false } = {}) {
+export async function boot(t, { port, width = 1440, height = 900, lang = 'en', switches = {}, curatedCount = 640, preUnlocked = 5, admin = false, internal = null } = {}) {
   const BASE = `http://127.0.0.1:${port}`;
   const { chromium } = resolvePlaywright();
   const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(port), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
@@ -124,7 +133,7 @@ export async function boot(t, { port, width = 1440, height = 900, lang = 'en', s
     switches: { ...SWITCHES_ON, ...switches },
     leads,
     unlocked: new Map(leads.slice(0, preUnlocked).map((l) => [l.id, { at: ago(2), credits: 1 }])),
-    internal: internalItems(),
+    internal: internal ?? internalItems(),
     balance: 500,
     catalogCalls: [], quoteCalls: [], unlockCalls: [], internalFeedCalls: [], internalQuoteCalls: [], saveCalls: [],
     unlockResults: new Map(),
@@ -209,13 +218,14 @@ export async function boot(t, { port, width = 1440, height = 900, lang = 'en', s
       let rows = marked.filter((x) => (unlockedView ? x.unlocked : !x.unlocked));
       if (filters.includes('VIP')) rows = rows.filter((x) => x.category === 'VIP');
       if (filters.includes('EXACT')) rows = rows.filter((x) => x.category === 'EXACT');
+      if (filters.includes('MORTGAGE')) rows = rows.filter((x) => x.segment === 'MORTGAGE');
       if ((p.interests ?? []).length) rows = rows.filter((x) => p.interests.includes(x.interest));
       const limit = Number(p.limit ?? 100);
       const offset = Number(p.offset ?? 0);
       const c = (fn) => marked.filter(fn).length;
       return r.fulfill(json({
         total: rows.length,
-        counts: { ALL: marked.length, LOCKED: c((x) => !x.unlocked), UNLOCKED: c((x) => x.unlocked), EXACT: c((x) => x.category === 'EXACT'), NEARBY: c((x) => x.category === 'NEARBY_SIMILAR'), VIP: c((x) => x.category === 'VIP'), STRONG: c((x) => x.band === 'STRONG'), POTENTIAL: c((x) => x.band === 'POTENTIAL') },
+        counts: { ALL: marked.length, LOCKED: c((x) => !x.unlocked), UNLOCKED: c((x) => x.unlocked), EXACT: c((x) => x.category === 'EXACT'), NEARBY: c((x) => x.category === 'NEARBY_SIMILAR'), VIP: c((x) => x.category === 'VIP'), MORTGAGE: c((x) => x.segment === 'MORTGAGE'), STRONG: c((x) => x.band === 'STRONG'), POTENTIAL: c((x) => x.band === 'POTENTIAL') },
         facets: { districts: ['Krtsanisi', 'Ortachala'], propertyTypes: ['APARTMENT'], countries: { GE: marked.length }, languages: { unknown: marked.length }, interests: { BUY: 2, RENT: 1 } },
         ids: p.withIds ? rows.map((x) => x.matchId) : null,
         prices: PRICES, preferences: null, lastSeenAt: null,
@@ -229,8 +239,8 @@ export async function boot(t, { port, width = 1440, height = 900, lang = 'en', s
       const fresh = sel.filter((x) => !x.unlocked);
       const n = (k) => fresh.filter((x) => x.priceKey === k).length;
       return r.fulfill(json({ requested: ids.length, eligible: sel.length, alreadyUnlocked: sel.length - fresh.length,
-        standardCount: n('STANDARD'), exactCount: n('EXACT'), premiumCount: n('PREMIUM'),
-        standardCredits: n('STANDARD') * 3, exactCredits: n('EXACT') * 5, premiumCredits: n('PREMIUM') * 10,
+        standardCount: n('STANDARD'), exactCount: n('EXACT'), premiumCount: n('PREMIUM'), mortgageCount: n('MORTGAGE'),
+        standardCredits: n('STANDARD') * 3, exactCredits: n('EXACT') * 5, premiumCredits: n('PREMIUM') * 10, mortgageCredits: n('MORTGAGE') * 3,
         totalCredits: fresh.reduce((s, x) => s + x.priceCredits, 0), balance: state.balance, prices: PRICES }));
     }
     if (url.includes('/rpc/internal_lead_contact')) {

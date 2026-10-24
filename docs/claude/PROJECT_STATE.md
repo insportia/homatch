@@ -11,23 +11,28 @@ MATTERS right now, verify against the live systems, not this file)
   telemetry), HOMI 3D on the homepage and in chat (public/models/homi/homi.glb, stills in
   public/images/homi), Expat journey, Investment goal-first entry and three scenarios, Mortgage readiness,
   financial-literacy glossary and offer comparison (2 pt rise, appraisal, fixed period, unstated costs),
-  "ჩემი იპოთეკები" saved scenarios (immutable versions, stale-rule detection), consented mortgage buyer
-  leads in the Matching workspace, Contract clause review with accept/edit/reject, DOCX (clean and tracked)
+  "ჩემი იპოთეკები" saved scenarios (immutable versions, stale-rule detection), Home Financing buyer
+  intent in HOMATCH Matching (see Money), Contract clause review with accept/edit/reject, DOCX (clean and tracked)
   and print-to-PDF, revision history, truthful progress stages and optional Snake, transactional email,
   admin insight pages. Georgian voice and terms: docs/claude/HOMI_GLOSSARY.md.
 - Migrations (append-only, all applied twice on PGlite): 20261201090000 HOMI telemetry,
   20261201091000 homepage section order (data), 20261201092000 mortgage readiness/bank products,
   20261201093000 mortgage workspace + buyer leads, 20261201094000 contract revisions,
   20261201095000 notification types + admin insight RPCs. Release order: merge -> apply -> deploy.
-- Money: mortgage-origin unlock = billable product MORTGAGE_BUYER_LEAD, 30 cents = 3 credits
-  (1 credit = 10 cents). Entitlement reuses internal_lead_unlocks (segment MORTGAGE): at most one charge per
-  purchasing account per member, by any route; same advisory lock as internal unlocks. Proof:
-  scripts/matching/mortgage-leads-db-check.mjs. No other price changed; contract pricing ($0.20/$0.50) is
-  analysis only on /admin/contract-costs.
+- Money (owner correction 2026-10-25): Home Financing is NOT a lead marketplace and sells nothing. An
+  opt-in to receive property offers becomes ONE ordinary member search in the existing Matching engine
+  (intent_profiles + active_search_subscriptions, demand_source MORTGAGE, classifier mortgage-optin-1);
+  supply-matching scores it like any search and the Matching feeds show it beside the other buyer leads
+  (one row per member, existing rule), with origin and the signals the person agreed to share (calculator
+  use, this listing, timeframe). It is the MORTGAGE segment of HOMATCH Leads: product INTERNAL_LEAD_MORTGAGE,
+  30 cents = 3 credits, charged only when a Matching user unlocks the contact, through the existing
+  internal_leads_unlock (same wallet reserve/settle, idempotency, advisory lock, internal_lead_unlocks
+  entitlement: never twice for the same account and member). STANDARD 3 / EXACT 5 / PREMIUM 10 unchanged.
+  Withdrawal deletes the search (its matches cascade). Contract pricing ($0.20/$0.50) is analysis only.
 - Email: notify() sends a transactional email only for VERIFY_COMPLETE, DOCUMENT_ANALYZED,
   CREDITS_TOPPED_UP, PAYMENT_FAILED, SERVICE_FAILED; preferred_language, Georgian default; honours
   notification_preferences.email_enabled (payment failure always sent); once per notification id.
-- Edge functions touched: homatch-ai, deal-room-document-analyze, atomic-unlock (kind mortgage_leads),
+- Edge functions touched: homatch-ai, deal-room-document-analyze, supply-matching (origin wording only),
   jobs-worker, payment-webhook, and every producer that imports _shared/notify.ts (deploy-scope computes it).
   No new edge function.
 - Final audit round (owner prompt "PR #325 FINAL COMPLETE AUDIT", 2026-10-24): migration
@@ -36,13 +41,18 @@ MATTERS right now, verify against the live systems, not this file)
   disclosures; 094 keys revisions by analysis identity and purges them with extracted_text; payment-webhook
   emits a PAYG top-up failure (checkout.session.async_payment_failed); notify email is claim-before-send
   with a Resend Idempotency-Key. Real PostgreSQL 17 proof on a read-only production schema snapshot
-  (outside the repo): 7 migrations applied twice, 25 concurrent unlocks -> 1 charge of 3 credits,
-  retry storm -> one execution, cross-account isolation, insufficient-credit rollback, RLS.
+  (outside the repo, Matching tables and functions exported read-only from production): 7 migrations
+  applied twice; full journey opt-in -> Matching search -> engine match -> locked preview (both feeds,
+  quote) -> 25 concurrent unlocks = 1 charge of 3 credits (INTERNAL_LEAD_MORTGAGE usage event) -> retry
+  storm one execution -> other listing / re-consent never recharged -> cross-account isolation ->
+  insufficient-credit rollback -> mortgage product off stops only that segment -> contact limited to the
+  chosen channels and recorded -> offers switch and withdrawal remove the person at once.
 - Local-only environment notes: tsgo's 7 errors (Array.at, Intl.ListFormat, @huggingface/transformers,
   pdfjs-dist) come from a drifted local node_modules (@types/node 26.5.0 vs lockfile 26.4.0, two optional
   packages absent); CI's frozen-lockfile type-check is clean.
-- Owner decision open: a 3-credit mortgage unlock also counts as the member's internal unlock in Matching
-  (where a VIP unlock is 10 credits), per "one paid unlock per canonical buyer".
+- Pricing when one member has both a Home Financing search and their own search matching the same listing:
+  Matching shows one row per member (EXACT first, then score, existing rule) and that row's segment sets the
+  price; once an account has unlocked the member, no route charges it again.
 
 ## Verify fixed price + 30-day validity + Snake/ads fixes (branch claude/verify-fixed-price-validity, 2026-10-23) — PR OPEN, NOT DEPLOYED
 

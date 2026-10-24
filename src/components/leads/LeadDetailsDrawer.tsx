@@ -16,6 +16,7 @@ import { getLeadContact, openLeadConversation, UnlockError, type LeadContact, ty
 import { budgetLabel, buildLeadSummary, DIMENSION_ORDER, featureParts, leadCategory, leadPriceKey, locationLabel, matchReasons, propertyTypeLabel, requirementParts } from '@/leads/leadSummary';
 import { BTN_PRIMARY, BTN_SECONDARY, EYEBROW } from './kit';
 import { BandBadge, CategoryPill, ContactOptions, formatCreditsLabel, SearcherPill, useLeadFormatters } from './LeadCard';
+import { MortgagePill, MortgageSignals } from './MortgageSignals';
 
 export function LeadDetailsDrawer({
   lead, propertyId, open, onClose, onUnlock,
@@ -163,6 +164,14 @@ export function LeadDetailsDrawer({
               })}
             </ul>
           </section>
+
+          {lead.origin === 'MORTGAGE' || lead.segment === 'MORTGAGE' ? (
+            <section data-testid="lead-details-mortgage">
+              <MortgagePill lead={lead} />
+              <MortgageSignals lead={lead} />
+              <p className="mt-2 text-xs leading-relaxed text-[hsl(224_14%_30%)]">{t('hl_mortgage_privacy')}</p>
+            </section>
+          ) : null}
 
           <section>
             <h3 className={EYEBROW}>{t('hl_label_contact_options')}</h3>

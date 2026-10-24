@@ -266,7 +266,7 @@ function MortgageLeadsSection() {
   if (error) return <ErrorNote message={error} />;
   if (!data) return null;
   const credits = (v: unknown) => formatCredits(v, (n) => t('admin_hs_credits_n', { n }));
-  /* mortgage_lead_price() returns null when the MORTGAGE_BUYER_LEAD product row is missing: "not configured", never "$0". */
+  /* mortgage_lead_price() returns null when the INTERNAL_LEAD_MORTGAGE product row is missing: "not configured", never "$0". */
   const priceCents = toNumber(data.price?.cents);
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -275,7 +275,8 @@ function MortgageLeadsSection() {
       <Tile label={t('admin_hs_ml_unlocks')} value={num(data.uniqueUnlocks)} />
       {/* Credits charged, at 10 credits = $1. */}
       <Tile label={t('admin_hs_ml_revenue')} value={usd(creditsToUsd(data.unlockCredits ?? 0))} hint={credits(data.unlockCredits ?? 0)} />
-      <Tile label={t('admin_hs_ml_prevented')} value={num(data.repeatChargesPrevented)} hint={t('admin_hs_ml_prevented_hint')} />
+      <Tile label={t('admin_hs_ml_in_matching')} value={num(data.inMatching)} hint={t('admin_hs_ml_in_matching_hint')} />
+      <Tile label={t('admin_hs_ml_matched')} value={num(data.matchedListings)} hint={t('admin_hs_ml_matched_hint')} />
       {priceCents === null ? (
         <Tile label={t('admin_hs_ml_price')} value={t('admin_hs_ml_price_missing')} tone="warn" />
       ) : (

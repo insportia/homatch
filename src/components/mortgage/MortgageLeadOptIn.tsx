@@ -106,6 +106,11 @@ export function MortgageLeadOptIn({ input, currency, propertyId = null }: { inpu
       {active && !editing ? (
         <div className="mt-4">
           <p className="flex items-center gap-2 text-sm text-emerald-800"><CheckCircle2 className="h-4 w-4" aria-hidden="true" />{t('mortgage_lead_active_body')}</p>
+          {/* Where this consent actually leads: into HOMATCH Matching, or not yet, and why. */}
+          <p className="mt-2 text-sm text-muted-foreground" role="status" data-testid="mortgage-lead-matching-state">
+            {intent?.acceptsOffers === false ? t('mortgage_lead_offers_off')
+              : intent?.inMatching ? t('mortgage_lead_in_matching') : t('mortgage_lead_need_area')}
+          </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" onClick={startEditing} className={chip(false)}>{t('mortgage_lead_manage')}</button>
             <button type="button" disabled={busy} onClick={() => void withdraw()} className={cn(chip(false), 'hover:border-[hsl(var(--destructive)/0.5)] hover:text-[hsl(var(--destructive))]')}>{t('mortgage_lead_withdraw')}</button>

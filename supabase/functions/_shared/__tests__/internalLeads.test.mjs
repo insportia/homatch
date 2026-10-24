@@ -46,33 +46,3 @@ test('curated leads: ids or "all matching" by filter, a confirmed price, a key; 
   const many = Array.from({ length: MAX_CURATED_IDS + 1 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
   assert.equal(parseCuratedUnlockRequest({ ids: many, expectedCredits: 600, idempotencyKey: key }).error, 'TOO_MANY_SELECTED', 'big selections go by filter');
 });
-
-/* ── Mortgage-interested buyers ─────────────────────────────────────────── */
-import { parseMortgageUnlockRequest, MAX_MORTGAGE_REFS } from '../internalLeads.ts';
-
-const P = '00000000-0000-4000-8000-0000000000aa';
-const base = { kind: 'mortgage_leads', propertyId: P, refs: [A, B], expectedCredits: 6, idempotencyKey: 'mlu:abc12345' };
-
-test('mortgage unlock: refs deduplicated, confirmed total and listing carried through', () => {
-  assert.deepEqual(parseMortgageUnlockRequest({ ...base, refs: [A, B, A.toUpperCase()] }),
-    { ok: true, propertyId: P, refs: [A, B], idempotencyKey: 'mlu:abc12345', expectedCredits: 6 });
-});
-
-test('mortgage unlock: a confirmed total and a listing are mandatory', () => {
-  assert.equal(parseMortgageUnlockRequest({ ...base, expectedCredits: undefined }).error, 'INVALID_REQUEST');
-  assert.equal(parseMortgageUnlockRequest({ ...base, expectedCredits: -1 }).error, 'INVALID_REQUEST');
-  assert.equal(parseMortgageUnlockRequest({ ...base, propertyId: 'x' }).error, 'INVALID_REQUEST');
-});
-
-test('mortgage unlock: refs must be opaque uuids, at least one and a bounded number', () => {
-  assert.equal(parseMortgageUnlockRequest({ ...base, refs: ['user@example.com'] }).error, 'INVALID_REQUEST');
-  assert.equal(parseMortgageUnlockRequest({ ...base, refs: [] }).error, 'NOTHING_SELECTED');
-  const many = Array.from({ length: MAX_MORTGAGE_REFS + 1 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
-  assert.equal(parseMortgageUnlockRequest({ ...base, refs: many }).error, 'TOO_MANY_SELECTED');
-  assert.equal(parseMortgageUnlockRequest({ ...base, idempotencyKey: 'short' }).error, 'IDEMPOTENCY_KEY_REQUIRED');
-});
-
-test('mortgage unlock: an unowned listing maps to a stable code, never the raw message', () => {
-  assert.equal(unlockErrorCode('NOT_FOUND'), 'NOT_FOUND');
-  assert.equal(unlockErrorCode('CREDIT_ACCOUNT_NOT_FOUND'), 'CREDIT_ACCOUNT_NOT_FOUND');
-});

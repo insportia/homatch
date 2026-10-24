@@ -1,10 +1,12 @@
-// HOMATCH Internal — the rows, Available (anonymised, priced 3 / 5 / 10 by the server) and
+// HOMATCH Internal — the rows, Available (anonymised, priced 3 / 5 / 10, or 3 for a member who
+// opted in from Home Financing, by the server) and
 // Unlocked (the member's contact, read on demand and limited to what that member chose to
 // share on unlock — getInternalContact re-checks it on every read).
 
 import { Loader2, Mail, MessageSquare, Phone, UserRound } from 'lucide-react';
 import { useState } from 'react';
 import { CategoryPill, useLeadFormatters } from '@/components/leads/LeadCard';
+import { MortgagePill, MortgageSignals } from '@/components/leads/MortgageSignals';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { buildLeadSummary } from '@/leads/leadSummary';
 import { cn } from '@/lib/utils';
@@ -68,6 +70,7 @@ export function InternalRows({
               <p className="truncate font-semibold text-[hsl(218_45%_14%)]" dir="auto" data-testid="mw-row-name">{name}</p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 <CategoryPill lead={lead} />
+                <MortgagePill lead={lead} />
                 <span className="text-2xs font-bold tabular-nums text-[hsl(218_45%_22%)]" dir="ltr">{lead.score}%</span>
               </div>
             </div>
@@ -78,6 +81,7 @@ export function InternalRows({
                 {unlocked && lead.language ? <span className="text-2xs font-semibold text-[hsl(224_14%_32%)]">{languageName(lead.language, lang)}</span> : null}
               </div>
               <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[hsl(224_14%_26%)]" data-testid="mw-row-summary">{buildLeadSummary(lead, t, money)}</p>
+              <MortgageSignals lead={lead} compact />
               {lead.matchedAt ? <p className="mt-0.5 text-2xs text-muted-foreground">{t('mw_matched_on', { date: date(lead.matchedAt) ?? '' })}</p> : null}
             </div>
             <div className="col-start-2 flex items-center gap-2 md:col-start-auto md:justify-end">

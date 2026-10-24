@@ -21,7 +21,6 @@ const FEATURE_ROUTES = new RegExp([
   '^src/pages/(MortgagePage|InvestmentPage|ForExpatsPage|ExpatTopicPage|ExpatPlanPage)\\.tsx$',
   '^src/pages/property/MatchingWorkspacePage\\.tsx$',
   '^src/components/(mortgage|investment|expats)/',
-  '^src/components/matching/workspace/MortgageBuyersSection\\.tsx$',
   '^src/(mortgage|investment|expats)/',
   '^src/(pages/admin|components/admin|admin)/',
   '^src/i18n/',

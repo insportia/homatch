@@ -24,7 +24,7 @@ export function parseUnlockRequest(body: unknown): UnlockRequest {
 }
 
 const KNOWN = ['INSUFFICIENT_CREDITS', 'PRODUCT_DISABLED', 'PRODUCT_KILL_SWITCH', 'PAYG_DISABLED', 'NOTHING_SELECTED',
-  'TOO_MANY_SELECTED', 'IDEMPOTENCY_KEY_REQUIRED', 'CREDIT_ACCOUNT_NOT_FOUND', 'SERVICE_DISABLED', 'PRICE_CHANGED', 'NOT_FOUND'] as const;
+  'TOO_MANY_SELECTED', 'IDEMPOTENCY_KEY_REQUIRED', 'CREDIT_ACCOUNT_NOT_FOUND', 'SERVICE_DISABLED', 'PRICE_CHANGED'] as const;
 export type UnlockErrorCode = (typeof KNOWN)[number] | 'INTERNAL';
 
 /** Map a Postgres error message to a stable code; never echo internals to the client. */
@@ -71,32 +71,4 @@ export function parseCuratedUnlockRequest(body: unknown): CuratedUnlockRequest {
   if (ids.length === 0) return { ok: false, error: 'NOTHING_SELECTED' };
   if (ids.length > MAX_CURATED_IDS) return { ok: false, error: 'TOO_MANY_SELECTED' };
   return { ok: true, idempotencyKey: key, selection: { ids, expectedCredits: expected } };
-}
-
-/* ── Mortgage-interested buyers (mortgage_leads_unlock) ──────────────────────── */
-
-export const MAX_MORTGAGE_REFS = 100;
-
-export type MortgageUnlockRequest =
-  | { ok: true; propertyId: string; refs: string[]; idempotencyKey: string; expectedCredits: number }
-  | { ok: false; error: 'INVALID_REQUEST' | 'NOTHING_SELECTED' | 'TOO_MANY_SELECTED' | 'IDEMPOTENCY_KEY_REQUIRED' };
-
-/**
- * Validate { kind:'mortgage_leads', propertyId, refs, expectedCredits, idempotencyKey }.
- * refs are the opaque preview handles, never user ids. expectedCredits is the total the
- * customer confirmed; the server refuses to charge more.
- */
-export function parseMortgageUnlockRequest(body: unknown): MortgageUnlockRequest {
-  if (!body || typeof body !== 'object') return { ok: false, error: 'INVALID_REQUEST' };
-  const b = body as Record<string, unknown>;
-  const key = typeof b.idempotencyKey === 'string' ? b.idempotencyKey.trim() : '';
-  if (key.length < 8 || key.length > 120 || !/^[A-Za-z0-9:_\-.]+$/.test(key)) return { ok: false, error: 'IDEMPOTENCY_KEY_REQUIRED' };
-  if (typeof b.propertyId !== 'string' || !UUID.test(b.propertyId)) return { ok: false, error: 'INVALID_REQUEST' };
-  const expected = typeof b.expectedCredits === 'number' && Number.isFinite(b.expectedCredits) && b.expectedCredits >= 0 ? b.expectedCredits : null;
-  if (expected === null) return { ok: false, error: 'INVALID_REQUEST' };
-  if (!Array.isArray(b.refs) || !b.refs.every((x) => typeof x === 'string' && UUID.test(x))) return { ok: false, error: 'INVALID_REQUEST' };
-  const refs = [...new Set((b.refs as string[]).map((x) => x.toLowerCase()))];
-  if (refs.length === 0) return { ok: false, error: 'NOTHING_SELECTED' };
-  if (refs.length > MAX_MORTGAGE_REFS) return { ok: false, error: 'TOO_MANY_SELECTED' };
-  return { ok: true, propertyId: b.propertyId.toLowerCase(), refs, idempotencyKey: key, expectedCredits: expected };
 }

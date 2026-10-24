@@ -18,7 +18,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { boot, noOverflow, openWorkspace, PROPERTY_ID, shot, testOptions, waitRows } from './matchingWorkspaceFixture.mjs';
+import { boot, internalItems, mortgageItem, noOverflow, openWorkspace, PROPERTY_ID, shot, testOptions, waitRows } from './matchingWorkspaceFixture.mjs';
 
 /* Unique within the mobile:discovery shard (node --test runs its files in parallel). */
 const PORT = 4397;
@@ -239,6 +239,28 @@ test('HOMATCH Internal: prices 10 / 5 / 3 from the server, one per person; quote
   await page.waitForURL(/\/outreach\/email\?/);
   assert.equal(state.saveCalls[0].kind, 'internal');
   assert.equal(state.saveCalls[0].p_match_ids.length, 2);
+});
+
+test('Home Financing opt-ins in Matching: beside the others, origin and signals, 3 credits, quote line, one unlock, contact', opts, async (t) => {
+  const { page, state, BASE } = await boot(t, { port: PORT, width: 390, height: 844, internal: [...internalItems(), mortgageItem()] });
+  await openWorkspace(page, BASE, '?product=internal');
+  await waitRows(page, 4);
+  const row = page.locator('[data-testid="mw-row"]').filter({ has: page.locator('[data-testid="lead-origin-mortgage"]') });
+  assert.equal(await row.count(), 1, 'one member, marked by origin');
+  assert.match(await row.textContent(), /Mortgage interest/);
+  assert.match(await row.locator('[data-testid="lead-mortgage-signals"]').textContent(), /Calculated a mortgage for this listing[\s\S]*several times[\s\S]*within 3 months/);
+  assert.equal((await row.locator('[data-testid="mw-row-price"]').textContent()).trim(), '3 credits');
+  assert.doesNotMatch(await row.textContent(), /income|salary|debt|\+995/i, 'no finances, no identity before unlock');
+  assert.match(await text(page, '[data-testid="mw-internal-prices"]'), /Mortgage interest[\s\S]*3 credits/);
+  await row.locator('[data-testid="mw-row-check"]').check();
+  await page.waitForFunction(() => /1 new · 3 credits/.test(document.querySelector('[data-testid="mw-quote"]')?.textContent ?? ''));
+  await noOverflow(page, 'internal 390 with a mortgage-origin member');
+  await page.locator('[data-testid="mw-unlock"]').click();
+  await page.locator('[data-testid="mw-confirm"]').dblclick();
+  await page.locator('[data-testid="mw-success"]').waitFor({ timeout: 15000 });
+  assert.equal(new Set(state.unlockCalls.map((c) => c.idempotencyKey)).size, 1, 'one unlock, one key');
+  assert.equal(state.unlockCalls[0].kind, 'internal_leads', 'the existing Matching unlock, not a mortgage one');
+  assert.equal(state.balance, 497, 'charged 3 once');
 });
 
 test('switches: internal only, curated only, both off (library only), library hidden, nothing at all', opts, async (t) => {

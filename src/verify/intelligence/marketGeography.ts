@@ -111,6 +111,50 @@ for (const [a, b] of ADJACENT_PAIRS) {
   ADJ.get(b)!.add(a);
 }
 
+/*
+ * WHERE THE PARCEL IS, WHEN NO DISTRICT NAME WAS READ (prod a7177a89, 2026-10-24).
+ *
+ * The market search needs a district name; it came only from the register
+ * extract or the identity model. With the extract missing, a Tbilisi parcel
+ * whose exact centre the cadastral map gave (41.7194, 44.7240) was never
+ * searched on MyHome/SS. These are approximate neighbourhood centres: the
+ * nearest one within NEAR_POINT_KM names the area, anything farther is
+ * unknown (never a guess across the city). The portal search uses the
+ * administrative district the area belongs to, which every portal indexes.
+ */
+const AREA_CENTRES: Readonly<Record<AreaKey, readonly [number, number]>> = {
+  OLD_TBILISI: [41.6905, 44.8085], KRTSANISI: [41.6800, 44.8150], ORTACHALA: [41.6750, 44.8250],
+  SOLOLAKI: [41.6915, 44.7990], MTATSMINDA: [41.6940, 44.7870], VERA: [41.7055, 44.7850],
+  VAKE: [41.7095, 44.7560], AVLABARI: [41.6930, 44.8160], CHUGHURETI: [41.7080, 44.8020],
+  ISANI: [41.6870, 44.8370], SABURTALO: [41.7290, 44.7520], DIDUBE: [41.7460, 44.7760],
+  DIDI_DIGHOMI: [41.7850, 44.7600], DIGHOMI: [41.7620, 44.7680], DIGHOMI_MASSIVE: [41.7780, 44.7850],
+  VASHLIJVARI: [41.7220, 44.7370], NADZALADEVI: [41.7520, 44.7980], GLDANI: [41.7940, 44.8170],
+  SAMGORI: [41.6900, 44.8760], NAVTLUGHI: [41.6790, 44.8520], LISI: [41.7390, 44.7350],
+  BAGEBI: [41.7010, 44.7420], VARKETILI: [41.6980, 44.9030],
+};
+/** Tbilisi's administrative districts, as the portals file listings. */
+const ADMIN_DISTRICT: Readonly<Record<AreaKey, AreaKey>> = {
+  OLD_TBILISI: 'MTATSMINDA', KRTSANISI: 'KRTSANISI', ORTACHALA: 'KRTSANISI', SOLOLAKI: 'MTATSMINDA',
+  MTATSMINDA: 'MTATSMINDA', VERA: 'VAKE', VAKE: 'VAKE', AVLABARI: 'ISANI', CHUGHURETI: 'CHUGHURETI',
+  ISANI: 'ISANI', SABURTALO: 'SABURTALO', DIDUBE: 'DIDUBE', DIDI_DIGHOMI: 'SABURTALO', DIGHOMI: 'DIDUBE',
+  DIGHOMI_MASSIVE: 'DIDUBE', VASHLIJVARI: 'SABURTALO', NADZALADEVI: 'NADZALADEVI', GLDANI: 'GLDANI',
+  SAMGORI: 'SAMGORI', NAVTLUGHI: 'SAMGORI', LISI: 'SABURTALO', BAGEBI: 'VAKE', VARKETILI: 'SAMGORI',
+};
+export const NEAR_POINT_KM = 3;
+
+/** The nearest Tbilisi neighbourhood to a point and its administrative district, or null beyond NEAR_POINT_KM. */
+export function areaNearPoint(lat: number | null | undefined, lon: number | null | undefined): { area: AreaKey; district: AreaKey; distanceKm: number } | null {
+  if (typeof lat !== 'number' || typeof lon !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  let best: { area: AreaKey; distanceKm: number } | null = null;
+  const kx = 111.32 * Math.cos((lat * Math.PI) / 180);
+  for (const [area, [a, b]] of Object.entries(AREA_CENTRES) as Array<[AreaKey, readonly [number, number]]>) {
+    const d = Math.hypot((lat - a) * 110.57, (lon - b) * kx);
+    if (!best || d < best.distanceKm) best = { area, distanceKm: d };
+  }
+  if (!best || best.distanceKm > NEAR_POINT_KM) return null;
+  return { area: best.area, district: ADMIN_DISTRICT[best.area], distanceKm: Math.round(best.distanceKm * 100) / 100 };
+}
+
 /** The Georgian display name of an area key (its first alias), for callers that store a name. */
 export function areaName(key: AreaKey | null | undefined): string | undefined {
   return key ? AREA_ALIASES.find(([k]) => k === key)?.[1][0] : undefined;

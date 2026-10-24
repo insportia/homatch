@@ -43,7 +43,8 @@ test('61c1c38c: the register makes it LAND with its 2,509 m², and no portal sea
 
 test('61c1c38c: before the register is read, the identity guess never starts a search', () => {
   const p = subjectMarketProfile({ result: LAND.RESULT, seed: seedOf(LAND.RESULT, '01.14.07.001.044'), registerLatest: null });
-  assert.equal(p.assetClass, 'APARTMENT');
+  // A five-group parcel code with a named project reads as that project (a7177a89) — still only a guess.
+  assert.equal(p.assetClass, 'DEVELOPMENT_PROJECT');
   assert.equal(p.assetClassBasis, 'IDENTITY');
   assert.deepEqual(marketplaceSearchPlan(p, { requireRegistry: true }), { request: null, reason: 'AWAITING_REGISTRY' });
 });
@@ -297,4 +298,28 @@ test('localityOf never takes a street, a number or the city as the settlement', 
   assert.equal(localityOf('ქალაქი თბილისი, წყნეთის გზატკეცილი N31'), null);
   assert.equal(localityOf('სოფელი წავკისი'), 'წავკისი');
   assert.equal(localityOf('თბილისი'), null);
+});
+
+test('a7177a89: no district name read → the parcel centre names it; a parcel code with a project is the project', async () => {
+  const { areaNearPoint } = await import('../intelligence/marketGeography.ts');
+  assert.deepEqual(areaNearPoint(41.7194168, 44.7239822), { area: 'VASHLIJVARI', district: 'SABURTALO', distanceKm: 1.12 });
+  assert.equal(areaNearPoint(41.6413, 41.6339), null, 'Batumi is not a Tbilisi neighbourhood');
+  assert.equal(areaNearPoint(null, 44.7), null);
+  const result = {
+    reconciledIdentity: { project: 'Archi Kavtaradze', address: 'თბილისი, მიხეილ შავიშვილის ქუჩა N1' },
+    identity: { assetClass: 'APARTMENT' },
+    browserOfficial: { results: [{ source: 'TAS_MAP', status: 'SEARCH_CONFIRMED', queryEntered: '01.14.04.029.116', finalUrl: 'http://abstract.reestri.gov.ge/abstract/cad_amo.php', frameUrls: ['https://ms.gov.ge/msmap/#C=44.7239822-41.7194168@Z=18'] }] },
+  };
+  const seed = { property: { cadastralCode: { value: '01.14.04.029.116' } }, location: { city: { value: 'თბილისი' } } };
+  const p = subjectMarketProfile({ result, seed, registerLatest: null });
+  assert.equal(p.assetClass, 'DEVELOPMENT_PROJECT');
+  assert.equal(p.latitude, 41.7194168, 'the cadastral map centre, as the neighbourhood uses it');
+  assert.equal(p.district, 'საბურთალო');
+  assert.equal(p.areaKey, 'VASHLIJVARI');
+  assert.equal(p.districtBasis, 'COORDINATES');
+  const unit = subjectMarketProfile({ result, seed: { ...seed, property: { cadastralCode: { value: '01.14.04.029.116.01.01.012' } }, location: { city: { value: 'თბილისი' }, latitude: { value: 41.7194168 }, longitude: { value: 44.7239822 } } }, registerLatest: null });
+  assert.notEqual(unit.assetClass, 'DEVELOPMENT_PROJECT', 'a unit code is never read as the whole project');
+  assert.equal(unit.district, 'საბურთალო');
+  const named = subjectMarketProfile({ result, seed: { ...seed, location: { city: { value: 'თბილისი' }, district: { value: 'ვაკე' }, latitude: { value: 41.7194168 }, longitude: { value: 44.7239822 } } }, registerLatest: null });
+  assert.equal(named.district, 'ვაკე', 'a district that was read always wins over the point');
 });

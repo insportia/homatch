@@ -5,6 +5,7 @@ import { bundleFor, english as englishBundle, loadLanguage } from '@/i18n/bundle
 import type { ContentLocale, OverrideMap } from '@/i18n/appContent';
 import { hasUnfilledHole, interpolate, resolveCopy } from '@/i18n/interpolate';
 import { fetchOverrides } from '@/services/appContent';
+import { tellServiceWorkerLanguage } from '@/lib/swLanguage';
 
 const LANG_STORAGE_KEY = 'homatch_lang';
 const SUPPORTED_LANGUAGES: SupportedLanguage[] = ['en', 'ka', 'ru', 'tr', 'ar', 'he'];
@@ -158,6 +159,9 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   // only a brand-new device/session with zero prior signal may adopt it.
   const hasExplicitPreferenceRef = useRef(hadExplicitStoredPreference());
   const profileAppliedRef = useRef(false);
+
+  /* Pushes drawn later by the service worker read in this language (swLanguage.ts). */
+  useEffect(() => { tellServiceWorkerLanguage(lang); }, [lang]);
 
   useEffect(() => {
     try {

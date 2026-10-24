@@ -1431,14 +1431,26 @@ export async function getAdminOverviewStats(): Promise<AdminOverviewStats> {
     supabase.from('raw_signals').select('id', { count: 'exact', head: true }),
     supabase.from('raw_signals').select('id', { count: 'exact', head: true }).eq('classification_status', 'CLASSIFIED'),
     supabase.from('matches').select('id', { count: 'exact', head: true }),
-    supabase.from('match_unlocks').select('credits_charged'),
-    supabase.from('credit_ledger').select('amount, type'),
-    supabase.from('cost_events').select('cost_usd'),
+    // count: 'exact' on the three row reads: PostgREST returns at most its
+    // max-rows page, so a sum over a truncated page is a wrong number. When
+    // fewer rows came back than exist, the figure is reported as incomplete.
+    supabase.from('match_unlocks').select('credits_charged', { count: 'exact' }),
+    supabase.from('credit_ledger').select('amount, type', { count: 'exact' }),
+    supabase.from('cost_events').select('cost_usd, pricing_state', { count: 'exact' }),
   ]);
-  const totalUnlocks = unlocksRes.data?.length ?? 0;
+  const complete = (res: { data: unknown[] | null; count: number | null; error: unknown }) =>
+    !res.error && res.data !== null && (res.count === null || res.data.length >= res.count);
   const totalMatches = matchesRes.count ?? 0;
-  const revenue = (unlocksRes.data ?? []).reduce((s, r) => s + Number(r.credits_charged ?? 0), 0);
+  const totalUnlocks = unlocksRes.count ?? unlocksRes.data?.length ?? 0;
+  // match_unlocks.credits_charged is CREDITS. 10 credits = $1 (docs/claude/BILLING.md);
+  // this used to be summed straight into revenue_usd, overstating it tenfold.
+  const revenueCredits = (unlocksRes.data ?? []).reduce((s, r) => s + Number(r.credits_charged ?? 0), 0);
+  const revenue = revenueCredits / 10;
   const cogs = (cogsRes.data ?? []).reduce((s, r) => s + Number(r.cost_usd ?? 0), 0);
+  // UNPRICED cost rows carry a placeholder cost_usd: COGS is unknown, not lower.
+  const cogsUnpriced = (cogsRes.data ?? []).filter((r) => r.pricing_state === 'UNPRICED').length;
+  const revenueComplete = complete(unlocksRes);
+  const cogsComplete = complete(cogsRes) && cogsUnpriced === 0;
   const creditsPurchased = (creditsRes.data ?? [])
     .filter(r => r.type === 'TOP_UP').reduce((s, r) => s + Number(r.amount), 0);
   const creditsConsumed = (creditsRes.data ?? [])
@@ -1456,10 +1468,16 @@ export async function getAdminOverviewStats(): Promise<AdminOverviewStats> {
     cache_hit_rate: 0, // populated from cost_events cache_hit flag
     credits_purchased: creditsPurchased,
     credits_consumed: creditsConsumed,
+    credits_complete: complete(creditsRes),
     cogs_usd: cogs,
+    cogs_complete: cogsComplete,
+    cogs_unpriced_events: cogsUnpriced,
+    revenue_credits: revenueCredits,
     revenue_usd: revenue,
-    gross_profit_usd: grossProfit,
-    gross_margin_pct: revenue > 0 ? (grossProfit / revenue) * 100 : 0,
+    revenue_complete: revenueComplete,
+    gross_profit_usd: revenueComplete && cogsComplete ? grossProfit : null,
+    // Unknown, not 0%, when there is no revenue or either side is incomplete or unpriced.
+    gross_margin_pct: revenue > 0 && revenueComplete && cogsComplete ? (grossProfit / revenue) * 100 : null,
   };
 }
 

@@ -22,6 +22,7 @@ import {
   ScenarioLabModule,
 } from '../Scenarios';
 import { CapitalFlowModule } from '../CapitalFlow';
+import { ThreeScenariosModule } from '../ThreeScenarios';
 
 export function RentalResults({
   model,
@@ -54,6 +55,7 @@ export function RentalResults({
         missing={missing}
         onVacancyChange={onVacancyChange}
       />
+      <ThreeScenariosModule model={model} />
       <FinancingModule model={model} focused={false} missing={missing} />
       <MoneyBackModule model={model} focused={false} missing={missing} />
       <ImpliedValueModule

@@ -292,8 +292,12 @@ function WorkspaceContent() {
       } else {
         const ids = selection.mode === 'ids' ? [...selection.ids] : [];
         const r = await quoteInternal(ids);
-        const newCount = r.standardCount + r.exactCount + r.premiumCount;
-        q = { selected: r.requested, alreadyUnlocked: r.alreadyUnlocked, newCount, totalCredits: r.totalCredits, balance: r.balance, active: true, usd: null };
+        const newCount = r.standardCount + r.exactCount + r.premiumCount + r.mortgageCount + r.mortgageMatchCount;
+        const lines = ([
+          ['MORTGAGE', r.mortgageCount, r.mortgageCredits], ['MORTGAGE_MATCH', r.mortgageMatchCount, r.mortgageMatchCredits],
+          ['STANDARD', r.standardCount, r.standardCredits], ['EXACT', r.exactCount, r.exactCredits], ['PREMIUM', r.premiumCount, r.premiumCredits],
+        ] as const).map(([key, count, credits]) => ({ key, count, credits, unit: r.prices[key] }));
+        q = { selected: r.requested, alreadyUnlocked: r.alreadyUnlocked, newCount, totalCredits: r.totalCredits, balance: r.balance, active: true, usd: null, lines };
       }
       if (mine === quoteSeq.current) setQuote(q);
       return q;
@@ -338,7 +342,8 @@ function WorkspaceContent() {
         done = { product, count: r.unlockedCount, credits: r.chargedCredits, listId: r.listId, ids: r.unlocked };
       } else {
         const ids = selection.mode === 'ids' ? [...selection.ids] : [];
-        const r = await unlockInternal(ids, unlockKey.current);
+        /* The total the customer just confirmed: a price raised since the quote is refused, never charged. */
+        const r = await unlockInternal(ids, unlockKey.current, quote.totalCredits);
         done = { product, count: r.unlocked.length, credits: r.chargedCredits, listId: null, ids: [...r.unlocked, ...r.alreadyUnlocked] };
       }
       setConfirmOpen(false);
@@ -484,10 +489,13 @@ function WorkspaceContent() {
                   <p className="mt-1 max-w-[70ch] text-sm leading-relaxed text-[hsl(224_14%_28%)]">{t('mw_internal_body')}</p>
                 </div>
                 {internalPrices ? (
-                  <dl className="grid shrink-0 grid-cols-1 gap-2 sm:w-96 sm:grid-cols-3" data-testid="mw-internal-prices">
-                    {([['EXACT', internalPrices.EXACT], ['NEARBY_SIMILAR', internalPrices.STANDARD], ['VIP', internalPrices.PREMIUM]] as const).map(([cat, n]) => (
+                  <dl className={cn('grid shrink-0 grid-cols-1 gap-2 sm:w-96', internalPrices.MORTGAGE ? 'sm:grid-cols-2' : 'sm:grid-cols-3')} data-testid="mw-internal-prices">
+                    {/* Home Financing opt-ins: their own price, listed with the others (absent from an older server). */}
+                    {([['EXACT', internalPrices.EXACT], ['NEARBY_SIMILAR', internalPrices.STANDARD], ['VIP', internalPrices.PREMIUM],
+                      ...(internalPrices.MORTGAGE ? [['MORTGAGE', internalPrices.MORTGAGE] as const] : []),
+                      ...(internalPrices.MORTGAGE_MATCH ? [['MORTGAGE_MATCH', internalPrices.MORTGAGE_MATCH] as const] : [])] as const).map(([cat, n]) => (
                       <div key={cat} className={cn('flex min-w-0 items-center justify-between gap-3 rounded-xl px-3 py-2 sm:block', cat === 'VIP' ? 'bg-[#0C1119] text-white' : 'border border-[hsl(var(--border))] bg-white')} data-price={cat}>
-                        <dt className={cn('min-w-0 text-xs font-semibold leading-snug', cat === 'VIP' ? 'text-[hsl(38_92%_62%)]' : 'text-[hsl(224_10%_40%)]')}>{t(`hl_cat_${cat}`)}</dt>
+                        <dt className={cn('min-w-0 text-xs font-semibold leading-snug', cat === 'VIP' ? 'text-[hsl(38_92%_62%)]' : 'text-[hsl(224_10%_40%)]')}>{t(cat === 'MORTGAGE' ? 'hl_price_mortgage' : cat === 'MORTGAGE_MATCH' ? 'hl_price_mortgage_match' : `hl_cat_${cat}`)}</dt>
                         <dd className="shrink-0 whitespace-nowrap font-display text-base font-bold sm:mt-0.5" dir="ltr">{t(n === 1 ? 'mw_credit_one' : 'mw_credits_n', { n: formatCredits(n, lang) })}</dd>
                       </div>
                     ))}

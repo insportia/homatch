@@ -82,7 +82,12 @@ test('the count rises only after a turn actually succeeded', () => {
   const src = aiFn();
   const iSend = src.indexOf("fetch('https://api.openai.com");
   const iCount = src.indexOf('user_messages: anonSession.user_messages + 1');
-  assert.ok(iSend > 0 && iCount > iSend, 'the anonymous turn is counted before the answer exists');
+  /* The count lives in complete(), the step that runs once an answer
+     exists, and complete() is only ever called after the provider answered. */
+  const iComplete = src.indexOf('const complete = async');
+  assert.ok(iComplete > 0 && iCount > iComplete && iCount < iSend, 'the anonymous turn is counted outside the post-answer step');
+  const calls = [...src.matchAll(/await complete\(/g)].map((m) => m.index);
+  assert.ok(calls.length >= 2 && calls.every((i) => i > iSend), 'the anonymous turn is counted before the answer exists');
 });
 
 test('the gate appears only when the server says so', () => {
@@ -153,7 +158,7 @@ test('the server tells the client which conversation it opened', () => {
   // The anonymous visitor cannot create one, so only the server knows its id.
   // Without returning it, message two opens a SECOND conversation and the
   // thread quietly splits in half.
-  assert.ok(/return json\(\{\n\s*text,\n\s*conversationId,/.test(aiFn()),
+  assert.ok(/(?:return json\(\{|const customerEnvelope = \{)\n\s*text,\n\s*conversationId,/.test(aiFn()),
     'the conversation id is not returned to the client');
   assert.ok(/onMeta:/.test(hook()), 'the client never reads it');
   assert.ok(/if \(typeof id === 'string' && id && !convId\)/.test(hook()),

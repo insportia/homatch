@@ -12,7 +12,70 @@ Release package, measured latency, costs, checklist, rollback: `docs/infra/VERIF
 - Rollout: 1 replica first → health proof → scale to 3 on separate approval. Railway plan verified HOBBY (6 replicas max, 8 vCPU/8 GB each).
 - Scaling MANUAL, ceiling 3 (owner-only: approvedMax/plan not changeable via admin API), autoscaler off; needs RAILWAY_PROJECT_TOKEN (owner) + RAILWAY_DEPLOYMENT_DRAINING_SECONDS=200.
 - Measured: total p50 14.1 min (official 8.0, tail 3.3). Simulated 200 burst: 3 replicas ~101 min, 6 ~84 min, bound by RS cap 4 (government caps NOT raised).
-- HOMI #325 still collides with #327's merged 20261201090000 — its owner must renumber.
+- HOMI #325 merged with its migrations renumbered to 20261202*; no clash with these 20261205*.
+
+## HOMI experience and platform intelligence (PR #325, branch claude/homi-experience, 2026-10-24) — PR OPEN, NOT DEPLOYED, AWAITING OWNER RELEASE APPROVAL
+
+- Scope: HOMI assistant (internal-first routing, deterministic answers with no model, free streamed chat,
+  telemetry), HOMI 3D on the homepage and in chat (public/models/homi/homi.glb, stills in
+  public/images/homi), Expat journey, Investment goal-first entry and three scenarios, Mortgage readiness,
+  financial-literacy glossary and offer comparison (2 pt rise, appraisal, fixed period, unstated costs),
+  "ჩემი იპოთეკები" saved scenarios (immutable versions, stale-rule detection), Home Financing buyer
+  intent in HOMATCH Matching (see Money), Contract clause review with accept/edit/reject, DOCX (clean and tracked)
+  and print-to-PDF, revision history, truthful progress stages and optional Snake, transactional email,
+  admin insight pages. Georgian voice and terms: docs/claude/HOMI_GLOSSARY.md.
+- Migrations (append-only, all applied twice on PGlite): 20261202090000 HOMI telemetry,
+  20261202091000 homepage section order (data), 20261202092000 mortgage readiness/bank products,
+  20261202093000 mortgage workspace + buyer leads, 20261202094000 contract revisions,
+  20261202095000 notification types + admin insight RPCs. Release order: merge -> apply -> deploy.
+- Money (owner correction 2026-10-25): Home Financing is NOT a lead marketplace and sells nothing. An
+  opt-in to receive property offers becomes ONE ordinary member search in the existing Matching engine
+  (intent_profiles + active_search_subscriptions, demand_source MORTGAGE, classifier mortgage-optin-1);
+  supply-matching scores it like any search and the Matching feeds show it beside the other buyer leads
+  (one row per member, existing rule), with origin and the signals the person agreed to share (calculator
+  use, this listing, timeframe). Value-based price (owner rule 2026-10-25), per person and listing, from
+  internal_lead_member_price with its reasons: mortgage interest only = MORTGAGE (INTERNAL_LEAD_MORTGAGE,
+  3 credits); mortgage interest + the person's own property search also matched to this listing =
+  MORTGAGE_MATCH (INTERNAL_LEAD_MORTGAGE_MATCH, 5 credits); a PREMIUM search stays PREMIUM 10 (a signal never
+  lowers a price); everyone else keeps STANDARD 3 / EXACT 5 / PREMIUM 10. Feeds, quote and unlock share the
+  function; cards, drawer and both unlock dialogs show the reasons. Charged only when a Matching user unlocks,
+  through the existing internal_leads_unlock (wallet reserve/settle, idempotency, advisory lock): one person,
+  one payment per account by any source, listing, search or later price (internal_lead_unlocks); the client
+  sends the confirmed total and a higher price is refused (PRICE_CHANGED, nothing charged). The production
+  internal_lead_segment / internal_lead_price_key are untouched. Withdrawal deletes the search.
+- Consent and legal basis: sharing a contact channel with sellers needs the person's separate, explicit,
+  withdrawable choice (one step after a calculation: what sellers see, channel toggles, one confirm);
+  accepting the Terms or Privacy Policy is never treated as that permission. Ordinary member searches already
+  share no contact channel by default (lead_contact_preferences share_* default false). Privacy Policy s2/s4
+  (#matching) and Terms s2/s4/s5 describe Matching, potentially interested people, one payment per person
+  and permitted use (updated 2026-10-25). The basis stated is consent under the Law of Georgia on Personal
+  Data Protection; counsel should confirm the wording before release.
+- Contract pricing ($0.20/$0.50) is analysis only.
+- Email: notify() sends a transactional email only for VERIFY_COMPLETE, DOCUMENT_ANALYZED,
+  CREDITS_TOPPED_UP, PAYMENT_FAILED, SERVICE_FAILED; preferred_language, Georgian default; honours
+  notification_preferences.email_enabled (payment failure always sent); once per notification id.
+- Edge functions touched: homatch-ai, deal-room-document-analyze, supply-matching (origin wording only),
+  atomic-unlock (passes the confirmed total to internal_leads_unlock),
+  jobs-worker, payment-webhook, and every producer that imports _shared/notify.ts (deploy-scope computes it).
+  No new edge function.
+- Final audit round (owner prompt "PR #325 FINAL COMPLETE AUDIT", 2026-10-24): migration
+  20261202096000 investment saved results added (owner-only, no update). 093 now keeps property_ids,
+  erases stated preferences on withdrawal, re-reads accept_property_offers at contact and logs email
+  disclosures; 094 keys revisions by analysis identity and purges them with extracted_text; payment-webhook
+  emits a PAYG top-up failure (checkout.session.async_payment_failed); notify email is claim-before-send
+  with a Resend Idempotency-Key. Real PostgreSQL 17 proof on a read-only production schema snapshot
+  (outside the repo, Matching tables and functions exported read-only from production): 7 migrations
+  applied twice; full journey opt-in -> Matching search -> engine match -> locked preview (both feeds,
+  quote) -> 25 concurrent unlocks = 1 charge of 3 credits (INTERNAL_LEAD_MORTGAGE usage event) -> retry
+  storm one execution -> other listing / re-consent never recharged -> cross-account isolation ->
+  insufficient-credit rollback -> mortgage product off stops only that segment -> contact limited to the
+  chosen channels and recorded -> offers switch and withdrawal remove the person at once. Value pricing:
+  mortgage only 3, mortgage + search 5, PREMIUM with mortgage stays 10, reasons on every row; a price
+  raised after the quote is refused with nothing charged; new evidence after a purchase never charges again;
+  8 concurrent overlapping bulk unlocks of bought people charge nothing.
+- Local-only environment notes: tsgo's 7 errors (Array.at, Intl.ListFormat, @huggingface/transformers,
+  pdfjs-dist) come from a drifted local node_modules (@types/node 26.5.0 vs lockfile 26.4.0, two optional
+  packages absent); CI's frozen-lockfile type-check is clean.
 
 ## Email Studio drag & drop builder + deliverability panel (PR #327, branch claude/email-builder-deliverability, 2026-10-24) — PR OPEN, AWAITING OWNER RELEASE APPROVAL
 

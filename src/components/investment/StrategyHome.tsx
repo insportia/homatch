@@ -12,11 +12,34 @@
 // headline means. Four cramped tiles would treat it as navigation. It is
 // the first analytical decision.
 
-import React from 'react';
+import React, { useState } from 'react';
 import { ArrowRight, Building2, Hammer, KeyRound, Scale } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { STRATEGIES, STRATEGY_ORDER, type StrategyId } from '@/investment/strategies/definitions';
+
+/*
+ * GOAL FIRST. One question, four answers, and the strategies that fit are
+ * marked and moved to the front. The four strategies stay the home: the goal
+ * only says where to start, and "not sure" gets two more taps, not a form.
+ */
+type Goal = 'INCOME' | 'GROWTH' | 'BOTH' | 'UNSURE';
+type Horizon = 'SHORT' | 'LONG';
+type Involvement = 'ACTIVE' | 'PASSIVE';
+const GOALS: Goal[] = ['INCOME', 'GROWTH', 'BOTH', 'UNSURE'];
+
+export function recommendedFor(goal: Goal | null, horizon: Horizon | null, involvement: Involvement | null): StrategyId[] {
+  switch (goal) {
+    case 'INCOME': return ['RENTAL_INVESTMENT'];
+    case 'GROWTH': return ['RENOVATE_RESELL', 'CONSTRUCTION_RESALE'];
+    case 'BOTH': return ['RENTAL_INVESTMENT', 'INVESTMENT_VALUE'];
+    case 'UNSURE':
+      if (!horizon || !involvement) return [];
+      if (horizon === 'SHORT') return involvement === 'ACTIVE' ? ['RENOVATE_RESELL'] : ['CONSTRUCTION_RESALE'];
+      return involvement === 'ACTIVE' ? ['RENTAL_INVESTMENT'] : ['RENTAL_INVESTMENT', 'INVESTMENT_VALUE'];
+    default: return [];
+  }
+}
 
 const ICONS: Record<StrategyId, typeof Hammer> = {
   RENOVATE_RESELL: Hammer,
@@ -34,6 +57,15 @@ export function StrategyHome({
   resumable: StrategyId | null;
 }) {
   const { t, isRTL } = useLanguage();
+  const [goal, setGoal] = useState<Goal | null>(null);
+  const [horizon, setHorizon] = useState<Horizon | null>(null);
+  const [involvement, setInvolvement] = useState<Involvement | null>(null);
+  const picks = recommendedFor(goal, horizon, involvement);
+  const ordered = [...STRATEGY_ORDER].sort((a, b) => Number(picks.includes(b)) - Number(picks.includes(a)));
+  const pill = (on: boolean) => cn(
+    'min-h-11 rounded-full border px-4 text-sm font-medium transition-colors',
+    on ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold))] text-[hsl(var(--primary-foreground))]' : 'border-border bg-background text-foreground hover:border-[hsl(var(--gold-border))]',
+  );
 
   return (
     <div className="mx-auto w-full max-w-[72rem] px-5 py-12 sm:py-16">
@@ -52,11 +84,48 @@ export function StrategyHome({
         <span className="mt-4 block h-[3px] w-16 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
       </header>
 
+      <section aria-labelledby="inv-goal-q" className="hm-invest-panel mb-6 p-5 sm:p-6">
+        <h2 id="inv-goal-q" className="font-display text-lg font-semibold text-foreground">{t('inv_goal_question')}</h2>
+        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-labelledby="inv-goal-q">
+          {GOALS.map((g) => (
+            <button key={g} type="button" aria-pressed={goal === g} onClick={() => setGoal(goal === g ? null : g)} className={pill(goal === g)}>
+              {t(`inv_goal_${g.toLowerCase()}`)}
+            </button>
+          ))}
+        </div>
+        {goal === 'UNSURE' && (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <p id="inv-horizon" className="mb-2 text-sm font-medium text-foreground">{t('inv_goal_horizon_q')}</p>
+              <div className="flex flex-wrap gap-2" role="group" aria-labelledby="inv-horizon">
+                {(['SHORT', 'LONG'] as Horizon[]).map((h) => (
+                  <button key={h} type="button" aria-pressed={horizon === h} onClick={() => setHorizon(h)} className={pill(horizon === h)}>
+                    {t(`inv_goal_horizon_${h.toLowerCase()}`)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p id="inv-involve" className="mb-2 text-sm font-medium text-foreground">{t('inv_goal_involve_q')}</p>
+              <div className="flex flex-wrap gap-2" role="group" aria-labelledby="inv-involve">
+                {(['ACTIVE', 'PASSIVE'] as Involvement[]).map((v) => (
+                  <button key={v} type="button" aria-pressed={involvement === v} onClick={() => setInvolvement(v)} className={pill(involvement === v)}>
+                    {t(`inv_goal_involve_${v.toLowerCase()}`)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        {picks.length > 0 && <p className="mt-4 text-sm text-muted-foreground" aria-live="polite">{t('inv_goal_picked')}</p>}
+      </section>
+
       <div className="grid gap-4 md:grid-cols-2">
-        {STRATEGY_ORDER.map((id) => {
+        {ordered.map((id) => {
           const strategy = STRATEGIES[id];
           const Icon = ICONS[id];
           const isResumable = resumable === id;
+          const isPick = picks.includes(id);
           return (
             <button
               key={id}
@@ -65,14 +134,19 @@ export function StrategyHome({
               className={cn(
                 'hm-invest-panel group flex min-h-[11rem] flex-col p-6 text-start transition-all',
                 'hover:border-[hsl(var(--gold-border))] hover:shadow-[var(--shadow-hover)]',
-                isResumable && 'border-[hsl(var(--gold-border))]',
+                (isResumable || isPick) && 'border-[hsl(var(--gold-border))]',
+                isPick && 'ring-2 ring-[hsl(var(--gold))]/40',
               )}
             >
               <span className="mb-4 flex items-start justify-between gap-3">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]">
                   <Icon className="h-5 w-5 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
                 </span>
-                {isResumable ? (
+                {isPick ? (
+                  <span className="rounded-full bg-[hsl(var(--gold))] px-2.5 py-1 text-2xs font-semibold text-[hsl(var(--primary-foreground))]">
+                    {t('inv_goal_recommended')}
+                  </span>
+                ) : isResumable ? (
                   <span className="rounded-full border border-[hsl(var(--gold-border))] px-2.5 py-1 text-2xs text-[hsl(var(--gold-ink))]">
                     {t('inv_home_in_progress')}
                   </span>

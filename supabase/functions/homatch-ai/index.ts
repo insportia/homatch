@@ -29,12 +29,17 @@ import {
   SUGGESTED_REPLIES_INSTRUCTION,
 } from '../../../src/lib/ai/identity.ts';
 import { parseSuggestedReplies } from '../../../src/lib/ai/suggestedReplies.ts';
-import { parseServiceActions, SERVICE_ACTION_SERVICE, SERVICE_ACTIONS_INSTRUCTION } from '../../../src/lib/ai/serviceActions.ts';
+import { parseServiceActions, SERVICE_ACTION_SERVICE, SERVICE_ACTIONS_INSTRUCTION, type ServiceAction } from '../../../src/lib/ai/serviceActions.ts';
 import {
   beginExecution, recordUnbilledUsage, releaseExecution, settleExecution, type ExecutionGrant,
 } from '../_shared/billing.ts';
 import { retentionBlockedIds } from '../_shared/retentionGuard.ts';
 import { serviceBackendEnabled, serviceDisabledBody, serviceState, type ServiceKey } from '../_shared/serviceControl.ts';
+import { routeHomiTurn, type HomiRoute } from '../../../src/lib/homi/router.ts';
+import { HOMI_CARDS_INSTRUCTION, parseHomiCards } from '../../../src/lib/homi/cards.ts';
+import {
+  deterministicPayload, readOpenAIStream, SSE_HEADERS, sseFrame, stripAiDashes, trimConversation,
+} from './homi.ts';
 
 /* One OpenAI call per chat turn; see the fetch below. */
 const OPENAI_REQUEST_TIMEOUT_MS = 130_000;
@@ -44,7 +49,27 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
+/* The lighter tier for short conversational turns. Falls back to MODEL when no
+   fast model is configured, so a missing variable never changes behaviour. */
+const LIGHT_MODEL = Deno.env.get('HOMI_LIGHT_MODEL') || Deno.env.get('OPENAI_FAST_MODEL') || MODEL;
 const RATE_LIMIT_OPERATION = 'ai_chat_message';
+/* Every HOMI turn, deterministic ones included: a burst ceiling, not a quota. */
+const BURST_OPERATION = 'homi_turn';
+const BURST_PER_MINUTE = 20;
+/* Web searches a single turn may run. The model decides whether to search at
+   all; this caps how far one turn can go. */
+const TOOL_CALL_BUDGET = { LIGHT: 1, FULL: 4 } as const;
+/*
+ * WHICH SURFACES STILL CHARGE PER ANSWER.
+ *
+ * HOMI chat is free to the person (owner decision 2026-10-24): the general
+ * assistant and HOMI inside the mortgage, investment, expat and contract
+ * workspaces never reserve credits. Usage is still measured and recorded
+ * (shadow metering), and fair use still applies. Two things are not HOMI chat
+ * and keep their existing pricing: the paid property analysis inside Find
+ * Property, and the agent builder of the AI Call Center.
+ */
+const BILLED_SURFACES = new Set(['agent-builder']);
 
 /**
  * The billable product one assistant response is.
@@ -88,10 +113,19 @@ const RATE_LIMIT_MESSAGES: Record<Locale, (limit: number) => string> = {
   he: limit => `הגעתם למכסת הצ'אט היומית של הבינה המלאכותית (${limit} הודעות). המכסה מתאפסת בחצות לפי UTC.`,
 };
 
+const BURST_MESSAGES: Record<Locale, string> = {
+  en: "That's a lot of messages very quickly. Give me a minute and try again.",
+  ka: 'ძალიან ბევრი შეტყობინება ძალიან სწრაფად. ერთი წუთით მოიცადე და თავიდან სცადე.',
+  ru: 'Слишком много сообщений за короткое время. Подожди минуту и попробуй снова.',
+  tr: 'Çok kısa sürede çok fazla mesaj. Bir dakika bekleyip tekrar dene.',
+  ar: 'رسائل كثيرة جدًا في وقت قصير. انتظر دقيقة ثم حاول مجددًا.',
+  he: 'יותר מדי הודעות בזמן קצר. חכה דקה ונסה שוב.',
+};
+
 // ── Intent-to-lead extraction instruction, appended to the system prompt ──
 const LEAD_EXTRACTION_INSTRUCTION = `
 After your visible reply to the user, on a new line, append exactly ONE fenced code block \`\`\`json ... \`\`\` (nothing after it) containing a single JSON object with this exact shape — use null for anything not stated, never invent a value:
-{"intent_detected": boolean, "transaction_type": "BUY"|"SELL"|"RENT_OUT"|"RENT_IN"|"INVEST"|null, "property_type": string|null, "location": string|null, "budget_min": number|null, "budget_max": number|null, "currency": string|null, "bedrooms": number|null, "timeline": string|null, "contact_name": string|null, "contact_phone": string|null, "contact_email": string|null, "confidence": number, "suggested_replies": string[], "suggested_actions": string[], "routing": {"intent": string, "web_mode": "NO_WEB"|"SUPPLEMENTAL_WEB"|"REQUIRED_LIVE_WEB"|"SPECIALIZED_HOMATCH_WORKFLOW", "internal_used": boolean}}
+{"intent_detected": boolean, "transaction_type": "BUY"|"SELL"|"RENT_OUT"|"RENT_IN"|"INVEST"|null, "property_type": string|null, "location": string|null, "budget_min": number|null, "budget_max": number|null, "currency": string|null, "bedrooms": number|null, "timeline": string|null, "contact_name": string|null, "contact_phone": string|null, "contact_email": string|null, "confidence": number, "suggested_replies": string[], "suggested_actions": string[], "cards": array, "routing": {"intent": string, "web_mode": "NO_WEB"|"SUPPLEMENTAL_WEB"|"REQUIRED_LIVE_WEB"|"SPECIALIZED_HOMATCH_WORKFLOW", "internal_used": boolean}}
 "routing" reports how you actually answered THIS turn: "intent" is a 2-5 word English label for what the user wanted (e.g. "property price context", "market research", "contract clause"), "web_mode" is the mode you actually followed, "internal_used" is true when PAGE CONTEXT or HOMATCH INTERNAL DATA materially shaped the answer. Report what happened — never what would sound better.
 Set "intent_detected": true only if the user expressed a genuine intention to buy, sell, rent out, rent, or invest in property (not just idle research or a general question), OR shared their own contact info (phone/email/name) for follow-up. "confidence" is your 0-1 confidence in that assessment. This JSON block is removed before the user sees your answer — it must never replace or duplicate your visible reply, and it must always be present even when intent_detected is false.`;
 
@@ -112,6 +146,8 @@ interface LeadExtraction {
   /** Untrusted. Never reaches a browser without parseSuggestedReplies(). */
   suggested_replies?: unknown;
   suggested_actions?: unknown;
+  /** Untrusted. Never reaches a browser without parseHomiCards(). */
+  cards?: unknown;
   /** Self-reported routing (telemetry only — never rendered to customers). */
   routing?: { intent?: unknown; web_mode?: unknown; internal_used?: unknown } | null;
 }
@@ -195,7 +231,33 @@ serve(async (req) => {
   const anonSession = user ? null : await anonSessionFor(sb, body?.anonSessionToken);
   if (!user && !anonSession) return json({ error: 'Authentication required' }, 401);
 
-  if (anonSession && anonSession.user_messages >= ANON_USER_MESSAGE_LIMIT) {
+  const allMsgs = (Array.isArray(body.messages) ? body.messages : [])
+    .filter((m: any) => ['user', 'assistant'].includes(m?.role) && typeof m.content === 'string')
+    .slice(-30)
+    .map((m: any) => ({ role: m.role, content: m.content.slice(0, 12000) }));
+  if (!allMsgs.length) return json({ error: 'messages array required' }, 400);
+  /* Context trimming: newest turns within a character budget, opening question kept. */
+  const { kept: msgs, dropped: droppedTurns } = trimConversation(allMsgs);
+  const lastUserText = [...allMsgs].reverse().find((m: any) => m.role === 'user')?.content || '';
+  const surfaceName = String((body?.context as any)?.surface ?? 'ai-assistant');
+  const wantsStream = body?.stream === true;
+
+  /*
+   * HOMI ROUTING — before anything costs money.
+   *
+   * A turn HOMATCH already has a written answer for (a greeting, "what is
+   * Verify?", the start menu, a document checklist) is answered from
+   * src/lib/homi/content.ts with no model call at all. The paid property
+   * analysis never short-circuits: it is a product, not a chat.
+   */
+  const marketplaceRequested = body.context?.type === 'property' && body.context?.surface === 'find-property';
+  const route: HomiRoute = marketplaceRequested
+    ? { kind: 'MODEL', tier: 'FULL', searchCue: false, intent: null }
+    : routeHomiTurn(lastUserText, { chipIntent: body?.homiIntent, surface: surfaceName });
+  const deterministic = route.kind === 'DETERMINISTIC';
+
+  /* The anonymous trial counts model answers; a written answer costs nothing. */
+  if (anonSession && !deterministic && anonSession.user_messages >= ANON_USER_MESSAGE_LIMIT) {
     // Not an error — the visitor has had what was offered, and the next step
     // is signing in, which keeps everything they have already said.
     return json(
@@ -203,11 +265,6 @@ serve(async (req) => {
       402
     );
   }
-  const msgs = (Array.isArray(body.messages) ? body.messages : [])
-    .filter((m: any) => ['user', 'assistant'].includes(m?.role) && typeof m.content === 'string')
-    .slice(-30)
-    .map((m: any) => ({ role: m.role, content: m.content.slice(0, 12000) }));
-  if (!msgs.length) return json({ error: 'messages array required' }, 400);
 
   /*
    * SERVICE CONTROL. One function, several products, so the switch follows the surface:
@@ -250,10 +307,11 @@ serve(async (req) => {
       || body.context?.searchId !== c.context.searchId || body.context?.propertyKey !== c.context.propertyKey)) {
       return json({ error: 'Property conversation scope mismatch' }, 409);
     }
-  } else if (anonSession) {
+  } else if (anonSession && !deterministic) {
     // An anonymous visitor cannot create a conversation themselves — RLS gives
     // them no access to the table — so the first message creates it here,
-    // owned by the session.
+    // owned by the session. A written HOMI answer needs no row: the browser
+    // keeps it, and the first real question opens the conversation.
     const { data: created, error: convErr } = await sb
       .from('ai_conversations')
       .insert({ user_id: null, anon_session_id: anonSession.id, title: 'Homatch AI' })
@@ -283,6 +341,78 @@ serve(async (req) => {
     } catch {
       return json({ error: 'Property context unavailable' }, 503);
     }
+  }
+
+  const turnStartedAt = Date.now();
+  const callerIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || null;
+
+  /* ── 0. Burst protection, per account or (anonymous) per address ─────
+   * Free answers still cost a request and a row. Twenty turns a minute is
+   * well above a person typing or clicking and well below a script. */
+  if (uid || callerIp) {
+    const since = new Date(Date.now() - 60_000).toISOString();
+    const q = sb.from('rate_limit_events').select('id', { count: 'exact', head: true })
+      .eq('operation', BURST_OPERATION).gte('created_at', since);
+    const { count: burst } = await (uid ? q.eq('user_id', uid) : q.is('user_id', null).eq('ip_address', callerIp));
+    if ((burst ?? 0) >= BURST_PER_MINUTE) {
+      return json({ error: BURST_MESSAGES[lang] ?? BURST_MESSAGES.en, code: 'RATE_LIMIT_EXCEEDED', limit: BURST_PER_MINUTE }, 429);
+    }
+    await sb.from('rate_limit_events').insert({ user_id: uid ?? null, ip_address: callerIp, operation: BURST_OPERATION });
+  }
+
+  /** One telemetry row per turn, success or failure. Best-effort, never blocks an answer. */
+  const recordTurn = (row: Record<string, unknown>) =>
+    sb.from('ai_routing_events').insert({
+      user_id: uid ?? null,
+      conversation_id: conversationId ?? null,
+      locale: lang,
+      surface: surfaceName.slice(0, 40),
+      route: deterministic ? 'DETERMINISTIC' : `MODEL_${(route as any).tier}`,
+      ...row,
+    }).then(({ error }: { error: unknown }) => { if (error) console.error('routing telemetry insert failed', error); });
+
+  /* ── HOMI: a written answer, no model ──────────────────────────────── */
+  if (deterministic && route.kind === 'DETERMINISTIC') {
+    const payload = deterministicPayload(route.intent, lang);
+    const actionsOut: ServiceAction[] = [];
+    for (const action of payload.actions) {
+      const key = SERVICE_ACTION_SERVICE[action.id];
+      if (!key || (await serviceState(sb, key as ServiceKey)).frontend) actionsOut.push(action);
+    }
+    if (conversationId) {
+      await sb.from('ai_messages').insert([
+        { conversation_id: conversationId, role: 'user', content: lastUserText },
+        { conversation_id: conversationId, role: 'assistant', content: payload.text },
+      ]);
+    }
+    const customerEnvelope = {
+      text: payload.text,
+      conversationId,
+      suggestedReplies: payload.suggestedReplies,
+      suggestedActions: actionsOut,
+      cards: payload.cards,
+      homi: { route: 'DETERMINISTIC', intent: route.intent, mood: payload.mood },
+      webChecked: false,
+      sources: [],
+      researchMode: 'HOMATCH_KNOWLEDGE',
+      paidProvidersUsed: false,
+    };
+    recordTurn({
+      intent: route.intent.toLowerCase(), deterministic_intent: route.intent, web_mode: 'NO_WEB',
+      internal_used: true, web_calls: 0, action_ids: actionsOut.map((a) => a.id),
+      reply_count: payload.suggestedReplies.length, latency_ms: Date.now() - turnStartedAt,
+      ttft_ms: Date.now() - turnStartedAt, input_tokens: 0, cached_tokens: 0, output_tokens: 0,
+      cost_cents: 0, billed: false,
+    });
+    if (!wantsStream) return json(customerEnvelope);
+    return new Response(new ReadableStream({
+      start(c) {
+        c.enqueue(sseFrame('delta', { t: payload.text }));
+        c.enqueue(sseFrame('meta', customerEnvelope));
+        c.enqueue(sseFrame('done', {}));
+        c.close();
+      },
+    }), { headers: { ...CORS, ...SSE_HEADERS } });
   }
 
   // ── 1. Fair use: today's message count vs. this user's plan tier ────────
@@ -365,7 +495,8 @@ serve(async (req) => {
     return json({ error: 'Paid AI analysis unavailable', code: 'PROPERTY_AI_UNAVAILABLE' }, 503);
   }
 
-  if (uid && billingEnabled && interactionId) {
+  const billableSurface = marketplaceScope || BILLED_SURFACES.has(surfaceName);
+  if (uid && billingEnabled && interactionId && billableSurface) {
     grant = await beginExecution(sb, {
       userId: uid,
       productCode: CHAT_PRODUCT_CODE,
@@ -528,13 +659,13 @@ serve(async (req) => {
    */
   const instructions = `${HOMATCH_AI_IDENTITY}
 
-You are Homatch AI, a multilingual real-estate research and matching agent. Homatch has TWO clear user directions: (A) FIND A PROPERTY for buyers/renters/investors; (B) FIND A BUYER OR TENANT for owners/agents/developers. Infer the direction from the request and make it explicit when useful. ${languageDirective(lang)}
+You are HOMI, HOMATCH's multilingual real-estate guide and research assistant. Homatch has TWO clear user directions: (A) FIND A PROPERTY for buyers/renters/investors; (B) FIND A BUYER OR TENANT for owners/agents/developers. Infer the direction from the request and make it explicit when useful. ${languageDirective(lang)}
 
 THE ORDER OF EVERY ANSWER — INTERNAL FIRST, WEB WHEN USEFUL, ANSWER FIRST, SERVICE WHEN RELEVANT.
 1. Understand what they are asking and which property or situation it is about.
 2. Use what is ALREADY IN FRONT OF YOU before anything else: PAGE CONTEXT and HOMATCH INTERNAL DATA below carry the current property (price, location, type, facts), their own Verify reports, their matches and their stated search intents. That material is what makes you Homatch rather than a search box — an answer that ignores a property the customer is literally looking at is a failed answer.
 3. Only then decide whether CURRENT external information would materially improve the answer, and follow exactly one mode: NO_WEB — the context you hold or stable knowledge already answers it, so searching is waste; SUPPLEMENTAL_WEB — the context answers it, but current comparables, market or neighbourhood facts would sharpen it, so search AND merge both; REQUIRED_LIVE_WEB — the question is about current external facts you do not hold (today's prices, a developer's news, regulations), so research properly; SPECIALIZED_HOMATCH_WORKFLOW — the real answer is a Homatch product doing structured work (a Verify report, a full investment analysis, an actual property search), so give the genuinely useful conversational answer you CAN give, then offer that product as the deeper next step. A service existing NEVER means refusing to answer.
-Never call web_search before you have used what Homatch already knows; never avoid it when currency genuinely matters. web_search is the tool for research, verification, current public facts, and anything about a company/developer/project/person/address/cadastral reference — do not answer from memory alone when the topic could be time-sensitive or unverifiable without a search.
+Never call web_search before you have used what Homatch already knows; never avoid it when currency genuinely matters. Searching is NOT the default: a turn that the context, HOMATCH's products or stable knowledge can answer must not search, and when the person explicitly asks you to check online, do. This turn may run at most ${TOOL_CALL_BUDGET[route.kind === 'MODEL' ? route.tier : 'FULL']} search call(s). web_search is the tool for research, verification, current public facts, and anything about a company/developer/project/person/address/cadastral reference — do not answer from memory alone when the topic could be time-sensitive or unverifiable without a search.
 
 RESEARCH IS SYNTHESIS, NOT A LINK. When you search: run as many targeted searches as the question deserves; prefer official/registry/bank/municipality sources over marketplaces, marketplaces over third-party claims; cross-check when sources disagree and say so when they do. An asking price is not a transaction price; a listing is not registry truth — keep those apart whenever the difference matters. Then ANSWER THE QUESTION in your own words: what the evidence shows, what it suggests for THEIR situation, and what its limits are, with sources attached as supporting evidence. A reply whose substance is one URL is a failure — the customer must never have to leave Homatch to understand your answer. Depth follows the question: for one narrow current fact, one authoritative source is enough; for a market, price-comparison or research question, one random listing is not — gather until another source stops changing the picture, then stop. If the web fails mid-answer, say so naturally and still give everything the internal context supports.
 
@@ -547,7 +678,8 @@ WHAT YOU ARE. A knowledgeable property adviser, not a cadastral lookup form. Tal
 ${HOMATCH_CONVERSATION_STYLE}
 ${SUGGESTED_REPLIES_INSTRUCTION}
 ${SERVICE_ACTIONS_INSTRUCTION}
-SOMETHING GENUINELY UNRELATED AND SUBSTANTIAL — a recipe, a maths problem, code, medical advice: do not write it out, and do not lecture about scope either. One friendly sentence that this is not what you are here for, then offer the nearest thing you CAN do. Never produce an error, never quote a policy, never say "outside my scope" or "I can only". This is about somebody asking you to DO a large unrelated job; an ordinary human aside, a joke, a complaint or a swear word is not that, and is covered by the style rules above.
+${HOMI_CARDS_INSTRUCTION}
+${droppedTurns > 0 ? `NOTE: ${droppedTurns} older message(s) of this conversation were left out to keep it short; if the person refers to something you cannot see, ask briefly.\n` : ''}SOMETHING GENUINELY UNRELATED AND SUBSTANTIAL — a recipe, a maths problem, code, medical advice: do not write it out, and do not lecture about scope either. One friendly sentence that this is not what you are here for, then offer the nearest thing you CAN do. Never produce an error, never quote a policy, never say "outside my scope" or "I can only". This is about somebody asking you to DO a large unrelated job; an ordinary human aside, a joke, a complaint or a swear word is not that, and is covered by the style rules above.
 WHAT HOMATCH CAN ACTUALLY DO FOR THEM. These are the real products, with the real place each one starts. Never describe a capability Homatch does not have, and never name a destination that is not on this list.
   Verify (/verify) — deep research on ONE specific property across official registries and public sources, returned as a buyer's report: who owns it, mortgages and restrictions, whether the developer is real, whether the price makes sense.
   Contract Intelligence (/contracts) — upload a purchase or rental contract and Homatch reads it and explains what it actually says: obligations, risks, financial terms, deadlines.
@@ -559,6 +691,8 @@ WHAT HOMATCH CAN ACTUALLY DO FOR THEM. These are the real products, with the rea
   Meta Ads (/outreach/meta) — advertise a property or another offer on Facebook and Instagram. Homatch builds and manages the campaign; the customer picks the goal, budget and photos. The right destination for "how do I advertise this on Facebook" — never send them to Facebook documentation for that.
   Email Campaigns (/outreach/email) and AI Call Center (/outreach/calls) — reaching a list of leads you already have. Only relevant to somebody who is actually doing outreach.
   Active search (/active-search) — set criteria once and be alerted when new matches appear. For a buyer who is waiting, not one who is deciding.
+  Moving to Georgia (/for-expats/georgia) — a guided relocation journey that builds a personal, saved step-by-step plan (action FOR_EXPATS).
+  Contact (/contact) — the one official way to reach the HOMATCH team (action CONTACT). Never give any other contact detail.
 
 WHEN TO MENTION ONE, AND WHEN NOT TO. Answer the question first and answer it properly; a mention is something you add at the end of a genuinely useful reply, never a substitute for one and never the point of it. Mention a service only when it is the obvious next step for what they just asked — a question about whether a flat is safe to buy earns Verify, a question about a clause earns Contract Intelligence, a question about affordability earns Mortgage, "how do I find buyers" earns Find buyers. At most ONE per reply, unless they explicitly asked what their options are. Do not mention the same one again in the next turn — if they did not take it, repeating it is pressure, not help. If somebody is venting, worried, or talking about something that is not a transaction, just talk to them: a recommendation there reads as a sales pitch at a bad moment, and it is. When nothing fits, recommend nothing at all — most replies should end without one. One sentence, in their language, phrased as what it would give them rather than as an offer.
 THE CUSTOMER'S OWN VERIFY REPORTS are in HOMATCH INTERNAL DATA under \`verifications\` when they have any. Use them: refer to the property by name, answer from what that report found, and never make them re-describe their own research to you. Quote a finding as something the report established, and be straight when it is not something the report settled. Do not read a verification out as a list — it is context you already share with them, not something to recite back.
@@ -584,50 +718,56 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
   }
 
   const startedAt = Date.now();
-  let r: Response;
-  try {
-    r = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      /* Bounded below the platform's 150 s response limit: a provider that hangs
-         ends in the catch below, which gives the hold back, instead of the
-         platform killing this request with the hold still taken. */
-      signal: AbortSignal.timeout(OPENAI_REQUEST_TIMEOUT_MS),
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, instructions, input: msgs, tools: [{ type: 'web_search', search_context_size: 'medium' }], tool_choice: 'auto', store: false,
-        /* 'low' was the root cause of one-search-one-link answers: it stops
-         * the model at the first plausible result. 'medium' is what lets a
-         * research-shaped question actually run several targeted searches
-         * and synthesize them; conversational turns stay cheap because
-         * NO_WEB turns never invoke the tool at all. */
-        reasoning: { effort: 'medium' } }),
-    });
-  } catch (err) {
-    /* The provider never answered. Nothing was produced, so nothing is
-       charged and the hold goes straight back — a customer must not pay
-       for an answer that does not exist. */
-    if (grant) await releaseExecution(sb, grant, 'PROVIDER_UNREACHABLE');
-    return json({ error: 'AI provider unreachable' }, 502);
-  }
-  const raw = await r.text();
-  let p2: any;
-  try { p2 = JSON.parse(raw); } catch {
-    if (grant) await releaseExecution(sb, grant, 'PROVIDER_BAD_RESPONSE');
-    return json({ error: 'Invalid AI provider response' }, 502);
-  }
-  if (!r.ok) {
-    if (grant) await releaseExecution(sb, grant, `PROVIDER_${r.status}`);
-    return json({ error: p2?.error?.message || `AI provider error ${r.status}` }, 502);
-  }
+  /*
+   * MODEL ROUTING BY TURN SHAPE (decided in code, never by the model). A short conversational turn with no sign of
+   * needing current facts runs on the light tier (lighter model when one is
+   * configured, low reasoning effort, one search at most). Everything else —
+   * and the paid property analysis, always — runs on the full tier.
+   */
+  const tier: 'LIGHT' | 'FULL' = route.kind === 'MODEL' && route.tier === 'LIGHT' && !marketplaceScope ? 'LIGHT' : 'FULL';
+  const model = tier === 'LIGHT' ? LIGHT_MODEL : MODEL;
+  const streamThisTurn = wantsStream && !marketplaceScope;
+  const providerAbort = new AbortController();
+  /* Bounded below the platform's 150 s response limit: a provider that hangs
+     ends in the failure path, which gives any hold back, instead of the
+     platform killing this request with the hold still taken. */
+  const providerTimer = setTimeout(() => providerAbort.abort('timeout'), OPENAI_REQUEST_TIMEOUT_MS);
+  const providerBody = {
+    model, instructions, input: msgs,
+    tools: [{ type: 'web_search', search_context_size: 'medium' }], tool_choice: 'auto', store: false,
+    max_tool_calls: TOOL_CALL_BUDGET[tier],
+    /* A stable key per surface keeps the long static prefix of the
+       instructions in the provider's prompt cache across people. Only the
+       prefix is shared there; nothing user-specific is cached by us. */
+    prompt_cache_key: `homi:${surfaceName.slice(0, 40)}`,
+    stream: streamThisTurn,
+    /* 'low' was the root cause of one-search-one-link answers on research
+     * questions: it stops the model at the first plausible result. Research
+     * runs on the full tier with medium effort; only short conversational
+     * turns use low. */
+    ...(tier === 'FULL' ? { reasoning: { effort: 'medium' } } : { reasoning: { effort: 'low' } }),
+  };
 
-  const rawText = textOf(p2);
-  if (!rawText) {
-    if (grant) await releaseExecution(sb, grant, 'EMPTY_RESPONSE');
-    return json({ error: 'AI returned empty response' }, 502);
-  }
+  /** Nothing was produced: give any hold back, record why, tell the client plainly. */
+  const failTurn = async (code: string, status: number, error: string) => {
+    clearTimeout(providerTimer);
+    if (grant) await releaseExecution(sb, grant, code);
+    recordTurn({ model, error_code: code.slice(0, 60), latency_ms: Date.now() - turnStartedAt, web_mode: 'NO_WEB', billed: false });
+    return json({ error, code }, status);
+  };
+
+  /**
+   * Everything that happens once an answer exists: lead capture, measured
+   * cost, metering or settlement, telemetry. Shared by both delivery modes,
+   * so streaming changes how the words arrive and nothing else.
+   */
+  const complete = async (p2: any, rawText: string, firstDeltaMs: number | null) => {
+    clearTimeout(providerTimer);
 
   // ── 3. Strip + parse the trailing intent-extraction JSON block ──────────
   const { displayText, lead } = splitLeadBlock(rawText);
-  const text = displayText || rawText;
+  /* No em or en dashes in what HOMI says (owner, 2026-10-24). */
+  const text = stripAiDashes(displayText || rawText);
 
   /* WHAT THE PERSON MIGHT SAY NEXT.
    *
@@ -658,7 +798,7 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
     : 0;
 
   const { data: aiCents } = await sb.rpc('billing_ai_cost_cents', {
-    p_model: MODEL,
+    p_model: model,
     p_input_tokens: inputTokens,
     p_cached_tokens: cachedTokens,
     p_output_tokens: outputTokens,
@@ -669,7 +809,7 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
   const measured = {
     provider: 'OPENAI',
     providerOperation: 'responses',
-    model: MODEL,
+    model,
     inputTokens,
     cachedTokens,
     outputTokens,
@@ -682,6 +822,8 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
       locale: lang,
       interaction_id: interactionId,
       suggested_reply_count: suggestedReplies.length,
+      homi_tier: tier,
+      streamed: streamThisTurn,
     },
   };
 
@@ -768,15 +910,22 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
   const webMode = typeof routingRaw?.web_mode === 'string' && WEB_MODES.has(routingRaw.web_mode)
     ? routingRaw.web_mode : (searchCount > 0 ? 'REQUIRED_LIVE_WEB' : 'NO_WEB');
   /* A chip for a paused product (Admin → Service Control Center) is never offered. */
-  const actionsOut = [];
+  const actionsOut: ServiceAction[] = [];
   for (const action of parseServiceActions(lead?.suggested_actions)) {
     const key = SERVICE_ACTION_SERVICE[action.id];
     if (!key || (await serviceState(sb, key as ServiceKey)).frontend) actionsOut.push(action);
   }
-  await sb.from('ai_routing_events').insert({
-    user_id: uid ?? null,
-    conversation_id: conversationId ?? null,
-    locale: lang,
+  const cards = parseHomiCards(lead?.cards);
+  recordTurn({
+    model,
+    input_tokens: inputTokens,
+    cached_tokens: cachedTokens,
+    output_tokens: outputTokens,
+    /* billing_ai_cost_cents turns a missing rate into 0; Admin re-derives
+       UNPRICED from the model's rate at read time, so 0 here is never trusted alone. */
+    cost_cents: Number(aiCents ?? 0),
+    ttft_ms: firstDeltaMs,
+    billed: Boolean(grant),
     intent: typeof routingRaw?.intent === 'string' ? routingRaw.intent.slice(0, 80) : null,
     web_mode: webMode,
     internal_used: routingRaw?.internal_used === true,
@@ -791,8 +940,8 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
     },
     action_ids: actionsOut.map((a) => a.id),
     reply_count: suggestedReplies.length,
-    latency_ms: Date.now() - startedAt,
-  }).then(({ error }: { error: unknown }) => { if (error) console.error('routing telemetry insert failed', error); });
+    latency_ms: Date.now() - turnStartedAt,
+  });
 
   /*
    * WHAT GOES BACK TO THE BROWSER.
@@ -811,7 +960,7 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
    * customer's — what a customer is charged is Credits, and that comes from
    * the billing path, not from here.
    */
-  return json({
+  const customerEnvelope = {
     text,
     conversationId,
     /* Validated server-side. The browser renders these as buttons and
@@ -834,5 +983,80 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
        no cost cents, no model — that is our accounting, not theirs. */
     ...(billingForClient ? { billing: billingForClient } : {}),
     internalSummary: { properties: internal.properties.length, matches: internal.matches.length, intents: internal.intents.length },
-  });
+    /* Interactive cards, validated against the catalogue (src/lib/homi/cards.ts). */
+    cards,
+    homi: { route: `MODEL_${tier}`, mood: 'explaining' },
+  };
+  return customerEnvelope;
+  };
+
+  let r: Response;
+  try {
+    r = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      signal: providerAbort.signal,
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(providerBody),
+    });
+  } catch {
+    /* The provider never answered. Nothing was produced, so nothing is
+       charged and any hold goes straight back — a customer must not pay
+       for an answer that does not exist. */
+    return failTurn('PROVIDER_UNREACHABLE', 502, 'AI provider unreachable');
+  }
+
+  if (!streamThisTurn) {
+    const raw = await r.text();
+    let p2: any;
+    try { p2 = JSON.parse(raw); } catch { return failTurn('PROVIDER_BAD_RESPONSE', 502, 'Invalid AI provider response'); }
+    if (!r.ok) return failTurn(`PROVIDER_${r.status}`, 502, p2?.error?.message || `AI provider error ${r.status}`);
+    const rawText = textOf(p2);
+    if (!rawText) return failTurn('EMPTY_RESPONSE', 502, 'AI returned empty response');
+    return json(await complete(p2, rawText, null));
+  }
+
+  /*
+   * STREAMED DELIVERY. The words go out as they arrive; the hidden JSON block
+   * is held back (homi.ts visibleLength). Everything about money and records
+   * happens in complete() once the provider has finished, exactly as in the
+   * single-shot path. If the person stops the answer, the provider request is
+   * aborted too — generation they will never read is not paid for.
+   */
+  if (!r.ok || !r.body) {
+    const detail = await r.text().catch(() => '');
+    let message = `AI provider error ${r.status}`;
+    try { message = JSON.parse(detail)?.error?.message || message; } catch { /* keep generic */ }
+    return failTurn(`PROVIDER_${r.status}`, 502, message);
+  }
+  const providerStream = r.body;
+  return new Response(new ReadableStream({
+    async start(c) {
+      try {
+        c.enqueue(sseFrame('open', { route: `MODEL_${tier}` }));
+        const s = await readOpenAIStream(providerStream, startedAt, (t) => c.enqueue(sseFrame('delta', { t })));
+        const rawText = s.rawText || (s.response ? textOf(s.response) : '');
+        if (s.error || !s.response || !rawText) {
+          clearTimeout(providerTimer);
+          const code = s.error ? 'PROVIDER_STREAM_FAILED' : 'EMPTY_RESPONSE';
+          if (grant) await releaseExecution(sb, grant, code);
+          recordTurn({ model, error_code: code, latency_ms: Date.now() - turnStartedAt, ttft_ms: s.firstDeltaMs, web_mode: 'NO_WEB', billed: false });
+          c.enqueue(sseFrame('error', { code }));
+        } else {
+          c.enqueue(sseFrame('meta', await complete(s.response, rawText, s.firstDeltaMs)));
+          c.enqueue(sseFrame('done', {}));
+        }
+      } catch (err) {
+        clearTimeout(providerTimer);
+        const cancelled = providerAbort.signal.aborted;
+        const code = cancelled ? (String(providerAbort.signal.reason) === 'timeout' ? 'PROVIDER_TIMEOUT' : 'CANCELLED') : 'STREAM_ERROR';
+        if (grant) await releaseExecution(sb, grant, code);
+        recordTurn({ model, error_code: code, latency_ms: Date.now() - turnStartedAt, web_mode: 'NO_WEB', billed: false });
+        if (!cancelled) console.error('homatch-ai: stream failed', (err as Error)?.message ?? err);
+        try { c.enqueue(sseFrame('error', { code })); } catch { /* client already gone */ }
+      } finally {
+        try { c.close(); } catch { /* already closed */ }
+      }
+    },
+    cancel() { providerAbort.abort('client_cancelled'); },
+  }), { headers: { ...CORS, ...SSE_HEADERS } });
 });

@@ -9,7 +9,7 @@ import { PAGE } from '@/components/home/sections/primitives';
 import { Shield, Info } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
-const LAST_UPDATED = 'August 28, 2026';
+const LAST_UPDATED = 'October 25, 2026';
 
 interface SectionProps {
   title: string;
@@ -100,6 +100,7 @@ export default function PrivacyPage() {
               <li>{t('privacy_s2_li6')}</li>
               <li>{t('privacy_s2_li7')}</li>
               <li>{t('privacy_s2_li8')}</li>
+              <li>{t('privacy_s2_li9')}</li>
             </ul>
             <p className="mt-3">
               <span className="font-medium text-foreground">{t('privacy_s2_google_label')}</span> {t('privacy_s2_google_body')}
@@ -140,6 +141,10 @@ export default function PrivacyPage() {
               </li>
               <li>
                 <span className="font-medium text-foreground">{t('privacy_s4_li4_label')}</span> {t('privacy_s4_li4_body')}
+              </li>
+              {/* Linked from the Home Financing opt-in (/privacy#matching). */}
+              <li id="matching" className="scroll-mt-24">
+                <span className="font-medium text-foreground">{t('privacy_s4_li5_label')}</span> {t('privacy_s4_li5_body')}
               </li>
             </ul>
           </Section>

@@ -30,6 +30,7 @@ export const INTERNAL_GROUPS: LeadFilter[][] = [
   ['HIGH_CONFIDENCE'],
   ['DIRECT', 'BROKER'],
   ['FRESH'],
+  ['MORTGAGE'],
 ];
 export const INTERNAL_CRITERIA: LeadFilter[] = INTERNAL_GROUPS.flat();
 export const INTERNAL_SORTS: LeadSort[] = ['CATEGORY', 'BEST', 'NEWEST', 'ACTIVE', 'UPDATED', 'BUDGET_DESC', 'BUDGET_ASC'];

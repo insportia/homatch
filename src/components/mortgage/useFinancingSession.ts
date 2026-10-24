@@ -224,6 +224,7 @@ export function toMortgageInput(draft: FinancingDraft): MortgageInput | null {
 export interface FinancingSession {
   draft: FinancingDraft;
   set: (field: DraftField, value: number | string | null) => void;
+  replaceDraft: (next: Partial<FinancingDraft>) => void;
   reset: () => void;
 
   topic: TopicId | null;
@@ -244,6 +245,8 @@ export interface FinancingSession {
   addOffer: (offer: MortgageOffer) => void;
   updateOffer: (index: number, offer: MortgageOffer) => void;
   removeOffer: (index: number) => void;
+  /** Reopen a saved scenario's offers, replacing whatever is on screen. */
+  replaceOffers: (offers: MortgageOffer[]) => void;
   offerComparison: OfferComparisonResult | null;
 
   subsidyPrograms: MortgageRule<SubsidyProgramRuleData>[];
@@ -264,11 +267,32 @@ export interface FinancingSession {
   workspaceState: WorkspaceState;
 }
 
-export function useFinancingSession(prefill?: { price?: number; currency?: string }): FinancingSession {
+/** What another surface may hand over. A complete scenario comes from HOMI's in-chat calculator. */
+export interface FinancingPrefill {
+  price?: number;
+  currency?: string;
+  downPayment?: number;
+  termMonths?: number;
+  rate?: number;
+}
+
+export function useFinancingSession(prefill?: FinancingPrefill): FinancingSession {
   const { homatchUser } = useAuth();
 
   const [draft, setDraft] = useState<FinancingDraft>(() => {
     const loaded = loadDraft();
+    /* A complete scenario the person just built with HOMI is what they chose
+       a moment ago, so it replaces the saved one rather than waiting behind it. */
+    if (prefill?.price && typeof prefill.downPayment === 'number' && prefill.termMonths && typeof prefill.rate === 'number') {
+      return {
+        ...loaded,
+        propertyPrice: prefill.price,
+        currency: prefill.currency ?? loaded.currency,
+        downPayment: prefill.downPayment,
+        termMonths: prefill.termMonths,
+        nominalAnnualRatePercent: prefill.rate,
+      };
+    }
     if (prefill?.price && loaded.propertyPrice === null) {
       return { ...loaded, propertyPrice: prefill.price, currency: prefill.currency ?? loaded.currency };
     }
@@ -326,6 +350,16 @@ export function useFinancingSession(prefill?: { price?: number; currency?: strin
 
   const set = useCallback((field: DraftField, value: number | string | null) => {
     setDraft((current) => ({ ...current, [field]: value }));
+  }, []);
+
+  /** Reopen a saved scenario: every field it stored, nothing left over from before. */
+  const replaceDraft = useCallback((next: Partial<FinancingDraft>) => {
+    const clean: FinancingDraft = { ...EMPTY_DRAFT };
+    for (const key of Object.keys(EMPTY_DRAFT) as DraftField[]) {
+      const value = next[key];
+      if (value !== undefined) (clean as unknown as Record<string, unknown>)[key] = value;
+    }
+    setDraft(clean);
   }, []);
 
   const reset = useCallback(() => {
@@ -544,6 +578,7 @@ export function useFinancingSession(prefill?: { price?: number; currency?: strin
   return {
     draft,
     set,
+    replaceDraft,
     reset,
     topic,
     selectTopic,
@@ -560,6 +595,7 @@ export function useFinancingSession(prefill?: { price?: number; currency?: strin
     addOffer,
     updateOffer,
     removeOffer,
+    replaceOffers: setOffers,
     offerComparison,
     subsidyPrograms,
     subsidyAnswers,

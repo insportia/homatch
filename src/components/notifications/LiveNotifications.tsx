@@ -44,7 +44,7 @@ import type { Notification } from '@/types/types';
 import { categoryOf, isMessageFor } from '@/lib/notifications/feed';
 import { getActiveConversation } from '@/lib/notifications/signals';
 import { markNotificationRead } from '@/services/api';
-import { notificationHref, notificationMark, notificationText } from './presentation';
+import { notificationActionKey, notificationHref, notificationMark, notificationText } from './presentation';
 
 /** The card itself. Premium, compact, and one action. */
 function LiveCard({
@@ -93,7 +93,7 @@ function LiveCard({
             onClick={onOpen}
             className="inline-flex min-h-8 items-center rounded-lg bg-[hsl(var(--primary))] px-2.5 text-2xs font-semibold text-[hsl(var(--primary-foreground))] transition-colors hover:bg-[hsl(var(--primary))]/88 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
           >
-            {t('notif_open')}
+            {t(notificationActionKey(notif))}
           </button>
           <button
             type="button"

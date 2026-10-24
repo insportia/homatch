@@ -1947,3 +1947,8 @@ html[data-impersonating] .sticky.top-0 { top: 2.5rem; }
 @media (prefers-reduced-motion: reduce) {
   .hm-plan-scan { animation: none; opacity: 0; }
 }
+
+/* Contract Intelligence: the gold line that reads down the page while a contract is analysed. */
+@keyframes hm-doc-scan { 0% { top: 8%; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 92%; opacity: 0; } }
+.hm-doc-scan { top: 8%; animation: hm-doc-scan 1.8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .hm-doc-scan { animation: none; top: 50%; opacity: .8; } }

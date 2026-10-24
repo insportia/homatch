@@ -195,7 +195,18 @@ export interface MortgageOffer {
   recurringMonthlyFeeFlat?: number;
   mandatoryInsuranceAnnualFlat?: number;
   otherMandatoryOneTimeCosts?: number;
+  /** One-time property appraisal fee the bank requires. */
+  appraisalFeeFlat?: number;
   rateType?: RateType;
+  /** Months the rate is fixed for; absent or >= term means fixed for the whole term (FIXED) or not fixed at all (VARIABLE/INDEXED). */
+  fixedPeriodMonths?: number;
+  /** For a variable or indexed rate: the index name and the margin over it, as written in the offer. */
+  referenceIndexName?: string;
+  marginPercent?: number;
+  /** Variable or indexed rate: how often, in months, the bank may reset it, as written in the offer. */
+  rateResetMonths?: number;
+  /** What the offer says about early repayment, in the bank's words. Free text; never interpreted. */
+  earlyRepaymentTerms?: string;
   // Extraction provenance — only present for OfferSource === 'USER_UPLOADED'
   extraction?: {
     documentAssetId: string;
@@ -214,6 +225,12 @@ export interface OfferComparisonRow {
   totalFinancingCost: number;
   effectiveAnnualRatePercent: number | null;
   effectiveRateSource: 'BANK_SUPPLIED' | 'CALCULATED' | 'UNAVAILABLE';
+  /** Monthly payment if the rate rises by RATE_SHOCK_PP once it can change; null when the rate is fixed for the whole term. */
+  paymentAfterRateRise: number | null;
+  /** Month from which the rate can change (1 = from the start); null when it cannot. */
+  rateCanChangeFromMonth: number | null;
+  /** i18n keys naming costs the offer did not state. They are NOT assumed to be zero in meaning, only left out of the totals. */
+  missingCostKeys: string[];
   labels: string[]; // i18n keys such as 'mortgage_offer_label_cheaper_under_assumptions', never a raw "best bank" claim
 }
 
@@ -379,6 +396,8 @@ export interface MortgageScenario {
   version: number; // this scenario's own version — a "Recalculate" produces a NEW MortgageScenario row, never mutates this one
   supersedesScenarioId: string | null;
   label?: string | null;
+  /** The payment engine that produced the result (mortgage_scenarios.engine_version). */
+  engineVersion?: string | null;
 }
 
 // ─── Foreign / non-resident context ───────────────────────────────────────

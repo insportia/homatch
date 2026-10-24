@@ -29,7 +29,7 @@
 // the navigation itself. Knowing the jargon must not be REQUIRED; knowing
 // it must still WORK.
 
-import {Activity, AudioLines, BadgeDollarSign,BarChart3,Bell,BellRing,Boxes,Brain,Building2, CreditCard,Gauge, Globe, Handshake, HardDrive, HeartPulse, 
+import {Activity, AudioLines, BadgeDollarSign, Bot, Landmark, Languages,BarChart3,Bell,BellRing,Boxes,Brain,Building2, CreditCard,Gauge, Globe, Handshake, HardDrive, HeartPulse, 
   Layers, LayoutDashboard, Mail, Megaphone, ScrollText,
   MessageCircle, MessageSquareWarning, 
   Paintbrush, PhoneCall, Plug, Puzzle, Radio, 
@@ -179,6 +179,14 @@ export const ADMIN_GROUPS: AdminGroup[] = [
         path: '/admin/signals', labelKey: 'admin_nav_signals', icon: Activity,
         keywords: ['signal', 'intent', 'raw', 'qualified', 'classifier'],
       },
+      {
+        path: '/admin/mortgage-rules', labelKey: 'admin_nav_mortgage_rules', icon: Landmark,
+        keywords: ['mortgage', 'pti', 'ltv', 'nbg', 'national bank', 'bank product', 'rule'],
+      },
+      {
+        path: '/admin/mortgage-buyers', labelKey: 'admin_nav_mortgage_buyers', icon: UserSearch,
+        keywords: ['mortgage lead', 'buyer', 'consent', 'unlock', 'revenue', 'intent'],
+      },
     ],
   },
   {
@@ -252,6 +260,14 @@ export const ADMIN_GROUPS: AdminGroup[] = [
         path: '/admin/email-review', labelKey: 'admin_ems_nav', icon: ShieldAlert,
         keywords: ['email', 'campaign', 'review', 'approval', 'spam', 'casino', 'phishing', 'email studio', 'sending limits'],
       },
+      {
+        path: '/admin/homi', labelKey: 'admin_nav_homi', icon: Bot,
+        keywords: ['homi', 'assistant', 'chat', 'latency', 'model', 'deterministic', 'routing', 'ttft'],
+      },
+      {
+        path: '/admin/notification-delivery', labelKey: 'admin_nav_notification_delivery', icon: BellRing,
+        keywords: ['delivery', 'email', 'resend', 'push', 'failed', 'bounced', 'transactional'],
+      },
     ],
   },
   {
@@ -287,6 +303,14 @@ export const ADMIN_GROUPS: AdminGroup[] = [
         path: '/admin/verify-cogs', labelKey: 'admin_nav_verify_cogs', icon: ShieldCheck,
         keywords: ['verify', 'cogs', 'cost of goods', 'verification cost'],
       },
+      {
+        path: '/admin/ai-costs', labelKey: 'admin_nav_ai_costs', icon: BadgeDollarSign,
+        keywords: ['ai cost', 'openai', 'tokens', 'homi cost', 'model spend', 'usage'],
+      },
+      {
+        path: '/admin/contract-costs', labelKey: 'admin_nav_contract_costs', icon: Receipt,
+        keywords: ['contract', 'unit cost', 'cogs', 'margin', 'document analysis', 'pricing'],
+      },
     ],
   },
   {
@@ -309,6 +333,10 @@ export const ADMIN_GROUPS: AdminGroup[] = [
       {
         path: '/admin/engagement', labelKey: 'admin_nav_engagement', icon: Bell,
         keywords: ['engagement', 'push', 'notification', 'pwa', 'reminder'],
+      },
+      {
+        path: '/admin/languages', labelKey: 'admin_nav_languages', icon: Languages,
+        keywords: ['language', 'translation', 'i18n', 'georgian', 'coverage', 'locale'],
       },
     ],
   },

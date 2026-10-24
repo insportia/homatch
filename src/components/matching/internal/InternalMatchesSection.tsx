@@ -58,7 +58,7 @@ const GOLD = 'text-[hsl(40_94%_64%)]';
 export const DEMO_PARAM = 'demo';
 /** The matches page previews this many people; the rest are on HOMATCH Leads (/property/:id/leads). */
 export const INTERNAL_PREVIEW_LIMIT = 6;
-const DEFAULT_PRICES: LeadPrices = { STANDARD: 3, EXACT: 5, PREMIUM: 10, active: false };
+const DEFAULT_PRICES: LeadPrices = { STANDARD: 3, EXACT: 5, PREMIUM: 10, MORTGAGE: 3, MORTGAGE_MATCH: 5, active: false };
 /** A real person's price depends on their category (decided on HOMATCH Leads): show "from". */
 export const lowestUnlockPrice = (p: LeadPrices) => Math.min(...[p.STANDARD, p.EXACT, p.PREMIUM].filter((n) => Number.isFinite(n) && n > 0));
 

@@ -25,8 +25,43 @@ export function classifyCurrency(currencyCode: string | undefined | null): Curre
   return (currencyCode ?? '').toUpperCase() === 'GEL' ? 'LOCAL' : 'FOREIGN';
 }
 
-function isActive(rule: MortgageRule<unknown>): boolean {
-  return rule.status === 'ACTIVE';
+/**
+ * Which PTI column applies. The National Bank's table has two: GEL loans
+ * (and foreign-currency loans to a borrower who earns in that same
+ * currency), and foreign-currency loans to everybody else. So the column
+ * follows the pair, not the loan alone. `incomeInLoanCurrency` undefined
+ * keeps the old behaviour — the loan currency alone decides.
+ */
+export function ptiCurrencyClass(loanCurrency: string | undefined | null, incomeInLoanCurrency?: boolean): CurrencyClass {
+  if (classifyCurrency(loanCurrency) === 'LOCAL') return 'LOCAL';
+  return incomeInLoanCurrency === true ? 'LOCAL' : 'FOREIGN';
+}
+
+/**
+ * DATE-EFFECTIVE. A rule applies on `asOf` when it is ACTIVE and the date
+ * falls inside its effective window (open ends are open). This is what lets
+ * an announced change — the 25% PTI tier widening on 2027-02-01 and again on
+ * 2027-09-01 — be recorded now, from its source, and take effect on its own
+ * date without anybody editing code or data that day.
+ */
+function isActive(rule: MortgageRule<unknown>, asOf: Date = new Date()): boolean {
+  if (rule.status !== 'ACTIVE') return false;
+  const day = asOf.toISOString().slice(0, 10);
+  if (rule.effectiveFrom && rule.effectiveFrom.slice(0, 10) > day) return false;
+  if (rule.effectiveTo && rule.effectiveTo.slice(0, 10) < day) return false;
+  return true;
+}
+
+export function ruleInForce(rule: MortgageRule<unknown>, asOf: Date = new Date()): boolean {
+  return isActive(rule, asOf);
+}
+
+/** The next dated change among these rules after `asOf`, when one is recorded. */
+export function nextRuleChange<T>(rules: MortgageRule<T>[], asOf: Date = new Date()): MortgageRule<T> | null {
+  const day = asOf.toISOString().slice(0, 10);
+  return rules
+    .filter((r) => r.status === 'ACTIVE' && r.effectiveFrom && r.effectiveFrom.slice(0, 10) > day)
+    .sort((a, b) => (a.effectiveFrom as string).localeCompare(b.effectiveFrom as string))[0] ?? null;
 }
 
 /** Selects the single ACTIVE PTI rule row whose income tier and currency
@@ -37,8 +72,8 @@ function isActive(rule: MortgageRule<unknown>): boolean {
  * every bounded tier. Returns null when no ACTIVE rule matches at all
  * (never a fabricated fallback number) — the caller must then say the
  * limit "cannot currently be confirmed", never assume one. */
-export function selectActivePtiRule(rules: MortgageRule<PtiLimitRuleData>[], monthlyNetIncome: number, currencyClass: CurrencyClass): MortgageRule<PtiLimitRuleData> | null {
-  const candidates = rules.filter(r => isActive(r) && r.type === 'PTI_LIMIT' && r.data.currencyClass === currencyClass);
+export function selectActivePtiRule(rules: MortgageRule<PtiLimitRuleData>[], monthlyNetIncome: number, currencyClass: CurrencyClass, asOf: Date = new Date()): MortgageRule<PtiLimitRuleData> | null {
+  const candidates = rules.filter(r => isActive(r, asOf) && r.type === 'PTI_LIMIT' && r.data.currencyClass === currencyClass);
   const bounded = candidates
     .filter(r => r.data.incomeTierMaxMonthlyNet !== null && monthlyNetIncome <= (r.data.incomeTierMaxMonthlyNet as number))
     .sort((a, b) => (a.data.incomeTierMaxMonthlyNet as number) - (b.data.incomeTierMaxMonthlyNet as number));
@@ -52,8 +87,8 @@ export function selectActivePtiRule(rules: MortgageRule<PtiLimitRuleData>[], mon
  * Georgia's published LTV rule differentiates only by currency, not
  * property use, so most rows will have propertyUse undefined and match
  * any use). Returns null when nothing matches. */
-export function selectActiveLtvRule(rules: MortgageRule<LtvLimitRuleData>[], currencyClass: CurrencyClass, propertyUse?: LtvLimitRuleData['propertyUse']): MortgageRule<LtvLimitRuleData> | null {
-  const candidates = rules.filter(r => isActive(r) && r.type === 'LTV_LIMIT' && r.data.currencyClass === currencyClass);
+export function selectActiveLtvRule(rules: MortgageRule<LtvLimitRuleData>[], currencyClass: CurrencyClass, propertyUse?: LtvLimitRuleData['propertyUse'], asOf: Date = new Date()): MortgageRule<LtvLimitRuleData> | null {
+  const candidates = rules.filter(r => isActive(r, asOf) && r.type === 'LTV_LIMIT' && r.data.currencyClass === currencyClass);
   const specific = propertyUse ? candidates.find(r => r.data.propertyUse === propertyUse) : undefined;
   return specific ?? candidates.find(r => !r.data.propertyUse) ?? candidates[0] ?? null;
 }

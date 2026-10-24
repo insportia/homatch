@@ -70,10 +70,11 @@ test('a deep link is followed only when it is a path on this site', () => {
 
 test('the new service-completion producers link to routes that exist', () => {
   assert.match(RESEARCH, /deepLink: `\/verify\?job=\$\{jobId\}`/);
-  assert.match(DOCS, /deepLink: `\/verify\/\$\{doc\.deal_room_id\}\?tab=documents&doc=\$\{documentId\}`/);
+  // A read contract opens on its own page; the deal-room tab is no longer where documents are read.
+  assert.match(DOCS, /deepLink: `\/contracts\/\$\{documentId\}`/);
   const routes = read('src', 'routes.tsx');
   assert.match(routes, /path: '\/verify',/);
-  assert.match(routes, /path: '\/verify\/:id',/);
+  assert.match(routes, /path: '\/contracts\/:id',/);
 });
 
 /* ── Idempotency ────────────────────────────────────────────────────────── */

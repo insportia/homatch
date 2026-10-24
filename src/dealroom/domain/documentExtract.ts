@@ -103,7 +103,8 @@ export const MAX_CLAUSES = 60;
 export const MAX_FINDINGS = 40;
 const MAX_LABEL = 140;
 const MAX_VALUE = 200;
-const MAX_QUOTE = 600;
+/** Mirrored by QUOTE_CAP in src/contracts/revisions.ts: a quote cut here is never auto-placed. */
+export const MAX_QUOTE = 600;
 const MAX_PLAIN = 600;
 
 /* ------------------------------------------------------------------ *
@@ -125,6 +126,18 @@ const ZERO_WIDTH = new RegExp('[\\u200B-\\u200D\\uFEFF]', 'g');
  * to a customer must still read like their document.
  */
 export function normalizeDocumentText(raw: unknown): string {
+  return normalizeUncapped(raw).slice(0, MAX_DOCUMENT_CHARS);
+}
+
+/**
+ * Did normalizing cut the document at MAX_DOCUMENT_CHARS? The analysis then
+ * covers only the start of the contract, and the customer must be told so.
+ */
+export function documentTextWasTruncated(raw: unknown): boolean {
+  return normalizeUncapped(raw).length > MAX_DOCUMENT_CHARS;
+}
+
+function normalizeUncapped(raw: unknown): string {
   const s = typeof raw === 'string' ? raw : '';
   return s
     .split(NUL)
@@ -136,8 +149,7 @@ export function normalizeDocumentText(raw: unknown): string {
     .replace(/[ \t\f\v]+/g, ' ')
     .replace(/ ?\n ?/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
-    .trim()
-    .slice(0, MAX_DOCUMENT_CHARS);
+    .trim();
 }
 
 /** Comparison form for grounding: whitespace flattened, case folded. */
@@ -280,6 +292,23 @@ export function buildAnalysisPrompt(
     '- missingProtections: protections a buyer would normally expect that this',
     '  document does not appear to contain. These have no quote by nature —',
     '  they are absences — so mark them honestly and keep them few.',
+    '- review: for EVERY clause whose attention is not NORMAL, and for each',
+    '  missing protection, add a review the signer can act on:',
+    '  risk (one short sentence), why (why it matters to the person signing),',
+    '  favours (whose interests the current wording serves, from the party list),',
+    '  suggestion (replacement wording written in the SAME LANGUAGE as the',
+    '  document, ready to paste into the contract, balanced and realistic, never',
+    '  misleading, never a change of meaning beyond the point being fixed, and',
+    '  with no number that is not already in the document), tradeoffs (what the',
+    '  other side may push back on, in one or two sentences). Put the interests',
+    '  of the person who will sign first, but propose wording a reasonable',
+    '  counterparty could accept.',
+    '- A clause `suggestion` REPLACES EXACTLY the text in that clause\'s `quote`,',
+    '  nothing more and nothing less: it must read correctly when the quoted',
+    '  words are cut out and the suggestion is put in their place. So quote the',
+    '  whole sentence or sentences the suggestion rewrites, and keep every quote',
+    `  under ${MAX_QUOTE} characters; if the clause is longer, quote only the part`,
+    '  being changed. A longer quote is cut and then cannot be replaced.',
     '- questions: what the buyer should ask the seller or developer before signing.',
     '- findings: the same facts in the structured comparison vocabulary below.',
     '',
@@ -298,11 +327,11 @@ export function buildAnalysisPrompt(
     '{',
     '  "documentType": string,',
     '  "summary": [string],',
-    '  "clauses":    [{"label","plain","quote","page","attention"}],',
+    '  "clauses":    [{"label","plain","quote","page","attention","review":{"risk","why","favours","suggestion","tradeoffs"}}],',
     '  "obligations":[{"party","label","plain","quote","page"}],',
     '  "deadlines":  [{"label","value","quote","page"}],',
     '  "financial":  [{"label","value","quote","page"}],',
-    '  "missingProtections":[{"label","plain"}],',
+    '  "missingProtections":[{"label","plain","review":{"risk","why","favours","suggestion","tradeoffs"}}],',
     '  "questions":  [string],',
     '  "findings":   [{"type","label","value","quote","page","status"}]',
     '}',
@@ -333,6 +362,20 @@ export function buildAnalysisPrompt(
  * Output shape                                                        *
  * ------------------------------------------------------------------ */
 
+/**
+ * What the signer can do about a flagged clause. Every field is generated
+ * language and passes the same gates as any other: no legal verdict, no
+ * number the document does not contain. The suggestion is a proposal the
+ * person accepts, edits or rejects; nothing is ever applied on its own.
+ */
+export interface ClauseReview {
+  risk: string;
+  why: string;
+  favours: Party;
+  suggestion: string;
+  tradeoffs: string | null;
+}
+
 export interface AnalyzedClause {
   label: string;
   /** Plain-language explanation for a non-lawyer. */
@@ -340,6 +383,9 @@ export interface AnalyzedClause {
   quote: string;
   page: number | null;
   attention: Attention;
+  review?: ClauseReview;
+  /** The model's quote was longer than MAX_QUOTE and was cut: the start of the clause only. */
+  quoteTruncated?: boolean;
 }
 
 export interface AnalyzedObligation {
@@ -361,6 +407,8 @@ export interface MissingProtection {
   label: string;
   /** Why a buyer would normally expect it. Never a legal conclusion. */
   plain: string;
+  /** A clause to add, when the model proposed one that passed validation. */
+  review?: ClauseReview;
 }
 
 export interface ContractAnalysis {
@@ -446,6 +494,8 @@ const str = (v: unknown, max: number): string | null => {
 const labelOf = (o: Record<string, unknown>, max: number): string | null =>
   str(o.label, max) ?? str(o.title, max) ?? str(o.name, max) ?? str(o.heading, max);
 
+const MAX_SUGGESTION = 1500;
+
 const pageOf = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : null;
 
@@ -503,6 +553,21 @@ export function parseAnalysis(raw: string, documentText: string): ContractAnalys
 
   const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
+  /** A review survives only whole: a suggestion without a stated risk is advice nobody can weigh. */
+  const reviewOf = (v: unknown, what: string): ClauseReview | undefined => {
+    if (!v || typeof v !== 'object') return undefined;
+    const x = v as Record<string, unknown>;
+    const risk = safeProse(str(x.risk, MAX_PLAIN), `${what} risk`);
+    const why = safeProse(str(x.why, MAX_PLAIN), `${what} why`);
+    const suggestion = safeProse(str(x.suggestion, MAX_SUGGESTION), `${what} suggestion`);
+    if (!risk || !why || !suggestion) {
+      rejected.push(`${what} review was incomplete or unsafe`);
+      return undefined;
+    }
+    const favours = PARTIES.includes(x.favours as Party) ? (x.favours as Party) : 'UNCLEAR';
+    return { risk, why, favours, suggestion, tradeoffs: safeProse(str(x.tradeoffs, MAX_PLAIN), `${what} tradeoffs`) };
+  };
+
   /* ---- summary ---- */
   const summary: string[] = [];
   for (const s of arr(o.summary).slice(0, 8)) {
@@ -527,7 +592,14 @@ export function parseAnalysis(raw: string, documentText: string): ContractAnalys
     const attention = ATTENTIONS.includes(x.attention as Attention)
       ? (x.attention as Attention)
       : 'NORMAL';
-    clauses.push({ label, plain, quote, page: pageOf(x.page), attention });
+    const review = attention === 'NORMAL' ? undefined : reviewOf(x.review, `clause "${label}"`);
+    // str() cut it at MAX_QUOTE: the stored quote is only the start of the clause.
+    const quoteTruncated = typeof x.quote === 'string' && x.quote.trim().length > MAX_QUOTE;
+    clauses.push({
+      label, plain, quote, page: pageOf(x.page), attention,
+      ...(review ? { review } : {}),
+      ...(quoteTruncated ? { quoteTruncated: true } : {}),
+    });
     if (clauses.length >= MAX_CLAUSES) break;
   }
 
@@ -576,7 +648,8 @@ export function parseAnalysis(raw: string, documentText: string): ContractAnalys
     if (!label) continue;
     const plain = safeProse(str(x.plain, MAX_PLAIN), `missing protection "${label}"`);
     if (!plain) continue;
-    missingProtections.push({ label, plain });
+    const review = reviewOf(x.review, `missing protection "${label}"`);
+    missingProtections.push({ label, plain, ...(review ? { review } : {}) });
     if (missingProtections.length >= 10) break;
   }
 

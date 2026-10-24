@@ -50,6 +50,8 @@ const SUBSCRIPTION_EVENTS = new Set([
   'invoice.payment_failed',
   'customer.subscription.deleted',
   'customer.subscription.updated',
+  // A PAYG top-up whose (delayed) payment was declined: no credits, one notice.
+  'checkout.session.async_payment_failed',
 ]);
 
 serve(async (req) => {
@@ -127,6 +129,11 @@ serve(async (req) => {
     }
     if (eventType === 'customer.subscription.updated' || eventType === 'invoice.payment_failed') {
       return json(await handleSubscriptionStatus(sb, object, eventType, eventId));
+    }
+
+    // ── Wallet top-up that failed ─────────────────────────────
+    if (eventType === 'checkout.session.async_payment_failed') {
+      return json(await handleTopupFailed(sb, object, metadata, eventId));
     }
 
     // ── Wallet top-up ─────────────────────────────────────────
@@ -272,6 +279,26 @@ async function handleTopup(
   };
 }
 
+/*
+ * A PAYG top-up whose payment was declined after checkout (a delayed payment
+ * method). Nothing is credited and nothing is reserved; the customer is told
+ * once, deduped on the provider's event id, and the PENDING payment row (if
+ * one exists) is marked FAILED. A completed payment is never touched.
+ */
+async function handleTopupFailed(sb: any, session: any, metadata: any, eventId: string | undefined) {
+  const userId: string = metadata.user_id;
+  if (!userId) return { received: true, processed: false, reason: 'Missing user_id in session metadata' };
+  if (session.mode && session.mode !== 'payment') return { received: true, processed: false, reason: `mode=${session.mode}` };
+  if (metadata.domain === 'META_ADS') return { received: true, processed: false, reason: 'META_ADS deposit' };
+  const idempotencyKey: string = metadata.idempotency_key ?? session.id;
+  await sb.from('payments').update({ status: 'FAILED' })
+    .eq('idempotency_key', idempotencyKey).eq('user_id', userId).eq('status', 'PENDING');
+  await notify(sb, userId, 'PAYMENT_FAILED', 'Payment could not be completed',
+    'Your top-up did not go through. No Credits were added and your balance has not changed.',
+    { eventId, kind: 'TOPUP_FAILED' });
+  return { received: true, processed: true, kind: 'TOPUP_FAILED', eventId };
+}
+
 // ── Subscriptions ────────────────────────────────────────────
 
 async function handleSubscriptionStart(
@@ -399,6 +426,13 @@ async function handleSubscriptionStatus(
     cancel_at_period_end: !!subscription.cancel_at_period_end,
     updated_at: new Date().toISOString(),
   }).eq('id', sub.id);
+
+  /* The customer hears about a failed renewal while the plan still works,
+     not when it stops. Deduped on the provider's event id like every billing event. */
+  if (eventType === 'invoice.payment_failed') {
+    await notify(sb, sub.user_id, 'PAYMENT_FAILED', 'Payment could not be completed',
+      'Your latest payment did not go through. Please check your payment method.', { eventId });
+  }
 
   return { received: true, processed: true, kind: 'SUBSCRIPTION_STATUS', status, eventId };
 }

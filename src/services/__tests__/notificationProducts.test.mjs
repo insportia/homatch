@@ -149,6 +149,9 @@ const TYPES = new Set([
   /* META ADS: 20260929170000_meta_ads_v1.sql (lead, campaign status, balance) and
      20261002100000_meta_ads_master.sql (Guard, recommendation). */
   'META_LEAD', 'META_CAMPAIGN_STATUS', 'META_ADS_BALANCE', 'META_GUARD', 'META_RECOMMENDATION',
+  /* 20261202095000_notifications_and_admin_insights.sql: a failed renewal, and a service
+     the person started that could not complete. */
+  'PAYMENT_FAILED', 'SERVICE_FAILED',
 ]);
 
 test('every event type is one the database will accept', () => {

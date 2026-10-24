@@ -447,7 +447,7 @@ test('the prompt names the field names inside every item, not just the keys', ()
   // field something else. Validating against an unstated schema is the bug.
   const { system } = buildAnalysisPrompt(CONTRACT, { interestingFactTypes: [] });
   for (const shape of [
-    '"clauses":    [{"label","plain","quote","page","attention"}]',
+    '"clauses":    [{"label","plain","quote","page","attention","review":{"risk","why","favours","suggestion","tradeoffs"}}]',
     '"obligations":[{"party","label","plain","quote","page"}]',
     '"deadlines":  [{"label","value","quote","page"}]',
     '"financial":  [{"label","value","quote","page"}]',
@@ -489,4 +489,64 @@ test('a synonym label does NOT relax the grounding requirement', () => {
     CONTRACT
   );
   assert.equal(out.clauses.length, 0);
+});
+
+/* ---------------------------------------------------------------- *
+ * Clause review: risk, who it favours, a replacement, trade-offs    *
+ * ---------------------------------------------------------------- */
+
+const flagged = (review) => ({
+  label: 'No termination after the second instalment',
+  plain: 'After the second payment you cannot leave the deal.',
+  quote: 'The Buyer may not terminate this agreement after the second instalment.',
+  page: 1,
+  attention: 'ONE_SIDED',
+  review,
+});
+const goodReview = {
+  risk: 'You are locked in even if the handover is late.',
+  why: 'If the Seller misses the handover date you still cannot walk away.',
+  favours: 'SELLER',
+  suggestion: 'The Buyer may terminate this agreement if the Seller fails to hand over the apartment by 31 December 2027.',
+  tradeoffs: 'The Seller may ask for a grace period before termination applies.',
+};
+
+test('a flagged clause carries a validated review the signer can act on', () => {
+  const a = parseAnalysis(analysisJson({ clauses: [flagged(goodReview)] }), CONTRACT);
+  assert.equal(a.clauses.length, 1);
+  assert.deepEqual(a.clauses[0].review, goodReview);
+});
+
+test('a suggestion with a number the document never states drops the review, not the clause', () => {
+  const a = parseAnalysis(analysisJson({ clauses: [flagged({ ...goodReview, suggestion: 'The Buyer may terminate within 45 days.' })] }), CONTRACT);
+  assert.equal(a.clauses.length, 1, 'the grounded clause still stands');
+  assert.equal(a.clauses[0].review, undefined);
+  assert.ok(a.rejected.some((r) => /review was incomplete or unsafe/.test(r)));
+});
+
+test('a review that states a legal verdict is refused', () => {
+  const a = parseAnalysis(analysisJson({ clauses: [flagged({ ...goodReview, risk: 'This clause is unenforceable.' })] }), CONTRACT);
+  assert.equal(a.clauses[0].review, undefined);
+});
+
+test('a NORMAL clause never carries a suggested rewrite', () => {
+  const a = parseAnalysis(analysisJson({ clauses: [{ ...flagged(goodReview), attention: 'NORMAL' }] }), CONTRACT);
+  assert.equal(a.clauses[0].review, undefined);
+});
+
+test('an unknown party in favours becomes UNCLEAR rather than a guess', () => {
+  const a = parseAnalysis(analysisJson({ clauses: [flagged({ ...goodReview, favours: 'BANK' })] }), CONTRACT);
+  assert.equal(a.clauses[0].review.favours, 'UNCLEAR');
+});
+
+test('a missing protection can carry a clause to add', () => {
+  const a = parseAnalysis(analysisJson({ missingProtections: [{ label: 'No handover delay penalty', plain: 'Nothing says what happens if the Seller is late.', review: { ...goodReview, favours: 'SELLER' } }] }), CONTRACT);
+  assert.equal(a.missingProtections[0].review.suggestion, goodReview.suggestion);
+});
+
+test('the prompt asks for reviews in the document\'s own language and for the signer first', () => {
+  const { system } = buildAnalysisPrompt(CONTRACT, { interestingFactTypes: [] });
+  assert.match(system, /SAME LANGUAGE as the\s+'?\s*document|SAME LANGUAGE as the/);
+  assert.match(system, /interests\s+of the person who will sign first|of the person who will sign first/);
+  assert.match(system, /"review":\{"risk","why","favours","suggestion","tradeoffs"\}/);
 });

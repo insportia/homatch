@@ -9,7 +9,7 @@ import { PAGE } from '@/components/home/sections/primitives';
 import { FileText, Info } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
-const LAST_UPDATED = 'August 28, 2026';
+const LAST_UPDATED = 'October 25, 2026';
 
 interface SectionProps {
   title: string;
@@ -89,6 +89,7 @@ export default function TermsPage() {
             <p>
               {t('terms_s2_body2')}
             </p>
+            <p>{t('terms_s2_body3')}</p>
           </Section>
 
           <Section title={t('terms_s3_title')}>
@@ -111,6 +112,7 @@ export default function TermsPage() {
             <p>
               {t('terms_s4_body2')}
             </p>
+            <p>{t('terms_s4_body3')}</p>
           </Section>
 
           <Section title={t('terms_s5_title')}>
@@ -123,6 +125,7 @@ export default function TermsPage() {
               <li>{t('terms_s5_item5')}</li>
               <li>{t('terms_s5_item6')}</li>
               <li>{t('terms_s5_item7')}</li>
+              <li>{t('terms_s5_item8')}</li>
             </ul>
             <p className="mt-3">
               {t('terms_s5_outro')}

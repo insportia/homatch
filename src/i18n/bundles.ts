@@ -41,6 +41,8 @@ export function bundleFor(lang: SupportedLanguage): Bundle | undefined {
   if (adminWanted && lang !== 'en' && !adminLoaded[lang]) return undefined;
   /* Likewise in Email Studio: a language is here with its studio half. */
   if (studioWanted && lang !== 'en' && !studioLoaded[lang]) return undefined;
+  /* And on the Mortgage, Investment and For Expats routes, with its feature half. */
+  if (featureWanted && lang !== 'en' && !featureLoaded[lang]) return undefined;
   return loaded[lang];
 }
 
@@ -72,6 +74,8 @@ function mergeAdmin(lang: SupportedLanguage): void {
   if (base && admin) Object.assign(base, admin);
   const studio = studioLoaded[lang];
   if (base && studio) Object.assign(base, studio);
+  const feature = featureLoaded[lang];
+  if (base && feature) Object.assign(base, feature);
 }
 
 function loadAdminHalf(lang: SupportedLanguage): Promise<void> {
@@ -107,8 +111,8 @@ export function loadAdminStrings(): Promise<void> {
  */
 export function loadLanguage(lang: SupportedLanguage): Promise<Bundle> {
   const base = loadBase(lang);
-  if (!adminWanted && !studioWanted) return base;
-  return Promise.all([base, adminWanted ? loadAdminHalf(lang) : null, studioWanted ? loadStudioHalf(lang) : null]).then(([bundle]) => bundle);
+  if (!adminWanted && !studioWanted && !featureWanted) return base;
+  return Promise.all([base, adminWanted ? loadAdminHalf(lang) : null, studioWanted ? loadStudioHalf(lang) : null, featureWanted ? loadFeatureHalf(lang) : null]).then(([bundle]) => bundle);
 }
 
 /*
@@ -161,4 +165,40 @@ function loadBase(lang: SupportedLanguage): Promise<Bundle> {
     .finally(() => { inFlight.delete(lang); });
   inFlight.set(lang, p);
   return p;
+}
+
+/*
+ * THE ROUTE-ONLY STRINGS OF HOME FINANCING, INVESTMENT AND FOR EXPATS (adminSplit.ts,
+ * isFeatureOnlyKey). Cut from every language like the admin and studio halves, so the entry and
+ * every language a visitor waits for carry none of them; the routes that show them wait for them
+ * (withFeatureStrings in routes.tsx), and from then on each language this tab loads brings them.
+ */
+const featureLoaders: Record<SupportedLanguage, () => Promise<{ default: Bundle }>> = {
+  en: () => import('virtual:homatch-i18n/feature-en'),
+  ka: () => import('virtual:homatch-i18n/feature-ka'),
+  ru: () => import('virtual:homatch-i18n/feature-ru'),
+  tr: () => import('virtual:homatch-i18n/feature-tr'),
+  ar: () => import('virtual:homatch-i18n/feature-ar'),
+  he: () => import('virtual:homatch-i18n/feature-he'),
+};
+const featureLoaded: Partial<Record<SupportedLanguage, Bundle>> = {};
+const featureInFlight = new Map<SupportedLanguage, Promise<void>>();
+let featureWanted = false;
+
+function loadFeatureHalf(lang: SupportedLanguage): Promise<void> {
+  if (featureLoaded[lang]) { mergeAdmin(lang); return Promise.resolve(); }
+  const pending = featureInFlight.get(lang);
+  if (pending) return pending;
+  const p = featureLoaders[lang]()
+    .then((m) => { featureLoaded[lang] = m.default; mergeAdmin(lang); })
+    .finally(() => { featureInFlight.delete(lang); });
+  featureInFlight.set(lang, p);
+  return p;
+}
+
+/** The feature strings for every language this tab has; resolves when merged. */
+export function loadFeatureStrings(): Promise<void> {
+  featureWanted = true;
+  const langs = new Set<SupportedLanguage>(['en', ...(Object.keys(loaded) as SupportedLanguage[]), ...inFlight.keys()]);
+  return Promise.all([...langs].map(loadFeatureHalf)).then(() => undefined);
 }

@@ -5,10 +5,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const MAX_UNLOCK_SELECTION = 200;
 
 export type UnlockRequest =
-  | { ok: true; matchIds: string[]; idempotencyKey: string }
+  | { ok: true; matchIds: string[]; idempotencyKey: string; expectedCredits: number | null }
   | { ok: false; error: 'INVALID_REQUEST' | 'NOTHING_SELECTED' | 'TOO_MANY_SELECTED' | 'IDEMPOTENCY_KEY_REQUIRED' };
 
-/** Validate { action:'unlock', matchIds, idempotencyKey }; dedupe the selection. */
+/** Validate { action:'unlock', matchIds, idempotencyKey, expectedCredits? }; dedupe the selection.
+ *  expectedCredits is the total the customer confirmed; the server refuses a higher charge. */
 export function parseUnlockRequest(body: unknown): UnlockRequest {
   if (!body || typeof body !== 'object') return { ok: false, error: 'INVALID_REQUEST' };
   const b = body as Record<string, unknown>;
@@ -20,7 +21,12 @@ export function parseUnlockRequest(body: unknown): UnlockRequest {
   if (ids.length > MAX_UNLOCK_SELECTION) return { ok: false, error: 'TOO_MANY_SELECTED' };
   const key = typeof b.idempotencyKey === 'string' ? b.idempotencyKey.trim() : '';
   if (key.length < 8 || key.length > 120 || !/^[A-Za-z0-9:_\-.]+$/.test(key)) return { ok: false, error: 'IDEMPOTENCY_KEY_REQUIRED' };
-  return { ok: true, matchIds: ids, idempotencyKey: key };
+  let expectedCredits: number | null = null;
+  if (b.expectedCredits !== undefined && b.expectedCredits !== null) {
+    if (typeof b.expectedCredits !== 'number' || !Number.isFinite(b.expectedCredits) || b.expectedCredits < 0) return { ok: false, error: 'INVALID_REQUEST' };
+    expectedCredits = b.expectedCredits;
+  }
+  return { ok: true, matchIds: ids, idempotencyKey: key, expectedCredits };
 }
 
 const KNOWN = ['INSUFFICIENT_CREDITS', 'PRODUCT_DISABLED', 'PRODUCT_KILL_SWITCH', 'PAYG_DISABLED', 'NOTHING_SELECTED',

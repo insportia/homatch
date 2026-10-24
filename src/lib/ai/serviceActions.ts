@@ -51,6 +51,10 @@ export const SERVICE_ACTION_CATALOGUE = Object.freeze({
   FIND_BUYERS_TENANTS: { route: '/property', labelKey: 'ai_action_find_buyers' },
   BROKERS: { route: '/brokers', labelKey: 'ai_action_brokers' },
   META_ADS: { route: '/outreach/meta/create', labelKey: 'ai_action_meta_ads' },
+  FOR_EXPATS: { route: '/for-expats/georgia', labelKey: 'ai_action_for_expats' },
+  /* Not a product: the one official way to reach the team. HOMI never
+     invents a phone number or an address; it opens this page. */
+  CONTACT: { route: '/contact', labelKey: 'ai_action_contact' },
 } as const);
 
 export type ServiceActionId = keyof typeof SERVICE_ACTION_CATALOGUE;
@@ -69,6 +73,7 @@ export const SERVICE_ACTION_SERVICE: Readonly<Partial<Record<ServiceActionId, st
   FIND_BUYERS_TENANTS: 'find_buyers',
   BROKERS: 'brokers_directory',
   META_ADS: 'meta_ads',
+  FOR_EXPATS: 'for_expats',
 });
 
 const IDS = Object.keys(SERVICE_ACTION_CATALOGUE) as ServiceActionId[];

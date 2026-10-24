@@ -15,6 +15,7 @@ import type { ValueSource } from '@/components/workspace/sources';
 import { FigureValue, type FigureKind } from '@/components/workspace/primitives';
 import { mortgagePresetsFor, type PresetContext } from '@/mortgage/presets';
 import type { ValueOrigin } from '@/mortgage/types';
+import { LabelTerm } from './TermInfo';
 
 /**
  * A plain number as the shared figure shape.
@@ -77,6 +78,7 @@ export function NumberField({
         <span id={labelId} className="text-sm font-medium text-foreground">
           {t(labelKey)}
         </span>
+        <LabelTerm labelKey={labelKey} />
         {required ? <span className="text-2xs text-muted-foreground">{t('mortgage_required')}</span> : null}
       </div>
       {hintKey ? (
@@ -112,8 +114,9 @@ export function OptionField({
   const labelId = `mtg-opt-${labelKey}`;
   return (
     <div>
-      <span id={labelId} className="mb-2.5 block text-sm font-medium text-foreground">
-        {t(labelKey)}
+      <span className="mb-2.5 flex items-center gap-2">
+        <span id={labelId} className="text-sm font-medium text-foreground">{t(labelKey)}</span>
+        <LabelTerm labelKey={labelKey} />
       </span>
       {hintKey ? (
         <p className="mb-2.5 max-w-[60ch] text-2xs leading-relaxed text-muted-foreground">{t(hintKey)}</p>
@@ -164,7 +167,7 @@ export function StatRow({
   const { t } = useLanguage();
   return (
     <div className="flex items-baseline justify-between gap-3 border-b border-border py-2.5 last:border-0">
-      <span className="text-sm text-muted-foreground">{t(labelKey)}</span>
+      <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">{t(labelKey)}<LabelTerm labelKey={labelKey} /></span>
       <span
         className={cn(
           'shrink-0 text-sm tabular-nums',

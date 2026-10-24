@@ -42,7 +42,7 @@ async function pushWith(lang, payload) {
 test('a typed push reads in the site language; RTL for Arabic and Hebrew; the badge is the monochrome mark', async () => {
   const p = { type: 'VERIFY_COMPLETE', title: 'Your verification is ready', body: 'The report has finished and is ready to read.', deep_link: '/verify?job=x' };
   const ka = (await pushWith('ka', p)).shown[0];
-  assert.equal(ka.title, 'თქვენი შემოწმება მზადაა');
+  assert.equal(ka.title, 'ქონების შემოწმება დასრულდა');
   assert.equal(ka.lang, 'ka');
   assert.equal(ka.badge, '/badge-96.png');
   const ar = (await pushWith('ar', p)).shown[0];

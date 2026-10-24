@@ -138,10 +138,37 @@ if (files.length === 0) {
 const childEnv = { ...process.env };
 delete childEnv.NODE_TEST_CONTEXT;
 
-const res = spawnSync(process.execPath, ['--test', ...files], {
-  stdio: 'inherit',
-  env: childEnv,
-});
+/*
+ * WINDOWS CAPS A COMMAND LINE AT 32,767 CHARACTERS.
+ *
+ * The suite's paths passed that (ENAMETOOLONG: the child never started and the
+ * gate reported a status-less failure in 0.2 s). Elsewhere one run as before;
+ * on Windows, only when the list is too long, consecutive batches run one after
+ * another and the first non-zero status is the result. Nothing is skipped.
+ */
+const MAX_ARGS_CHARS = 28_000;
+const batches = [];
+if (process.platform === 'win32' && files.join(' ').length > MAX_ARGS_CHARS) {
+  let batch = [];
+  let size = 0;
+  for (const f of files) {
+    if (size + f.length + 1 > MAX_ARGS_CHARS && batch.length) { batches.push(batch); batch = []; size = 0; }
+    batch.push(f);
+    size += f.length + 1;
+  }
+  if (batch.length) batches.push(batch);
+} else {
+  batches.push(files);
+}
+
+let res = { status: 0, signal: null };
+for (const batch of batches) {
+  const r = spawnSync(process.execPath, ['--test', ...batch], {
+    stdio: 'inherit',
+    env: childEnv,
+  });
+  if (r.status !== 0 || r.signal) { res = r; if (r.signal || r.status === null) break; }
+}
 
 /*
  * THE VERDICT IS PRINTED, NOT ONLY RETURNED.

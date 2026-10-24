@@ -443,7 +443,8 @@ export default function EmailDesigner({
       ) : !wide ? (
         /* Mobile and tablet: one pane at a time. */
         <Tabs value={mobilePane} onValueChange={(v) => setMobilePane(v as typeof mobilePane)}>
-          <TabsList className="grid w-full grid-cols-4">
+          {/* Two by two on phones: Georgian pane names do not fit four across at 390 px. */}
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4 [&>button]:whitespace-normal [&>button]:leading-tight">
             <TabsTrigger value="blocks"><Plus className="me-1 h-3.5 w-3.5" aria-hidden="true" />{t('ems_d_pane_blocks')}</TabsTrigger>
             <TabsTrigger value="layers">{t('ems_b_layers')}</TabsTrigger>
             <TabsTrigger value="canvas">{t('ems_d_pane_canvas')}</TabsTrigger>

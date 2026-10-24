@@ -187,6 +187,11 @@ test('headers: what the receiver concluded, alignment computed, absence reported
   const codes = r.findings.map((f) => f.code);
   for (const c of ['SPF_PASS', 'DKIM_ALIGNED_PASS', 'DMARC_PASS', 'DMARC_POLICY_NONE', 'NO_ONE_CLICK']) assert.ok(codes.includes(c), c);
   assert.ok(!codes.includes('SPF_NOT_ALIGNED'), 'send.homatch.live aligns with homatch.live (relaxed)');
+  /* No Return-Path header (Gmail often shows none): the envelope domain comes from smtp.mailfrom. */
+  const noRp = analyzeHeaders(GMAIL_SPAM.replace(/^Return-Path:.*\n/m, ''));
+  assert.equal(noRp.returnPathDomain, null);
+  assert.equal(noRp.spf.domain, 'send.homatch.live');
+  assert.ok(!noRp.findings.some((f) => f.code === 'SPF_NOT_ALIGNED'), 'never "not aligned" against an unknown domain');
   const none = analyzeHeaders('From: a@b.test\nSubject: x\n\nbody');
   assert.deepEqual(none.findings.map((f) => f.code), ['NO_AUTH_RESULTS', 'NO_LIST_UNSUBSCRIBE']);
   assert.equal(none.spf.result, 'unknown'); assert.equal(none.tls, null);

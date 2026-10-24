@@ -71,7 +71,9 @@ export function analyzeHeaders(raw: string): HeaderReport {
   const returnPathDomain = domainOf(first('return-path'));
   /* The topmost Authentication-Results is the receiver's own; lower ones may be forged by senders. */
   const ar = (get('authentication-results')[0] ?? get('arc-authentication-results')[0] ?? '').replace(/\s+/g, ' ');
-  const spfM = /\bspf=([a-z]+)[^;]*?(?:smtp\.mailfrom=([^\s;]+))?/i.exec(ar);
+  /* The spf= clause runs to the next ";" — its envelope sender is read inside that clause only. */
+  const spfClause = /\bspf=([a-z]+)([^;]*)/i.exec(ar);
+  const spfM = spfClause ? [spfClause[0], spfClause[1], /smtp\.mailfrom=([^\s;]+)/i.exec(spfClause[2])?.[1]] as const : null;
   const dkimAll = [...ar.matchAll(/\bdkim=([a-z]+)([^;]*)/gi)].map((m) => ({
     result: asResult(m[1]),
     domain: (/header\.(?:d|i)=@?([^\s;]+)/i.exec(m[2])?.[1] ?? null)?.toLowerCase().replace(/^@/, '') ?? null,
@@ -119,7 +121,7 @@ export function analyzeHeaders(raw: string): HeaderReport {
     else if (report.dmarc.result === 'unknown') f.push({ code: 'DMARC_NOT_EVALUATED', severity: 'warn' });
     else f.push({ code: 'DMARC_FAIL', severity: 'bad', detail: report.dmarc.result });
     if (report.dmarc.policy === 'none') f.push({ code: 'DMARC_POLICY_NONE', severity: 'info' });
-    if (report.spf.result === 'pass' && !aligned(report.spf.domain, fromDomain)) f.push({ code: 'SPF_NOT_ALIGNED', severity: 'info', detail: `${report.spf.domain} ≠ ${fromDomain}` });
+    if (report.spf.result === 'pass' && report.spf.domain && fromDomain && !aligned(report.spf.domain, fromDomain)) f.push({ code: 'SPF_NOT_ALIGNED', severity: 'info', detail: `${report.spf.domain} ≠ ${fromDomain}` });
   }
   if (report.compauth && report.compauth.result !== 'pass') f.push({ code: 'MS_COMPAUTH_FAIL', severity: 'bad', detail: `${report.compauth.result}${report.compauth.reason ? ` (${report.compauth.reason})` : ''}` });
   if (report.scl != null) f.push({ code: report.scl >= 5 ? 'MS_SCL_JUNK' : 'MS_SCL_OK', severity: report.scl >= 5 ? 'bad' : 'ok', detail: String(report.scl) });

@@ -125,7 +125,8 @@ begin
     select count(*) filter (where measured) as requests,
            count(*) filter (where route = 'DETERMINISTIC') as deterministic,
            count(*) filter (where is_model) as model_turns,
-           count(*) filter (where is_model and error_code is null and not unpriced) as priced_model_turns,
+           -- Every model turn that carries a price, errored or cancelled ones too: the same turns cost_usd sums.
+           count(*) filter (where is_model and not unpriced) as priced_model_turns,
            count(*) filter (where error_code = 'CANCELLED') as cancelled_turns,
            count(*) filter (where error_code is not null and error_code <> 'CANCELLED') as failures,
            count(distinct conversation_id) filter (where measured and conversation_id is not null) as conversations,

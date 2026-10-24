@@ -53,15 +53,16 @@ export function SaveResultBar({ run, strategy, context }: { run: StrategyRun | n
           <Bookmark className="h-4 w-4" aria-hidden="true" />{t('inv_saved_sign_in')}
         </button>
       ) : naming ? (
-        <form className="flex w-full flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+        <div className="flex w-full flex-wrap items-end gap-2" role="group" aria-label={t('inv_saved_save')}>
           <label className="min-w-0 flex-1">
             <span className="mb-1 block text-sm font-medium text-foreground">{t('inv_saved_name')}</span>
             <input autoFocus value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder={t('inv_saved_default_name')}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void save(); } }}
               className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-[hsl(var(--gold))]" />
           </label>
-          <button type="submit" disabled={state === 'busy'} className={cn(pill, 'border-[hsl(var(--gold))] bg-[hsl(var(--gold))] text-[hsl(var(--primary-foreground))]')}>{t('inv_saved_save')}</button>
+          <button type="button" onClick={() => void save()} disabled={state === 'busy'} className={cn(pill, 'border-[hsl(var(--gold))] bg-[hsl(var(--gold))] text-[hsl(var(--primary-foreground))]')}>{t('inv_saved_save')}</button>
           <button type="button" onClick={() => setNaming(false)} className={cn(pill, 'border-border')}>{t('inv_saved_cancel')}</button>
-        </form>
+        </div>
       ) : (
         <button type="button" onClick={() => { setNaming(true); setState('idle'); }} className={cn(pill, 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]')}>
           <Bookmark className="h-4 w-4" aria-hidden="true" />{t('inv_saved_save')}

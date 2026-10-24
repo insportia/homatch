@@ -115,7 +115,9 @@ create policy mortgage_bank_products_admin_update on public.mortgage_bank_produc
   for update using (public.is_admin()) with check (public.is_admin());
 -- No DELETE policy: a product is RETIRED, not erased.
 
-revoke all on public.mortgage_bank_products from anon;
+/* Supabase's default privileges grant ALL (incl. DELETE and TRUNCATE) to anon and authenticated;
+   take everything back and grant only what the policies above govern. */
+revoke all on public.mortgage_bank_products from anon, authenticated;
 grant select on public.mortgage_bank_products to anon, authenticated;
 grant insert, update on public.mortgage_bank_products to authenticated;
 
@@ -127,10 +129,23 @@ begin
   select id into v_uid from public.users where auth_id = auth.uid();
   new.updated_at := now();
   new.updated_by := v_uid;
-  if tg_op = 'INSERT' then new.created_by := v_uid; end if;
+  if tg_op = 'INSERT' then
+    new.created_by := v_uid;
+    new.created_at := now();
+  else
+    -- Who created a product, and when, is not editable from a client.
+    new.created_by := old.created_by;
+    new.created_at := old.created_at;
+  end if;
   insert into public.admin_audit_log (admin_id, action, entity_type, entity_id, metadata)
-  values (auth.uid(), 'mortgage_bank_product.' || lower(tg_op), 'mortgage_bank_products', new.id::text,
-          jsonb_build_object('bank', new.bank_name, 'product', new.product_name, 'review_status', new.review_status));
+  -- admin_audit_log.admin_id is NOT NULL: a service-role write (no auth.uid()) is recorded
+  -- under the nil uuid, as admin_set_setting does, instead of failing the write.
+  values (coalesce(auth.uid(), '00000000-0000-0000-0000-000000000000'::uuid),
+          'mortgage_bank_product.' || lower(tg_op), 'mortgage_bank_products', new.id::text,
+          jsonb_build_object('bank', new.bank_name, 'product', new.product_name, 'review_status', new.review_status,
+                             'old_review_status', case when tg_op = 'UPDATE' then old.review_status end,
+                             'verified_at', new.verified_at, 'source_url', new.source_url,
+                             'actor', case when auth.uid() is null then 'service_role' else 'admin' end));
   return new;
 end $$;
 
@@ -141,3 +156,85 @@ create trigger trg_mortgage_bank_products_touch
 
 comment on table public.mortgage_bank_products is
   'Bank mortgage product conditions entered and verified by HOMATCH admins, each with source_url, verified_at and effective_from. Public sees VERIFIED rows inside their review window only. Seeded empty: no offer is shown until verified.';
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 4. ADMIN: MORTGAGE RULE STATUS CHANGES, CHECKED AND AUDITED.
+--
+-- Admin → Mortgage rules used to flip a CANDIDATE to ACTIVE with a direct
+-- UPDATE ... WHERE status = 'CANDIDATE'. A row that had already moved matched
+-- nothing and PostgREST answered success; nothing reached admin_audit_log.
+-- This function checks the caller is an admin, allows only
+-- CANDIDATE → ACTIVE and CANDIDATE → REJECTED, records the official source
+-- the admin confirmed, stamps last_verified_at on activation, writes the
+-- change to admin_audit_log and RETURNS the stored status, so the screen can
+-- tell "changed" from "matched nothing". Errors are raised by name.
+-- ─────────────────────────────────────────────────────────────────────────
+create or replace function public.mortgage_rule_admin_set_status(
+  p_rule_id uuid,
+  p_status text,
+  p_official_source_url text default null,
+  p_note text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_old public.mortgage_rules%rowtype;
+  v_new public.mortgage_rules%rowtype;
+  v_src text := nullif(btrim(coalesce(p_official_source_url, '')), '');
+begin
+  if not public.is_admin() then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  if p_rule_id is null or p_status is null or p_status not in ('ACTIVE', 'REJECTED') then
+    raise exception 'INVALID_ARGUMENT' using errcode = '22023';
+  end if;
+  if v_src is not null and v_src !~ '^https://' then
+    raise exception 'INVALID_SOURCE_URL' using errcode = '22023';
+  end if;
+
+  select * into v_old from public.mortgage_rules where id = p_rule_id for update;
+  if not found then
+    raise exception 'RULE_NOT_FOUND' using errcode = 'P0002';
+  end if;
+  if v_old.status <> 'CANDIDATE' then
+    raise exception 'INVALID_TRANSITION: % -> %', v_old.status, p_status using errcode = '22023';
+  end if;
+
+  update public.mortgage_rules
+     set status = p_status::mortgage_rule_status,
+         official_source_url = case when p_status = 'ACTIVE' then coalesce(v_src, official_source_url) else official_source_url end,
+         last_verified_at = case when p_status = 'ACTIVE' then current_date else last_verified_at end,
+         -- An active rule is no longer "pending official confirmation".
+         eligibility_dimensions = case when p_status = 'ACTIVE' and eligibility_dimensions is not null
+                                       then eligibility_dimensions - 'pendingOfficialConfirmation'
+                                       else eligibility_dimensions end
+   where id = p_rule_id
+  returning * into v_new;
+
+  insert into public.admin_audit_log (admin_id, action, entity_type, entity_id, metadata)
+  values (auth.uid(), 'mortgage_rule.' || lower(p_status), 'mortgage_rules', p_rule_id::text,
+          jsonb_build_object(
+            'title', v_old.title,
+            'type', v_old.type,
+            'old_status', v_old.status,
+            'new_status', v_new.status,
+            'effective_from', v_old.effective_from,
+            'old_source', v_old.official_source_url,
+            'new_source', v_new.official_source_url,
+            'note', left(p_note, 500)));
+
+  return jsonb_build_object(
+    'id', v_new.id,
+    'status', v_new.status,
+    'last_verified_at', v_new.last_verified_at,
+    'official_source_url', v_new.official_source_url);
+end $$;
+
+comment on function public.mortgage_rule_admin_set_status(uuid, text, text, text) is
+  'Admin only. CANDIDATE -> ACTIVE (with the official source confirmed) or CANDIDATE -> REJECTED; audited in admin_audit_log; returns the stored status.';
+
+revoke all on function public.mortgage_rule_admin_set_status(uuid, text, text, text) from public, anon;
+grant execute on function public.mortgage_rule_admin_set_status(uuid, text, text, text) to authenticated;

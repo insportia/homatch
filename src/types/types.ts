@@ -183,10 +183,20 @@ export interface AdminOverviewStats {
   cache_hit_rate: number;
   credits_purchased: number;
   credits_consumed: number;
+  /** false when the credit ledger read was truncated or failed: the credit totals are lower bounds. */
+  credits_complete: boolean;
   cogs_usd: number;
+  /** false when cost rows were truncated or any is UNPRICED: COGS is unknown. */
+  cogs_complete: boolean;
+  cogs_unpriced_events: number;
+  /** Credits charged for unlocks; revenue_usd is this at 10 credits = $1. */
+  revenue_credits: number;
   revenue_usd: number;
-  gross_profit_usd: number;
-  gross_margin_pct: number;
+  revenue_complete: boolean;
+  /** null when revenue or COGS is incomplete/unknown. */
+  gross_profit_usd: number | null;
+  /** null = unknown (no revenue, or COGS unknown). Never reported as 0%. */
+  gross_margin_pct: number | null;
 }
 
 export interface AdminProviderCostRow {

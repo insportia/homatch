@@ -30,6 +30,19 @@ MATTERS right now, verify against the live systems, not this file)
 - Edge functions touched: homatch-ai, deal-room-document-analyze, atomic-unlock (kind mortgage_leads),
   jobs-worker, payment-webhook, and every producer that imports _shared/notify.ts (deploy-scope computes it).
   No new edge function.
+- Final audit round (owner prompt "PR #325 FINAL COMPLETE AUDIT", 2026-10-24): migration
+  20261201096000 investment saved results added (owner-only, no update). 093 now keeps property_ids,
+  erases stated preferences on withdrawal, re-reads accept_property_offers at contact and logs email
+  disclosures; 094 keys revisions by analysis identity and purges them with extracted_text; payment-webhook
+  emits a PAYG top-up failure (checkout.session.async_payment_failed); notify email is claim-before-send
+  with a Resend Idempotency-Key. Real PostgreSQL 17 proof on a read-only production schema snapshot
+  (outside the repo): 7 migrations applied twice, 25 concurrent unlocks -> 1 charge of 3 credits,
+  retry storm -> one execution, cross-account isolation, insufficient-credit rollback, RLS.
+- Local-only environment notes: tsgo's 7 errors (Array.at, Intl.ListFormat, @huggingface/transformers,
+  pdfjs-dist) come from a drifted local node_modules (@types/node 26.5.0 vs lockfile 26.4.0, two optional
+  packages absent); CI's frozen-lockfile type-check is clean.
+- Owner decision open: a 3-credit mortgage unlock also counts as the member's internal unlock in Matching
+  (where a VIP unlock is 10 credits), per "one paid unlock per canonical buyer".
 
 ## Verify fixed price + 30-day validity + Snake/ads fixes (branch claude/verify-fixed-price-validity, 2026-10-23) — PR OPEN, NOT DEPLOYED
 

@@ -11,12 +11,15 @@ import { getAdminOverviewStats, getSpendCapStatus } from '@/services/api';
 import type { AdminOverviewStats, SpendCapStatus } from '@/types/types';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { creditsToUsd, formatCredits, formatUsd, marginState } from '@/admin/money';
 
-function StatCard({ title, value, sub, icon: Icon, accent = false }: {
+function StatCard({ title, value, sub, icon: Icon, accent = false, warn = false }: {
   title: string; value: string | number; sub?: string; icon: React.ElementType; accent?: boolean;
+  /** An unknown or incomplete figure: drawn as a warning so it never reads as a real zero. */
+  warn?: boolean;
 }) {
   return (
-    <Card className={cn('shadow-sm', accent && 'border-primary/30 bg-primary/5')}>
+    <Card className={cn('shadow-sm', accent && 'border-primary/30 bg-primary/5', warn && 'border-amber-500/60 bg-amber-500/5')}>
       <CardContent className="pt-5 pb-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -61,21 +64,25 @@ export default function AdminOverviewPage() {
   const [statsError, setStatsError] = useState(false);
 
   useEffect(() => {
-    // Each query is independent — a failure in one MUST NOT crash the other
-    getAdminOverviewStats()
+    // Each query is independent — a failure in one MUST NOT crash the other.
+    // One request each (this used to fire both twice to know when they settled).
+    const statsP = getAdminOverviewStats()
       .then(s => setStats(s))
       .catch(() => setStatsError(true));
-    getSpendCapStatus()
+    const capsP = getSpendCapStatus()
       .then(c => setCaps(c))
       .catch(() => {});
-    // Mark loading done after both settle
-    Promise.allSettled([getAdminOverviewStats(), getSpendCapStatus()])
-      .finally(() => setLoading(false));
+    Promise.allSettled([statsP, capsP]).finally(() => setLoading(false));
   }, []);
 
-  const fmt    = (n: number | undefined | null) => (n ?? 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
-  const fmtUsd = (n: number | undefined | null) => `$${(n ?? 0).toFixed(2)}`;
-  const fmtPct = (n: number | undefined | null) => `${(n ?? 0).toFixed(1)}%`;
+  // Unknown reads as "—", never as 0 / $0.00 / 0.0%.
+  const fmt    = (n: number | undefined | null) => (n === null || n === undefined ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 0 }));
+  const fmtUsd = (n: number | undefined | null) => formatUsd(n);
+  const fmtPct = (n: number | undefined | null) => (n === null || n === undefined ? '—' : `${n.toFixed(1)}%`);
+  const credits = (n: number | undefined | null, complete = true) =>
+    formatCredits(n, (v) => t(complete ? 'admin_overview_credits_n' : 'admin_overview_credits_n_partial', { n: v }));
+  const margin = marginState(stats?.gross_margin_pct);
+  const cogsKnown = !!stats && stats.cogs_complete;
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -129,10 +136,18 @@ export default function AdminOverviewPage() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {loading ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />) : <>
-            <StatCard title={t('admin_overview_unlocks')}      value={fmt(stats?.total_unlocks)}     sub={`${fmtPct(stats?.unlock_conversion_rate)} of matches`} icon={Unlock}    accent />
-            <StatCard title={t('admin_overview_revenue')}      value={fmtUsd(stats?.revenue_usd)}    sub={`${fmtUsd(stats?.credits_consumed)} consumed`}          icon={DollarSign} accent />
-            <StatCard title="COGS"         value={fmtUsd(stats?.cogs_usd)}       sub="Provider costs"                                          icon={BarChart2} />
-            <StatCard title={t('admin_overview_gross_margin')} value={fmtPct(stats?.gross_margin_pct)} sub={`${fmtUsd(stats?.gross_profit_usd)} profit`}           icon={Percent}   accent />
+            <StatCard title={t('admin_overview_unlocks')}      value={fmt(stats?.total_unlocks)}     sub={t('admin_overview_of_matches', { pct: fmtPct(stats?.unlock_conversion_rate) })} icon={Unlock}    accent />
+            {/* Unlock credits at 10 credits = $1; the credit figure carries its unit. */}
+            <StatCard title={t('admin_overview_revenue')}      value={stats ? (stats.revenue_complete ? fmtUsd(stats.revenue_usd) : t('admin_overview_incomplete')) : '—'}
+              sub={stats ? credits(stats.revenue_credits, stats.revenue_complete) : undefined} icon={DollarSign} accent />
+            <StatCard title={t('admin_overview_cogs')}         value={stats ? (cogsKnown ? fmtUsd(stats.cogs_usd) : t('admin_overview_unknown')) : '—'}
+              sub={stats && !cogsKnown
+                ? (stats.cogs_unpriced_events > 0 ? t('admin_overview_cogs_unpriced', { n: stats.cogs_unpriced_events }) : t('admin_overview_cogs_incomplete'))
+                : t('admin_overview_cogs_sub')}
+              icon={BarChart2} warn={!!stats && !cogsKnown} />
+            <StatCard title={t('admin_overview_gross_margin')} value={!stats ? '—' : margin.kind === 'known' ? margin.text : t('admin_overview_unknown')}
+              sub={!stats ? undefined : margin.kind === 'known' ? t('admin_overview_profit', { usd: fmtUsd(stats.gross_profit_usd) }) : t('admin_overview_margin_unknown')}
+              icon={Percent} accent warn={!!stats && margin.kind === 'unknown'} />
           </>}
         </div>
       </section>
@@ -158,8 +173,11 @@ export default function AdminOverviewPage() {
           {loading
             ? <><Skeleton className="h-24 rounded-xl col-span-1" /><Skeleton className="h-24 rounded-xl col-span-1" /></>
             : <>
-              <StatCard title={t('admin_overview_credits_purchased')} value={fmtUsd(stats?.credits_purchased)} icon={TrendingUp} />
-              <StatCard title={t('admin_overview_credits_consumed')}  value={fmtUsd(stats?.credits_consumed)}  icon={DollarSign} />
+              {/* Credits, not dollars: shown with their unit and the dollar value at 10 credits = $1. */}
+              <StatCard title={t('admin_overview_credits_purchased')} value={stats ? credits(stats.credits_purchased, stats.credits_complete) : '—'}
+                sub={stats ? fmtUsd(creditsToUsd(stats.credits_purchased)) : undefined} icon={TrendingUp} />
+              <StatCard title={t('admin_overview_credits_consumed')}  value={stats ? credits(stats.credits_consumed, stats.credits_complete) : '—'}
+                sub={stats ? fmtUsd(creditsToUsd(stats.credits_consumed)) : undefined} icon={DollarSign} />
             </>}
         </div>
       </section>

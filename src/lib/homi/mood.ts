@@ -16,7 +16,7 @@ const norm = (t: string) => t.toLocaleLowerCase().replace(/\s+/g, ' ').trim();
 const SURPRISE = /(!{2,}|\?!|!\?|\bwow\b|really\?|seriously|unbelievable|ვაუ|მართლა|ნამდვილად\?|წარმოუდგენელ|вау|неужели|серьёзно|серьезно|ничего себе|vay|gerçekten mi|inanılmaz|واو|حقا|حقًا|معقول|וואו|באמת\?|לא יאמן)/u;
 const WORRY = /(worried|afraid|scared|problem|help me|stuck|lost money|fraud|scam|ვღელავ|მეშინია|შემეშინდა|პრობლემ|დამეხმარე|მოტყუ|თაღლით|переживаю|боюсь|проблем|помоги|обман|мошенн|endişe|korkuyorum|sorun|yardım et|dolandır|قلق|أخاف|مشكلة|ساعدني|احتيال|מודאג|מפחד|בעיה|תעזור|הונאה)/u;
 const THANKS = /(thank|thanks|მადლობ|გმადლობ|спасибо|благодар|teşekkür|sağ ol|شكر|תודה)/u;
-const HELLO = /^(hi|hello|hey|გამარჯობა|სალამი|привет|здравствуй|merhaba|selam|مرحبا|اهلا|أهلا|שלום|היי)\b/u;
+const HELLO = /^(hi|hello|hey|გამარჯობა|სალამი|привет|здравствуй|merhaba|selam|مرحبا|اهلا|أهلا|שלום|היי)(?=$|[\s!,.?])/u;
 const SEARCH = /(find|search|look(ing)? for|show me|apartment|flat|house|listing|price of|ვეძებ|მოძებნ|მაჩვენე|ბინა|სახლ|ფასი|ищу|найди|найти|покажи|квартир|дом|цена|arıyorum|bul|göster|daire|ev |fiyat|ابحث|أبحث|اعثر|شقة|منزل|سعر|מחפש|למצוא|תראה לי|דירה|בית|מחיר)/u;
 
 export function waitingMoodFor(text: string): WaitingMood {

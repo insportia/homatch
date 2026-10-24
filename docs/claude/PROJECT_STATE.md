@@ -5,7 +5,7 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
-## HOMI experience and platform intelligence (branch claude/homi-experience, 2026-10-24) — ONE PR, NOT DEPLOYED
+## HOMI experience and platform intelligence (PR #325, branch claude/homi-experience, 2026-10-24) — PR OPEN, NOT DEPLOYED, AWAITING OWNER RELEASE APPROVAL
 
 - Scope: HOMI assistant (internal-first routing, deterministic answers with no model, free streamed chat,
   telemetry), HOMI 3D on the homepage and in chat (public/models/homi/homi.glb, stills in

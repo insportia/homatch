@@ -83,6 +83,7 @@
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.6.0",
     "eventsource-parser": "^3.0.3",
+    "fflate": "^0.8.3",
     "input-otp": "^1.4.2",
     "ky": "^1.2.3",
     "libphonenumber-js": "1.13.13",

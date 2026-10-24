@@ -293,6 +293,8 @@ serve(async (req) => {
 
   const results = await deliver(sb, (subs ?? []) as SubRow[], {
     id: notif.id,
+    /* The worker draws typed notifications in the site's language (sw.source.js PUSH_COPY). */
+    type: notif.type,
     title: notif.title,
     body: notif.body ?? '',
     deep_link: notif.deep_link ?? '/notifications',

@@ -33,7 +33,8 @@ import { listingKeyFromUrl } from './marketplaceComparables.ts';
 import { comparableKindOf, dealTypeOf, kindsCompatible, subjectMarketFacts, subjectPropertyKind, MIN_DEFENSIBLE_COMPARABLES, SIZE_BAND, type PropertyKind } from './intelligence/marketHierarchy.ts';
 import { buildPropertyRegister, type RegisterExtract } from './intelligence/propertyRegister.ts';
 import { propertyKindFromRegister, registeredAddressOf, type PropertyKind as RegisterKind } from './intelligence/propertyKind.ts';
-import { areaOf, areAdjacent, type AreaKey } from './intelligence/marketGeography.ts';
+import { areaOf, areAdjacent, areaName, areaNearPoint, type AreaKey } from './intelligence/marketGeography.ts';
+import { centerFromBrowserOfficial } from './intelligence/neighborhood.ts';
 import { cityOfAddress } from './intelligence/locationIntelligence.ts';
 import { trimOutliers } from './intelligence/marketIntelligence.ts';
 import type { FxPoint } from './intelligence/fx.ts';
@@ -150,6 +151,8 @@ export interface SubjectMarketProfile {
   district: string | null;
   /** The district as a known neighbourhood key, when it resolves to one. */
   areaKey: AreaKey | null;
+  /** COORDINATES: no district name was read; the parcel centre named it (areaNearPoint). */
+  districtBasis?: 'COORDINATES';
   /**
    * A settlement the address names that the neighbourhood vocabulary does not
    * know (a village such as წავკისი), lower-cased; null when areaKey resolved.
@@ -251,6 +254,16 @@ export function subjectMarketProfile(input: {
   const project = txt(obj(seed.project?.name).value) ?? txt(obj(r.reconciledIdentity).project) ?? txt(obj(r.projectProfile).name) ?? null;
   const buildingsOnPlot = !!txt(l.buildingsText) || !!pos(l.buildingsTotalAreaSqm) || BUILDINGS_ON_PLOT.test(String(view.entityType ?? ''));
   if (assetClass === 'LAND' && buildingsOnPlot) assetClass = project ? 'DEVELOPMENT_PROJECT' : 'MIXED';
+  /* A PARCEL CODE WITH A NAMED PROJECT IS THE PROJECT (prod a7177a89): the
+     five-group code names the whole plot, not a flat, so there is no unit area
+     to compare and the project's own new-build asks are the market. Only when
+     the register did not decide the class. */
+  const cadastral = txt(obj(seed.property?.cadastralCode).value) ?? '';
+  const parcelCode = /^\d{1,6}(?:\.\d{1,6}){4}$/.test(cadastral);
+  if (parcelCode && project && assetClassBasis !== 'REGISTRY' && (assetClass === 'APARTMENT' || assetClass === 'UNKNOWN')) {
+    assetClass = 'DEVELOPMENT_PROJECT';
+    assetClassBasis = assetClassBasis ?? 'IDENTITY';
+  }
 
   /* ---- how big ---- */
   const facts = subjectMarketFacts(view);
@@ -287,8 +300,16 @@ export function subjectMarketProfile(input: {
   const loc = obj(seed.location);
   const address = txt(obj(loc.address).value) ?? txt(facts.address) ?? null;
   const city = txt(obj(loc.city).value) ?? (address ? cityOfAddress(address) ?? null : null);
-  const district = txt(obj(loc.subDistrict).value) ?? txt(obj(loc.district).value) ?? txt(facts.district) ?? null;
-  const areaKey = (district ? areaOf(district)?.area : null) ?? (facts.district ? areaOf(facts.district)?.area : null) ?? null;
+  /* The parcel's own centre from the cadastral map, when the seed has no coordinates. */
+  const parcel = cadastral ? cadastral.split('.').slice(0, 5).join('.') : null;
+  const mapCentre = coord(obj(loc.latitude).value) == null ? centerFromBrowserOfficial(r.browserOfficial, parcel) : null;
+  const latitude = coord(obj(loc.latitude).value) ?? coord(mapCentre?.lat);
+  const longitude = coord(obj(loc.longitude).value) ?? coord(mapCentre?.lng);
+  const named = txt(obj(loc.subDistrict).value) ?? txt(obj(loc.district).value) ?? txt(facts.district) ?? null;
+  // No district name read: the point names it (Tbilisi only, within NEAR_POINT_KM of a neighbourhood centre).
+  const near = !named && (!city || /თბილის|tbilisi|тбилиси/iu.test(city)) ? areaNearPoint(latitude, longitude) : null;
+  const district = named ?? (near ? areaName(near.district) ?? null : null);
+  const areaKey = (named ? areaOf(named)?.area : null) ?? (facts.district ? areaOf(facts.district)?.area : null) ?? near?.area ?? null;
 
   const residential = assetClass === 'APARTMENT' || assetClass === 'HOUSE';
   return {
@@ -304,8 +325,9 @@ export function subjectMarketProfile(input: {
     district,
     areaKey,
     locality: areaKey ? null : localityOf(district) ?? localityOf(address),
-    latitude: coord(obj(loc.latitude).value),
-    longitude: coord(obj(loc.longitude).value),
+    latitude,
+    longitude,
+    ...(near ? { districtBasis: 'COORDINATES' as const } : {}),
     project: project ?? txt(facts.project) ?? null,
     address,
     transactionType: seed.property?.transaction === 'RENT' ? 'MONTHLY_RENT' : 'BUY',

@@ -103,7 +103,8 @@ const ROUTES = [
      row. The plan is auth-gated. */
   { path: '/for-expats/georgia', name: 'for expats' },
   { path: '/for-expats/georgia/residence-permits', name: 'for expats topic' },
-  { path: '/for-expats/plan', name: 'my expat plan', auth: true },
+  { path: '/my-georgia', name: 'my georgia', auth: true },
+  { path: '/my-georgia/start', name: 'my georgia start' },
   { path: '/pricing', name: 'pricing' },
   { path: '/developers', name: 'developers' },
   /*

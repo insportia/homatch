@@ -51,7 +51,10 @@ const PRODUCT_FILES = [
   ...walk('src/components/expats'),
   'src/pages/ForExpatsPage.tsx',
   'src/pages/ExpatTopicPage.tsx',
-  'src/pages/ExpatPlanPage.tsx',
+  'src/pages/MyGeorgiaPage.tsx',
+  'src/pages/MyGeorgiaStartPage.tsx',
+  'src/myGeorgia/answers.ts',
+  'src/services/myGeorgia.ts',
   'src/services/expats.ts',
 ];
 
@@ -65,7 +68,9 @@ function code(src) {
 test('there is no chat surface anywhere in the product', () => {
   for (const file of PRODUCT_FILES) {
     const src = code(read(file));
-    assert.ok(!/<textarea/i.test(src), `${file} has a free-text composer`);
+    /* My Georgia step 5 is the owner-approved OPTIONAL note (2026-10-24): one field on the person's own
+       profile, read by HOMI in their own conversation. It is a form field, not a composer. */
+    if (file !== 'src/pages/MyGeorgiaStartPage.tsx') assert.ok(!/<textarea/i.test(src), `${file} has a free-text composer`);
     assert.ok(!/role:\s*'(user|assistant)'/.test(src), `${file} carries chat turns`);
     assert.ok(!/\bmessages\s*[:=]\s*\[/.test(src), `${file} keeps a message list`);
     assert.ok(!/useAIChat/.test(src), `${file} opens a chat session`);
@@ -230,7 +235,10 @@ test('the public routes are public and only the plan is not', () => {
   };
   assert.match(row('/for-expats/georgia'), /public: true/);
   assert.match(row('/for-expats/georgia/:slug'), /public: true/);
-  assert.match(row('/for-expats/plan'), /public: false/);
+  /* The plan moved into My Georgia (2026-10-24): the dashboard is the account's, the onboarding is open. */
+  assert.match(row('/my-georgia'), /public: false/);
+  assert.match(row('/my-georgia/start'), /public: true/);
+  assert.match(row('/for-expats/plan'), /Navigate to="\/my-georgia"/);
 });
 
 test('the landing page renders its tools without waiting for a session', () => {

@@ -21,78 +21,52 @@
 // something — a plan that remembers — and nowhere else.
 
 import { ArrowRight, CircleDollarSign, FileSignature, Search, ShieldCheck, TrendingUp } from 'lucide-react';
+import '@/components/expats/expats.css';
 import { usePathAvailable } from '@/lib/serviceControls';
 import React from 'react';
 import { Link } from 'react-router-dom';
 import LocalSectionNav from '@/components/common/LocalSectionNav';
 import PageMeta from '@/components/common/PageMeta';
-import { CostOfLiving } from '@/components/expats/CostOfLiving';
 import { ExpatHero } from '@/components/expats/ExpatHero';
 import { ExpatSeo } from '@/components/expats/ExpatSeo';
 import { GeorgiaAtAGlance } from '@/components/expats/GeorgiaAtAGlance';
-import { RentalCommunities } from '@/components/expats/RentalCommunities';
-import { TopicIndex } from '@/components/expats/TopicIndex';
-import { WhatCanIBuy } from '@/components/expats/WhatCanIBuy';
+import { GuideHub } from '@/components/expats/GuideHub';
 import { WhatChanged } from '@/components/expats/WhatChanged';
 import WhatDoYouNeed from '@/components/expats/WhatDoYouNeed';
+import { ExpatPlanStarter } from '@/components/expats/ExpatPlanStarter';
 import { PageBlocks } from '@/site/render/PageBlocks';
 import { AppLayout } from '@/components/layouts/AppLayout';
-import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { cityName, EXPAT_CITIES } from '@/expats/geography';
-import type { LocatedSnapshot } from '@/expats/marketContext';
-import { EMPTY_PROFILE } from '@/expats/types';
 import {
-  type CostObservationRow,
   type ExpatTopic,
   type ExpatUpdate,
-  getCostObservations,
-  getMarketReadings,
-  getRentalCommunities,
   getUpdates,
   listTopics,
-  type RentalCommunity,
 } from '@/services/expats';
 
 export default function ForExpatsPage() {
-  const { t, lang } = useLanguage();
-  const { homatchUser } = useAuth();
+  const { t } = useLanguage();
 
   const [topics, setTopics] = React.useState<ExpatTopic[]>([]);
-  const [snapshots, setSnapshots] = React.useState<LocatedSnapshot[]>([]);
-  const [costs, setCosts] = React.useState<CostObservationRow[]>([]);
-  const [communities, setCommunities] = React.useState<RentalCommunity[]>([]);
   const [updates, setUpdates] = React.useState<ExpatUpdate[]>([]);
-
-  const tbilisi = EXPAT_CITIES[0];
 
   React.useEffect(() => {
     let live = true;
-    // Five independent reads, fired together. Sequencing them would make
-    // the slowest one the page's load time for no reason.
-    void Promise.all([
-      listTopics(),
-      getMarketReadings(tbilisi.nameKa),
-      getCostObservations(tbilisi.nameEn),
-      getRentalCommunities(tbilisi.nameEn),
-      getUpdates(4),
-    ]).then(([tp, sn, co, cm, up]) => {
+    // Independent reads, fired together.
+    void Promise.all([listTopics(), getUpdates(4)]).then(([tp, up]) => {
       if (!live) return;
       setTopics(tp);
-      setSnapshots(sn);
-      setCosts(co);
-      setCommunities(cm);
       setUpdates(up);
     });
     return () => {
       live = false;
     };
-  }, [tbilisi.nameKa, tbilisi.nameEn]);
+  }, []);
 
 
   return (
     <AppLayout noPadding>
-      <div className="overflow-x-hidden bg-background text-foreground">
+      <div className="expat-page overflow-x-hidden bg-background text-foreground">
       <PageMeta title={t('expat_meta_title')} description={t('expat_meta_description')} />
       <ExpatSeo path="/for-expats/georgia" />
 
@@ -114,15 +88,20 @@ export default function ForExpatsPage() {
       <LocalSectionNav
         ariaLabelKey="nav_on_this_page"
         sections={[
+          { id: 'plan', labelKey: 'expat_journey_your_plan' },
           { id: 'needs', labelKey: 'expat_needs_title' },
-          { id: 'cost-of-living', labelKey: 'expat_pathway_live_title' },
-          { id: 'budget', labelKey: 'expat_pathway_buy_title' },
           { id: 'topics', labelKey: 'expat_pathway_move_title' },
           { id: 'tools', labelKey: 'expat_pathway_invest_title' },
         ]}
       />
 
       <div className="mx-auto w-full max-w-[76rem] space-y-16 px-5 py-14 sm:py-20">
+        {/* The front door (owner direction 2026-10-24): HOMI builds a plan
+            with you and answers questions, before anything to read. */}
+        <div id="plan" className="scroll-mt-24">
+          <ExpatPlanStarter />
+        </div>
+
         <GeorgiaAtAGlance />
 
         {/* The front door: one question, then the steps and the tool for
@@ -132,31 +111,20 @@ export default function ForExpatsPage() {
           <WhatDoYouNeed topics={topics} />
         </div>
 
-        {/* The four hero rows are anchors into this page, so the sections
-            they name carry the ids. scroll-mt clears the sticky header;
-            without it the heading lands underneath it and the reader
-            arrives mid-paragraph. */}
-        <div id="cost-of-living" className="scroll-mt-24">
-          <CostOfLiving
-            city={cityName(tbilisi, lang)}
-            observations={costs}
-            profile={EMPTY_PROFILE}
-          />
-        </div>
-
-        <div id="budget" className="scroll-mt-24">
-          <WhatCanIBuy cityKey={tbilisi.key} snapshots={snapshots} />
-        </div>
-
-        <RentalCommunities communities={communities} />
-
+        {/* The hero rows point here or to a topic guide. scroll-mt clears the
+            sticky header. The monthly cost, budget and rental group sections
+            were removed on the owner's instruction (2026-10-24). */}
         <div id="topics" className="scroll-mt-24">
-          <TopicIndex topics={topics} />
+          {/* The Georgia living guide: twelve categories, every card a sourced, dated guide. */}
+          <section data-expat-guide>
+            <p className="mb-2 text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--gold-ink))]">{t('expat_topics_eyebrow')}</p>
+            <h2 className="mb-6 font-display text-2xl font-semibold text-foreground sm:text-3xl">{t('expat_topics_title')}</h2>
+            <GuideHub topics={topics} />
+          </section>
         </div>
 
         <WhatChanged updates={updates} />
 
-        <PlanInvitation signedIn={Boolean(homatchUser)} />
 
         <div id="tools" className="scroll-mt-24">
           <Ecosystem />
@@ -173,40 +141,6 @@ export default function ForExpatsPage() {
   );
 }
 
-/**
- * The account offer, placed after the free value rather than before it.
- *
- * Somebody who has already priced a month and seen what their budget
- * reaches has a reason to want the plan. The same block above the fold is
- * a signup wall with a product behind it.
- */
-function PlanInvitation({ signedIn }: { signedIn: boolean }) {
-  const { t } = useLanguage();
-  return (
-    <section
-      data-expat-plan-invite
-      className="rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]/30 p-6 sm:p-10"
-    >
-      <p className="mb-2 text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--gold-ink))]">
-        {t('expat_plan_eyebrow')}
-      </p>
-      <h2 className="max-w-[26ch] font-display text-2xl font-semibold text-foreground sm:text-3xl">
-        {t('expat_plan_invite_title')}
-      </h2>
-      <p className="mt-3 max-w-[58ch] text-sm leading-relaxed text-muted-foreground">
-        {t('expat_plan_invite_body')}
-      </p>
-      <Link
-        to={signedIn ? '/for-expats/plan' : '/auth/signup?next=/for-expats/plan'}
-        data-expat-plan-cta
-        className="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-[hsl(var(--gold-hover))]"
-      >
-        {signedIn ? t('expat_plan_open') : t('expat_plan_start')}
-        <ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
-      </Link>
-    </section>
-  );
-}
 
 /**
  * The rest of Homatch, as a sentence rather than a grid.

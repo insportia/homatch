@@ -136,7 +136,7 @@ export function selectionTotals(items: Array<Pick<LeadItem, 'matchId' | 'segment
 /** The price that applies to one lead: VIP overrides; EXACT; otherwise nearby / similar. */
 export function leadPriceKey(item: Pick<LeadItem, 'priceKey' | 'segment' | 'category'>): LeadPriceKey {
   if (item.priceKey) return item.priceKey;
-  if (item.segment === 'MORTGAGE' || item.segment === 'MORTGAGE_MATCH') return item.segment;
+  if (item.segment === 'MORTGAGE' || item.segment === 'MORTGAGE_MATCH' || item.segment === 'EXPAT') return item.segment;
   if (item.segment === 'PREMIUM' || item.category === 'VIP') return 'PREMIUM';
   return item.category === 'EXACT' ? 'EXACT' : 'STANDARD';
 }

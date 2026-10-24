@@ -152,7 +152,7 @@ function haveDeps() {
 
 const skipReason = haveDeps();
 const STRICT = !!process.env.CI;
-const opts = skipReason && !STRICT ? { skip: skipReason } : {};
+const opts = skipReason && !STRICT ? { skip: skipReason } : { timeout: 600000 };
 
 function fakeSession() {
   const exp = Math.floor(Date.now() / 1000) + 3600;
@@ -337,7 +337,10 @@ test('the tasks drawer and the contract entry survive every phone width in every
     await page.evaluate(async () => {
       const el = document.querySelector('[role="dialog"]');
       if (!el) return;
-      await Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {})));
+      /* Only animations that END: a spinner inside the drawer loops forever, and awaiting its
+         'finished' hung this suite on Linux once the floating assistant button was gone (2026-10-25). */
+      const finite = el.getAnimations({ subtree: true }).filter((a) => a.effect?.getTiming?.().iterations !== Infinity);
+      await Promise.all(finite.map((a) => a.finished.catch(() => {})));
     });
     await page.waitForTimeout(250);
     const drawer = await page.evaluate(PROBE, width);

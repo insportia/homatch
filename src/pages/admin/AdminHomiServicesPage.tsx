@@ -292,6 +292,35 @@ function MortgageLeadsSection() {
   );
 }
 
+/* My Georgia by HOMI: profiles, completion and the 5 credit expat leads. Counts only, never a person. */
+function MyGeorgiaSection() {
+  const { t } = useLanguage();
+  const { data, error } = useRpc('admin_expat_profile_stats', {});
+  if (error) return <ErrorNote message={error} />;
+  if (!data) return null;
+  const credits = (v: unknown) => formatCredits(v, (n) => t('admin_hs_credits_n', { n }));
+  const top = (o: unknown, n = 6) => Object.entries((o ?? {}) as Record<string, number>).sort((x, y) => Number(y[1]) - Number(x[1])).slice(0, n);
+  return (
+    <section className="space-y-3" data-testid="admin-my-georgia">
+      <h2 className="text-sm font-semibold">{t('admin_mg_title')}</h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Tile label={t('admin_mg_profiles')} value={num(data.profiles)} />
+        <Tile label={t('admin_mg_completed')} value={num(data.completed)} hint={`${t('admin_mg_completion')}: ${pct(data.completionRate)}`} />
+        <Tile label={t('admin_mg_in_matching')} value={num(data.inMatching)} />
+        <Tile label={t('admin_mg_unlocks')} value={num(data.uniqueUnlocks)} />
+        <Tile label={t('admin_mg_credits')} value={credits(data.unlockCredits ?? 0)} hint={usd(creditsToUsd(data.unlockCredits ?? 0))} />
+        <Tile label={t('admin_mg_price')} value={data.price == null ? t('admin_hs_ml_price_missing') : credits(data.price)} tone={data.price == null ? 'warn' : undefined} />
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <Table head={[t('admin_mg_countries'), '#']} rows={top(data.countries, 10).map(([k, v]) => [k, num(v)])} />
+        <Table head={[t('admin_mg_cities'), '#']} rows={top(data.cities).map(([k, v]) => [k, num(v)])} />
+        <Table head={[t('admin_mg_intents'), '#']} rows={top(data.intents).map(([k, v]) => [k, num(v)])} />
+        <Table head={[t('admin_mg_budgets'), '#']} rows={[...top(data.budgets), ...top(data.rents)].map(([k, v]) => [k, num(v)])} />
+      </div>
+    </section>
+  );
+}
+
 function ContractsSection({ days }: { days: number }) {
   const { t } = useLanguage();
   const { data, error } = useRpc('admin_contract_unit_costs', { p_days: days });
@@ -398,7 +427,7 @@ export default function AdminHomiServicesPage({ section }: { section: HomiAdminS
       {section === 'homi' ? <HomiSection days={days} costs={false} /> : null}
       {section === 'ai-costs' ? <HomiSection days={days} costs /> : null}
       {section === 'mortgage' ? <MortgageRulesSection /> : null}
-      {section === 'mortgage-leads' ? <MortgageLeadsSection /> : null}
+      {section === 'mortgage-leads' ? <><MortgageLeadsSection /><MyGeorgiaSection /></> : null}
       {section === 'contracts' ? <ContractsSection days={days} /> : null}
       {section === 'notifications' ? <NotificationsSection days={days} /> : null}
       {section === 'languages' ? <LanguagesSection /> : null}

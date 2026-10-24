@@ -550,7 +550,7 @@ serve(async (req) => {
    * none). It never fails the answer itself. */
   let internalRetrievalFailed = false;
   const last = [...msgs].reverse().find((m: any) => m.role === 'user')?.content || '';
-  const internal: any = { properties: [], matches: [], intents: [], verifications: [] };
+  const internal: any = { properties: [], matches: [], intents: [], verifications: [], myGeorgia: [] };
   try {
   if (uid) {
   /*
@@ -601,6 +601,25 @@ serve(async (req) => {
       attentionPoints: (r?.attentionPoints ?? []).slice(0, 4).map((a: any) => a?.point).filter(Boolean),
     };
   });
+  /*
+   * MY GEORGIA BY HOMI: the person's own onboarding answers, so HOMI never asks
+   * again what they already said (country, cities, intent, budget, plans, the
+   * topics they want help with, and their own note). Their own row, their own
+   * conversation; Matching and sellers never see the note or this context.
+   */
+  const { data: mg } = await sb
+    .from('expat_profiles')
+    .select('first_name,nationality,property_intent,cities,budget_band,rent_band,rent_amount,budget_currency,visit_status,arrival_date,arrival_unknown,stay_length,support_topics,personal_notes,onboarding_completed_at,household')
+    .eq('user_id', uid)
+    .maybeSingle();
+  if (mg && (mg.onboarding_completed_at || mg.property_intent)) {
+    internal.myGeorgia = [{
+      firstName: mg.first_name, country: mg.nationality, propertyIntent: mg.property_intent, cities: mg.cities,
+      budgetBand: mg.budget_band, monthlyRent: mg.rent_band ? { band: mg.rent_band, amount: mg.rent_amount, currency: mg.budget_currency } : null,
+      visitStatus: mg.visit_status, arrival: mg.arrival_unknown ? 'unknown' : mg.arrival_date, stay: mg.stay_length,
+      wantsHelpWith: mg.support_topics, household: mg.household, ownNote: mg.personal_notes, completed: Boolean(mg.onboarding_completed_at),
+    }];
+  }
   const { data: p } = await sb.from('properties').select('id,title,transaction_type,property_type,matching_status,property_facts(*)').eq('user_id', uid).eq('is_deleted', false).limit(15);
   internal.properties = p || [];
   const ids = (p || []).map((x: any) => x.id);
@@ -636,7 +655,7 @@ serve(async (req) => {
    * section can starve another.
    */
   const internalDataForPrompt = (data: Record<string, unknown[]>): string => {
-    const BUDGET: Record<string, number> = { verifications: 9000, properties: 9000, matches: 7000, intents: 5000 };
+    const BUDGET: Record<string, number> = { verifications: 9000, properties: 9000, matches: 7000, intents: 5000, myGeorgia: 4000 };
     const out: Record<string, unknown[]> = {};
     for (const [key, rows] of Object.entries(data)) {
       const budget = BUDGET[key] ?? 3000;
@@ -695,6 +714,7 @@ WHAT HOMATCH CAN ACTUALLY DO FOR THEM. These are the real products, with the rea
   Contact (/contact) — the one official way to reach the HOMATCH team (action CONTACT). Never give any other contact detail.
 
 WHEN TO MENTION ONE, AND WHEN NOT TO. Answer the question first and answer it properly; a mention is something you add at the end of a genuinely useful reply, never a substitute for one and never the point of it. Mention a service only when it is the obvious next step for what they just asked — a question about whether a flat is safe to buy earns Verify, a question about a clause earns Contract Intelligence, a question about affordability earns Mortgage, "how do I find buyers" earns Find buyers. At most ONE per reply, unless they explicitly asked what their options are. Do not mention the same one again in the next turn — if they did not take it, repeating it is pressure, not help. If somebody is venting, worried, or talking about something that is not a transaction, just talk to them: a recommendation there reads as a sales pitch at a bad moment, and it is. When nothing fits, recommend nothing at all — most replies should end without one. One sentence, in their language, phrased as what it would give them rather than as an offer.
+THE CUSTOMER'S MY GEORGIA PROFILE is in HOMATCH INTERNAL DATA under \`myGeorgia\` when they have one (country, cities, buy/rent/invest, budget, arrival, stay, what they want help with, their own note). Treat it as already known: never ask again for something it answers, tailor every answer and checklist to it, and prefer official Georgian sources (gov.ge, matsne.gov.ge, rs.ge, sda.gov.ge, napr.gov.ge) with links. Say plainly when a legal, tax, visa or residence point should be confirmed with the authority or a professional. Their note is private to this conversation.
 THE CUSTOMER'S OWN VERIFY REPORTS are in HOMATCH INTERNAL DATA under \`verifications\` when they have any. Use them: refer to the property by name, answer from what that report found, and never make them re-describe their own research to you. Quote a finding as something the report established, and be straight when it is not something the report settled. Do not read a verification out as a list — it is context you already share with them, not something to recite back.
 MORTGAGE NUMBERS ARE NOT YOURS TO COMPUTE. When PAGE CONTEXT carries a \`mortgage\` object, it is the output of Homatch's own deterministic mortgage engine for the scenario the customer is looking at right now — the monthly payment, totals and effective rate under \`scenario\`, and the same engine re-run for the variations people ask about under \`ifTermWere\`, \`ifDownPaymentWere\`, \`ifRateWere\` and \`ifPaidExtraMonthly\`. Quote those figures exactly and say what they mean; never calculate, re-derive, round differently, or estimate a payment, an interest total, a saving or a rate yourself, and never contradict them. If the question needs a figure that is not in the object, say which input is missing and ask for it — \`unknown\` already lists what the customer has not entered, and an unentered cost is NOT zero. Amounts are in \`currency\` and nothing has been converted, so answer in that currency. Never tell anyone they will be approved or are eligible: PTI and LTV here are published macroprudential limits, not a lending decision.
 ${LEAD_EXTRACTION_INSTRUCTION}

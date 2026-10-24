@@ -29,7 +29,6 @@ const HOOK = 'src/hooks/useAIChat.ts';
 const SURFACES = [
   'src/pages/AIPage.tsx',
   'src/components/mortgage/ConsultantPanel.tsx',
-  'src/components/assistant/AssistantDrawer.tsx',
 ];
 
 /* ── One personality ────────────────────────────────────────────── */

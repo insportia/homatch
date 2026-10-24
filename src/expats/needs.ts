@@ -55,7 +55,7 @@ export const NEED_STEPS: Readonly<Record<string, NeedStep>> = {
     key: 'budget',
     titleKey: 'expat_step_budget_t',
     bodyKey: 'expat_step_budget_b',
-    tool: { labelKey: 'expat_tool_budget', to: '/for-expats/georgia#budget' },
+    tool: { labelKey: 'nav_mortgage', to: '/mortgage' },
   },
   find_property: {
     key: 'find_property',

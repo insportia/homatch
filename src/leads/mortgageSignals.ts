@@ -10,6 +10,11 @@ export function isMortgageOrigin(lead: Pick<LeadItem, 'origin' | 'segment'>): bo
   return lead.origin === 'MORTGAGE' || lead.origin === 'MORTGAGE_AND_SEARCH' || lead.segment === 'MORTGAGE' || lead.segment === 'MORTGAGE_MATCH';
 }
 
+/** A member whose Matching row comes from their completed My Georgia profile. */
+export function isExpatOrigin(lead: Pick<LeadItem, 'origin' | 'segment'>): boolean {
+  return lead.origin === 'EXPAT' || lead.segment === 'EXPAT';
+}
+
 /** The reasons for a price, in the order the server gives them, as sentences. */
 export function priceReasonLines(lead: Pick<LeadItem, 'priceReasons'>, t: (k: string) => string): string[] {
   return (lead.priceReasons ?? []).map((r) => t(`hl_reason_${r}`));
@@ -28,6 +33,23 @@ function monthLabel(month: string | null | undefined, locale: string): string | 
   } catch {
     return month;
   }
+}
+
+/** What an expat profile lets Matching say: the country and the timing they gave. Never a note, a name or a document. */
+export function expatSignalLines(
+  lead: Pick<LeadItem, 'expat'>,
+  t: (k: string, v?: Record<string, string | number>) => string,
+  locale: string,
+  countryLabel: (code: string) => string,
+): string[] {
+  const e = lead.expat;
+  if (!e) return [];
+  const out: string[] = [];
+  if (e.country) out.push(t('hl_expat_country', { country: countryLabel(e.country) }));
+  const month = monthLabel(e.arrivalMonth, locale);
+  if (month) out.push(t('hl_expat_arrival', { month }));
+  if (e.stay) out.push(t('hl_expat_stay', { stay: t(`hl_stay_${e.stay.toLowerCase()}`) }));
+  return out;
 }
 
 /** The signal lines, each a sentence the member's own actions support. */

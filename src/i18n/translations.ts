@@ -22714,6 +22714,13 @@ const en = {
   mwe_drafts_review: 'Review and edit',
   mwe_card_audience: '{{n}} in list',
   mwe_card_audience_hint: 'Contacts in the list when the draft was created. Consent and opt-outs are checked again for each person at send time.',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_code_invalid: 'This cannot be read as a cadastral code. A code looks like 01.18.06.014.080, optionally followed by building, section and unit (.03.01.601).',
+  verify_code_did_you_mean: 'Did you mean {{code}}?',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_code_normalized: 'Will be searched as {{code}}.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -45342,6 +45349,13 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mwe_drafts_review: 'ნახვა და რედაქტირება',
   mwe_card_audience: 'სიაში {{n}}',
   mwe_card_audience_hint: 'კონტაქტები სიაში მონახაზის შექმნისას. თანხმობა და უარი თითოეულ ადამიანზე გაგზავნისას ხელახლა მოწმდება.',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_code_invalid: 'ეს საკადასტრო კოდად ვერ იკითხება. კოდი ასე გამოიყურება: 01.18.06.014.080, სურვილისამებრ შენობის, სექციის და ერთეულის ნომრით (.03.01.601).',
+  verify_code_did_you_mean: 'ხომ არ გულისხმობთ {{code}}-ს?',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_code_normalized: 'მოიძებნება როგორც {{code}}.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -67961,6 +67975,13 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mwe_drafts_review: 'Проверить и изменить',
   mwe_card_audience: 'В списке: {{n}}',
   mwe_card_audience_hint: 'Контакты в списке на момент создания черновика. Согласие и отписки проверяются для каждого человека ещё раз при отправке.',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_code_invalid: 'Это не распознаётся как кадастровый код. Код выглядит так: 01.18.06.014.080, при необходимости с номером здания, секции и помещения (.03.01.601).',
+  verify_code_did_you_mean: 'Возможно, вы имели в виду {{code}}?',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_code_normalized: 'Будет найдено как {{code}}.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -90578,6 +90599,13 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mwe_drafts_review: 'İncele ve düzenle',
   mwe_card_audience: 'Listede {{n}}',
   mwe_card_audience_hint: 'Taslak oluşturulduğunda listedeki kişiler. Onay ve abonelik iptalleri gönderim sırasında her kişi için yeniden kontrol edilir.',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_code_invalid: 'Bu bir kadastro kodu olarak okunamıyor. Kod şöyle görünür: 01.18.06.014.080, isteğe bağlı olarak bina, bölüm ve birim numarasıyla (.03.01.601).',
+  verify_code_did_you_mean: '{{code}} mi demek istediniz?',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_code_normalized: '{{code}} olarak aranacak.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -113195,6 +113223,13 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mwe_drafts_review: 'مراجعة وتعديل',
   mwe_card_audience: '{{n}} في القائمة',
   mwe_card_audience_hint: 'جهات الاتصال في القائمة عند إنشاء المسودة. يُعاد التحقق من الموافقة وإلغاء الاشتراك لكل شخص عند الإرسال.',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_code_invalid: 'لا يمكن قراءة هذا كرمز مساحي. يبدو الرمز هكذا: 01.18.06.014.080، ويمكن أن يليه رقم المبنى والقسم والوحدة (.03.01.601).',
+  verify_code_did_you_mean: 'هل تقصد {{code}}؟',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_code_normalized: 'سيُبحث عنه بصيغة {{code}}.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -135812,6 +135847,13 @@ const he: Partial<Record<TranslationKey, string>> = {
   mwe_drafts_review: 'בדיקה ועריכה',
   mwe_card_audience: '{{n}} ברשימה',
   mwe_card_audience_hint: 'אנשי הקשר ברשימה בעת יצירת הטיוטה. הסכמה וביטולי הסכמה נבדקים שוב לכל אדם בעת השליחה.',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_code_invalid: 'לא ניתן לקרוא זאת כקוד קדסטרי. קוד נראה כך: 01.18.06.014.080, ולאחריו אפשר מספר בניין, אגף ויחידה (.03.01.601).',
+  verify_code_did_you_mean: 'האם התכוונת ל-{{code}}?',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_code_normalized: 'ייחפש כ-{{code}}.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

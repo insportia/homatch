@@ -22,20 +22,20 @@ export interface CodeSynthesis {
 }
 
 const SUMMARY_SOME: Record<string, string> = {
-  en: '{{subject}}: {{confirmed}} of {{total}} official checks returned a confirmed result; {{open}} still need confirmation.',
-  ka: '{{subject}}: {{total}} ოფიციალური შემოწმებიდან {{confirmed}} დადასტურებული შედეგით დასრულდა; {{open}} ჯერ კიდევ საჭიროებს დადასტურებას.',
-  ru: '{{subject}}: {{confirmed}} из {{total}} официальных проверок дали подтверждённый результат; {{open}} ещё требуют подтверждения.',
-  tr: '{{subject}}: {{total}} resmi kontrolün {{confirmed}} tanesi doğrulanmış sonuç verdi; {{open}} tanesi hâlâ doğrulama bekliyor.',
-  ar: '{{subject}}: أسفرت {{confirmed}} من أصل {{total}} عمليات تحقق رسمية عن نتيجة مؤكدة؛ ولا تزال {{open}} بحاجة إلى تأكيد.',
-  he: '{{subject}}: {{confirmed}} מתוך {{total}} בדיקות רשמיות הניבו תוצאה מאושרת; {{open}} עדיין דורשות אישור.',
+  en: '{{confirmed}} of {{total}} official checks returned a confirmed result; {{open}} still need confirmation.',
+  ka: '{{total}} ოფიციალური შემოწმებიდან {{confirmed}} დადასტურებული შედეგით დასრულდა; {{open}} ჯერ კიდევ საჭიროებს დადასტურებას.',
+  ru: '{{confirmed}} из {{total}} официальных проверок дали подтверждённый результат; {{open}} ещё требуют подтверждения.',
+  tr: '{{total}} resmi kontrolün {{confirmed}} tanesi doğrulanmış sonuç verdi; {{open}} tanesi hâlâ doğrulama bekliyor.',
+  ar: 'أسفرت {{confirmed}} من أصل {{total}} عمليات تحقق رسمية عن نتيجة مؤكدة؛ ولا تزال {{open}} بحاجة إلى تأكيد.',
+  he: '{{confirmed}} מתוך {{total}} בדיקות רשמיות הניבו תוצאה מאושרת; {{open}} עדיין דורשות אישור.',
 };
 const SUMMARY_ALL: Record<string, string> = {
-  en: '{{subject}}: all {{total}} official checks returned a confirmed result.',
-  ka: '{{subject}}: ყველა {{total}} ოფიციალური შემოწმება დადასტურებული შედეგით დასრულდა.',
-  ru: '{{subject}}: все {{total}} официальных проверок дали подтверждённый результат.',
-  tr: '{{subject}}: {{total}} resmi kontrolün tamamı doğrulanmış sonuç verdi.',
-  ar: '{{subject}}: أسفرت جميع عمليات التحقق الرسمية ({{total}}) عن نتيجة مؤكدة.',
-  he: '{{subject}}: כל {{total}} הבדיקות הרשמיות הניבו תוצאה מאושרת.',
+  en: 'All {{total}} official checks returned a confirmed result.',
+  ka: 'ყველა {{total}} ოფიციალური შემოწმება დადასტურებული შედეგით დასრულდა.',
+  ru: 'Все {{total}} официальных проверок дали подтверждённый результат.',
+  tr: '{{total}} resmi kontrolün tamamı doğrulanmış sonuç verdi.',
+  ar: 'أسفرت جميع عمليات التحقق الرسمية ({{total}}) عن نتيجة مؤكدة.',
+  he: 'כל {{total}} הבדיקות הרשמיות הניבו תוצאה מאושרת.',
 };
 
 const fill = (tpl: string, vars: Record<string, string | number>) =>

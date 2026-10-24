@@ -187,7 +187,7 @@ export default function HomiStage3D({ gesture, pointTo = 1, target = null, onFai
       let armR = 0.08, foreR = 0, armL = -0.08, foreL = 0;
       const wave = still ? 0 : Math.sin(t * 9);
       if (g === 'greeting' && since < 3.2) {
-        armR = -2.5; foreR = -0.35 + wave * 0.35; headY = 0.1; headX = -0.05;
+        armR = -1.75; foreR = -1.13 + wave * 0.28; headY = 0.1; headX = -0.05;
       } else if (g === 'pointing') {
         /* The arm on the side of the target rises toward it — at its height
            when HOMI knows where it is, level otherwise. Angle 0 hangs down,

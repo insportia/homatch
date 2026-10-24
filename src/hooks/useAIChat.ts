@@ -5,7 +5,7 @@ import { supabase } from '@/db/supabase';
 import { parseServiceActions, type ServiceAction } from '@/lib/ai/serviceActions';
 import { parseSuggestedReplies, type SuggestedReply } from '@/lib/ai/suggestedReplies';
 import { parseHomiCards, type HomiCardRef } from '@/lib/homi/cards';
-import type { HomiState } from '@/components/homi/homiRig';
+import type { HomiState } from '@/components/homi/homiStates';
 import { sendStreamRequest } from '@/lib/sse';
 import { ensureAnonymousSession } from '@/services/anonymousSession';
 

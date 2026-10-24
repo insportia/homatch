@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { HomiAvatar } from './HomiAvatar';
 import type { HomiGesture } from './HomiStage3D';
-import type { HomiState } from './homiRig';
+import type { HomiState } from './homiStates';
 
 /*
  * The homepage's HOMI, in a box whose size never changes.
@@ -49,7 +49,7 @@ export function HomiHomeStage({ gesture, pointTo = 1, target = null, className }
   return (
     <div ref={box} className={`relative ${className ?? ''}`} data-homi-stage={failed ? '2d' : ready ? '3d' : 'pending'}>
       <div className={`absolute inset-0 transition-opacity duration-500 motion-reduce:transition-none ${ready && !failed ? 'opacity-0' : 'opacity-100'}`}>
-        <HomiAvatar state={AVATAR_STATE[gesture]} crop="full" size="100%" label="HOMI" />
+        <HomiAvatar state={AVATAR_STATE[gesture]} crop="bust" size="100%" label="HOMI" animate={false} />
       </div>
       {near && !failed && (
         <Suspense fallback={null}>

@@ -20,6 +20,7 @@ import { RouteGuard } from '@/components/common/RouteGuard';
 import { SuggestedReplies } from '@/components/ai/SuggestedReplies';
 import { ServiceActions, WebContextLine } from '@/components/ai/ServiceActions';
 import { HomiAvatar } from '@/components/homi/HomiAvatar';
+import { HomiHomeStage } from '@/components/homi/HomiHomeStage';
 import { HomiCards, HomiStartCard, type HomiChipHandler } from '@/components/homi/HomiCards';
 import { HOMI_INTRO, pick } from '@/lib/homi/content';
 
@@ -152,8 +153,8 @@ function EmptyState({ onChip }: { onChip: HomiChipHandler }) {
      */
     <div className="flex min-h-full flex-col items-center px-5 py-8 text-center sm:px-8">
       <div className="my-auto flex w-full max-w-2xl flex-col items-center">
-      <div className="mb-3 overflow-hidden rounded-[1.75rem] bg-[#0C1119] p-2 ring-1 ring-inset ring-[hsl(38_92%_56%)]/35 shadow-card">
-        <HomiAvatar state="greeting" crop="bust" size={128} label="HOMI" />
+      <div className="mb-3 overflow-hidden rounded-[1.75rem] bg-[#0C1119] px-4 pt-2 ring-1 ring-inset ring-[hsl(38_92%_56%)]/35 shadow-card">
+        <HomiHomeStage gesture="greeting" className="h-[180px] w-[150px]" />
       </div>
       <h2 className="mb-1 text-lg font-semibold text-foreground">HOMI</h2>
       <p className="mb-5 max-w-md text-base leading-relaxed text-foreground">{pick(HOMI_INTRO, lang)}</p>

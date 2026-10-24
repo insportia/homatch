@@ -8002,13 +8002,16 @@ Deno.serve(async (req) => {
     }
 
     const mode: Mode = b.type === 'cadastral' ? 'cadastral' : 'property';
-    const q = mode === 'cadastral' ? String(b.query || '').trim().replace(/\s/g, '') : String(b.query || '').trim().replace(/\s+/g, ' ');
-    if (!q) return json({ error: 'Query required' }, 400);
-    // Canonical codes only (cadastralInput.ts): an invalid code never starts — or charges — a run.
-    if (mode === 'cadastral') {
-      const check = checkCadastralInput(q);
-      if (!check.ok) return json({ error: 'Invalid cadastral code', code: 'INVALID_CADASTRAL', suggestion: check.suggestion }, 400);
-    }
+    const typed = mode === 'cadastral' ? String(b.query || '').trim().replace(/\s/g, '') : String(b.query || '').trim().replace(/\s+/g, ' ');
+    if (!typed) return json({ error: 'Query required' }, 400);
+    /* A cadastral code is searched in its canonical form (cadastralInput.ts):
+       "88.20.21.767.117.2" is building 02 of parcel 88.20.21.767.117, and the
+       registries know it as 88.20.21.767.117.02 (prod 1ff4b786 searched the
+       typed string and found nothing). Only input that cannot be read as a
+       code at all is refused — before anything runs or is charged. */
+    const check = mode === 'cadastral' ? checkCadastralInput(typed) : null;
+    if (check && !check.ok) return json({ error: 'Invalid cadastral code', code: 'INVALID_CADASTRAL', suggestion: check.suggestion }, 400);
+    const q = check ? check.code : typed;
     /*
      * IDEMPOTENT START. The client sends one id per submission; a repeat of
      * the same submission (retry after a dropped response, double click)

@@ -9,23 +9,23 @@ import { settlementOutcome } from '../pauseResume.ts';
 
 const code = (p) => readFileSync(fileURLToPath(new URL(`../../../${p}`, import.meta.url)), 'utf8');
 
-test('only canonical cadastral codes run; a near-miss gets a suggestion', () => {
-  for (const ok of ['01.18.06.014.080', '01.18.06.019.055.03', '01.18.06.019.055.03.01', '01.18.06.019.055.03.01.601', ' 01.18.06.014.080 ']) {
-    assert.equal(checkCadastralInput(ok).ok, true, ok);
-  }
-  assert.deepEqual(checkCadastralInput('88.20.21.767.117.2'), { ok: false, code: '88.20.21.767.117.2', suggestion: '88.20.21.767.117' });
-  assert.equal(checkCadastralInput('1.18.06.014.080').ok, false);
-  assert.equal(checkCadastralInput('01.18.06.014').ok, false);
-  assert.equal(checkCadastralInput('01.18.06.014.080.3').suggestion, '01.18.06.014.080');
-  assert.equal(checkCadastralInput('abc').suggestion, null);
+test('a code typed without leading zeros is searched in its canonical form; only a non-code is refused', () => {
+  assert.deepEqual(checkCadastralInput('88.20.21.767.117.2'), { ok: true, code: '88.20.21.767.117.02', normalized: true, suggestion: null });
+  assert.deepEqual(checkCadastralInput('01.18.06.014.080'), { ok: true, code: '01.18.06.014.080', normalized: false, suggestion: null });
+  assert.equal(checkCadastralInput('1.18.6.14.80').code, '01.18.06.014.080');
+  assert.equal(checkCadastralInput('01.18.06.019.055.3.1.601').code, '01.18.06.019.055.03.01.601');
+  assert.equal(checkCadastralInput(' 01.18.06.014.080 ').code, '01.18.06.014.080');
+  for (const bad of ['01.18.06.014', 'abc', '01.18.06.1234.080', '']) assert.equal(checkCadastralInput(bad).ok, false, bad);
+  assert.equal(checkCadastralInput('01.18.06.014.080.03.01.601.9').suggestion, '01.18.06.014.080.03.01.601');
 });
 
-test('the page and the server both refuse a non-canonical code before anything runs', () => {
+test('the server searches the canonical code; the page says so; only a non-code is refused', () => {
   const page = code('src/pages/VerifyPage.tsx');
   assert.match(page, /const cadastralCheck=checkCadastralInput\(query\);const valid=mode==='cadastral'\?cadastralCheck\.ok:/);
+  assert.match(page, /t\('verify_code_normalized',\{code:cadastralCheck\.code\}\)/);
   assert.match(page, /t\('verify_code_did_you_mean',\{code:cadastralCheck\.suggestion\}\)/);
   const ra = code('supabase/functions/research-agent/index.ts');
-  assert.match(ra, /const check = checkCadastralInput\(q\);\n\s+if \(!check\.ok\) return json\(\{ error: 'Invalid cadastral code', code: 'INVALID_CADASTRAL', suggestion: check\.suggestion \}, 400\);/);
+  assert.match(ra, /const check = mode === 'cadastral' \? checkCadastralInput\(typed\) : null;\n\s+if \(check && !check\.ok\) return json\(\{ error: 'Invalid cadastral code', code: 'INVALID_CADASTRAL', suggestion: check\.suggestion \}, 400\);\n\s+const q = check \? check\.code : typed;/);
 });
 
 test('a report no official source could back is not charged; one with official evidence is', () => {

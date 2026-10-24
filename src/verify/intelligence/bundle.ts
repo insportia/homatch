@@ -172,6 +172,11 @@ const obj = (v: unknown): Record<string, unknown> =>
 const MYGOV_PROPERTY_SERVICE = 'https://www.my.gov.ge/ka-ge/services/5/service/176';
 const RS_TAXPAYER_REGISTRY = 'https://www.rs.ge/TaxPayersRegistry';
 
+/** The market gate's asset class → the hierarchy's property kind (a whole project is priced from its flats). */
+const KIND_OF_CLASS: Record<string, 'APARTMENT' | 'HOUSE' | 'LAND' | 'PARKING' | 'STORAGE' | 'COMMERCIAL'> = {
+  APARTMENT: 'APARTMENT', DEVELOPMENT_PROJECT: 'APARTMENT', HOUSE: 'HOUSE', LAND: 'LAND', PARKING: 'PARKING', STORAGE: 'STORAGE', COMMERCIAL: 'COMMERCIAL',
+};
+
 export function buildIntelligenceBundle(
   report: unknown,
   pkg: EvidencePackage,
@@ -242,12 +247,23 @@ export function buildIntelligenceBundle(
   // v6 (job eeefada9): the subject's OWN address/neighbourhood/kind by
   // provenance — never a marketplace listing's address that leaked into
   // reconciledIdentity (marketHierarchy.subjectMarketFacts).
+  /*
+   * THE REGISTER DECIDES THE KIND, NOT A WORD IN A DOCUMENT (live test dd42a656,
+   * 2026-10-24). The eligibility gate read the subject from the NAPR extract
+   * (APARTMENT, საბურთალო) and accepted 47 MyHome flats; this section guessed
+   * the kind from text, read the register's own header "მიწის (უძრავი ქონების)
+   * საკადასტრო კოდი" as LAND, and refused all 47 as PROPERTY_TYPE_MISMATCH —
+   * and, with no district of its own, 46 as DISTRICT_UNKNOWN. The gate's
+   * register-based subject now wins; the text guess fills only what it lacks.
+   */
+  const gateSubject = (m.eligibility && typeof m.eligibility === 'object' ? (m.eligibility as any).subject : null) ?? null;
+  const registerKind = gateSubject?.assetClassBasis === 'REGISTRY' ? KIND_OF_CLASS[String(gateSubject.assetClass)] : undefined;
   const subject: Subject = {
     project: snapshot.project,
     address: marketFacts.address ?? address,
-    // The resolved neighbourhood beats a street NAMED after one.
-    district: marketFacts.district ?? location.district,
-    propertyKind: marketFacts.propertyKind,
+    // The resolved neighbourhood beats a street NAMED after one; the gate's district (register or parcel centre) fills a gap.
+    district: marketFacts.district ?? location.district ?? (typeof gateSubject?.district === 'string' ? gateSubject.district : undefined),
+    propertyKind: registerKind ?? marketFacts.propertyKind,
     // Three or more evidenced premium signals: a peer must sit in a tighter band.
     segment: quality.filter((q) => q.direction === 'SUPPORTS_PREMIUM').length >= 3 ? 'PREMIUM' : undefined,
     projectAsking,

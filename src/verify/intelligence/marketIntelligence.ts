@@ -77,6 +77,19 @@ export const HEADLINE_TIERS: readonly ComparableTier[] = ['SAME_PROJECT', 'SAME_
 
 /** Fewer reliable listings than this and there is no headline range at all. */
 export const MIN_RELIABLE_SAMPLE = 3;
+/*
+ * THE DISTRICT'S OWN ASKING RANGE (owner 2026-10-24, live test dd42a656).
+ *
+ * A flat in საბურთალო with 47 similar-size flats for sale in საბურთალო got no
+ * valuation: MyHome's search results carry no coordinates, so none could be
+ * measured onto the subject's street, and the same district was context only.
+ * When no project/street/peer tier is deep enough, at least this many SAME-
+ * district listings (never an adjacent one), every customer exclusion empty
+ * (size band, kind, deal, condition, freshness) and outliers trimmed, price the
+ * home as the district's asking range — labelled SAME_DISTRICT, never as a
+ * price of this building.
+ */
+export const MIN_DISTRICT_SAMPLE = 5;
 
 /** What the headline is built from, or why there is none. */
 export type MarketBasis = ComparableTier | 'EVIDENCE_LIMITED';
@@ -1240,6 +1253,16 @@ export function buildMarketIntelligence(
       chosen = kept;
       trimmedOut = trimmed;
       tiersUsed = HEADLINE_TIERS.filter((t) => kept.some((c) => c.tier === t));
+    }
+  }
+  if (!chosen) {
+    const sameDistrict = scored.filter((c) => c.tier === 'SAME_DISTRICT' && c.level === 5 && c.exclusions.length === 0 && c.relevanceReasons.includes('SAME_DISTRICT'));
+    const { kept, trimmed } = trimOutliers(sameDistrict, (c) => c.pricePerSqm);
+    if (kept.length >= MIN_DISTRICT_SAMPLE) {
+      for (const c of kept) c.headlineEligible = true;
+      chosen = kept;
+      trimmedOut = trimmed;
+      tiersUsed = ['SAME_DISTRICT'];
     }
   }
   for (const c of trimmedOut) {

@@ -414,12 +414,17 @@ export async function askHomi(input: {
    Opens and clicks are not tracked for campaign email, and are reported as such — never zero. */
 export interface SendFact { campaign_id: string; status: string; created_at: string; sent_at: string | null; delivered_at: string | null; provider_message_id: string | null }
 
-export async function sendFacts(sinceIso: string | null): Promise<SendFact[]> {
+/** The provider's simulator domain (Resend test addresses): test traffic, never real reputation. */
+export const SIMULATOR_DOMAIN = 'resend.dev';
+/** `realOnly` leaves out simulator sends: reputation rates are about real recipients. */
+export async function sendFacts(sinceIso: string | null, opts: { realOnly?: boolean } = {}): Promise<SendFact[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
   let q = supabase.from('outreach_sends').select('campaign_id, status, created_at, sent_at, delivered_at, provider_message_id')
     .eq('owner_id', user.id).eq('channel', 'EMAIL').order('created_at', { ascending: false }).limit(20000);
   if (sinceIso) q = q.gte('created_at', sinceIso);
+  /* Null-safe: NOT (NULL ILIKE …) is NULL and would silently drop a row with no address. */
+  if (opts.realOnly) q = q.or(`recipient_email.is.null,recipient_email.not.ilike.*@${SIMULATOR_DOMAIN}`);
   const { data, error } = await q;
   if (error) throw new StudioError('LOAD_FAILED');
   return (data ?? []) as SendFact[];

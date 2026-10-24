@@ -38,7 +38,7 @@ export default function EmailDeliverabilityPage() {
 
   useEffect(() => {
     void getEmailPlan().then(setPlan).catch(() => setPlan(null));
-    void sendFacts(new Date(Date.now() - 30 * 86_400_000).toISOString()).then((f) => setTotals(totalsOf(f))).catch(() => setTotals(null));
+    void sendFacts(new Date(Date.now() - 30 * 86_400_000).toISOString(), { realOnly: true }).then((f) => setTotals(totalsOf(f))).catch(() => setTotals(null));
     void (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;

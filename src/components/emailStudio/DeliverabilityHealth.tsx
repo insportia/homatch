@@ -211,6 +211,7 @@ function DeliveryFunnel({ totals, tests }: { totals: SendTotals | null; tests: P
         ))}
       </ol>
       <p className="flex items-start gap-1.5 rounded-lg bg-muted/50 p-2.5 text-xs text-muted-foreground"><CircleHelp className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{t('ems_dq_placement_unknown')}</p>
+      <p className="text-2xs text-muted-foreground">{t('ems_dq_simulator_excluded')}</p>
     </div>
   );
 }

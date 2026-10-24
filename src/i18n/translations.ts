@@ -23410,6 +23410,9 @@ const en = {
 
   /* ── EMAIL STUDIO · DRAG & DROP BUILDER · DELIVERABILITY ── */
   ems_b_shortcut: '{{action}} ({{keys}})',
+
+  /* ── EMAIL STUDIO · DRAG & DROP BUILDER · DELIVERABILITY ── */
+  ems_dq_simulator_excluded: 'Provider test addresses (resend.dev) are left out of these numbers.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -46734,6 +46737,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── EMAIL STUDIO · DRAG & DROP BUILDER · DELIVERABILITY ── */
   ems_b_shortcut: '{{action}} · კლავიშები: {{keys}}',
+
+  /* ── EMAIL STUDIO · DRAG & DROP BUILDER · DELIVERABILITY ── */
+  ems_dq_simulator_excluded: 'პროვაიდერის სატესტო მისამართები (resend.dev) ამ მონაცემებში არ ითვლება.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -70049,6 +70055,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── EMAIL STUDIO · DRAG & DROP BUILDER · DELIVERABILITY ── */
   ems_b_shortcut: '{{action}} (клавиши: {{keys}})',
+
+  /* ── EMAIL STUDIO · DRAG & DROP BUILDER · DELIVERABILITY ── */
+  ems_dq_simulator_excluded: 'Тестовые адреса провайдера (resend.dev) в эти цифры не входят.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -93362,6 +93371,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── EMAIL STUDIO · DRAG & DROP BUILDER · DELIVERABILITY ── */
   ems_b_shortcut: '{{action}} (kısayol: {{keys}})',
+
+  /* ── EMAIL STUDIO · DRAG & DROP BUILDER · DELIVERABILITY ── */
+  ems_dq_simulator_excluded: 'Sağlayıcı test adresleri (resend.dev) bu sayılara dahil değildir.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -116675,6 +116687,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── EMAIL STUDIO · DRAG & DROP BUILDER · DELIVERABILITY ── */
   ems_b_shortcut: '{{action}} — اختصار: {{keys}}',
+
+  /* ── EMAIL STUDIO · DRAG & DROP BUILDER · DELIVERABILITY ── */
+  ems_dq_simulator_excluded: 'لا تُحتسب عناوين الاختبار لدى المزوّد (resend.dev) في هذه الأرقام.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -139988,6 +140003,9 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── EMAIL STUDIO · DRAG & DROP BUILDER · DELIVERABILITY ── */
   ems_b_shortcut: '{{action}} — קיצור: {{keys}}',
+
+  /* ── EMAIL STUDIO · DRAG & DROP BUILDER · DELIVERABILITY ── */
+  ems_dq_simulator_excluded: 'כתובות בדיקה של הספק (resend.dev) אינן נכללות במספרים אלה.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

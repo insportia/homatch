@@ -4,22 +4,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { checkCadastralInput } from '../cadastralInput.ts';
+import { checkCadastralInput, parentCadastral } from '../cadastralInput.ts';
 import { settlementOutcome } from '../pauseResume.ts';
 
 const code = (p) => readFileSync(fileURLToPath(new URL(`../../../${p}`, import.meta.url)), 'utf8');
 
-test('a code typed without leading zeros is searched in its canonical form; only a non-code is refused', () => {
-  assert.deepEqual(checkCadastralInput('88.20.21.767.117.2'), { ok: true, code: '88.20.21.767.117.02', normalized: true, suggestion: null });
+test('a code is searched exactly as typed (the registries are the authority); only a non-code is refused', () => {
+  // MyGov has many records for "88.20.21.767.117.2" as typed: padding it would search another string.
+  assert.deepEqual(checkCadastralInput('88.20.21.767.117.2'), { ok: true, code: '88.20.21.767.117.2', normalized: false, suggestion: null });
   assert.deepEqual(checkCadastralInput('01.18.06.014.080'), { ok: true, code: '01.18.06.014.080', normalized: false, suggestion: null });
-  assert.equal(checkCadastralInput('1.18.6.14.80').code, '01.18.06.014.080');
-  assert.equal(checkCadastralInput('01.18.06.019.055.3.1.601').code, '01.18.06.019.055.03.01.601');
-  assert.equal(checkCadastralInput(' 01.18.06.014.080 ').code, '01.18.06.014.080');
-  for (const bad of ['01.18.06.014', 'abc', '01.18.06.1234.080', '']) assert.equal(checkCadastralInput(bad).ok, false, bad);
-  assert.equal(checkCadastralInput('01.18.06.014.080.03.01.601.9').suggestion, '01.18.06.014.080.03.01.601');
+  assert.deepEqual(checkCadastralInput(' 01.18.06.014.080 '), { ok: true, code: '01.18.06.014.080', normalized: false, suggestion: null }, 'surrounding spaces are not a change worth showing');
+  assert.equal(checkCadastralInput('01.18.06.014,080').code, '01.18.06.014.080', 'a stray comma is a dot');
+  for (const bad of ['01.18.06', 'abc', '01.18.06.1234567.080', '']) assert.equal(checkCadastralInput(bad).ok, false, bad);
+  assert.equal(checkCadastralInput('01.18.06.014.080.x').suggestion, '01.18.06.014.080');
+  assert.equal(parentCadastral('88.20.21.767.117.2'), '88.20.21.767.117');
+  assert.equal(parentCadastral('01.18.06.019.055.03.01.601'), '01.18.06.019.055');
+  assert.equal(parentCadastral('01.18.06.014.080'), null);
 });
 
-test('the server searches the canonical code; the page says so; only a non-code is refused', () => {
+test('the server searches the cleaned code; the page says so; only a non-code is refused', () => {
   const page = code('src/pages/VerifyPage.tsx');
   assert.match(page, /const cadastralCheck=checkCadastralInput\(query\);const valid=mode==='cadastral'\?cadastralCheck\.ok:/);
   assert.match(page, /t\('verify_code_normalized',\{code:cadastralCheck\.code\}\)/);

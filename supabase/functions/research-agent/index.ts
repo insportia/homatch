@@ -20,7 +20,7 @@ import { compactOfficialContext } from '../../../src/verify/intelligence/officia
 import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/officialPromptContext.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 import { rsTaxpayerLegalStatus, withoutRsRaw } from '../../../src/verify/rsTaxpayer.ts';
-import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
+import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, officialCodeNotFound, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
 import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
 import { engineForNewJob, engineOf, parseEngineSetting, VERIFY_ENGINE_SETTING_KEY } from '../../../src/verify/engine.ts';
@@ -3079,6 +3079,22 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     }
     w = queueWorkerView(rows);
     live = officialLiveOf(rows);
+    /*
+     * THE CODE DOES NOT EXIST (owner 2026-10-24): every official source, for
+     * the code and its parent parcel, confirmed there is no record. The run
+     * ends here — no AI stage, no report, and FAILED settles with no charge —
+     * and the customer is told plainly that no such cadastral code exists.
+     */
+    if (w.status === 'COMPLETE' && officialCodeNotFound(rows)) {
+      return sb.from('research_jobs').update({
+        status: 'FAILED',
+        stage: 'FAILED',
+        error: 'CADASTRAL_CODE_NOT_FOUND',
+        result_json: { ...(j.result_json || {}), browserOfficial: { results: w.results || [], completedAt: w.completedAt || now() } },
+        driver_claimed_at: null,
+        updated_at: now(),
+      }).eq('id', j.id);
+    }
     // Leaving the official stage unfinished: stop this job's remaining work.
     if (w.status !== 'COMPLETE' && officialPastDeadline(j, w)) await cancelJobTasks(sb, j.id);
   } else {
@@ -6531,7 +6547,7 @@ function sanitizeForCustomer(job: any): any {
     const { error: _internalMarker, ...withoutMarker } = job;
     job = {
       ...withoutMarker,
-      terminalReason: marker === 'HUMAN_VERIFICATION_EXPIRED' ? 'EXPIRED' : 'INCOMPLETE',
+      terminalReason: marker === 'HUMAN_VERIFICATION_EXPIRED' ? 'EXPIRED' : marker === 'CADASTRAL_CODE_NOT_FOUND' ? 'CODE_NOT_FOUND' : 'INCOMPLETE',
     };
   }
   if (job && job.status !== 'COMPLETE' && job.result_json && typeof job.result_json === 'object') return { ...job, result_json: stripInternalInProgress(job.result_json) };

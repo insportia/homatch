@@ -16,6 +16,7 @@
  */
 
 import { rsDomOnlyNoResult, rsStatusFromTaskError, withoutRsRaw } from './rsTaxpayer.ts';
+import { parentCadastral } from './cadastralInput.ts';
 
 export const QUEUE_SOURCES_CADASTRAL = ['TAS_MAP', 'tas', 'mygov'] as const;
 /** Same bound as the worker's in-job entity follow-ups (MAX_AUTO_ENREG_ENTITIES). */
@@ -98,6 +99,47 @@ export function entityTask(source: 'enreg' | 'rstax' | 'debtor', entity: { idCod
 
 const isPrimary = (r: QueueTaskRow) => !String(r.dedupe_key).includes(':');
 
+/*
+ * THE PARENT PARCEL, WHEN THE CODE ITSELF FINDS NOTHING (owner 2026-10-24).
+ *
+ * TAS and TAS_MAP already search the parcel of a unit code; MyGov (Service
+ * 176) searches the exact code only. When every primary source has finished
+ * and none found anything — MyGov having CONFIRMED there is no record, not
+ * failed — MyGov is asked once more for the parent parcel. Its dedupe key has
+ * no ':' so it gates the stage like a primary. A source that failed is never
+ * a reason: that is "unavailable", not "absent".
+ */
+export const PARENT_ROUND_KEY = 'mygov_parent';
+const PRIMARY_KEYS = new Set(['TAS_MAP', 'tas', 'mygov']);
+const confirmedAbsent = (r: QueueTaskRow | undefined) => !!r && r.state === 'SUCCEEDED' && r.result?.status === 'NO_RESULT_CONFIRMED';
+const foundSomething = (r: QueueTaskRow) => r.state === 'SUCCEEDED' && (r.result?.resultConfirmed === true || r.result?.status === 'SEARCH_CONFIRMED');
+
+export function parentRoundTask(rows: QueueTaskRow[], captchaPolicy?: unknown): TaskPlan | null {
+  if (rows.some((r) => r.dedupe_key === PARENT_ROUND_KEY)) return null;
+  const primaries = rows.filter((r) => PRIMARY_KEYS.has(r.dedupe_key));
+  const mygov = primaries.find((r) => r.dedupe_key === 'mygov');
+  if (!mygov || !primaries.every((r) => TERMINAL_TASK_STATES.has(String(r.state)))) return null;
+  if (primaries.some(foundSomething) || !confirmedAbsent(mygov)) return null;
+  const c = code(mygov.input?.cadastral ?? mygov.input?.query);
+  const parent = c ? parentCadastral(c) : null;
+  if (!parent) return null;
+  return { source: 'mygov', dedupeKey: PARENT_ROUND_KEY, scopeKey: `mygov:${parent}`, input: { cadastral: parent, query: parent, mode: 'cadastral', parentOf: c, captchaPolicy: captchaPolicy ?? null }, priority: 100 };
+}
+
+/**
+ * The code does not exist: every official source finished and CONFIRMED it
+ * has no record — for the code and, when it has one, for its parent parcel.
+ * Any failed, cancelled or still-running source makes this false.
+ */
+export function officialCodeNotFound(rows: QueueTaskRow[]): boolean {
+  const primaries = rows.filter((r) => PRIMARY_KEYS.has(r.dedupe_key));
+  if (primaries.length < 2 || !primaries.every(confirmedAbsent)) return false;
+  const mygov = primaries.find((r) => r.dedupe_key === 'mygov');
+  const c = code(mygov?.input?.cadastral ?? mygov?.input?.query);
+  if (c && parentCadastral(c)) return confirmedAbsent(rows.find((r) => r.dedupe_key === PARENT_ROUND_KEY));
+  return true;
+}
+
 /**
  * Follow-up tasks that the current rows call for, mirroring the worker:
  *   * once every primary task is terminal, registry lookups (ENREG, Debtor)
@@ -113,6 +155,8 @@ export function followUpTasks(
 ): TaskPlan[] {
   const have = new Set(rows.map((r) => r.dedupe_key));
   const out: TaskPlan[] = [];
+  const parent = parentRoundTask(rows, ctx.captchaPolicy);
+  if (parent) out.push(parent);
   const tas = rows.find((r) => r.source === 'tas' && r.dedupe_key === 'tas');
   const fallbackLegacy = String(ctx.tasImplementation?.fallback ?? '').toUpperCase() === 'LEGACY';
   if (tas && fallbackLegacy && (tas.state === 'FAILED' || tas.state === 'DEAD') && !have.has('tas_legacy')) {
@@ -135,7 +179,7 @@ export function followUpTasks(
    */
   const primaries = rows.filter(isPrimary);
   const succeeded = primaries.filter((r) => r.state === 'SUCCEEDED');
-  if (succeeded.length && !out.length) {
+  if (succeeded.length && !out.some((t) => t.source === 'tas_legacy')) {
     const ordered = [...succeeded].sort((a, b) => String(a.finished_at ?? a.created_at ?? '').localeCompare(String(b.finished_at ?? b.created_at ?? '')) || a.dedupe_key.localeCompare(b.dedupe_key));
     const companies = new Set(
       rows.filter((r) => !isPrimary(r) && ENTITY_FOLLOW_UP_SOURCES.includes(r.source as any)).map((r) => String(r.dedupe_key).split(':').slice(1).join(':')),
@@ -238,6 +282,7 @@ export function taskResult(r: QueueTaskRow): any | null {
     return {
       ...rest,
       source: rest.source ?? (r.source === 'tas_legacy' ? 'tas' : r.source),
+      ...(r.input?.parentOf ? { searchedCode: r.input.cadastral ?? null, parentOf: r.input.parentOf, scope: 'PARENT_PARCEL' } : {}),
       ...(entity && !rest.forEntity ? { forEntity: entity } : {}),
       queue: { taskId: r.id, reused: r.reused ?? null, attempts: r.attempts ?? null },
     };

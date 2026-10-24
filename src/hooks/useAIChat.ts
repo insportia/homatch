@@ -4,6 +4,9 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import { parseServiceActions, type ServiceAction } from '@/lib/ai/serviceActions';
 import { parseSuggestedReplies, type SuggestedReply } from '@/lib/ai/suggestedReplies';
+import { parseHomiCards, type HomiCardRef } from '@/lib/homi/cards';
+import { waitingMoodFor } from '@/lib/homi/mood';
+import type { HomiState } from '@/components/homi/homiStates';
 import { sendStreamRequest } from '@/lib/sse';
 import { ensureAnonymousSession } from '@/services/anonymousSession';
 
@@ -75,7 +78,47 @@ export function useAIChat() {
      computed here: the browser is not allowed an opinion about money. */
   const [lastBilling, setLastBilling] = useState<ChatBilling | null>(null);
   const [insufficientCredits, setInsufficientCredits] = useState(false);
+  /* HOMI's interactive cards for the latest answer (validated catalogue refs). */
+  const [lastCards, setLastCards] = useState<HomiCardRef[]>([]);
+  /* What the 2D HOMI shows. A friendly progress indicator, never a claim
+     about what the model is "thinking". */
+  const [homiState, setHomiState] = useState<HomiState>('idle');
   const abortRef = useRef<AbortController | null>(null);
+  /*
+   * HOMI WHILE YOU WAIT. Listening first, then a face that fits what was
+   * written (surprised, searching, encouraging, thinking...), and if the
+   * answer takes a while it keeps visibly busy. The first streamed word
+   * switches it to writing; the finished answer sets its mood. Presentation
+   * only: none of this claims to show what the model is doing.
+   */
+  const moodTimers = useRef<number[]>([]);
+  const clearMoodTimers = useCallback(() => {
+    moodTimers.current.forEach((id) => { window.clearTimeout(id); window.clearInterval(id); });
+    moodTimers.current = [];
+  }, []);
+  const startWaitingMood = useCallback((text: string, chip: boolean) => {
+    clearMoodTimers();
+    setHomiState('listening');
+    const first: HomiState = chip ? 'searching' : waitingMoodFor(text);
+    moodTimers.current.push(window.setTimeout(() => setHomiState(first), 650));
+    moodTimers.current.push(window.setTimeout(() => {
+      /* A long wait alternates the two busy faces, starting with whichever
+         HOMI is not already showing. */
+      let busy: HomiState = first === 'searching' ? 'searching' : 'thinking';
+      const swap = () => { busy = busy === 'searching' ? 'thinking' : 'searching'; setHomiState(busy); };
+      swap();
+      moodTimers.current.push(window.setInterval(swap, 2600));
+    }, 5200));
+  }, [clearMoodTimers]);
+  useEffect(() => clearMoodTimers, [clearMoodTimers]);
+  /* While the person types, HOMI turns to listen; a pause lets it relax. */
+  const typingTimer = useRef<number>(0);
+  const noteTyping = useCallback(() => {
+    clearMoodTimers(); // the page only calls this when no answer is in flight
+    setHomiState('listening');
+    window.clearTimeout(typingTimer.current);
+    typingTimer.current = window.setTimeout(() => setHomiState('idle'), 2500);
+  }, [clearMoodTimers]);
 
   const loadConversations = useCallback(async () => {
     const { data } = await supabase.from('ai_conversations').select('id, title, updated_at').order('updated_at', { ascending: false }).limit(30);
@@ -85,8 +128,11 @@ export function useAIChat() {
   const loadConversation = useCallback(async (convId: string) => {
     const { data: conversation } = await supabase.from('ai_conversations').select('context').eq('id', convId).maybeSingle();
     const saved = conversation?.context as Record<string, unknown> | null;
+    /* A reopened conversation continues with the context it was started with: a property, or a
+       HOMI workspace hand-off (investment figures, an expat plan, a contract clause, a mortgage). */
     if (saved?.surface === 'find-property') setPageContext({ type: 'property', data: saved });
-    else setPageContext((current) => current.data?.surface === 'find-property' ? { type: 'general' } : current);
+    else if (typeof saved?.surface === 'string' && saved.surface) setPageContext({ type: 'workspace', data: saved });
+    else setPageContext({ type: 'general' });
     const { data } = await supabase.from('ai_messages').select('id, role, content, created_at').eq('conversation_id', convId).order('created_at', { ascending: true });
     if (data) {
       setMessages(data.map(m => ({
@@ -116,8 +162,12 @@ export function useAIChat() {
     return null;
   }, [loadConversations]);
 
-  const sendMessage = useCallback(async (userText: string) => {
+  const sendMessage = useCallback(async (userText: string, opts: { intent?: string; context?: PageContext } = {}) => {
     if (streaming || !userText.trim()) return;
+    /* A caller that has just set the page context (a workspace handing a question to HOMI)
+       passes it here too: React has not re-rendered yet, so this closure still holds the
+       previous context, and the first turn would otherwise leave without the figures. */
+    const turnContext = opts.context ?? pageContext;
 
     const { data: { session } } = await supabase.auth.getSession();
     const accessToken = session?.access_token;
@@ -137,7 +187,7 @@ export function useAIChat() {
 
     let convId = activeConvId;
     if (!convId && accessToken) {
-      convId = await newConversation(pageContext) ?? null;
+      convId = await newConversation(turnContext) ?? null;
       if (!convId) convId = 'guest';
     }
 
@@ -151,8 +201,8 @@ export function useAIChat() {
      * the message text: asking the same question twice on purpose is
      * two turns and should be billed twice.
      */
-    const propertyScope = pageContext.data?.surface === 'find-property'
-      ? `${pageContext.data.searchId}:${pageContext.data.propertyKey}:${convId}` : null;
+    const propertyScope = turnContext.data?.surface === 'find-property'
+      ? `${turnContext.data.searchId}:${turnContext.data.propertyKey}:${convId}` : null;
     const retry = propertyRetry.current;
     const interactionId = propertyScope && retry?.scope === propertyScope && retry.text === userMsg.content
       ? retry.id : crypto.randomUUID();
@@ -168,7 +218,10 @@ export function useAIChat() {
     setSuggestedActions([]);
     setLastWebChecked(false);
     setLastSources([]);
+    setLastCards([]);
     setInsufficientCredits(false);
+    window.clearTimeout(typingTimer.current);
+    startWaitingMood(userText, Boolean(opts.intent));
     abortRef.current = new AbortController();
 
     const allMessages = [...messages, userMsg];
@@ -181,6 +234,12 @@ export function useAIChat() {
     let pendingWebChecked = false;
     let pendingSources: Array<{ title: string; url: string }> = [];
     let pendingBilling: ChatBilling | null = null;
+    let pendingCards: HomiCardRef[] = [];
+    let pendingMood: HomiState = 'happy';
+    /* The server's finished text wins over what streamed: it is the same
+       answer with the hidden JSON block removed exactly, not approximately. */
+    let finalText: string | null = null;
+    let streamError: string | null = null;
 
     await sendStreamRequest({
       functionUrl: `${SUPABASE_URL}/functions/v1/homatch-ai`,
@@ -192,7 +251,7 @@ export function useAIChat() {
        * `undefined` and the model answered about "this apartment" without
        * ever seeing which apartment. Internal-first starts with actually
        * delivering the internal context. */
-      context: pageContext.type !== 'general' ? { type: pageContext.type, ...(pageContext.data ?? {}) } : undefined,
+      context: turnContext.type !== 'general' ? { type: turnContext.type, ...(turnContext.data ?? {}) } : undefined,
         conversationId: convId && convId !== 'guest' ? convId : undefined,
         // Proves which anonymous session this belongs to. Never an id the
         // client picked: the server decides what this token owns.
@@ -203,10 +262,25 @@ export function useAIChat() {
         locale: lang,
         // The idempotency key for this turn's reservation and settlement.
         interactionId,
+        /* Words as they are written, not all at once. The server falls back
+           to one JSON reply where streaming does not apply. */
+        stream: true,
+        /* A HOMI chip's intent. The server trusts it only if it is on its
+           own closed list of written answers. */
+        ...(opts.intent ? { homiIntent: opts.intent } : {}),
       },
       supabaseAnonKey: SUPABASE_ANON_KEY,
       accessToken,
       onMeta: (payload) => {
+        if (payload?.__event === 'open' || payload?.__event === 'done') return;
+        if (payload?.__event === 'error') {
+          streamError = typeof payload.code === 'string' ? payload.code : 'STREAM_ERROR';
+          return;
+        }
+        if (typeof payload?.text === 'string') finalText = payload.text;
+        pendingCards = parseHomiCards(payload?.cards);
+        const mood = (payload?.homi as { mood?: unknown } | undefined)?.mood;
+        if (typeof mood === 'string') pendingMood = mood as HomiState;
         /* WHICH CONVERSATION AM I IN?
          *
          * An anonymous visitor cannot create one — RLS gives them no access to
@@ -227,7 +301,7 @@ export function useAIChat() {
            only because the meta payload is `unknown` at this boundary
            and the parser is the one definition of the shape — it is a
            cheap no-op on a list that is already clean. */
-        const replies = parseSuggestedReplies(payload?.suggestedReplies);
+        const replies = parseSuggestedReplies(payload?.suggestedReplies, { allowIntent: true });
         if (replies.length) pendingReplies = replies;
 
         pendingActions = parseServiceActions(payload?.suggestedActions);
@@ -250,11 +324,28 @@ export function useAIChat() {
       onData: (raw) => {
         try {
           const parsed = JSON.parse(raw);
-          const chunk = parsed?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-          if (chunk) { accumulated += chunk; setStreamContent(accumulated); }
+          const chunk = parsed?.candidates?.[0]?.content?.parts?.[0]?.text ?? (typeof parsed?.t === 'string' ? parsed.t : '');
+          if (chunk) {
+            accumulated += chunk;
+            setStreamContent(accumulated);
+            if (moodTimers.current.length) clearMoodTimers();
+            setHomiState('writing');
+          }
         } catch { /* skip incomplete frames */ }
       },
       onComplete: async () => {
+        clearMoodTimers();
+        if (streamError || !(finalText ?? accumulated).trim()) {
+          /* The stream ended without an answer. Nothing was charged (the
+             server released any hold); the question goes back to the box. */
+          setStreaming(false);
+          setStreamContent('');
+          setHomiState('error');
+          toast.error(t('homi_error_retry'));
+          setMessages(prev => (prev.length && prev[prev.length - 1].id === userMsg.id) ? prev.slice(0, -1) : prev);
+          return;
+        }
+        if (finalText !== null) accumulated = finalText;
         if (propertyRetry.current?.id === interactionId) {
           propertyRetry.current = null;
           try { if (readPropertyRetry()?.id === interactionId) sessionStorage.removeItem(PROPERTY_RETRY_KEY); } catch { /* storage unavailable */ }
@@ -268,6 +359,10 @@ export function useAIChat() {
         setSuggestedActions(pendingActions);
         setLastWebChecked(pendingWebChecked);
         setLastSources(pendingWebChecked ? pendingSources : []);
+        setLastCards(pendingCards);
+        setHomiState(pendingMood);
+        /* The answer's mood for a moment, then back to a relaxed idle. */
+        moodTimers.current.push(window.setTimeout(() => setHomiState('idle'), 4500));
         if (pendingBilling) setLastBilling(pendingBilling);
         if (convId && convId !== 'guest' && allMessages.length === 1) {
           await supabase.from('ai_conversations').update({ title: userText.slice(0, 60) }).eq('id', convId);
@@ -276,8 +371,10 @@ export function useAIChat() {
       },
       onError: async (err) => {
         console.error('AI stream error:', err);
+        clearMoodTimers();
         setStreaming(false);
         setStreamContent('');
+        setHomiState('error');
         // ky throws an HTTPError (with a `.response`) for any non-2xx status
         // — including our own 429 rate-limit response, whose JSON body
         // carries a real, already-localized message. Surface it instead of
@@ -329,9 +426,19 @@ export function useAIChat() {
       },
       signal: abortRef.current.signal,
     });
-  }, [streaming, activeConvId, messages, pageContext, newConversation, loadConversations, loadConversation, lang, t]);
+  }, [streaming, activeConvId, messages, pageContext, newConversation, loadConversations, loadConversation, lang, t, startWaitingMood, clearMoodTimers]);
 
-  const cancelStream = useCallback(() => { abortRef.current?.abort(); setStreaming(false); setStreamContent(''); }, []);
+  /* Stopping keeps what was already written, marked as stopped, so the screen matches the
+     conversation instead of leaving a question with no answer under it. */
+  const cancelStream = useCallback(() => {
+    abortRef.current?.abort(); clearMoodTimers(); setStreaming(false); setHomiState('idle');
+    setStreamContent((partial) => {
+      const note = t('homi_stopped');
+      const content = partial.trim() ? `${partial.trim()}\n\n_${note}_` : `_${note}_`;
+      queueMicrotask(() => setMessages((m) => [...m, { id: crypto.randomUUID(), role: 'assistant', content, createdAt: new Date() }]));
+      return '';
+    });
+  }, [clearMoodTimers, t]);
   /* SIGNING IN MID-CONVERSATION.
    *
    * AuthContext hands the anonymous work to the new account and announces it.
@@ -348,13 +455,14 @@ export function useAIChat() {
   const resetChat = useCallback(() => {
     setMessages([]); setActiveConvId(null); setStreamContent('');
     setPageContext({ type: 'general' }); setSuggestedReplies([]);
-    setInsufficientCredits(false);
+    setInsufficientCredits(false); setLastCards([]); setHomiState('idle');
   }, []);
 
   return {
     messages, streaming, streamContent, conversations, activeConvId, pageContext, setPageContext,
     sendMessage, cancelStream, resetChat, loadConversations, loadConversation, newConversation,
     anonLimitReached, suggestedReplies, suggestedActions, lastWebChecked, lastSources, lastBilling, insufficientCredits,
+    lastCards, homiState, noteTyping,
     pendingPropertyQuestion: propertyRetry.current?.scope === `${pageContext.data?.searchId}:${pageContext.data?.propertyKey}:${activeConvId}`
       ? propertyRetry.current.text : null,
   };

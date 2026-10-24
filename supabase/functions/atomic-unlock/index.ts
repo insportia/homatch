@@ -293,6 +293,8 @@ async function unlockInternalLeads(req: Request, supabaseUser: any, supabaseAdmi
   if (!(await internalMatchingOpen(supabaseAdmin))) return json({ error: 'SERVICE_DISABLED' }, 503);
   const { data, error } = await supabaseAdmin.rpc('internal_leads_unlock', {
     p_user_id: hmUser.id, p_match_ids: parsed.matchIds, p_idempotency_key: parsed.idempotencyKey,
+    /* The total the customer confirmed: a price raised by new evidence since the quote is refused, never charged. */
+    ...(parsed.expectedCredits === null ? {} : { p_expected_credits: parsed.expectedCredits }),
   });
   if (error) {
     const code = unlockErrorCode(error.message);

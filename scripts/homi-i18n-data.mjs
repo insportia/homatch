@@ -1,0 +1,170 @@
+/*
+ * HOMI workstream copy — [en, ka, ru, tr, ar, he].
+ *
+ * Georgian is the product's first language: every ka value here is written,
+ * not machine-translated, in the informal singular, with the approved
+ * terminology (docs/claude/HOMI_GLOSSARY.md). Strings the task specification
+ * gave in Georgian are used verbatim.
+ *
+ * Applied by scripts/homi-i18n-apply.mjs (idempotent; new keys are added,
+ * HOMI_REBRAND_STRINGS deliberately overwrite the old "Homatch AI" copy).
+ */
+
+/** New keys. */
+export const HOMI_STRINGS = {
+  /* ── Chat: actions, status ─────────────────────────────────────────── */
+  ai_action_for_expats: ['Moving to Georgia', 'საქართველოში გადმოსვლა', 'Переезд в Грузию', "Gürcistan'a taşınma", 'الانتقال إلى جورجيا', 'מעבר לגאורגיה'],
+  ai_action_contact: ['Contact HOMATCH', 'HOMATCH-თან დაკავშირება', 'Связаться с HOMATCH', 'HOMATCH ile iletişim', 'تواصل مع HOMATCH', 'יצירת קשר עם HOMATCH'],
+  homi_waiting: ['One moment…', 'ერთი წამით…', 'Секунду…', 'Bir saniye…', 'لحظة واحدة…', 'רגע אחד…'],
+  homi_error_retry: [
+    "I couldn't finish that answer. Please try again.",
+    'პასუხის დასრულება ვერ მოხერხდა. სცადე ხელახლა.',
+    'Не получилось закончить ответ. Попробуй ещё раз.',
+    'Bu yanıtı tamamlayamadım. Lütfen tekrar dene.',
+    'لم أتمكن من إكمال هذه الإجابة. حاول مرة أخرى.',
+    'לא הצלחתי לסיים את התשובה. נסה שוב.',
+  ],
+
+  /* ── Chat cards ────────────────────────────────────────────────────── */
+  homi_card_income_source: ['Where does your income come from?', 'საიდან იღებ შემოსავალს?', 'Откуда твой доход?', 'Gelirin nereden geliyor?', 'من أين يأتي دخلك؟', 'מאיפה מגיעה ההכנסה שלך?'],
+  homi_card_checklist_title: ['Documents to prepare', 'მოსამზადებელი დოკუმენტები', 'Документы для подготовки', 'Hazırlanacak belgeler', 'المستندات المطلوب تجهيزها', 'מסמכים להכנה'],
+  homi_card_progress: ['{{done}} of {{total}} ready', '{{total}}-დან {{done}} მზადაა', 'Готово {{done}} из {{total}}', '{{total}} belgeden {{done}} hazır', '{{done}} من {{total}} جاهز', '{{done}} מתוך {{total}} מוכנים'],
+  homi_card_mortgage_title: ['My estimated monthly payment', 'ჩემი სავარაუდო ყოველთვიური შენატანი', 'Мой примерный ежемесячный платёж', 'Tahmini aylık taksitim', 'قسطي الشهري التقديري', 'ההחזר החודשי המשוער שלי'],
+  homi_card_price: ['Property price', 'ბინის ფასი', 'Цена объекта', 'Mülk fiyatı', 'سعر العقار', 'מחיר הנכס'],
+  homi_card_currency: ['Currency', 'ვალუტა', 'Валюта', 'Para birimi', 'العملة', 'מטבע'],
+  homi_card_down_payment: ['Down payment: {{pct}}%', 'პირველადი შენატანი: {{pct}}%', 'Первоначальный взнос: {{pct}}%', 'Peşinat: %{{pct}}', 'الدفعة الأولى: {{pct}}%', 'הון עצמי: {{pct}}%'],
+  homi_card_term: ['Term: {{years}} years', 'ვადა: {{years}} წელი', 'Срок: {{years}} г.', 'Vade: {{years}} yıl', 'المدة: {{years}} سنة', 'תקופה: {{years}} שנים'],
+  homi_card_years: ['{{n}} yrs', '{{n}} წელი', '{{n}} г.', '{{n}} yıl', '{{n}} سنة', '{{n}} שנים'],
+  homi_card_rate: ['Interest rate (% a year)', 'საპროცენტო განაკვეთი (წლიური %)', 'Процентная ставка (% годовых)', 'Faiz oranı (yıllık %)', 'سعر الفائدة (% سنويًا)', 'ריבית (% לשנה)'],
+  homi_card_rate_hint: [
+    'Use the rate your bank quoted. HOMI never guesses a rate.',
+    'ჩაწერე ის განაკვეთი, რომელიც ბანკმა შემოგთავაზა. HOMI განაკვეთს არასდროს ივარაუდებს.',
+    'Укажи ставку, которую предложил банк. HOMI никогда не угадывает ставку.',
+    'Bankanın teklif ettiği oranı yaz. HOMI asla oran tahmin etmez.',
+    'استخدم السعر الذي عرضه البنك. HOMI لا يخمّن سعر الفائدة أبدًا.',
+    'הזן את הריבית שהבנק הציע. HOMI אף פעם לא מנחש ריבית.',
+  ],
+  homi_card_monthly: ['Monthly payment', 'ყოველთვიური შენატანი', 'Ежемесячный платёж', 'Aylık taksit', 'القسط الشهري', 'החזר חודשי'],
+  homi_card_loan: ['Loan amount', 'სესხის თანხა', 'Сумма кредита', 'Kredi tutarı', 'مبلغ القرض', 'סכום ההלוואה'],
+  homi_card_total_interest: ['Total interest', 'ჯამური პროცენტი', 'Всего процентов', 'Toplam faiz', 'إجمالي الفائدة', 'סך הריבית'],
+  homi_card_mortgage_note: [
+    'Principal and interest only. Fees, insurance and the readiness check are in the Mortgage Consultant.',
+    'მხოლოდ ძირი და პროცენტი. საკომისიოები, დაზღვევა და მზადყოფნის შეფასება იპოთეკის კონსულტანტშია.',
+    'Только основной долг и проценты. Комиссии, страховка и оценка готовности есть в ипотечном консультанте.',
+    'Yalnızca anapara ve faiz. Masraflar, sigorta ve hazırlık değerlendirmesi konut kredisi danışmanında.',
+    'الأصل والفائدة فقط. الرسوم والتأمين وتقييم الجاهزية في مستشار الرهن العقاري.',
+    'קרן וריבית בלבד. עמלות, ביטוח ובדיקת מוכנות נמצאים ביועץ המשכנתאות.',
+  ],
+  homi_card_mortgage_empty: [
+    'Enter the price and the interest rate and the payment appears straight away.',
+    'შეიყვანე ფასი და საპროცენტო განაკვეთი, შენატანი კი მაშინვე გამოჩნდება.',
+    'Введи цену и процентную ставку, и платёж сразу появится.',
+    'Fiyatı ve faiz oranını gir, taksit hemen görünsün.',
+    'أدخل السعر وسعر الفائدة وسيظهر القسط فورًا.',
+    'הזן את המחיר והריבית וההחזר יופיע מיד.',
+  ],
+  homi_card_open_mortgage: ['Continue in the Mortgage Consultant', 'იპოთეკის კონსულტანტში გაგრძელება', 'Продолжить в ипотечном консультанте', 'Konut kredisi danışmanında devam et', 'المتابعة في مستشار الرهن العقاري', 'להמשיך ביועץ המשכנתאות'],
+  homi_card_roi_title: ['Return on investment', 'ინვესტიციის უკუგება', 'Доходность инвестиции', 'Yatırım getirisi', 'عائد الاستثمار', 'תשואה על ההשקעה'],
+  homi_card_rent: ['Expected monthly income (your assumption)', 'სავარაუდო ყოველთვიური შემოსავალი (შენი დაშვება)', 'Ожидаемый ежемесячный доход (твоё допущение)', 'Beklenen aylık gelir (senin varsayımın)', 'الدخل الشهري المتوقع (افتراضك)', 'הכנסה חודשית צפויה (ההנחה שלך)'],
+  homi_card_vacancy: ['Empty months a year (your assumption)', 'ცარიელი თვეები წელიწადში (შენი დაშვება)', 'Пустые месяцы в году (твоё допущение)', 'Yılda boş aylar (senin varsayımın)', 'الأشهر الشاغرة في السنة (افتراضك)', 'חודשים ריקים בשנה (ההנחה שלך)'],
+  homi_card_months: ['{{n}} mo.', '{{n}} თვე', '{{n}} мес.', '{{n}} ay', '{{n}} شهر', '{{n}} חודשים'],
+  homi_card_expenses: ['Expected expenses per year', 'მოსალოდნელი ხარჯები წელიწადში', 'Ожидаемые расходы в год', 'Yıllık beklenen giderler', 'المصاريف المتوقعة سنويًا', 'הוצאות צפויות בשנה'],
+  homi_card_net_monthly: ['Net income per month', 'წმინდა შემოსავალი თვეში', 'Чистый доход в месяц', 'Aylık net gelir', 'صافي الدخل شهريًا', 'הכנסה נטו לחודש'],
+  homi_card_gross_yield: ['Gross yield', 'მთლიანი უკუგება', 'Валовая доходность', 'Brüt getiri', 'العائد الإجمالي', 'תשואה ברוטו'],
+  homi_card_net_yield: ['Net yield', 'წმინდა უკუგება', 'Чистая доходность', 'Net getiri', 'صافي العائد', 'תשואה נטו'],
+  homi_card_payback: ['Payback', 'ანაზღაურების ვადა', 'Окупаемость', 'Geri dönüş süresi', 'فترة الاسترداد', 'תקופת החזר'],
+  homi_card_roi_note: [
+    'Before tax and financing. Rent and empty months are your assumptions, not market data.',
+    'გადასახადებამდე და დაფინანსების გარეშე. ქირა და ცარიელი თვეები შენი დაშვებებია და არა საბაზრო მონაცემები.',
+    'До налогов и без финансирования. Аренда и пустые месяцы это твои допущения, а не рыночные данные.',
+    'Vergi ve finansman öncesi. Kira ve boş aylar senin varsayımların, piyasa verisi değil.',
+    'قبل الضرائب ودون تمويل. الإيجار والأشهر الشاغرة افتراضاتك وليست بيانات سوق.',
+    'לפני מס ומימון. השכירות והחודשים הריקים הם ההנחות שלך, לא נתוני שוק.',
+  ],
+  homi_card_roi_empty: ['Enter the price and the expected rent.', 'შეიყვანე ფასი და მოსალოდნელი ქირა.', 'Введи цену и ожидаемую аренду.', 'Fiyatı ve beklenen kirayı gir.', 'أدخل السعر والإيجار المتوقع.', 'הזן את המחיר ואת השכירות הצפויה.'],
+  homi_card_open_investment: ['Open the full investment analysis', 'სრული საინვესტიციო შეფასების გახსნა', 'Открыть полный инвестиционный анализ', 'Tam yatırım analizini aç', 'افتح تحليل الاستثمار الكامل', 'לפתוח את ניתוח ההשקעה המלא'],
+
+  /* ── Homepage ──────────────────────────────────────────────────────── */
+  homi_home_cta: ['Talk to HOMI', 'ესაუბრე HOMI-ს', 'Поговори с HOMI', 'HOMI ile konuş', 'تحدّث مع HOMI', 'דבר עם HOMI'],
+  homi_reach_investment: ['Investment consultant', 'ინვესტიციის კონსულტანტი', 'Инвестиционный консультант', 'Yatırım danışmanı', 'مستشار الاستثمار', 'יועץ השקעות'],
+  homi_reach_expats: ['Services for expats', 'ექსპატების სერვისები', 'Услуги для экспатов', 'Yabancılar için hizmetler', 'خدمات للمغتربين', 'שירותים לעולים ולזרים'],
+  homi_reach_match_d: ['People potentially interested in your property', 'შენი ქონებით პოტენციურად დაინტერესებული ადამიანები', 'Люди, потенциально заинтересованные в твоём объекте', 'Mülkünle potansiyel olarak ilgilenen kişiler', 'أشخاص قد يهتمون بعقارك', 'אנשים שעשויים להתעניין בנכס שלך'],
+  homi_reach_find_d: ['Describe it in plain words, HOMI builds the search', 'აღწერე ჩვეულებრივი სიტყვებით და HOMI მოძებნას ააწყობს', 'Опиши обычными словами, HOMI построит поиск', 'Kendi kelimelerinle anlat, HOMI aramayı kursun', 'صِف ما تريد بكلماتك وسيبني HOMI البحث', 'תאר במילים פשוטות ו-HOMI יבנה את החיפוש'],
+  homi_reach_verify_d: ['Owner, mortgage and restrictions from official sources', 'მესაკუთრე, იპოთეკა და შეზღუდვები ოფიციალური წყაროებიდან', 'Собственник, ипотека и ограничения из официальных источников', 'Resmî kaynaklardan malik, ipotek ve kısıtlamalar', 'المالك والرهن والقيود من مصادر رسمية', 'בעלים, משכנתא והגבלות ממקורות רשמיים'],
+  homi_reach_contract_d: ['Risky clauses and safer wording', 'რისკიანი მუხლები და უფრო უსაფრთხო ფორმულირებები', 'Рискованные пункты и более безопасные формулировки', 'Riskli maddeler ve daha güvenli ifadeler', 'البنود الخطرة وصياغات أكثر أمانًا', 'סעיפים מסוכנים וניסוחים בטוחים יותר'],
+  homi_reach_mortgage_d: ['Monthly payment and loan readiness', 'ყოველთვიური შენატანი და სესხისთვის მზადყოფნა', 'Ежемесячный платёж и готовность к кредиту', 'Aylık taksit ve krediye hazırlık', 'القسط الشهري والجاهزية للقرض', 'החזר חודשי ומוכנות להלוואה'],
+  homi_reach_investment_d: ['Income, expenses and return by scenario', 'შემოსავალი, ხარჯები და უკუგება სცენარების მიხედვით', 'Доход, расходы и доходность по сценариям', 'Senaryolara göre gelir, gider ve getiri', 'الدخل والمصاريف والعائد حسب السيناريو', 'הכנסה, הוצאות ותשואה לפי תרחישים'],
+  homi_reach_expats_d: ['A personal plan for moving to Georgia', 'პირადი გეგმა საქართველოში გადმოსასვლელად', 'Личный план переезда в Грузию', "Gürcistan'a taşınmak için kişisel plan", 'خطة شخصية للانتقال إلى جورجيا', 'תוכנית אישית למעבר לגאורגיה'],
+  homi_reach_email_d: ['Campaigns to your own contacts', 'კამპანიები შენი კონტაქტებისთვის', 'Кампании для твоих контактов', 'Kendi kişilerine kampanyalar', 'حملات لجهات اتصالك', 'קמפיינים לאנשי הקשר שלך'],
+  homi_reach_dev_d: ['Tools for developers and sales teams', 'ინსტრუმენტები დეველოპერებისა და გაყიდვების გუნდებისთვის', 'Инструменты для застройщиков и отделов продаж', 'Geliştiriciler ve satış ekipleri için araçlar', 'أدوات للمطورين وفرق المبيعات', 'כלים ליזמים ולצוותי מכירות'],
+  homi_reach_find_s: ['Find a home', 'ბინის მოძებნა', 'Найти жильё', 'Ev bul', 'ابحث عن منزل', 'חיפוש דירה'],
+  homi_reach_verify_s: ['Property check', 'ქონების შემოწმება', 'Проверка объекта', 'Mülk kontrolü', 'فحص العقار', 'בדיקת נכס'],
+  homi_reach_mortgage_s: ['Mortgage', 'იპოთეკა', 'Ипотека', 'Konut kredisi', 'الرهن العقاري', 'משכנתא'],
+  homi_reach_investment_s: ['Investment', 'ინვესტიცია', 'Инвестиции', 'Yatırım', 'الاستثمار', 'השקעה'],
+  homi_reach_contract_s: ['Contract', 'ხელშეკრულება', 'Договор', 'Sözleşme', 'العقود', 'חוזה'],
+  homi_reach_expats_s: ['Expats', 'ექსპატები', 'Экспатам', 'Yabancılar', 'المغتربون', 'עולים וזרים'],
+  homi_reach_match_s: ['Buyers', 'მყიდველები', 'Покупатели', 'Alıcılar', 'المشترون', 'קונים'],
+  homi_reach_email_s: ['Email', 'ელფოსტა', 'Почта', 'E-posta', 'البريد', 'אימייל'],
+  homi_reach_dev_s: ['Developers', 'დეველოპერები', 'Застройщикам', 'Geliştiriciler', 'المطورون', 'יזמים'],
+  homi_reach_open: ['Open', 'გახსნა', 'Открыть', 'Aç', 'افتح', 'פתח'],
+  homi_reach_hint: ['Pick one and HOMI takes you there', 'აირჩიე და HOMI იქ მიგიყვანს', 'Выбери, и HOMI отведёт тебя туда', 'Birini seç, HOMI seni oraya götürsün', 'اختر واحدة وسيأخذك HOMI إليها', 'בחר אחד ו-HOMI ייקח אותך לשם'],
+  homi_home_cta_secondary: ['See what it can help with', 'ნახე, რაში დაგეხმარება', 'Посмотри, в чём он поможет', 'Neler yapabildiğine bak', 'اكتشف فيمَ يساعدك', 'ראה במה הוא יכול לעזור'],
+};
+
+/** Existing keys whose copy changes with the HOMI rename. */
+export const HOMI_REBRAND_STRINGS = {
+  ai_title: ['HOMI', 'HOMI', 'HOMI', 'HOMI', 'HOMI', 'HOMI'],
+  ai_floating_label: ['Ask HOMI', 'ჰკითხე HOMI-ს', 'Спросить HOMI', "HOMI'ye sor", 'اسأل HOMI', 'שאל את HOMI'],
+  ai_subtitle: ['Your personal HOMATCH assistant', 'HOMATCH-ის შენი პერსონალური ასისტენტი', 'Твой персональный ассистент HOMATCH', 'Kişisel HOMATCH asistanın', 'مساعدك الشخصي في HOMATCH', 'העוזר האישי שלך ב-HOMATCH'],
+  ai_input_placeholder: ['Ask HOMI anything…', 'ჰკითხე HOMI-ს, რაც გაინტერესებს…', 'Спроси HOMI о чём угодно…', "HOMI'ye istediğini sor…", 'اسأل HOMI عن أي شيء…', 'שאל את HOMI כל דבר…'],
+  ai_sign_in_prompt: ['Sign in to keep talking with HOMI', 'შედი და HOMI-სთან საუბარი გააგრძელე', 'Войди, чтобы продолжить разговор с HOMI', 'HOMI ile konuşmaya devam etmek için giriş yap', 'سجّل الدخول لمتابعة الحديث مع HOMI', 'התחבר כדי להמשיך לדבר עם HOMI'],
+  ai_sign_in_desc: [
+    'Your conversation is kept: signing in simply continues it. Talking with HOMI is free.',
+    'საუბარი შენახულია: შესვლის შემდეგ უბრალოდ გააგრძელებ. HOMI-სთან საუბარი უფასოა.',
+    'Разговор сохранён: после входа ты просто продолжишь его. Общение с HOMI бесплатное.',
+    'Sohbetin kayıtlı: giriş yapınca kaldığın yerden devam edersin. HOMI ile konuşmak ücretsiz.',
+    'محادثتك محفوظة: بعد تسجيل الدخول ستتابعها ببساطة. الحديث مع HOMI مجاني.',
+    'השיחה שלך נשמרת: אחרי ההתחברות פשוט ממשיכים. השיחה עם HOMI בחינם.',
+  ],
+  /* Homepage region 09 — the specification's HOMI copy. */
+  mp_flow_eyebrow: ['HOMI assistant', 'HOMI ასისტენტი', 'Ассистент HOMI', 'HOMI asistanı', 'المساعد HOMI', 'העוזר HOMI'],
+  mp_flow_title: [
+    'Meet HOMI, your smart guide to the world of real estate',
+    'გაიცანი HOMI, შენი ჭკვიანი მეგზური უძრავი ქონების სამყაროში',
+    'Знакомься: HOMI, твой умный проводник в мире недвижимости',
+    'HOMI ile tanış: emlak dünyasındaki akıllı rehberin',
+    'تعرّف على HOMI، دليلك الذكي في عالم العقارات',
+    'הכירו את HOMI, המדריך החכם שלך לעולם הנדל״ן',
+  ],
+  mp_flow_sub: [
+    'Finding a home, checking a property, assessing an investment or planning a mortgage: HOMI helps you understand all of it, simply.',
+    'ბინის მოძებნა, ქონების შემოწმება, ინვესტიციის შეფასება თუ იპოთეკის დაგეგმვა: HOMI დაგეხმარება ყველაფრის მარტივად გაგებაში.',
+    'Поиск жилья, проверка недвижимости, оценка инвестиции или планирование ипотеки: HOMI поможет во всём разобраться просто.',
+    'Ev bulmak, mülk kontrol etmek, yatırımı değerlendirmek ya da konut kredisini planlamak: HOMI hepsini kolayca anlamana yardım eder.',
+    'البحث عن منزل، فحص عقار، تقييم استثمار أو التخطيط لرهن عقاري: يساعدك HOMI على فهم كل ذلك ببساطة.',
+    'חיפוש דירה, בדיקת נכס, הערכת השקעה או תכנון משכנתא: HOMI עוזר להבין הכול בפשטות.',
+  ],
+  mp_flow_cta: ['Talk to HOMI', 'ესაუბრე HOMI-ს', 'Поговори с HOMI', 'HOMI ile konuş', 'تحدّث مع HOMI', 'דבר עם HOMI'],
+  mp_ai_send: ['Ask HOMI', 'ჰკითხე HOMI-ს', 'Спросить HOMI', "HOMI'ye sor", 'اسأل HOMI', 'שאל את HOMI'],
+  mp_core_sub: [
+    'Find the person who wants a property. Find the property someone wants. Check what you are buying. Understand what it costs to finance. Each is a real capability with its own workflow, and HOMI reaches all of them.',
+    'იპოვე ადამიანი, ვისაც შენი ქონება სჭირდება. იპოვე ქონება, რომელსაც შენ ეძებ. გადაამოწმე, რას ყიდულობ. გაიგე, რა ჯდება დაფინანსება. თითოეული ცალკე შესაძლებლობაა თავისი პროცესით, და ყველას HOMI-ს მეშვეობით წვდები.',
+    'Найди человека, которому нужна недвижимость. Найди объект, который ищешь. Проверь, что покупаешь. Узнай, сколько стоит финансирование. Каждая возможность это отдельный процесс, и до всех них можно дойти через HOMI.',
+    'Mülk isteyen kişiyi bul. Aradığın mülkü bul. Ne satın aldığını kontrol et. Finansmanın ne kadara mal olduğunu öğren. Her biri kendi süreci olan gerçek bir yetenek ve hepsine HOMI ile ulaşırsın.',
+    'اعثر على من يريد عقارًا. اعثر على العقار الذي تبحث عنه. تحقّق مما تشتريه. افهم كلفة التمويل. كل منها قدرة حقيقية لها مسارها، ويصل HOMI إليها جميعًا.',
+    'מצא את מי שמחפש נכס. מצא את הנכס שאתה מחפש. בדוק מה אתה קונה. הבן כמה עולה המימון. כל אחת מהן יכולת אמיתית עם תהליך משלה, ו-HOMI מגיע לכולן.',
+  ],
+  home_cta_title: ['Start with HOMI for free', 'დაიწყე HOMI-სთან ერთად უფასოდ', 'Начни с HOMI бесплатно', 'HOMI ile ücretsiz başla', 'ابدأ مع HOMI مجانًا', 'התחל עם HOMI בחינם'],
+  home_cta_button: ['Talk to HOMI for free', 'ესაუბრე HOMI-ს უფასოდ', 'Поговори с HOMI бесплатно', "HOMI ile ücretsiz konuş", 'تحدّث مع HOMI مجانًا', 'דבר עם HOMI בחינם'],
+  dash_empty_ai_title: ['Start with HOMI', 'დაიწყე HOMI-სთან ერთად', 'Начни с HOMI', 'HOMI ile başla', 'ابدأ مع HOMI', 'התחל עם HOMI'],
+  dash_empty_open_ai: ['Open HOMI', 'გახსენი HOMI', 'Открыть HOMI', "HOMI'yi aç", 'افتح HOMI', 'פתח את HOMI'],
+  dash_continue_ai: ['Continue with HOMI', 'გააგრძელე HOMI-სთან', 'Продолжить с HOMI', 'HOMI ile devam et', 'تابع مع HOMI', 'המשך עם HOMI'],
+  ai_disclaimer: [
+    'HOMI does its best to give you the information you need and to help. It is a good idea to double-check important information yourself as well.',
+    'HOMI მაქსიმალურად მოგაწვდის სასურველ ინფორმაციას და დაგეხმარება. მნიშვნელოვანი ინფორმაცია სასურველია დამოუკიდებლადაც გადაამოწმო.',
+    'HOMI сделает всё, чтобы дать нужную информацию и помочь. Важную информацию лучше дополнительно проверить самостоятельно.',
+    'HOMI ihtiyacın olan bilgiyi sunmak ve yardımcı olmak için elinden geleni yapar. Önemli bilgileri ayrıca kendin de doğrulaman iyi olur.',
+    'يبذل HOMI قصارى جهده لتزويدك بالمعلومات التي تحتاجها ومساعدتك. يُستحسن أن تتحقق من المعلومات المهمة بنفسك أيضًا.',
+    'HOMI עושה הכול כדי לתת לך את המידע שאתה צריך ולעזור. כדאי לבדוק בעצמך גם מידע חשוב.',
+  ],
+};

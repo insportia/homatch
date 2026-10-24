@@ -82,7 +82,8 @@ for (const [fn, table] of [['developer-document-extract', 'dev_documents'], ['de
     const src = readFileSync(new URL(`../../${fn}/index.ts`, import.meta.url), 'utf8');
     assert.doesNotMatch(src, /extractText\(/, 'no whole-document extraction');
     assert.match(src, /pages = pdf\.numPages \?\? 0;/);
-    assert.match(src, /raw = \(await pdfTextForAnalysis\(pdf\)\)\.raw;/);
+    // deal-room-document-analyze also keeps pagesRead, to flag an analysis that covered only part of the file.
+    assert.match(src, /raw = \(await pdfTextForAnalysis\(pdf\)\)\.raw;|const read = await pdfTextForAnalysis\(pdf\);\s*raw = read\.raw;/);
     const check = src.indexOf('assertDocxParsable(entry);');
     assert.ok(check > 0 && check < src.indexOf("raw = extractDocxText(await entry.async('string'))"), 'checked before inflating');
     assert.match(src, /instanceof DocumentTooLarge/);

@@ -309,7 +309,7 @@ export async function getInternalPage(propertyId: string, q: InternalQuery): Pro
   return {
     total: Number(base.total ?? 0),
     counts: (base.counts ?? {}) as LeadFeed['counts'],
-    prices: (base.prices ?? { STANDARD: 3, EXACT: 5, PREMIUM: 10, active: false }) as LeadFeed['prices'],
+    prices: (base.prices ?? { STANDARD: 3, EXACT: 5, PREMIUM: 10, MORTGAGE: 3, MORTGAGE_MATCH: 5, active: false }) as LeadFeed['prices'],
     lastSeenAt: (base.lastSeenAt as string | null) ?? null,
     preferences: null,
     items: (base.items ?? []) as InternalLead[],

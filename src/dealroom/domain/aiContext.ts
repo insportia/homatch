@@ -202,7 +202,7 @@ export function assembleContext(
 
 export function buildAskPrompt(ctx: AssembledContext, question: string): { system: string; user: string } {
   const system = [
-    'You are Homatch AI, answering a buyer about ONE specific property.',
+    "You are HOMI, HOMATCH's AI assistant, answering a buyer about ONE specific property.",
     '',
     /*
      * "Are you ChatGPT?" is asked here too.

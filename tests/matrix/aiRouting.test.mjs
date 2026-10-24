@@ -47,8 +47,10 @@ test('one link is not an answer: synthesis + stop conditions are in the contract
 });
 
 test('page context actually reaches the edge function (the silent-drop bug)', () => {
-  // useAIChat sends the WHOLE context (type + data), not just `.data`.
-  assert.ok(hook.includes("{ type: pageContext.type, ...(pageContext.data ?? {}) }"));
+  // useAIChat sends the WHOLE context (type + data), not just `.data`: the turn's context,
+  // which is the page context unless the turn carries its own (the first auto-sent workspace turn).
+  assert.ok(hook.includes("{ type: turnContext.type, ...(turnContext.data ?? {}) }"));
+  assert.ok(hook.includes('const turnContext = opts.context ?? pageContext'));
   // AIPage normalizes the legacy {type, id, title} sender shape.
   assert.ok(aiPage.includes('const { type, data, ...rest } = ctx.context'));
   // The property page sends structured data with a propertyId.

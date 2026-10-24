@@ -171,6 +171,23 @@ export function notificationText(
   if (notif.type === 'DOCUMENT_ANALYZED') {
     return { title: t('notif_document_analyzed_title'), body: t('notif_document_analyzed_body') };
   }
+  if (notif.type === 'CREDITS_TOPPED_UP') {
+    return { title: t('notif_payment_ok_title'), body: t('notif_payment_ok_body') };
+  }
+  if (notif.type === 'PAYMENT_FAILED') {
+    return { title: t('notif_payment_failed_title'), body: t('notif_payment_failed_body') };
+  }
+  /* A scanned or unsupported document: an expected outcome with something to do, not a failure. */
+  if (kind === 'DOCUMENT_UNREADABLE') {
+    const reason = metaString(notif, 'reason');
+    return {
+      title: t('doc_status_failed'),
+      body: t(reason === 'doc_error_requires_ocr' ? 'doc_error_requires_ocr' : 'doc_error_unsupported'),
+    };
+  }
+  if (notif.type === 'SERVICE_FAILED') {
+    return { title: t('notif_service_failed_title'), body: t('notif_service_failed_body') };
+  }
 
   return { title: notif.title, body: notif.body ?? '' };
 }
@@ -253,6 +270,18 @@ export function metaNotificationInfo(notif: Notification): {
   return { category, severity, categoryKey: META_CATEGORY_LABEL[category], severityKey: META_SEVERITY_LABEL[severity] };
 }
 
+/** The button's words: what opening it will actually show. */
+export function notificationActionKey(notif: Notification): string {
+  switch (notif.type) {
+    case 'VERIFY_COMPLETE': return 'notif_action_view_result';
+    case 'DOCUMENT_ANALYZED': return 'notif_action_open_document';
+    case 'CREDITS_TOPPED_UP': return 'notif_action_payment_details';
+    case 'PAYMENT_FAILED':
+    case 'SERVICE_FAILED': return 'notif_action_retry';
+    default: return 'notif_open';
+  }
+}
+
 export function notificationMark(notif: Notification): NotificationMark {
   const kind = kindOf(notif);
   const category = categoryOf(notif);
@@ -273,6 +302,7 @@ export function notificationMark(notif: Notification): NotificationMark {
   if (notif.type === 'IMPORT_FAILED') return { icon: Building2, tone: 'alert' };
   if (notif.type === 'IMPORT_COMPLETED') return { icon: CheckCircle2, tone: 'plain' };
   if (notif.type === 'LOW_CREDITS') return { icon: CreditCard, tone: 'accent' };
+  if (notif.type === 'PAYMENT_FAILED' || notif.type === 'SERVICE_FAILED') return { icon: CATEGORY_META[category]?.icon ?? Bell, tone: 'alert' };
   if (category === 'MATCH' || category === 'DISCOVERY') {
     return { icon: CATEGORY_META[category].icon, tone: 'accent' };
   }
@@ -318,6 +348,7 @@ export function notificationHref(notif: Notification): string | null {
   }
   if (
     notif.type === 'CREDITS_TOPPED_UP'
+    || notif.type === 'PAYMENT_FAILED'
     || notif.type === 'LOW_CREDITS'
     || notif.type === 'RESEARCH_PRODUCT_PURCHASED'
   ) {

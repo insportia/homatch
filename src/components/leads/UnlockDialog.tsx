@@ -22,7 +22,7 @@ import { formatCreditsLabel } from './LeadCard';
 
 export interface UnlockAdapter {
   quote: (matchIds: string[]) => Promise<UnlockQuote>;
-  unlock: (matchIds: string[], key: string) => Promise<UnlockResult>;
+  unlock: (matchIds: string[], key: string, expectedCredits?: number) => Promise<UnlockResult>;
 }
 
 const REAL_UNLOCK: UnlockAdapter = { quote: quoteUnlock, unlock: unlockLeads };
@@ -69,10 +69,13 @@ export function UnlockDialog({
   async function confirm() {
     setSubmitting(true); setError(null);
     try {
-      const result = await adapter.unlock(matchIds, key);
+      const result = await adapter.unlock(matchIds, key, quote?.totalCredits);
       onUnlocked(result);
     } catch (e) {
-      setError(e instanceof UnlockError ? e.code : 'INTERNAL');
+      const code = e instanceof UnlockError ? e.code : 'INTERNAL';
+      setError(code);
+      /* New evidence raised a price after this quote: nothing was charged; show the new quote. */
+      if (code === 'PRICE_CHANGED') adapter.quote(matchIds).then(setQuote).catch(() => {});
     } finally {
       setSubmitting(false);
     }
@@ -108,6 +111,18 @@ export function UnlockDialog({
                 <div className="flex items-baseline justify-between gap-3 px-3 py-2.5 text-sm" data-testid="unlock-exact-row">
                   <dt>{t('hl_bulk_exact', { n: quote.exactCount, price: cr(quote.prices.EXACT) })}</dt>
                   <dd className="font-semibold tabular-nums" dir="ltr">{cr(quote.exactCredits)}</dd>
+                </div>
+              ) : null}
+              {quote.mortgageCount > 0 ? (
+                <div className="flex items-baseline justify-between gap-3 px-3 py-2.5 text-sm" data-testid="unlock-mortgage-row">
+                  <dt>{t('hl_bulk_mortgage', { n: quote.mortgageCount, price: cr(quote.prices.MORTGAGE) })}</dt>
+                  <dd className="font-semibold tabular-nums" dir="ltr">{cr(quote.mortgageCredits)}</dd>
+                </div>
+              ) : null}
+              {quote.mortgageMatchCount > 0 ? (
+                <div className="flex items-baseline justify-between gap-3 px-3 py-2.5 text-sm" data-testid="unlock-mortgage-match-row">
+                  <dt>{t('hl_bulk_mortgage_match', { n: quote.mortgageMatchCount, price: cr(quote.prices.MORTGAGE_MATCH) })}</dt>
+                  <dd className="font-semibold tabular-nums" dir="ltr">{cr(quote.mortgageMatchCredits)}</dd>
                 </div>
               ) : null}
               {quote.premiumCount > 0 ? (
@@ -155,7 +170,7 @@ export function UnlockDialog({
             </p>
             {error ? (
               <p role="alert" className="rounded-lg bg-[hsl(0_60%_97%)] px-3 py-2 text-sm text-[hsl(0_55%_34%)]">
-                {t(error === 'INSUFFICIENT_CREDITS' ? 'hl_error_credits' : error === 'PRODUCT_DISABLED' ? 'hl_error_disabled' : 'hl_error_generic')}
+                {t(error === 'INSUFFICIENT_CREDITS' ? 'hl_error_credits' : error === 'PRODUCT_DISABLED' ? 'hl_error_disabled' : error === 'PRICE_CHANGED' ? 'hl_error_price_changed' : 'hl_error_generic')}
               </p>
             ) : null}
             <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">

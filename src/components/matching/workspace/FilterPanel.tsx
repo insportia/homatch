@@ -26,6 +26,7 @@ const COMMON_LANGUAGES = ['ka', 'en', 'ru', 'tr', 'ar', 'he', 'uk', 'de', 'fr', 
 const CRITERION_KEY: Partial<Record<LeadFilter, string>> = {
   EXACT: 'hl_cat_EXACT', NEARBY: 'hl_cat_NEARBY_SIMILAR', VIP: 'hl_cat_VIP', STRONG: 'hl_filter_strong', POTENTIAL: 'hl_filter_potential',
   HIGH_CONFIDENCE: 'hl_filter_high_confidence', DIRECT: 'hl_filter_direct', BROKER: 'hl_filter_broker', FRESH: 'hl_filter_fresh',
+  MORTGAGE: 'hl_filter_mortgage',
 };
 
 export interface FilterFacets {

@@ -63,7 +63,7 @@ test('Verify is offered when it would help, and described as what it is', () => 
   const src = ai();
   const i = src.indexOf('WHAT HOMATCH CAN ACTUALLY DO FOR THEM');
   assert.ok(i > 0, 'the assistant is never told what its own products are');
-  const rule = src.slice(i, i + 2600);
+  const rule = src.slice(i, i + 3200);
 
   // 1. Verify is still described as what it is, not as a lookup form.
   assert.match(rule, /deep research on ONE specific property/);

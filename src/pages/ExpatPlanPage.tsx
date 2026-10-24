@@ -27,6 +27,7 @@ import { Navigate } from 'react-router-dom';
 import PageMeta from '@/components/common/PageMeta';
 import { PlanBoard } from '@/components/expats/PlanBoard';
 import { ProfileStrip } from '@/components/expats/ProfileStrip';
+import { ExpatJourney, ExpatNextStep, loadFocus, type Focus } from '@/components/expats/ExpatJourney';
 import { ReminderSettings } from '@/components/expats/ReminderSettings';
 import { WhatChanged } from '@/components/expats/WhatChanged';
 import { AppLayout } from '@/components/layouts/AppLayout';
@@ -60,6 +61,9 @@ export default function ExpatPlanPage() {
   const [prefs, setPrefs] = React.useState<ReminderPreferenceRow | null>(null);
   const [updates, setUpdates] = React.useState<ExpatUpdate[]>([]);
   const [loading, setLoading] = React.useState(true);
+  /* The guided journey: shown first to somebody with no plan, and again on 'მონაცემების შეცვლა'. */
+  const [editing, setEditing] = React.useState(false);
+  const [focus, setFocus] = React.useState<Focus | null>(loadFocus);
   const [saving, setSaving] = React.useState(false);
 
   const userId = homatchUser?.id ?? null;
@@ -171,6 +175,19 @@ export default function ExpatPlanPage() {
             {t('expat_plan_body')}
           </p>
         </header>
+
+        {(editing || (!loading && tasks.length === 0 && profile.intents.length === 0)) ? (
+          <div className="mb-6">
+            <ExpatJourney
+              profile={profile}
+              saving={saving}
+              onDone={(next, f) => { setFocus(f); setEditing(false); void commitProfile(next); }}
+              onCancel={tasks.length > 0 ? () => setEditing(false) : undefined}
+            />
+          </div>
+        ) : null}
+
+        {tasks.length > 0 && !editing ? <ExpatNextStep tasks={tasks} focus={focus} onEdit={() => setEditing(true)} /> : null}
 
         <ProfileStrip profile={profile} saving={saving} onChange={commitProfile} />
 

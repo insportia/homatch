@@ -861,7 +861,10 @@ Deno.serve(async (req: Request) => {
                   title: 'A Homatch property may fit what you are looking for',
                   body: String(demandRow.classifier_version ?? '') === 'search-plan-1.0.0'
                     ? 'It fits the plan you confirmed.'
-                    : 'It fits the requirements you described.',
+                    /* The search that represents mortgage interest shown in Home Financing. */
+                    : String(demandRow.classifier_version ?? '') === 'mortgage-interest-1'
+                      ? 'It is like a home you calculated a mortgage for.'
+                      : 'It fits the requirements you described.',
                   priority: 'NORMAL',
                   deepLink: '/find-property',
                   entityType: 'supply_match',
@@ -872,7 +875,8 @@ Deno.serve(async (req: Request) => {
                   groupTitle: '{n} Homatch properties match your search',
                   metadata: {
                     kind: 'NATIVE_MATCH_DEMAND',
-                    origin: String(demandRow.classifier_version ?? '') === 'search-plan-1.0.0' ? 'SEARCH_PLAN' : 'CONVERSATION',
+                    origin: String(demandRow.classifier_version ?? '') === 'search-plan-1.0.0' ? 'SEARCH_PLAN'
+                      : String(demandRow.classifier_version ?? '') === 'mortgage-interest-1' ? 'MORTGAGE_INTEREST' : 'CONVERSATION',
                     property_id: propertyRow.id,
                     homatch_id: propertyRow.homatch_id ?? null,
                   },

@@ -43,6 +43,7 @@ import {
   runFullMortgageCalculation,
 } from './calculations/index.ts';
 import { buildRateBreakdown } from './calculations/rateBreakdown.ts';
+import { MISSING_COST_NAME } from './calculations/offerComparison.ts';
 import type {
   AffordabilityResult,
   LtvLimitRuleData,
@@ -69,6 +70,8 @@ export interface BriefScenario {
 
 export interface ConsultantBrief {
   currency: string;
+  /** The guided readiness check, when the person has done it (see MortgagePage). */
+  readiness?: unknown;
   /** What the person actually entered, as entered. */
   scenario: {
     propertyPrice: number;
@@ -124,6 +127,15 @@ export interface ConsultantBrief {
       monthlyPayment: number;
       initialCosts: number;
       totalFinancingCost: number;
+      totalRepayment: number;
+      effectiveRateSource: 'BANK_SUPPLIED' | 'CALCULATED' | 'UNAVAILABLE';
+      rateType: string | null;
+      rateCanChangeFromMonth: number | null;
+      /** Variable or indexed rate: how often the bank may reset it, as the offer states. */
+      rateResetEveryMonths: number | null;
+      monthlyPaymentIfRateRises2pp: number | null;
+      costsNotStatedInOffer: string[];
+      earlyRepaymentTerms: string | null;
     }>;
   } | null;
   refinancing: {
@@ -301,6 +313,14 @@ export function buildConsultantBrief(args: BriefInputs): ConsultantBrief | null 
           monthlyPayment: money(row.monthlyPayment),
           initialCosts: money(row.initialCosts),
           totalFinancingCost: money(row.totalFinancingCost),
+          totalRepayment: money(row.totalRepayment),
+          effectiveRateSource: row.effectiveRateSource,
+          rateType: row.offer.rateType ?? null,
+          rateCanChangeFromMonth: row.rateCanChangeFromMonth,
+          rateResetEveryMonths: row.offer.rateResetMonths ?? null,
+          monthlyPaymentIfRateRises2pp: row.paymentAfterRateRise === null ? null : money(row.paymentAfterRateRise),
+          costsNotStatedInOffer: row.missingCostKeys.map((k) => MISSING_COST_NAME[k] ?? k),
+          earlyRepaymentTerms: row.offer.earlyRepaymentTerms?.slice(0, 400) ?? null,
         })),
       };
     } catch {

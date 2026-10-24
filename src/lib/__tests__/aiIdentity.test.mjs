@@ -60,7 +60,7 @@ test('the policy says all four things, and none of them is a denial', () => {
   assert.match(MODEL_QUESTION_POLICY, /Do not claim Homatch trained its own foundation model/);
   assert.match(MODEL_QUESTION_POLICY, /Do not name the model, the provider/);
   assert.match(MODEL_QUESTION_POLICY, /Do not deny being built on external technology/);
-  assert.match(MODEL_QUESTION_POLICY, /you are Homatch AI/);
+  assert.match(MODEL_QUESTION_POLICY, /you are HOMI, HOMATCH's assistant/);
   /* And it must not instruct anything false. A policy about disclosure is not
      a cover story; the moment it tells the model to deny something true, it
      is one. */
@@ -92,7 +92,7 @@ test('every first-party surface carries the answer to "what model are you"', () 
     `these can be asked who they are and have no answer written for them:\n${missing.join('\n')}`);
 });
 
-test('every first-party surface says it is Homatch AI, by that name', () => {
+test("every first-party surface says it is HOMATCH's assistant, by name", () => {
   /*
    * A NAME IS ALLOWED. A DIFFERENT OWNER IS NOT.
    *
@@ -108,7 +108,7 @@ test('every first-party surface says it is Homatch AI, by that name', () => {
    */
   const OWNED_BY_HOMATCH = [
     /You are Homatch/,
-    /You are [A-Z][a-z]+, Homatch's AI assistant/,
+    /You are [A-Z][A-Za-z]+, (?:Homatch|HOMATCH)'s (?:AI|personal) assistant/,
   ];
   const wrong = [];
   for (const surface of FIRST_PARTY) {
@@ -168,11 +168,21 @@ test('the assistant does not name the model in the envelope either', () => {
    * the request to the provider, which is the whole point of having one.
    */
   const src = read('supabase/functions/homatch-ai/index.ts');
-  const at = src.lastIndexOf('return json({');
-  assert.ok(at > 0, 'homatch-ai no longer returns a JSON response');
-  const envelope = src.slice(at, src.indexOf('});', at));
-  for (const leak of ['model:', 'responseId:', 'usage:']) {
-    assert.equal(envelope.includes(leak), false,
-      `the customer-facing response carries ${leak} — the policy says the model is not named`);
+  /* HOMI sends the same envelope as JSON or as the final streamed `meta`
+     event, and a written (no-model) answer has one of its own; each is
+     declared as `customerEnvelope`, and every one of them is checked. */
+  const starts = [...src.matchAll(/const customerEnvelope = \{/g)].map((m) => m.index);
+  assert.ok(starts.length >= 2, 'homatch-ai no longer declares its customer envelopes');
+  for (const at of starts) {
+    const envelope = src.slice(at, src.indexOf('};', at));
+    for (const leak of ['model:', 'responseId:', 'usage:']) {
+      assert.equal(envelope.includes(leak), false,
+        `the customer-facing response carries ${leak} — the policy says the model is not named`);
+    }
   }
+  /* And nothing else is returned to the browser except those envelopes,
+     error bodies, and the stream that carries them. */
+  assert.match(src, /return json\(customerEnvelope\)/);
+  assert.match(src, /sseFrame\('meta', customerEnvelope\)/);
+  assert.match(src, /json\(await complete\(/);
 });

@@ -171,10 +171,10 @@ export function categoryOf(row: FeedRow): NotificationCategory {
   if (type === 'PROPERTY_ACTION_REQUIRED' || type.startsWith('IMPORT_')
     || type.startsWith('MATCHING_')) return 'PROPERTY';
 
-  if (type === 'LOW_CREDITS' || type.startsWith('CREDITS_') || type.startsWith('SUBSCRIPTION_')
+  if (type === 'LOW_CREDITS' || type.startsWith('CREDITS_') || type.startsWith('SUBSCRIPTION_') || type === 'PAYMENT_FAILED'
     || type === 'RESEARCH_PRODUCT_PURCHASED' || type === 'INCLUDED_USAGE_EXHAUSTED') return 'BILLING';
 
-  if (type === 'VERIFY_COMPLETE' || type === 'DOCUMENT_ANALYZED' || type === 'RETENTION_EXPIRING' || type.startsWith('EXPAT_')
+  if (type === 'VERIFY_COMPLETE' || type === 'DOCUMENT_ANALYZED' || type === 'SERVICE_FAILED' || type === 'RETENTION_EXPIRING' || type.startsWith('EXPAT_')
     || type.startsWith('CAMPAIGN_') || type.startsWith('WHATSAPP_')) return 'SERVICE';
 
   /* Meta Ads rows are a service; their own finer category is metaCategoryOf below. The

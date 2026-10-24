@@ -37,3 +37,20 @@ export const STUDIO_ENTRY_PREFIXES: readonly string[] = ['ems_nav_'];
 export function isStudioOnlyKey(key: string): boolean {
   return key.startsWith(STUDIO_PREFIX) && !STUDIO_ENTRY_PREFIXES.some((p) => key.startsWith(p));
 }
+
+/*
+ * ROUTE-ONLY FEATURE STRINGS: Home Financing (mortgage_), Investment Intelligence (inv_) and For
+ * Expats (expat_). About 150KB of English that a visitor reading the homepage never needs, cut into
+ * virtual:homatch-i18n/feature-<lang> and loaded with those routes (withFeatureStrings in
+ * routes.tsx). The few keys shared screens read stay in the entry (FEATURE_ENTRY_KEYS).
+ * src/i18n/__tests__/featureSplit.test.mjs fails if any other screen names a split key.
+ */
+export const FEATURE_PREFIXES: readonly string[] = ['mortgage_', 'inv_', 'expat_'];
+/* Read by the shared workspace controls (src/components/workspace), which chat, CRM and Email Studio use too. */
+export const FEATURE_ENTRY_KEYS: ReadonlySet<string> = new Set<string>([
+  'inv_clear', 'inv_custom', 'inv_custom_value', 'inv_gap_missing_input', 'inv_gap_never_recovers', 'inv_gap_no_positive_income', 'inv_gap_not_financed', 'inv_gap_not_meaningful', 'inv_needs_input_prefix', 'inv_no', 'inv_src_calculated', 'inv_src_convention', 'inv_src_example', 'inv_src_market', 'inv_src_user', 'inv_unit_months', 'inv_unit_months_short', 'inv_unit_years', 'inv_yes', 'mortgage_effective_rate_unavailable_no_financing',
+]);
+
+export function isFeatureOnlyKey(key: string): boolean {
+  return FEATURE_PREFIXES.some((p) => key.startsWith(p)) && !FEATURE_ENTRY_KEYS.has(key);
+}

@@ -13,7 +13,8 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import { notify } from '../_shared/notify.ts';
-import { sendNotificationEmail, renderNotificationEmail } from '../_shared/notifyEmail.ts';
+import { sendNotificationEmail, renderNotificationEmail, runAfterResponse } from '../_shared/notifyEmail.ts';
+import { pickLang } from '../_shared/transactionalEmail.ts';
 import {
   SEND_RATE_LIMIT, buildPropertyCard, cardRefusal, emailEnabledFrom, isDuplicateBody, notificationPlan,
   offerCapDecision, parseSendRequest, validateMedia, type StoredObject,
@@ -413,20 +414,24 @@ Deno.serve(async (req) => {
        first_contact flag was set above, so never twice), and only when the member has
        email notifications on. Logged in notification_deliveries either way. */
     if (plan.sendEmail) {
-      const rtl = recipientLang === 'ar' || recipientLang === 'he';
+      /* Email is Georgian unless the member chose a language (chatLang falls back to English). */
+      const emailLang = pickLang(recipient.preferred_language);
+      const rtl = emailLang === 'ar' || emailLang === 'he';
       const content = renderNotificationEmail({
-        rtl, lang: recipientLang,
-        title: chatString('pc_email_offer_heading', recipientLang),
-        body: chatString('pc_email_offer_body', recipientLang),
+        rtl, lang: emailLang,
+        title: chatString('pc_email_offer_heading', emailLang),
+        body: chatString('pc_email_offer_body', emailLang),
         whyLabel: '', why: '', analysisLabel: '', analysis: null, nextLabel: '', next: null,
-        ctaLabel: chatString('pc_email_offer_cta', recipientLang),
+        ctaLabel: chatString('pc_email_offer_cta', emailLang),
         ctaUrl: `${APP_URL}/chat?conversation=${convId}`,
-        footer: chatString('pc_email_offer_footer', recipientLang),
+        footer: chatString('pc_email_offer_footer', emailLang),
       });
-      await sendNotificationEmail(supabase, {
+      /* Off the response path: the sender's message is delivered, the email follows. */
+      const emailLeg = sendNotificationEmail(supabase, {
         userId: recipient_id, notificationId, eventKey: `property_offer:${convId}`, source: 'property_chat',
-        content: { ...content, subject: chatString('pc_email_offer_subject', recipientLang) },
+        content: { ...content, subject: chatString('pc_email_offer_subject', emailLang) },
       }).catch((err) => console.error('send-message offer email failed', err));
+      if (!runAfterResponse(emailLeg)) await emailLeg;
     }
 
     return new Response(JSON.stringify({ message: { ...message, status: 'DELIVERED', delivered_at: now }, conversation_id: convId, first_contact: isFirstContact }), { headers: corsHeaders });

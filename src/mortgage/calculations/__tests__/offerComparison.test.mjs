@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { compareOffers } from '../offerComparison.ts';
+import { buildAmortizationSchedule, computeMonthlyPayment } from '../amortization.ts';
 
 function offer(overrides = {}) {
   return {
@@ -63,4 +64,45 @@ test('compareOffers: matching currency and term across all offers marks assumpti
   const result = compareOffers([offer({ offerName: 'A' }), offer({ offerName: 'B', nominalAnnualRatePercent: 9 })]);
   assert.equal(result.assumptionsComparable, true);
   assert.equal(result.incomparabilityReasons.length, 0);
+});
+
+/* ── Rate sensitivity, appraisal and missing costs (financial literacy) ── */
+
+test('appraisal fee is a one-time cost in the totals', () => {
+  const [a, b] = compareOffers([offer({ offerName: 'A' }), offer({ offerName: 'B', appraisalFeeFlat: 300 })]).rows;
+  assert.equal(b.initialCosts - a.initialCosts, 300);
+  assert.equal(Math.round((b.totalRepayment - a.totalRepayment) * 100) / 100, 300);
+});
+
+test('a rate fixed for the whole term has no rise scenario', () => {
+  const [row] = compareOffers([offer({ offerName: 'A' }), offer({ offerName: 'B' })]).rows;
+  assert.equal(row.rateCanChangeFromMonth, null);
+  assert.equal(row.paymentAfterRateRise, null);
+  assert.ok(row.labels.includes('mortgage_offer_label_more_predictable_rate'));
+});
+
+test('a variable rate rises from month one: payment equals the full-term payment at rate + 2pp', () => {
+  const [, v] = compareOffers([offer({ offerName: 'A' }), offer({ offerName: 'V', rateType: 'VARIABLE', nominalAnnualRatePercent: 9 })]).rows;
+  assert.equal(v.rateCanChangeFromMonth, 1);
+  assert.equal(v.paymentAfterRateRise, computeMonthlyPayment(v.offer.loanAmount, 11, 240));
+  assert.ok(v.paymentAfterRateRise > v.monthlyPayment);
+});
+
+test('a rate fixed for two years re-amortises the month-24 balance over the remaining 216 months', () => {
+  const o = offer({ offerName: 'F2', rateType: 'FIXED', fixedPeriodMonths: 24 });
+  const [row] = compareOffers([o, offer({ offerName: 'B' })]).rows;
+  const schedule = buildAmortizationSchedule({ principal: o.loanAmount, annualRatePercent: o.nominalAnnualRatePercent, termMonths: o.termMonths });
+  assert.equal(row.rateCanChangeFromMonth, 25);
+  assert.equal(row.paymentAfterRateRise, computeMonthlyPayment(schedule[23].remainingPrincipal, o.nominalAnnualRatePercent + 2, 216));
+  assert.ok(!row.labels.includes('mortgage_offer_label_more_predictable_rate'));
+  assert.ok(row.labels.includes('mortgage_offer_label_fixed_for_period'));
+});
+
+test('costs the offer did not state are named, never silently treated as known zero', () => {
+  const [bare, full] = compareOffers([
+    offer({ offerName: 'Bare' }),
+    offer({ offerName: 'Full', originationFeePercent: 1, appraisalFeeFlat: 200, mandatoryInsuranceAnnualFlat: 150, recurringMonthlyFeeFlat: 0 }),
+  ]).rows;
+  assert.deepEqual(bare.missingCostKeys, ['mortgage_offer_missing_origination', 'mortgage_offer_missing_appraisal', 'mortgage_offer_missing_insurance', 'mortgage_offer_missing_monthly_fee']);
+  assert.deepEqual(full.missingCostKeys, []);
 });

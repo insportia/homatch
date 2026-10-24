@@ -41,9 +41,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { logActivity } from '@/services/api';
 import { buildConsultantBrief } from '@/mortgage/consultantBrief';
-import { useFinancingSession } from '@/components/mortgage/useFinancingSession';
+import { useFinancingSession, type FinancingPrefill } from '@/components/mortgage/useFinancingSession';
 import { SimpleCalculator } from '@/components/mortgage/SimpleCalculator';
 import { ResultHeadline } from '@/components/mortgage/ResultHeadline';
+import { BankProductsPanel } from '@/components/mortgage/BankProductsPanel';
+import { ReadinessAssessment, type ReadinessAnswers } from '@/components/mortgage/ReadinessAssessment';
+import type { ReadinessResult } from '@/mortgage/readiness';
 import { ConsultantPanel } from '@/components/mortgage/ConsultantPanel';
 import { MortgageAskProvider } from '@/components/mortgage/askConsultant';
 import { ToolShelf } from '@/components/mortgage/ToolShelf';
@@ -56,11 +59,31 @@ import { SummaryView } from '@/components/mortgage/SummaryView';
 import { OffersView } from '@/components/mortgage/views/OffersView';
 import { ProgramsView } from '@/components/mortgage/views/ProgramsView';
 import { BeforeYouSignView } from '@/components/mortgage/views/GuidanceViews';
+import { GlossaryPanel, GlossaryScenarioProvider } from '@/components/mortgage/TermInfo';
+import { MortgageWorkspace } from '@/components/mortgage/MortgageWorkspace';
+import { recordMortgageInterest } from '@/services/mortgageInterest';
 
-interface MortgagePrefillState {
+interface MortgagePrefillState extends FinancingPrefill {
   propertyId?: string;
   price?: number;
   currency?: string;
+}
+
+/** What HOMI is told about the readiness check: the person's own answers and the engine's findings, never a probability. */
+function summariseReadiness({ answers, result }: { answers: ReadinessAnswers; result: ReadinessResult }) {
+  return {
+    tier: result.tier,
+    incomeSource: answers.source, incomeHistory: answers.history, creditHistory: answers.credit,
+    netMonthlyIncome: answers.income, otherMonthlyDebt: answers.hasDebt ? answers.debt : 0,
+    coBorrower: answers.hasCoBorrower ? { netMonthlyIncome: answers.coIncome, monthlyDebt: answers.coDebt } : null,
+    additionalCollateralValue: answers.hasCollateral ? answers.collateral : null,
+    ptiPercent: result.ptiPercent, ptiLimit: result.ptiLimit, ltvPercent: result.ltvPercent, ltvLimit: result.ltvLimit,
+    ltvWithCollateralPercent: result.ltvWithCollateralPercent,
+    maxMonthlyPaymentAllowed: result.maxPayment, maxLoanAtTheseTerms: result.maxLoan,
+    checks: result.checks.map((c) => ({ check: c.key, status: c.status })),
+    gaps: result.gaps,
+    note: 'Readiness against published National Bank of Georgia limits only. Not a bank decision and not an approval probability.',
+  };
 }
 
 export default function MortgagePage() {
@@ -70,10 +93,11 @@ export default function MortgagePage() {
   const location = useLocation();
   const prefill = (location.state as { context?: MortgagePrefillState } | null)?.context;
 
-  const session = useFinancingSession({ price: prefill?.price, currency: prefill?.currency });
+  const session = useFinancingSession(prefill);
   const {
     draft,
     set,
+    replaceDraft,
     reset,
     topic,
     selectTopic,
@@ -89,6 +113,7 @@ export default function MortgagePage() {
     addOffer,
     updateOffer,
     removeOffer,
+    replaceOffers,
     offerComparison,
     subsidyPrograms,
     subsidyAnswers,
@@ -130,7 +155,30 @@ export default function MortgagePage() {
     }
   }, [homatchUser, prefill?.propertyId]);
 
+  /* Mortgage interest in a listing: recorded once the calculation for it is on screen and has
+     settled, with no extra step. Only the listing and the price are sent; the server ignores a
+     listing that is the person's own, and repeats within a day count once. */
+  const interestPrice = showResult && input ? input.propertyPrice : null;
+  useEffect(() => {
+    if (!homatchUser || !prefill?.propertyId || interestPrice === null) return undefined;
+    const timer = window.setTimeout(() => { void recordMortgageInterest(prefill.propertyId as string, interestPrice, draft.currency); }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [homatchUser, prefill?.propertyId, interestPrice, draft.currency]);
+
   const currency = draft.currency;
+  /* The person's own numbers for the glossary examples, once there is a scenario. */
+  const exampleScenario = useMemo(
+    () => (input ? {
+      propertyPrice: input.propertyPrice, downPayment: input.downPayment, termMonths: input.termMonths,
+      nominalAnnualRatePercent: input.nominalAnnualRatePercent, currency,
+      monthlyNetIncome: draft.monthlyNetIncome, originationFeePercent: draft.originationFeePercent,
+    } : null),
+    [input, currency, draft.monthlyNetIncome, draft.originationFeePercent],
+  );
+  const workspaceRules = useMemo(
+    () => (rulesReady ? { pti: ptiRules, ltv: ltvRules } : null),
+    [rulesReady, ptiRules, ltvRules],
+  );
   const presetContext = useMemo(
     () => ({
       propertyPrice: draft.propertyPrice ?? undefined,
@@ -149,6 +197,8 @@ export default function MortgagePage() {
    * the what-if ladders. The model is asked to explain them, never to
    * produce them. See src/mortgage/consultantBrief.ts.
    */
+  /* The guided readiness result, shared with HOMI so it can explain it. */
+  const [readiness, setReadiness] = useState<{ answers: ReadinessAnswers; result: ReadinessResult } | null>(null);
   const brief = useMemo(
     () =>
       input
@@ -193,6 +243,7 @@ export default function MortgagePage() {
     <AppLayout noPadding>
       <PageMeta title={t('mortgage_page_title')} description={t('mortgage_page_subtitle')} />
       <MortgageAskProvider>
+      <GlossaryScenarioProvider scenario={exampleScenario}>
         {/*
           * PREMIUM LIGHT, NOT THE ANALYTICAL NAVY.
           *
@@ -204,7 +255,7 @@ export default function MortgagePage() {
           * speaks in tokens, so the same markup carries on the light ground.
           */}
         <div className="hm-customer hm-customer-canvas min-h-[calc(100vh-4rem)]">
-          <div className="mx-auto w-full max-w-[64rem] space-y-8 px-4 py-8 sm:px-6 sm:py-10">
+          <div className="mx-auto w-full max-w-[64rem] space-y-6 px-4 py-6 sm:space-y-8 sm:px-6 sm:py-10">
             {/* ── A. The name — DARK STRUCTURAL FRAMING.
                 The navy band is the product's frame: deep ink ground, white
                 title, gold eyebrow and a hairline of gold light. The WORK
@@ -237,13 +288,30 @@ export default function MortgagePage() {
               }}
             />
 
+            {showResult && result ? <ResultHeadline result={result} currency={currency} input={input} /> : null}
+
+            {/* ── C1. Save it, come back to it: saved scenarios open even before a new calculation. ── */}
+            <MortgageWorkspace
+              userId={homatchUser?.id ?? null}
+              draft={draft}
+              input={input}
+              result={showResult ? result : null}
+              affordability={affordability}
+              rules={workspaceRules}
+              propertyId={prefill?.propertyId ?? null}
+              offers={offers}
+              onOpenDraft={(next, savedOffers) => { replaceDraft(next); replaceOffers(savedOffers); setPressed(true); }}
+              onNew={() => { reset(); setPressed(false); }}
+            />
+
             {showResult && result ? (
               <>
-                {/* ── C. The answer ── */}
-                <ResultHeadline result={result} currency={currency} />
 
                 {/* ── D. The consultant ── */}
-                <ConsultantPanel brief={brief} />
+                {/* ── C2. Readiness, optional and collapsed ── */}
+                <ReadinessAssessment input={input} ptiRules={ptiRules} ltvRules={ltvRules} onResult={setReadiness} />
+
+                <ConsultantPanel brief={brief ? { ...brief, readiness: readiness ? summariseReadiness(readiness) : null } : null} />
 
                 {/* ── E. Optional tools ── */}
                 <ToolShelf open={topic} onOpen={selectTopic} state={workspaceState}>
@@ -260,6 +328,15 @@ export default function MortgagePage() {
                   ) : null}
 
                   {topic === 'COMPARE_OFFERS' ? (
+                    <>
+                    {/* Verified bank products, as an alternative scenario to add to the comparison. */}
+                    <BankProductsPanel
+                      currency={currency}
+                      loanAmount={result.loanAmount}
+                      termMonths={draft.termMonths ?? 240}
+                      canAdd={offers.length < 3}
+                      onUse={addOffer}
+                    />
                     <OffersView
                       offers={offers}
                       comparison={offerComparison}
@@ -271,6 +348,7 @@ export default function MortgagePage() {
                       currency={currency}
                       context={presetContext}
                     />
+                    </>
                   ) : null}
 
                   {topic === 'AFFORDABILITY' ? (
@@ -369,7 +447,7 @@ export default function MortgagePage() {
                     <button
                       type="button"
                       className="min-h-11 text-2xs text-muted-foreground underline decoration-dotted underline-offset-2"
-                      onClick={() => navigate('/auth/login')}
+                      onClick={() => navigate('/auth/login?next=/mortgage')}
                     >
                       {t('mortgage_sign_in_to_save')}
                     </button>
@@ -378,6 +456,8 @@ export default function MortgagePage() {
               </>
             ) : null}
 
+            <GlossaryPanel />
+
             <p className="rounded-xl border border-dashed border-border px-5 py-4 text-2xs leading-relaxed text-muted-foreground">
               {t('mortgage_global_disclaimer')}
             </p>
@@ -385,6 +465,7 @@ export default function MortgagePage() {
             <PageBlocks slug="mortgage" />
           </div>
         </div>
+      </GlossaryScenarioProvider>
       </MortgageAskProvider>
     </AppLayout>
   );

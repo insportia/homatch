@@ -72,9 +72,15 @@ test('the idempotent Meta writes keep retries; the creating ones do not', () => 
 test('the credit-holding OpenAI calls end before the platform does, in the path that releases the hold', () => {
   const ai = readFileSync(new URL('../../homatch-ai/index.ts', import.meta.url), 'utf8');
   assert.match(ai, /const OPENAI_REQUEST_TIMEOUT_MS = 130_000;/);
+  /* HOMI streams, so one controller carries both limits: the platform deadline
+     and the person cancelling. The same two guarantees are pinned on that shape:
+     the request is bounded, and a request that never answers releases the hold. */
+  assert.match(ai, /setTimeout\(\(\) => providerAbort\.abort\('timeout'\), OPENAI_REQUEST_TIMEOUT_MS\)/, 'the provider call is bounded');
   const call = ai.slice(ai.indexOf("fetch('https://api.openai.com/v1/responses'"));
-  assert.match(call.slice(0, 600), /signal: AbortSignal\.timeout\(OPENAI_REQUEST_TIMEOUT_MS\)/);
-  assert.match(call.slice(0, 2500), /catch \(err\) \{[\s\S]{0,300}releaseExecution\(sb, grant, 'PROVIDER_UNREACHABLE'\)/);
+  assert.match(call.slice(0, 600), /signal: providerAbort\.signal/);
+  assert.match(call.slice(0, 900), /catch \{[\s\S]{0,400}return failTurn\('PROVIDER_UNREACHABLE'/);
+  const failTurn = ai.slice(ai.indexOf('const failTurn = async'), ai.indexOf('const failTurn = async') + 400);
+  assert.match(failTurn, /clearTimeout\(providerTimer\);[\s\S]{0,80}if \(grant\) await releaseExecution\(sb, grant, code\)/, 'a failed turn gives the hold back');
 
   const research = readFileSync(new URL('../../homatch-research/index.ts', import.meta.url), 'utf8');
   assert.match(research, /const PROVIDER_DEADLINE_MS = 130_000;/);

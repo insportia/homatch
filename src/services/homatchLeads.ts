@@ -11,23 +11,39 @@
 
 import { supabase } from '@/db/supabase';
 
-export type LeadFilter = 'ALL' | 'STRONG' | 'POTENTIAL' | 'STANDARD' | 'PREMIUM' | 'FRESH' | 'UNLOCKED' | 'CONTACTED' | 'SAVED'
+export type LeadFilter = 'ALL' | 'STRONG' | 'POTENTIAL' | 'STANDARD' | 'PREMIUM' | 'MORTGAGE' | 'FRESH' | 'UNLOCKED' | 'CONTACTED' | 'SAVED'
   | 'LOCKED' | 'DIRECT' | 'BROKER' | 'STALE' | 'ACTIVE'
   /* Smart match expansion: the display categories and the high-confidence cut. */
   | 'EXACT' | 'NEARBY' | 'VIP' | 'HIGH_CONFIDENCE';
 export type LeadSort = 'BEST' | 'CATEGORY' | 'NEWEST' | 'ACTIVE' | 'UPDATED' | 'BUDGET_DESC' | 'BUDGET_ASC';
 /** Who is searching, as the member declared it on their search (never "verified"). */
 export type LeadSearcher = 'DIRECT' | 'BROKER_FOR_CLIENT' | 'PROFESSIONAL';
-export type LeadSegment = 'STANDARD' | 'PREMIUM';
+/** MORTGAGE: mortgage interest only (3 credits). MORTGAGE_MATCH: mortgage interest and the person's own
+ *  property search also matching this listing (5 credits). */
+export type LeadSegment = 'STANDARD' | 'PREMIUM' | 'MORTGAGE' | 'MORTGAGE_MATCH';
 export type LeadBand = 'STRONG' | 'POTENTIAL' | 'WEAK';
 /** The category the owner sees: VIP (documented high budget) overrides EXACT / NEARBY_SIMILAR. */
 export type LeadCategory = 'EXACT' | 'NEARBY_SIMILAR' | 'VIP';
 export type LeadKind = 'EXACT_LOCATION' | 'SAME_AREA_BUDGET_FLEX' | 'NEARBY_AREA' | 'CITY_WIDE' | 'SIMILAR_PROPERTY';
 export type LeadConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
 /** The one price that applies to a person (never stacked). */
-export type LeadPriceKey = 'STANDARD' | 'EXACT' | 'PREMIUM';
+export type LeadPriceKey = 'STANDARD' | 'EXACT' | 'PREMIUM' | 'MORTGAGE' | 'MORTGAGE_MATCH';
+/** The evidence behind a price, as the server states it. */
+export type LeadPriceReason = 'MORTGAGE_INTEREST' | 'SEARCH_MATCH' | 'EXACT_SEARCH_MATCH' | 'HIGH_BUDGET';
 
-export interface LeadPrices { STANDARD: number; EXACT: number; PREMIUM: number; active: boolean }
+export interface LeadPrices {
+  STANDARD: number; EXACT: number; PREMIUM: number; MORTGAGE: number; MORTGAGE_MATCH: number;
+  active: boolean; mortgageActive?: boolean; mortgageMatchActive?: boolean;
+}
+
+/** What a Home Financing opt-in lets Matching say about the member (never the calculation itself). */
+export interface MortgageSignals {
+  calculatorUse: 'ONCE' | 'REPEATED';
+  /** YYYY-MM of the latest calculator use. */
+  lastUseMonth: string | null;
+  /** They calculated a mortgage for this very listing. */
+  thisListing: boolean;
+}
 
 /** Why HOMATCH matched this person with the listing — measured and stated evidence only. */
 export interface LeadExplanation {
@@ -101,6 +117,11 @@ export interface LeadItem {
   confidence?: LeadConfidence;
   explanation?: LeadExplanation;
   priceKey?: LeadPriceKey;
+  /** Where the evidence for this person came from. */
+  origin?: 'MORTGAGE' | 'SEARCH' | 'MORTGAGE_AND_SEARCH';
+  /** Why this price: the signals the server counted. */
+  priceReasons?: LeadPriceReason[];
+  mortgage?: MortgageSignals | null;
   /** Only once unlocked. */
   displayName: string | null;
   language: string | null;
@@ -132,12 +153,12 @@ export interface LeadQuery {
 export const LEAD_PAGE_SIZE = 24;
 
 const EMPTY_COUNTS: LeadCounts = {
-  ALL: 0, STRONG: 0, POTENTIAL: 0, STANDARD: 0, PREMIUM: 0, FRESH: 0, UNLOCKED: 0, CONTACTED: 0, SAVED: 0,
+  ALL: 0, STRONG: 0, POTENTIAL: 0, STANDARD: 0, PREMIUM: 0, MORTGAGE: 0, FRESH: 0, UNLOCKED: 0, CONTACTED: 0, SAVED: 0,
   LOCKED: 0, DIRECT: 0, BROKER: 0, STALE: 0, ACTIVE: 0, EXACT: 0, NEARBY: 0, VIP: 0, HIGH_CONFIDENCE: 0,
 };
 
 /** Defaults shown until the server answers: the owner's prices (2026-10-18). */
-export const DEFAULT_LEAD_PRICES: LeadPrices = { STANDARD: 3, EXACT: 5, PREMIUM: 10, active: false };
+export const DEFAULT_LEAD_PRICES: LeadPrices = { STANDARD: 3, EXACT: 5, PREMIUM: 10, MORTGAGE: 3, MORTGAGE_MATCH: 5, active: false };
 
 function normalizePreferences(raw: unknown): MatchPreferences | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -263,9 +284,13 @@ export interface UnlockQuote {
   standardCount: number;
   exactCount: number;
   premiumCount: number;
+  mortgageCount: number;
+  mortgageMatchCount: number;
   standardCredits: number;
   exactCredits: number;
   premiumCredits: number;
+  mortgageCredits: number;
+  mortgageMatchCredits: number;
   totalCredits: number;
   balance: number | null;
   prices: LeadPrices;
@@ -281,6 +306,8 @@ export async function quoteUnlock(matchIds: string[]): Promise<UnlockQuote> {
     exactCount: Number(q.exactCount ?? 0), exactCredits: Number(q.exactCredits ?? 0),
     premiumCount: Number(q.premiumCount ?? 0), standardCredits: Number(q.standardCredits ?? 0),
     premiumCredits: Number(q.premiumCredits ?? 0), totalCredits: Number(q.totalCredits ?? 0),
+    mortgageCount: Number(q.mortgageCount ?? 0), mortgageCredits: Number(q.mortgageCredits ?? 0),
+    mortgageMatchCount: Number(q.mortgageMatchCount ?? 0), mortgageMatchCredits: Number(q.mortgageMatchCredits ?? 0),
     balance: q.balance == null ? null : Number(q.balance),
     prices: { ...DEFAULT_LEAD_PRICES, ...(q.prices ?? {}) },
   };
@@ -305,9 +332,10 @@ export function newUnlockKey(): string {
   return `ilu:${rnd}`;
 }
 
-export async function unlockLeads(matchIds: string[], idempotencyKey: string): Promise<UnlockResult> {
+/** expectedCredits: the total the customer saw in the quote; the server refuses anything higher (PRICE_CHANGED). */
+export async function unlockLeads(matchIds: string[], idempotencyKey: string, expectedCredits?: number): Promise<UnlockResult> {
   const { data, error } = await supabase.functions.invoke('atomic-unlock', {
-    body: { kind: 'internal_leads', matchIds, idempotencyKey },
+    body: { kind: 'internal_leads', matchIds, idempotencyKey, ...(expectedCredits === undefined ? {} : { expectedCredits }) },
   });
   if (error) {
     let code = 'INTERNAL';

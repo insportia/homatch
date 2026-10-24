@@ -28,6 +28,13 @@ export interface SuggestedReply {
   label: string;
   /** What is sent as the user's message. Usually the same as the label. */
   value: string;
+  /**
+   * A HOMI intent to answer this click with, from HOMATCH's written answers.
+   * Only ever set on chips the SERVER wrote (deterministic HOMI replies); a
+   * model's suggestions are parsed without it, and the server re-validates
+   * any intent against its closed list before trusting it.
+   */
+  intent?: string;
 }
 
 /**
@@ -89,7 +96,9 @@ function unsafe(text: string): boolean {
  * rather than a broken one. Order is preserved — the model puts the
  * most likely reply first and that is worth keeping.
  */
-export function parseSuggestedReplies(raw: unknown): SuggestedReply[] {
+const INTENT_SHAPE = /^[A-Z][A-Z_]{2,47}$/;
+
+export function parseSuggestedReplies(raw: unknown, options: { allowIntent?: boolean } = {}): SuggestedReply[] {
   if (!Array.isArray(raw)) return [];
 
   const out: SuggestedReply[] = [];
@@ -117,7 +126,12 @@ export function parseSuggestedReplies(raw: unknown): SuggestedReply[] {
     if (seen.has(key)) continue;
     seen.add(key);
 
-    out.push({ id: `s${out.length + 1}`, label, value });
+    const intent = options.allowIntent && typeof entry === 'object' && entry
+      ? (entry as { intent?: unknown }).intent : undefined;
+    out.push({
+      id: `s${out.length + 1}`, label, value,
+      ...(typeof intent === 'string' && INTENT_SHAPE.test(intent) ? { intent } : {}),
+    });
   }
 
   // One chip is not a choice, it is a nudge — and a single "Yes" under

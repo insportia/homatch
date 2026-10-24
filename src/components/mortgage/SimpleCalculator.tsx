@@ -23,6 +23,8 @@ import { cn } from '@/lib/utils';
 import { formatMoney, intlLocaleFor } from '@/components/workspace/primitives';
 import { MORTGAGE_CURRENCIES } from '@/mortgage/currencies';
 import { mortgageDerivedPercent } from '@/mortgage/presets';
+import { TermInfo } from './TermInfo';
+import type { GlossaryTerm } from '@/mortgage/glossary';
 import type { DraftField, FinancingDraft } from './useFinancingSession';
 
 const QUICK_TERMS = [10, 15, 20, 25, 30];
@@ -35,22 +37,25 @@ function Field({
   label,
   hint,
   error,
+  term,
   children,
 }: {
   id: string;
   label: string;
+  /** A financial term worth explaining beside the label. */
+  term?: GlossaryTerm;
   hint?: string | null;
   error?: string | null;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <label
-        htmlFor={id}
-        className="mb-2 block text-[15px] font-semibold text-foreground"
-      >
-        {label}
-      </label>
+      <div className="mb-2 flex items-center gap-2">
+        <label htmlFor={id} className="block text-[15px] font-semibold text-foreground">
+          {label}
+        </label>
+        {term ? <TermInfo term={term} /> : null}
+      </div>
       {children}
       {error ? (
         <p className="mt-1.5 text-xs text-[hsl(var(--destructive))]">{error}</p>
@@ -190,6 +195,7 @@ export function SimpleCalculator({
         <Field
           id="mtg-down"
           label={t('mortgage_label_down_payment')}
+          term="DOWN_PAYMENT"
           error={errorFor('downPayment')}
           hint={
             downMode === 'AMOUNT'
@@ -278,6 +284,7 @@ export function SimpleCalculator({
         <Field
           id="mtg-rate-input"
           label={t('mortgage_label_nominal_rate')}
+          term="NOMINAL_RATE"
           error={errorFor('rate')}
           hint={t('mortgage_calc_rate_hint')}
         >

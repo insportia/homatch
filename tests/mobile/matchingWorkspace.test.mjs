@@ -292,6 +292,41 @@ test('switches: internal only, curated only, both off (library only), library hi
   await page.locator('[data-testid="mw-product-external"]').waitFor({ state: 'detached', timeout: 15000 });
 });
 
+/* Words that the browser split across two lines (one Range per word → more than one line box). */
+async function brokenWords(page, sel) {
+  return page.locator(sel).evaluateAll((els) => {
+    const out = [];
+    for (const el of els) {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        for (const m of node.data.matchAll(/\S+/g)) {
+          const r = document.createRange();
+          r.setStart(node, m.index); r.setEnd(node, m.index + m[0].length);
+          const tops = new Set([...r.getClientRects()].filter((b) => b.width > 0).map((b) => Math.round(b.top)));
+          if (tops.size > 1) out.push(m[0]);
+        }
+      }
+    }
+    return out;
+  });
+}
+
+test('Georgian at 320 / 360: tabs and internal prices never cut a word; the internal intro says it is this property, kept up to date', opts, async (t) => {
+  const { page, BASE } = await boot(t, { port: PORT, width: 360, height: 800, lang: 'ka' });
+  await openWorkspace(page, BASE, '?product=internal');
+  await waitRows(page, 3);
+  for (const width of [320, 360]) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const sel of ['[data-testid="mw-view"] [role="tab"]', '[data-testid="mw-product"] [role="tab"]', '[data-testid="mw-internal-prices"] [data-price]']) {
+      assert.deepEqual(await brokenWords(page, sel), [], `${width}px ${sel}: no word split across lines`);
+    }
+  }
+  assert.match(await text(page, '[data-testid="mw-promo"] h2'), /ამ ქონების დამთხვევები/);
+  assert.match(await text(page, '[data-testid="mw-internal-live"]'), /მუდმივად ახლდება[\s\S]*აქტიურია[\s\S]*დაემატება/);
+  await noOverflow(page, 'internal ka 360');
+  await shot(page, SHOTS, 'mw-internal-ka-360');
+});
+
 test('maintenance (ka): the owner’s Georgian copy, verbatim and in order; the CTA opens /find-property; no list, no prices', opts, async (t) => {
   const { page, state, BASE } = await boot(t, { port: PORT, width: 360, lang: 'ka', switches: { maintenance: true } });
   await openWorkspace(page, BASE);

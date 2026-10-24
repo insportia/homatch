@@ -23,7 +23,7 @@
  * Nothing here sends anything to anyone; the success panel only opens the existing campaign
  * screen on a contact list.
  */
-import { BookUser, Database, Info, Sparkles, Users } from 'lucide-react';
+import { BookUser, Database, Info, RefreshCw, Sparkles, Users } from 'lucide-react';
 import { type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -74,7 +74,7 @@ function Segmented<T extends string>({ items, value, onChange, label, testId, si
         const on = v === value;
         return (
           <button key={v} type="button" role="tab" aria-selected={on} onClick={() => onChange(v)} data-testid={`${testId}-${v}`}
-            className={cn('flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-xl px-2 text-center text-sm font-semibold leading-tight transition-colors',
+            className={cn('flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-center text-sm font-semibold leading-tight transition-colors min-[480px]:flex-row min-[480px]:gap-2',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_50%)]',
               size === 'lg'
                 ? on ? 'bg-[hsl(38_92%_54%)] text-[#161309] shadow-card' : 'text-white/80 hover:bg-white/10'
@@ -484,17 +484,20 @@ function WorkspaceContent() {
                   <p className="mt-1 max-w-[70ch] text-sm leading-relaxed text-[hsl(224_14%_28%)]">{t('mw_internal_body')}</p>
                 </div>
                 {internalPrices ? (
-                  <dl className="grid shrink-0 grid-cols-3 gap-2 sm:w-80" data-testid="mw-internal-prices">
+                  <dl className="grid shrink-0 grid-cols-1 gap-2 sm:w-96 sm:grid-cols-3" data-testid="mw-internal-prices">
                     {([['EXACT', internalPrices.EXACT], ['NEARBY_SIMILAR', internalPrices.STANDARD], ['VIP', internalPrices.PREMIUM]] as const).map(([cat, n]) => (
-                      <div key={cat} className={cn('min-w-0 rounded-xl px-2.5 py-2', cat === 'VIP' ? 'bg-[#0C1119] text-white' : 'border border-[hsl(var(--border))] bg-white')} data-price={cat}>
-                        <dt className={cn('text-2xs font-semibold uppercase leading-tight tracking-[0.08em] [overflow-wrap:anywhere]', cat === 'VIP' ? 'text-[hsl(38_92%_62%)]' : 'text-[hsl(224_10%_40%)]')}>{t(`hl_cat_${cat}`)}</dt>
-                        <dd className="mt-0.5 font-display text-base font-bold" dir="ltr">{t(n === 1 ? 'mw_credit_one' : 'mw_credits_n', { n: formatCredits(n, lang) })}</dd>
+                      <div key={cat} className={cn('flex min-w-0 items-center justify-between gap-3 rounded-xl px-3 py-2 sm:block', cat === 'VIP' ? 'bg-[#0C1119] text-white' : 'border border-[hsl(var(--border))] bg-white')} data-price={cat}>
+                        <dt className={cn('min-w-0 text-xs font-semibold leading-snug', cat === 'VIP' ? 'text-[hsl(38_92%_62%)]' : 'text-[hsl(224_10%_40%)]')}>{t(`hl_cat_${cat}`)}</dt>
+                        <dd className="shrink-0 whitespace-nowrap font-display text-base font-bold sm:mt-0.5" dir="ltr">{t(n === 1 ? 'mw_credit_one' : 'mw_credits_n', { n: formatCredits(n, lang) })}</dd>
                       </div>
                     ))}
                   </dl>
                 ) : null}
               </div>
               <p className="mt-2 text-xs text-muted-foreground">{t('mw_internal_prices_note')}</p>
+              <p className="mt-3 flex items-start gap-2 rounded-xl bg-[hsl(var(--gold-soft))] px-3 py-2 text-xs leading-relaxed text-[hsl(var(--gold-ink))]" data-testid="mw-internal-live">
+                <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{t('mw_internal_live')}
+              </p>
             </section>
           )
         ) : (

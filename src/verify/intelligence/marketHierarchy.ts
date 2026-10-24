@@ -211,10 +211,11 @@ export function buildingClassOf(c: RawComparable): 'NEW_BUILD' | 'OLD_STOCK' | n
  * SAY; an unknown kind on either side never excludes on its own, except that
  * a parking subject is never compared with residential stock.
  */
-export type PropertyKind = 'APARTMENT' | 'PARKING' | 'COMMERCIAL' | 'HOUSE' | 'LAND';
+export type PropertyKind = 'APARTMENT' | 'PARKING' | 'STORAGE' | 'COMMERCIAL' | 'HOUSE' | 'LAND';
 
 const KIND_PATTERNS: ReadonlyArray<readonly [PropertyKind, RegExp]> = [
   ['PARKING', /ავტოსადგომ|პარკინგის\s*ადგილ|ავტოფარეხ|გარაჟ|parking[\s_-]*(?:space|spot|place|lot)|\bparking\b(?!.*(?:bina|apartment))|car[\s_-]*park|\bgarage\b|машино-?мест|паркинг|гараж|otopark|avtosadgom|avtofarekh|parkingi|garazh/iu],
+  ['STORAGE', /სათავს|სამარაგ|storage[\s_-]*(?:room|unit|space)|\bstorage\b|кладов|depo\b|satavso/iu],
   ['COMMERCIAL', /კომერციულ|საოფისე|ოფისი|სავაჭრო|მაღაზი|commercial|office|retail|\bshop\b|коммерческ|офис|торгов|ticari|ofis|dükkan|komerciul|saofise|\bofisi\b/iu],
   ['HOUSE', /კერძო\s*სახლ|ინდივიდუალური\s*საცხოვრებელი\s*სახლ|აგარაკ|private[\s_-]*house|\bhouse\b|\bvilla\b|townhouse|cottage|частный\s*дом|коттедж|müstakil|villa|kerdzo-sakhl|sakhli|agarak/iu],
   ['LAND', /მიწის\s*ნაკვეთ(?!.*ბინა)|\bland\b(?!\s*area)|\bplot\b|земельн|участок|\barsa\b|miwis-nakvet|nakveti/iu],
@@ -233,6 +234,7 @@ export function propertyKindOfText(text: unknown): PropertyKind | null {
 export function comparableKindOf(c: RawComparable): PropertyKind | null {
   const stated = txt(c.propertyType).toUpperCase();
   if (/PARKING|GARAGE/.test(stated)) return 'PARKING';
+  if (/STORAGE/.test(stated)) return 'STORAGE';
   if (/COMMERCIAL|OFFICE|RETAIL/.test(stated)) return 'COMMERCIAL';
   if (/^LAND$/.test(stated)) return 'LAND';
   if (/^HOUSE$|VILLA/.test(stated)) return 'HOUSE';
@@ -250,7 +252,7 @@ export function kindsCompatible(subject: PropertyKind | null | undefined, comp: 
   // A parking subject needs a parking comparable, stated as such. So does
   // land (job 61c1c38c): an unlabelled portal advert is almost always a flat,
   // and a flat's price per m² says nothing about a plot.
-  if (subject === 'PARKING' || subject === 'LAND') return comp === subject;
+  if (subject === 'PARKING' || subject === 'STORAGE' || subject === 'LAND') return comp === subject;
   if (!comp) return true;
   return comp === subject;
 }

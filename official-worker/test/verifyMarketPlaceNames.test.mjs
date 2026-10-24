@@ -72,3 +72,28 @@ test('a district the caller read is searched first; the centre only adds names',
   while (job.status !== 'COMPLETE') await new Promise((r) => setTimeout(r, 5));
   assert.deepEqual(seen, ['საბურთალო'], 'city and district were known: no lookup needed');
 });
+
+test('parking, storage and office are read from the commercial segment and keep only adverts that name them', async () => {
+  const { advertNames, MIN_OFFICE_ADVERTS } = await import('../.tstest-build/verify/VerifyMarketRuntime.js');
+  const ad = (i, title) => ({ source: 'MYHOME', sourceListingId: `m-${i}`, exactUrl: `https://www.myhome.ge/pr/${i}`, title, price: 18000, currency: 'USD', areaSqm: 18, propertyType: 'COMMERCIAL', transactionType: 'BUY', city: 'თბილისი', district: 'მთაწმინდა' });
+  const titles = ['იყიდება ავტოსადგომი მთაწმინდაზე', 'იყიდება კომერციული ფართი', 'იყიდება პარკინგის ადგილი', 'Parking space for sale', 'იყიდება სათავსო', 'იყიდება საოფისე ფართი'];
+  const run = async (propertyType) => {
+    const seen = [];
+    const acquire = async (request, { report }) => { seen.push(request.propertyType); await report({ status: 'RESULTS_RECEIVED', listings: titles.map((t, i) => ad(i, t)) }); };
+    const rt = new VerifyMarketRuntime({ acquireMyHome: acquire, acquireSsge: acquire });
+    const job = rt.start(parseVerifyMarketProfile({ city: 'თბილისი', district: 'მთაწმინდა', propertyType, areaSqm: 19.7 }), ['MYHOME']);
+    while (job.status !== 'COMPLETE') await new Promise((r) => setTimeout(r, 5));
+    return { seen, job };
+  };
+  const parking = await run('PARKING');
+  assert.deepEqual(parking.seen, ['COMMERCIAL'], 'searched as commercial');
+  assert.deepEqual(parking.job.comparables.map((c) => c.title).sort(), ['Parking space for sale', 'იყიდება ავტოსადგომი მთაწმინდაზე', 'იყიდება პარკინგის ადგილი'].sort());
+  assert.ok(parking.job.comparables.every((c) => c.propertyType === 'PARKING'));
+  const storage = await run('STORAGE');
+  assert.deepEqual(storage.job.comparables.map((c) => [c.title, c.propertyType]), [['იყიდება სათავსო', 'STORAGE']]);
+  const office = await run('OFFICE');
+  assert.equal(office.job.comparables.length, titles.length, `fewer than ${MIN_OFFICE_ADVERTS} office adverts: every commercial advert stays`);
+  assert.equal(advertNames('OFFICE', { title: 'იყიდება საოფისე ფართი' }), true);
+  assert.equal(parseVerifyMarketProfile({ city: 'თბილისი', propertyType: 'PARKING' }).subKind, 'PARKING');
+  assert.equal(parseVerifyMarketProfile({ city: 'თბილისი', propertyType: 'COMMERCIAL', subKind: 'OFFICE' }).subKind, 'OFFICE');
+});

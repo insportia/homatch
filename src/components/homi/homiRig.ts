@@ -85,16 +85,23 @@ function arm(p: string, side: number): string {
 export type HomiCrop = 'head' | 'bust' | 'full';
 export const HOMI_VIEWBOX: Record<HomiCrop, string> = {
   head: '170 60 660 540',
-  bust: '60 40 880 1020',
+  bust: '-60 -40 1120 1120',
   full: '-40 0 1080 1420',
 };
 
 /** The rig's SVG markup. `p` must be unique per instance on the page. */
 export function homiSvg(p: string, crop: HomiCrop, glowFilters = true): string {
-  /* Small avatars skip the blur filters: at 32px they are invisible and
-     they are the expensive part of repainting an SVG every frame. */
-  const glow = glowFilters ? '' : ' data-lite="1"';
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${HOMI_VIEWBOX[crop]}" width="100%" height="100%" overflow="visible" aria-hidden="true" focusable="false"${glow}>
+  const markup = fullSvg(p, crop);
+  /* Small avatars drop the blur filters: at 32px they cannot be seen and they
+     are the expensive part of repainting an SVG every frame. The references
+     are removed, not pointed at empty filters — an empty filter renders its
+     element as nothing at all. */
+  return glowFilters ? markup : markup.replace(/ filter="url\(#[^)]+\)"/g, '');
+}
+
+function fullSvg(p: string, crop: HomiCrop): string {
+  const glow = '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${HOMI_VIEWBOX[crop]}" width="100%" height="100%" overflow="${crop === 'head' ? 'hidden' : 'visible'}" aria-hidden="true" focusable="false"${glow}>
   <defs>
     <radialGradient id="${p}shellG" cx="35%" cy="25%" r="85%"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#eef1f5"/><stop offset="1" stop-color="#c3c9d4"/></radialGradient>
     <linearGradient id="${p}goldG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe0a0"/><stop offset=".45" stop-color="#e2a43a"/><stop offset=".7" stop-color="#b9781e"/><stop offset="1" stop-color="#f6c76c"/></linearGradient>
@@ -103,11 +110,9 @@ export function homiSvg(p: string, crop: HomiCrop, glowFilters = true): string {
     <radialGradient id="${p}jointG" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#3a4558"/><stop offset="1" stop-color="#0b1018"/></radialGradient>
     <radialGradient id="${p}irisG" cx="45%" cy="40%" r="60%"><stop offset="0" stop-color="#d9f0ff"/><stop offset=".35" stop-color="#6cc2ff"/><stop offset=".8" stop-color="#2373e0"/><stop offset="1" stop-color="#123c8c"/></radialGradient>
     <linearGradient id="${p}shineG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
-    ${glowFilters
-      ? `<filter id="${p}glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="${p}glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     <filter id="${p}glowS" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    <filter id="${p}shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000" flood-opacity=".45"/></filter>`
-      : `<filter id="${p}glow"/><filter id="${p}glowS"/><filter id="${p}shadow"/>`}
+    <filter id="${p}shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000" flood-opacity=".45"/></filter>
     <clipPath id="${p}visorClip"><rect x="272" y="206" width="456" height="250" rx="112"/></clipPath>
   </defs>
   <g class="all" filter="url(#${p}shadow)">

@@ -152,7 +152,7 @@ function EmptyState({ onChip }: { onChip: HomiChipHandler }) {
      */
     <div className="flex min-h-full flex-col items-center px-5 py-8 text-center sm:px-8">
       <div className="my-auto flex w-full max-w-2xl flex-col items-center">
-      <div className="mb-3 rounded-[1.75rem] bg-[#0C1119] p-2 ring-1 ring-inset ring-[hsl(38_92%_56%)]/35 shadow-card">
+      <div className="mb-3 overflow-hidden rounded-[1.75rem] bg-[#0C1119] p-2 ring-1 ring-inset ring-[hsl(38_92%_56%)]/35 shadow-card">
         <HomiAvatar state="greeting" crop="bust" size={128} label="HOMI" />
       </div>
       <h2 className="mb-1 text-lg font-semibold text-foreground">HOMI</h2>

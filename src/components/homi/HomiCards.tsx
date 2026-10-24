@@ -4,7 +4,7 @@ import { ArrowRight, Check, Calculator, ListChecks, TrendingUp } from 'lucide-re
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { formatMoney, formatPercent } from '@/components/workspace/primitives';
-import { computeLoanAmount, computeMonthlyPayment } from '@/mortgage/calculations/amortization';
+import { calculateMortgage } from '@/mortgage/calculations/amortization';
 import { buildIncomeModel } from '@/investment/calculations/income';
 import { paybackYears, percentOf } from '@/investment/calculations/core';
 import {
@@ -128,7 +128,7 @@ export function HomiChecklistCard({ id }: { id: string }) {
           const checked = done.includes(i);
           return (
             <li key={i}>
-              <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg px-1 py-2 hover:bg-muted/50">
+              <label className="relative flex min-h-11 cursor-pointer items-start gap-3 rounded-lg px-1 py-2 hover:bg-muted/50">
                 <input
                   type="checkbox"
                   className="peer sr-only"
@@ -173,11 +173,12 @@ export function HomiMortgageCard() {
   const result = useMemo(() => {
     if (!priceN || priceN <= 0 || rateN === null || rateN > 60) return null;
     const downPayment = Math.round(priceN * downPct) / 100;
-    const loan = computeLoanAmount({ propertyPrice: priceN, downPayment });
     const months = years * 12;
-    const monthly = computeMonthlyPayment(loan, rateN, months);
-    return { downPayment, loan, monthly, totalInterest: Math.max(0, monthly * months - loan), months };
-  }, [priceN, rateN, downPct, years]);
+    /* The same engine and schedule as the Mortgage Consultant, so the two
+       can never show different totals for the same scenario. */
+    const r = calculateMortgage({ propertyPrice: priceN, propertyCurrency: currency, downPayment, termMonths: months, nominalAnnualRatePercent: rateN });
+    return { downPayment, loan: r.loanAmount, monthly: r.monthlyPayment, totalInterest: r.totalInterest, months };
+  }, [priceN, rateN, downPct, years, currency]);
 
   const money = (v: number) => formatMoney(v, currency, lang, { narrowSymbol: true });
 

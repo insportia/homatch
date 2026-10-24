@@ -18,6 +18,7 @@
 
 import React from 'react';
 import { ExternalLink, ShieldCheck, Clock, AlertTriangle, HelpCircle } from 'lucide-react';
+import { formatExpatDate, keepSuffix } from '@/expats/display';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import {
@@ -128,16 +129,7 @@ export function AvailabilityNote({
 
 /* ── The quiet line ───────────────────────────────────────────────────── */
 
-function formatDate(iso: string | null | undefined, locale: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  try {
-    return new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'short', day: 'numeric' }).format(d);
-  } catch {
-    return d.toISOString().slice(0, 10);
-  }
-}
+const formatDate = formatExpatDate;
 
 /**
  * Who said it, when we read it, and a way to check.
@@ -181,7 +173,7 @@ export function SourceLine({
       {lead.effectiveFrom ? (
         <>
           <span aria-hidden="true">·</span>
-          <span>{t('expat_source_effective', { date: formatDate(lead.effectiveFrom, lang) })}</span>
+          <span>{keepSuffix(t('expat_source_effective', { date: formatDate(lead.effectiveFrom, lang) }))}</span>
         </>
       ) : null}
       <FreshnessMark observedAt={lead.observedAt} factClass={factClass} />
@@ -262,7 +254,7 @@ export function EvidenceDrawer({
                   </>
                 ) : null}
                 <dt>{t('expat_evidence_language')}</dt>
-                <dd className="uppercase">{s.language}</dd>
+                <dd className="uppercase" data-keep-case>{s.language}</dd>
               </dl>
 
               {s.url ? (

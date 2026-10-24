@@ -21,6 +21,7 @@
 // broke. One line, at the top, and then the English.
 
 import { ArrowLeft, ArrowRight } from 'lucide-react';
+import '@/components/expats/expats.css';
 import { usePathAvailable } from '@/lib/serviceControls';
 import React from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
@@ -133,7 +134,7 @@ export default function ExpatTopicPage() {
 
   return (
     <AppLayout noPadding>
-      <div className="overflow-x-hidden bg-background text-foreground">
+      <div className="expat-page overflow-x-hidden bg-background text-foreground">
       {/*
         * Part of Homatch, and now visibly so. This page rendered a bare
         * fragment: a visitor arriving from a search result had no header,

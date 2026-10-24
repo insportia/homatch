@@ -22,6 +22,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Check, Lock, Undo2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
+import { formatExpatDate, keepSuffix } from '@/expats/display';
 import { PLAN_STAGES, type PlanStage } from '@/expats/plan/roadmap';
 import {
   applyStatus,
@@ -230,7 +231,7 @@ export function PlanBoard({
  * enforced by a CHECK constraint — is described as a deadline.
  */
 function DueDate({ task }: { task: PlanTask }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   if (!task.dueDate) return null;
 
   const key =
@@ -250,7 +251,7 @@ function DueDate({ task }: { task: PlanTask }) {
           : 'border-border text-muted-foreground',
       )}
     >
-      {t(key, { date: task.dueDate })}
+      {keepSuffix(t(key, { date: formatExpatDate(task.dueDate, lang) }))}
     </span>
   );
 }

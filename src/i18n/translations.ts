@@ -24179,6 +24179,17 @@ const en = {
   terms_s2_body3: 'People shown in HOMATCH Matching are potentially interested, based on what they stated and what our matching found. Nobody is presented as a guaranteed buyer or tenant, and opening someone’s contact details does not mean a bank has approved anyone for a loan.',
   terms_s4_body3: 'HOMATCH Matching: opening a person’s contact details costs the price shown on their card and in the confirmation, together with the reasons for that price. You pay for the same person only once per account: anyone you have already opened stays accessible without a new charge, whatever the listing, search or later price. If the price rises before you confirm, nothing is charged and you are shown the new price.',
   terms_s5_item8: 'Use contact details obtained in HOMATCH Matching for anything other than offers about relevant properties, pass them to others, or contact people who have withdrawn their permission or blocked you',
+
+  /* ── HOMI ASSISTANT ── */
+  expat_starter_count: 'Your plan has {{n}} steps. Here are the first ones.',
+  expat_starter_save_body: 'Create a free account to keep this plan, tick steps off and get a reminder before the dates that matter.',
+  expat_starter_open: 'Open my full plan',
+  expat_starter_open_saved: 'Saved. Open my full plan',
+  expat_ask_title: 'Ask HOMI about moving to Georgia',
+  expat_ask_placeholder: 'Ask anything about living in Georgia…',
+  expat_ask_stay: 'How long can I stay without a residence permit?',
+  expat_ask_bank: 'How do I open a bank account here?',
+  expat_ask_buy: 'Can a foreigner buy a flat in Georgia?',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -48272,6 +48283,17 @@ const ka: Partial<Record<TranslationKey, string>> = {
   terms_s2_body3: 'HOMATCH-ის დამთხვევებში ნაჩვენები ადამიანები პოტენციურად დაინტერესებულები არიან, მათ მიერ მითითებულისა და ჩვენი დამთხვევის საფუძველზე. არავინ არ არის წარმოდგენილი, როგორც გარანტირებული მყიდველი ან მოიჯარე, და კონტაქტის გახსნა არ ნიშნავს, რომ ბანკმა ვინმეს სესხი დაუმტკიცა.',
   terms_s4_body3: 'HOMATCH-ის დამთხვევები: ადამიანის საკონტაქტო მონაცემების გახსნა ღირს იმ ფასად, რომელიც მის ბარათზე და დადასტურებისას ჩანს, ამ ფასის მიზეზებთან ერთად. ერთსა და იმავე ადამიანზე ერთ ანგარიშზე მხოლოდ ერთხელ იხდით: ვისაც უკვე გახსენით, ხელმისაწვდომი რჩება ახალი გადასახადის გარეშე, განცხადების, ძიების ან შემდგომი ფასის მიუხედავად. თუ ფასი დადასტურებამდე გაიზარდა, არაფერი ჩამოგეჭრებათ და ახალ ფასს ნახავთ.',
   terms_s5_item8: 'HOMATCH-ის დამთხვევებში მიღებული საკონტაქტო მონაცემები გამოიყენოთ შესაბამისი ქონების შეთავაზების გარდა სხვა მიზნით, გადასცეთ სხვებს ან დაუკავშირდეთ პირებს, რომლებმაც ნებართვა გააუქმეს ან დაგბლოკეს',
+
+  /* ── HOMI ASSISTANT ── */
+  expat_starter_count: 'შენს გეგმაში {{n}} ნაბიჯია. აი პირველები.',
+  expat_starter_save_body: 'შექმენი უფასო ანგარიში, რომ გეგმა შეინახო, ნაბიჯები მონიშნო და მნიშვნელოვან თარიღებამდე შეხსენება მიიღო.',
+  expat_starter_open: 'ჩემი სრული გეგმის ნახვა',
+  expat_starter_open_saved: 'შენახულია. სრული გეგმის ნახვა',
+  expat_ask_title: 'ჰკითხე HOMI-ს საქართველოში გადმოსვლაზე',
+  expat_ask_placeholder: 'იკითხე ნებისმიერი რამ საქართველოში ცხოვრებაზე…',
+  expat_ask_stay: 'რამდენ ხანს შემიძლია დავრჩე ბინადრობის ნებართვის გარეშე?',
+  expat_ask_bank: 'როგორ გავხსნა აქ საბანკო ანგარიში?',
+  expat_ask_buy: 'შეუძლია უცხოელს საქართველოში ბინის ყიდვა?',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -72356,6 +72378,17 @@ const ru: Partial<Record<TranslationKey, string>> = {
   terms_s2_body3: 'Люди в подборе HOMATCH потенциально заинтересованы, исходя из того, что они указали, и того, что нашёл подбор. Никто не представлен как гарантированный покупатель или арендатор, а открытие контакта не означает, что банк кому-то одобрил кредит.',
   terms_s4_body3: 'Подбор HOMATCH: открытие контактов человека стоит цену, указанную на его карточке и при подтверждении, вместе с причинами этой цены. За одного и того же человека вы платите на один аккаунт только один раз: те, кого вы уже открыли, остаются доступными без новой оплаты, независимо от объявления, поиска или более поздней цены. Если цена выросла до подтверждения, ничего не списывается и вы видите новую цену.',
   terms_s5_item8: 'Использовать контакты, полученные в подборе HOMATCH, для чего-либо кроме предложений подходящей недвижимости, передавать их другим или связываться с людьми, отозвавшими разрешение или заблокировавшими вас',
+
+  /* ── HOMI ASSISTANT ── */
+  expat_starter_count: 'В твоём плане {{n}} шагов. Вот первые.',
+  expat_starter_save_body: 'Создай бесплатный аккаунт, чтобы сохранить план, отмечать шаги и получать напоминания перед важными датами.',
+  expat_starter_open: 'Открыть мой полный план',
+  expat_starter_open_saved: 'Сохранено. Открыть полный план',
+  expat_ask_title: 'Спроси HOMI о переезде в Грузию',
+  expat_ask_placeholder: 'Спроси что угодно о жизни в Грузии…',
+  expat_ask_stay: 'Сколько я могу пробыть без ВНЖ?',
+  expat_ask_bank: 'Как открыть здесь банковский счёт?',
+  expat_ask_buy: 'Может ли иностранец купить квартиру в Грузии?',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -96438,6 +96471,17 @@ const tr: Partial<Record<TranslationKey, string>> = {
   terms_s2_body3: 'HOMATCH eşleştirmesinde gösterilen kişiler, belirttikleri ve eşleştirmemizin bulduğu bilgilere göre potansiyel olarak ilgilidir. Hiç kimse garantili alıcı ya da kiracı olarak sunulmaz; iletişim bilgilerini açmak bir bankanın kimseye kredi onayladığı anlamına gelmez.',
   terms_s4_body3: 'HOMATCH eşleştirmesi: bir kişinin iletişim bilgilerini açmak, kartında ve onay ekranında gösterilen fiyata ve o fiyatın gerekçelerine tabidir. Aynı kişi için hesap başına yalnızca bir kez ödersiniz: zaten açtığınız herkes, ilan, arama ya da sonraki fiyat ne olursa olsun yeni bir ücret olmadan erişilebilir kalır. Onaylamadan önce fiyat yükselirse hiçbir ücret alınmaz ve yeni fiyat size gösterilir.',
   terms_s5_item8: 'HOMATCH eşleştirmesinde elde edilen iletişim bilgilerini ilgili mülk teklifleri dışında bir amaçla kullanmak, başkalarına vermek ya da iznini geri almış veya sizi engellemiş kişilerle iletişime geçmek',
+
+  /* ── HOMI ASSISTANT ── */
+  expat_starter_count: 'Planında {{n}} adım var. İşte ilkleri.',
+  expat_starter_save_body: 'Bu planı saklamak, adımları işaretlemek ve önemli tarihlerden önce hatırlatma almak için ücretsiz bir hesap aç.',
+  expat_starter_open: 'Tam planımı aç',
+  expat_starter_open_saved: 'Kaydedildi. Tam planımı aç',
+  expat_ask_title: 'Gürcistan’a taşınmayı HOMI’ye sor',
+  expat_ask_placeholder: 'Gürcistan’da yaşamak hakkında her şeyi sor…',
+  expat_ask_stay: 'Oturma izni olmadan ne kadar kalabilirim?',
+  expat_ask_bank: 'Burada nasıl banka hesabı açarım?',
+  expat_ask_buy: 'Bir yabancı Gürcistan’da daire alabilir mi?',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -120520,6 +120564,17 @@ const ar: Partial<Record<TranslationKey, string>> = {
   terms_s2_body3: 'الأشخاص الذين يظهرون في مطابقة HOMATCH مهتمون محتملون بناءً على ما ذكروه وما وجدته المطابقة. لا يُقدَّم أحد كمشترٍ أو مستأجر مضمون، وفتح جهة الاتصال لا يعني أن بنكًا وافق على قرض لأحد.',
   terms_s4_body3: 'مطابقة HOMATCH: فتح بيانات اتصال شخص يكلّف السعر المعروض على بطاقته وفي التأكيد، مع أسباب هذا السعر. تدفع مقابل الشخص نفسه مرة واحدة فقط لكل حساب: من فتحته سابقًا يبقى متاحًا دون رسوم جديدة مهما كان الإعلان أو البحث أو السعر اللاحق. إذا ارتفع السعر قبل أن تؤكد، لا يُخصم شيء ويُعرض عليك السعر الجديد.',
   terms_s5_item8: 'استخدام بيانات الاتصال التي تم الحصول عليها في مطابقة HOMATCH لأي غرض غير عروض العقارات المناسبة، أو تمريرها للآخرين، أو التواصل مع أشخاص سحبوا إذنهم أو حظروك',
+
+  /* ── HOMI ASSISTANT ── */
+  expat_starter_count: 'في خطتك {{n}} خطوات. هذه أولاها.',
+  expat_starter_save_body: 'أنشئ حسابًا مجانيًا لتحفظ هذه الخطة وتعلّم الخطوات المنجزة وتتلقى تذكيرًا قبل المواعيد المهمة.',
+  expat_starter_open: 'افتح خطتي الكاملة',
+  expat_starter_open_saved: 'تم الحفظ. افتح خطتي الكاملة',
+  expat_ask_title: 'اسأل HOMI عن الانتقال إلى جورجيا',
+  expat_ask_placeholder: 'اسأل أي شيء عن العيش في جورجيا…',
+  expat_ask_stay: 'كم يمكنني البقاء دون تصريح إقامة؟',
+  expat_ask_bank: 'كيف أفتح حسابًا مصرفيًا هنا؟',
+  expat_ask_buy: 'هل يمكن للأجنبي شراء شقة في جورجيا؟',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -144602,6 +144657,17 @@ const he: Partial<Record<TranslationKey, string>> = {
   terms_s2_body3: 'האנשים שמוצגים בהתאמות של HOMATCH מתעניינים פוטנציאליים, לפי מה שציינו ומה שההתאמה מצאה. אף אחד לא מוצג כקונה או שוכר מובטח, ופתיחת איש קשר אינה אומרת שבנק אישר למישהו הלוואה.',
   terms_s4_body3: 'ההתאמות של HOMATCH: פתיחת פרטי הקשר של אדם עולה את המחיר שמוצג בכרטיס שלו ובאישור, יחד עם הסיבות למחיר. על אותו אדם משלמים רק פעם אחת לכל חשבון: מי שכבר פתחת נשאר נגיש בלי חיוב חדש, בלי קשר למודעה, לחיפוש או למחיר מאוחר יותר. אם המחיר עלה לפני שאישרת, לא מחויב דבר ומוצג לך המחיר החדש.',
   terms_s5_item8: 'להשתמש בפרטי קשר שהתקבלו בהתאמות של HOMATCH לכל דבר מלבד הצעות על נכסים רלוונטיים, להעביר אותם לאחרים או ליצור קשר עם מי שביטל את ההרשאה או חסם אותך',
+
+  /* ── HOMI ASSISTANT ── */
+  expat_starter_count: 'בתוכנית שלך יש {{n}} צעדים. הנה הראשונים.',
+  expat_starter_save_body: 'פתח חשבון חינם כדי לשמור את התוכנית, לסמן צעדים ולקבל תזכורת לפני התאריכים החשובים.',
+  expat_starter_open: 'לתוכנית המלאה שלי',
+  expat_starter_open_saved: 'נשמר. לתוכנית המלאה',
+  expat_ask_title: 'שאל את HOMI על מעבר לגאורגיה',
+  expat_ask_placeholder: 'שאל כל דבר על החיים בגאורגיה…',
+  expat_ask_stay: 'כמה זמן אפשר להישאר בלי היתר שהייה?',
+  expat_ask_bank: 'איך פותחים כאן חשבון בנק?',
+  expat_ask_buy: 'האם זר יכול לקנות דירה בגאורגיה?',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

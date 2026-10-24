@@ -23,11 +23,13 @@
 // typo in their arrival date.
 
 import React from 'react';
+import '@/components/expats/expats.css';
 import { Navigate } from 'react-router-dom';
 import PageMeta from '@/components/common/PageMeta';
 import { PlanBoard } from '@/components/expats/PlanBoard';
 import { ProfileStrip } from '@/components/expats/ProfileStrip';
 import { ExpatJourney, ExpatNextStep, loadFocus, type Focus } from '@/components/expats/ExpatJourney';
+import { clearPlanDraft, loadPlanDraft } from '@/components/expats/ExpatPlanStarter';
 import { ReminderSettings } from '@/components/expats/ReminderSettings';
 import { WhatChanged } from '@/components/expats/WhatChanged';
 import { AppLayout } from '@/components/layouts/AppLayout';
@@ -37,6 +39,7 @@ import { roadmapFor } from '@/expats/plan/roadmap';
 import type { PlanTask } from '@/expats/plan/tasks';
 import { progress } from '@/expats/plan/tasks';
 import { EMPTY_PROFILE, type ExpatProfile } from '@/expats/types';
+import { keepSuffix } from '@/expats/display';
 import {
   type ExpatUpdate,
   getProfile,
@@ -108,6 +111,17 @@ export default function ExpatPlanPage() {
     [userId, reload],
   );
 
+  /* A plan built with HOMI on the public page before signing up: saved the
+     first time the account opens its plan with nothing in it yet. */
+  React.useEffect(() => {
+    if (loading || !userId || tasks.length > 0 || profile.intents.length > 0) return;
+    const draft = loadPlanDraft();
+    if (!draft) return;
+    clearPlanDraft();
+    setFocus(draft.focus);
+    void commitProfile(draft.profile);
+  }, [loading, userId, tasks.length, profile.intents.length, commitProfile]);
+
   /* UNAUTHENTICATED is established absence; UNKNOWN is restoration still
      in flight. Collapsing the two is the exact bug authStatus.ts was
      written to end — it shows a signed-in customer the login page on
@@ -157,7 +171,7 @@ export default function ExpatPlanPage() {
 
   return (
     <AppLayout noPadding>
-      <div className="overflow-x-hidden bg-background text-foreground">
+      <div className="expat-page overflow-x-hidden bg-background text-foreground">
       <PageMeta title={t('expat_plan_meta_title')} description={t('expat_plan_meta_description')} />
 
       {/* The plan is a signed-in page and still part of the product: it had
@@ -243,12 +257,12 @@ function ProgressBar({ stats }: { stats: ReturnType<typeof progress> }) {
     <section className="mt-8 rounded-2xl border border-border p-5" data-expat-plan-progress>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-display text-xl font-semibold text-foreground">
-          {t('expat_plan_progress', { done: stats.done, total: stats.done + stats.outstanding })}
+          {keepSuffix(t('expat_plan_progress', { done: stats.done, total: stats.done + stats.outstanding }))}
         </p>
         <p className="text-2xs text-muted-foreground">
           {t('expat_plan_actionable', { n: stats.actionable })}
           {stats.blocked > 0 ? ` · ${t('expat_plan_blocked', { n: stats.blocked })}` : ''}
-          {stats.overdue > 0 ? ` · ${t('expat_plan_overdue', { n: stats.overdue })}` : ''}
+          {stats.overdue > 0 ? ` · ${keepSuffix(t('expat_plan_overdue', { n: stats.overdue }))}` : ''}
         </p>
       </div>
       <div

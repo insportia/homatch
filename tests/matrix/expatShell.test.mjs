@@ -48,10 +48,12 @@ test('expat 2: the loading and missing states keep the shell too', () => {
 });
 
 test('expat 3: the long page says where you are inside it', () => {
-  /* Four sections, and the hero's own pathway rows point at all four. */
+  /* Four sections, and the hero's own pathway rows point at all four.
+     (2026-10-24: the cost and budget sections were removed; the HOMI plan
+     and the needs guide took their places.) */
   const src = readFileSync('src/pages/ForExpatsPage.tsx', 'utf8');
   assert.match(src, /<LocalSectionNav/);
-  for (const id of ['cost-of-living', 'budget', 'topics', 'tools']) {
+  for (const id of ['plan', 'needs', 'topics', 'tools']) {
     assert.ok(src.includes(`id: '${id}'`), `${id} is missing from the page navigation`);
     assert.ok(src.includes(`id="${id}"`), `${id} is navigated to but never rendered`);
   }

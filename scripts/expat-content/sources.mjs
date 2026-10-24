@@ -113,6 +113,59 @@ export const SOURCES = {
     excerpt:
       'Law of Georgia on Facilitating the Suppression of Money Laundering and the Financing of Terrorism. Obliges banks to identify and verify customers and to apply customer due diligence; the specific documents a bank requires are set by that bank within this framework.',
   },
+
+  // Documents and tax residency (topics-more.mjs), read on 2026-10-24.
+  hcchApostille: {
+    key: 'hcchApostille',
+    publisher: 'Hague Conference on Private International Law (HCCH)',
+    url: 'https://www.hcch.net/en/instruments/conventions/status-table/?cid=41',
+    official: true,
+    publishedOn: null,
+    effectiveFrom: '2007-05-14',
+    observedAt: '2026-10-24T00:00:00Z',
+    language: 'en',
+    excerpt:
+      'Status table, Convention Abolishing the Requirement of Legalisation for Foreign Public Documents: Georgia, accession 21 August 2006, entry into force 14 May 2007.',
+  },
+
+  madlobaDocuments: {
+    key: 'madlobaDocuments',
+    publisher: 'Madloba.info',
+    url: 'https://madloba.info/en/faq/documents-and-consulates/apostille-power-of-attorney-certificates/',
+    official: false,
+    publishedOn: null,
+    effectiveFrom: null,
+    observedAt: '2026-10-24T00:00:00Z',
+    language: 'en',
+    excerpt:
+      'Apostilles on Georgian documents are issued at Public Service Halls. A criminal record certificate comes from the Ministry of Internal Affairs and can be ordered at a Public Service Hall or on my.gov.ge. A document issued abroad must be apostilled in the issuing country, then translated into Georgian with the translation notarised. A power of attorney is drawn up by a notary; a foreigner needs a passport and an interpreter if they do not speak Georgian.',
+  },
+
+  oecdGeorgiaResidency: {
+    key: 'oecdGeorgiaResidency',
+    publisher: 'OECD, information provided by the Revenue Service of Georgia',
+    url: 'https://www.oecd.org/tax/automatic-exchange/crs-implementation-and-assistance/tax-residency/Georgia-Residency.pdf',
+    official: false,
+    publishedOn: '2017-11-01',
+    effectiveFrom: null,
+    observedAt: '2026-10-24T00:00:00Z',
+    language: 'en',
+    excerpt:
+      'Article 34 of the Tax Code: "A Georgian resident for the entire current tax year shall be a natural person who has actually stayed in the territory of Georgia for 183 or more days in any continuous 12-calendar-month period ending in that tax year." High net worth route (Joint Order No 991/No 250 of 31 December 2010): property exceeding 3 million GEL or annual income over the last three years exceeding 200 000 GEL, with a residence permit or 25,000 GEL or more Georgian source income.',
+  },
+
+  pwcGeorgiaIncome: {
+    key: 'pwcGeorgiaIncome',
+    publisher: 'PwC Worldwide Tax Summaries',
+    url: 'https://taxsummaries.pwc.com/georgia/individual/taxes-on-personal-income',
+    official: false,
+    publishedOn: null,
+    effectiveFrom: null,
+    observedAt: '2026-10-24T00:00:00Z',
+    language: 'en',
+    excerpt:
+      '"Personal income is subject to a flat tax rate of 20%." "Resident individuals are exempt from tax on income that does not have a Georgian source." Small business status: 1% of turnover below GEL 500,000, 3% above; micro business below GEL 30,000 with no employees exempt. Income determination page: rental income from residential property 5%; profit from selling an apartment or house with land 5%.',
+  },
 };
 
 /** Every source, as rows for expat_citations. */

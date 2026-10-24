@@ -44,6 +44,7 @@ const WIDTHS = [320, 360, 390, 430];
 const TOPIC_SLUGS = [
   'entry-and-stay', 'residence-permits', 'opening-a-bank-account',
   'cost-of-living', 'healthcare-and-insurance', 'buying-property',
+  'documents-and-legalisation', 'tax-residency',
 ];
 
 function findChrome() {
@@ -121,6 +122,8 @@ const TOPIC_TITLES = {
   'cost-of-living': 'What a month in Georgia costs',
   'healthcare-and-insurance': 'Healthcare and insurance',
   'buying-property': 'Buying property in Georgia as a foreigner',
+  'documents-and-legalisation': 'Getting your documents accepted in Georgia',
+  'tax-residency': 'Tax residency in Georgia',
 };
 
 const TOPICS = TOPIC_SLUGS.map((slug, i) => ({
@@ -254,7 +257,7 @@ const PAGE_CENSUS = () => ({
   cities: document.querySelectorAll('[data-expat-city]').length,
   drawers: document.querySelectorAll('[data-expat-evidence-open]').length,
   costRows: document.querySelectorAll('[data-expat-cost-row]').length,
-  anchorTargets: ['topics', 'cost-of-living', 'budget', 'tools'].filter((id) => document.getElementById(id)),
+  anchorTargets: ['plan', 'needs', 'topics', 'tools'].filter((id) => document.getElementById(id)),
   scrollWidth: document.body.scrollWidth,
   clientWidth: document.documentElement.clientWidth,
 });
@@ -437,7 +440,7 @@ test('FOR EXPATS navigation goes where it says', opts, async (t) => {
 
     assert.equal(census.cities, 3, 'the three city cards are gone');
     assert.deepEqual(
-      census.anchorTargets, ['topics', 'cost-of-living', 'budget', 'tools'],
+      census.anchorTargets, ['plan', 'needs', 'topics', 'tools'],
       'a section lost the id its hero row points at',
     );
     for (const href of census.pathways) {

@@ -15,6 +15,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { CommunicationsRoutingPanel } from '@/components/admin/CommunicationsRoutingPanel';
 import { VerifyOfficialSourcesPanel } from '@/components/admin/VerifyOfficialSourcesPanel';
 import { VerifyEngineCard } from '@/components/admin/VerifyEngineCard';
+import { VerifyV2ResearchCard } from '@/components/admin/VerifyV2ResearchCard';
 
 const STATUS_CONFIG = {
   NOT_CONFIGURED:        { labelKey: 'admin_providers_not_configured', color: 'bg-muted text-muted-foreground',              icon: MinusCircle },
@@ -445,6 +446,7 @@ export default function AdminProvidersPage() {
           nav entry: it is provider configuration, and this is the provider
           screen (§105). */}
       <VerifyEngineCard />
+      <VerifyV2ResearchCard />
       <VerifyOfficialSourcesPanel />
       <CommunicationsRoutingPanel />
     </div>

@@ -23778,6 +23778,10 @@ const en = {
   ems_homi_l_consent: 'How do I record consent?',
   ems_homi_l_why: 'Why can some leads not receive email?',
   ems_homi_l_import: 'How do I import a spreadsheet?',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_restart: 'Start the conversation over',
+  homi_stopped: 'Answer stopped',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -47470,6 +47474,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ems_homi_l_consent: 'როგორ დავაფიქსირო თანხმობა?',
   ems_homi_l_why: 'რატომ ვერ იღებენ ზოგი ლიდი წერილს?',
   ems_homi_l_import: 'როგორ შემოვიტანო ცხრილი?',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_restart: 'საუბრის თავიდან დაწყება',
+  homi_stopped: 'პასუხი შეჩერდა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -71153,6 +71161,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ems_homi_l_consent: 'Как зафиксировать согласие?',
   ems_homi_l_why: 'Почему некоторые лиды не получают письма?',
   ems_homi_l_import: 'Как импортировать таблицу?',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_restart: 'Начать разговор заново',
+  homi_stopped: 'Ответ остановлен',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -94834,6 +94846,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ems_homi_l_consent: 'Onayı nasıl kaydederim?',
   ems_homi_l_why: 'Bazı kişiler neden e-posta alamıyor?',
   ems_homi_l_import: 'Bir tabloyu nasıl içe aktarırım?',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_restart: 'Sohbeti baştan başlat',
+  homi_stopped: 'Yanıt durduruldu',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -118515,6 +118531,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ems_homi_l_consent: 'كيف أسجّل الموافقة؟',
   ems_homi_l_why: 'لماذا لا يستطيع بعض العملاء الاستلام؟',
   ems_homi_l_import: 'كيف أستورد جدولًا؟',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_restart: 'ابدأ المحادثة من جديد',
+  homi_stopped: 'تم إيقاف الإجابة',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -142196,6 +142216,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   ems_homi_l_consent: 'איך רושמים הסכמה?',
   ems_homi_l_why: 'למה חלק מהלידים לא יכולים לקבל מייל?',
   ems_homi_l_import: 'איך מייבאים גיליון?',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_restart: 'להתחיל את השיחה מחדש',
+  homi_stopped: 'התשובה נעצרה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

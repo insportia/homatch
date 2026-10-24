@@ -11,7 +11,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import { Streamdown } from 'streamdown';
 import {
-  Bot, Send, StopCircle, PlusCircle, MessageSquare, Trash2,
+  Bot, Send, StopCircle, PlusCircle, MessageSquare, RotateCcw,
   ChevronRight,
   ExternalLink, Star, AlertTriangle,
 } from 'lucide-react';
@@ -257,16 +257,19 @@ function AIPageInner() {
   // Inject page context and auto-send prompt when navigated with state
   useEffect(() => {
     const ctx = location.state as { context?: PageContext & Record<string, unknown>; prompt?: string } | undefined;
+    let handed: PageContext | undefined;
     if (ctx?.context) {
       // Normalize the legacy sender shape {type, id, title} (fields beside
       // `data` instead of inside it) so page context actually survives the
       // trip to the edge function whichever page sent it.
       const { type, data, ...rest } = ctx.context;
-      setPageContext({ type, data: { ...(data ?? {}), ...rest } });
+      handed = { type, data: { ...(data ?? {}), ...rest } };
+      setPageContext(handed);
     }
     if (ctx?.prompt && !didAutoSend.current && session) {
       didAutoSend.current = true;
-      sendMessage(ctx.prompt);
+      /* The context goes with this very turn; the state update above lands a render later. */
+      sendMessage(ctx.prompt, handed ? { context: handed } : {});
     } else if (ctx?.prompt && !session) {
       // Not signed in — pre-fill input so user sees what they asked
       setInput(ctx.prompt);
@@ -449,9 +452,10 @@ function AIPageInner() {
             <h1 className="truncate text-sm font-semibold text-white">{t('ai_title')}</h1>
           </div>
           {messages.length > 0 && (
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-white/75 hover:bg-white/10 hover:text-white"
-              onClick={handleNewChat} title={t('ai_new_chat')}>
-              <Trash2 className="h-3.5 w-3.5" />
+            <Button variant="ghost" size="sm" className="h-9 gap-1.5 px-2.5 text-xs text-white/80 hover:bg-white/10 hover:text-white"
+              onClick={handleNewChat} aria-label={t('homi_restart')}>
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">{t('homi_restart')}</span>
             </Button>
           )}
         </div>

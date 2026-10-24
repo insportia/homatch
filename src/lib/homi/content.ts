@@ -34,9 +34,9 @@ export const HOMI_DETERMINISTIC_INTENTS = [
   'GREETING', 'START', 'IDENTITY', 'MODEL_QUESTION', 'CAPABILITIES', 'THANKS', 'GOODBYE', 'CONTACT',
   'SERVICE_VERIFY', 'SERVICE_MORTGAGE', 'SERVICE_INVESTMENT', 'SERVICE_CONTRACTS', 'SERVICE_EXPATS',
   'SERVICE_FIND_PROPERTY', 'SERVICE_FIND_BUYERS', 'SERVICE_BROKERS',
-  'FIND_PROPERTY', 'ROI_QUICK', 'MORTGAGE_QUICK', 'MORTGAGE_DOCS',
+  'FIND_PROPERTY', 'PROPERTY_PRICE', 'ROI_QUICK', 'MORTGAGE_QUICK', 'MORTGAGE_DOCS',
   'MORTGAGE_DOCS_SALARIED', 'MORTGAGE_DOCS_SELF_EMPLOYED', 'MORTGAGE_DOCS_BUSINESS_OWNER',
-  'MORTGAGE_DOCS_FREELANCER', 'MORTGAGE_DOCS_RENTAL', 'MORTGAGE_DOCS_EMIGRANT', 'MORTGAGE_DOCS_FOREIGN_NATIONAL',
+  'MORTGAGE_DOCS_FREELANCER', 'MORTGAGE_DOCS_RENTAL', 'MORTGAGE_DOCS_EMIGRANT', 'MORTGAGE_DOCS_FOREIGN_INCOME', 'MORTGAGE_DOCS_FOREIGN_NATIONAL',
   'MORTGAGE_DOCS_CO_BORROWER', 'OTHER_QUESTION',
 ] as const;
 export type HomiDeterministicIntent = typeof HOMI_DETERMINISTIC_INTENTS[number];
@@ -78,9 +78,9 @@ export const HOMI_START_TITLE: L6 = {
 
 const C = {
   findProperty: { ka: 'ბინის მოძებნა', en: 'Find a home', ru: 'Найти жильё', tr: 'Ev bul', ar: 'ابحث عن منزل', he: 'למצוא דירה' },
-  verify: { ka: 'ჩემი ქონების შემოწმება', en: 'Check a property', ru: 'Проверить недвижимость', tr: 'Mülkü kontrol et', ar: 'فحص عقار', he: 'לבדוק נכס' },
-  investment: { ka: 'ინვესტიციის გამოთვლა', en: 'Calculate an investment', ru: 'Рассчитать инвестицию', tr: 'Yatırımı hesapla', ar: 'احسب الاستثمار', he: 'לחשב השקעה' },
-  mortgage: { ka: 'იპოთეკის შეფასება', en: 'Assess a mortgage', ru: 'Оценить ипотеку', tr: 'Konut kredisini değerlendir', ar: 'تقييم الرهن العقاري', he: 'להעריך משכנתא' },
+  verify: { ka: 'ქონების შემოწმება', en: 'Check a property', ru: 'Проверить недвижимость', tr: 'Mülkü kontrol et', ar: 'فحص عقار', he: 'לבדוק נכס' },
+  investment: { ka: 'ინვესტიციის შეფასება', en: 'Assess an investment', ru: 'Оценить инвестицию', tr: 'Yatırımı değerlendir', ar: 'تقييم الاستثمار', he: 'להעריך השקעה' },
+  mortgage: { ka: 'იპოთეკის გამოთვლა', en: 'Calculate a mortgage', ru: 'Рассчитать ипотеку', tr: 'Konut kredisi hesapla', ar: 'احسب الرهن العقاري', he: 'לחשב משכנתא' },
   contract: { ka: 'ხელშეკრულების შემოწმება', en: 'Check a contract', ru: 'Проверить договор', tr: 'Sözleşmeyi kontrol et', ar: 'فحص عقد', he: 'לבדוק חוזה' },
   expat: { ka: 'საქართველოში გადმოსვლა', en: 'Moving to Georgia', ru: 'Переезд в Грузию', tr: "Gürcistan'a taşınma", ar: 'الانتقال إلى جورجيا', he: 'מעבר לגאורגיה' },
   other: { ka: 'სხვა კითხვა მაქვს', en: 'I have another question', ru: 'У меня другой вопрос', tr: 'Başka bir sorum var', ar: 'لدي سؤال آخر', he: 'יש לי שאלה אחרת' },
@@ -89,6 +89,9 @@ const C = {
   more: { ka: 'მეტი დეტალი', en: 'More detail', ru: 'Подробнее', tr: 'Daha fazla ayrıntı', ar: 'تفاصيل أكثر', he: 'עוד פרטים' },
   docs: { ka: 'რა დოკუმენტები დამჭირდება?', en: 'What documents will I need?', ru: 'Какие документы понадобятся?', tr: 'Hangi belgeler gerekecek?', ar: 'ما المستندات التي سأحتاجها؟', he: 'אילו מסמכים אצטרך?' },
   monthly: { ka: 'ჩემი სავარაუდო ყოველთვიური შენატანი', en: 'My estimated monthly payment', ru: 'Мой примерный ежемесячный платёж', tr: 'Tahmini aylık taksitim', ar: 'قسطي الشهري التقديري', he: 'ההחזר החודשי המשוער שלי' },
+  showOptions: { ka: 'მაჩვენე ვარიანტები', en: 'Show me the options', ru: 'Покажи варианты', tr: 'Seçenekleri göster', ar: 'أرني الخيارات', he: 'תראה לי אפשרויות' },
+  nextStep: { ka: 'შემდეგი ნაბიჯი', en: 'Next step', ru: 'Следующий шаг', tr: 'Sonraki adım', ar: 'الخطوة التالية', he: 'השלב הבא' },
+  prevStep: { ka: 'წინა ნაბიჯი', en: 'Previous step', ru: 'Предыдущий шаг', tr: 'Önceki adım', ar: 'الخطوة السابقة', he: 'השלב הקודם' },
   coBorrower: { ka: 'რა არის თანამსესხებელი?', en: 'What is a co-borrower?', ru: 'Кто такой созаёмщик?', tr: 'Ortak borçlu nedir?', ar: 'من هو المقترض المشارك؟', he: 'מה זה לווה נוסף?' },
 } satisfies Record<string, L6>;
 
@@ -104,7 +107,7 @@ export const HOMI_START_OPTIONS: HomiChip[] = [
 ];
 
 export const EMPLOYMENT_PROFILES = [
-  'SALARIED', 'SELF_EMPLOYED', 'BUSINESS_OWNER', 'FREELANCER', 'RENTAL', 'EMIGRANT', 'FOREIGN_NATIONAL', 'CO_BORROWER',
+  'SALARIED', 'SELF_EMPLOYED', 'BUSINESS_OWNER', 'FREELANCER', 'RENTAL', 'EMIGRANT', 'FOREIGN_INCOME', 'FOREIGN_NATIONAL', 'CO_BORROWER',
 ] as const;
 export type EmploymentProfile = typeof EMPLOYMENT_PROFILES[number];
 
@@ -115,6 +118,7 @@ export const EMPLOYMENT_LABEL: Record<EmploymentProfile, L6> = {
   FREELANCER: { ka: 'ფრილანსერი ვარ', en: "I'm a freelancer", ru: 'Я фрилансер', tr: 'Freelancer’ım', ar: 'أعمل بشكل مستقل', he: 'אני פרילנסר' },
   RENTAL: { ka: 'ქირიდან მაქვს შემოსავალი', en: 'My income is from rent', ru: 'Мой доход от аренды', tr: 'Gelirim kiradan', ar: 'دخلي من الإيجار', he: 'ההכנסה שלי משכירות' },
   EMIGRANT: { ka: 'საზღვარგარეთ ვმუშაობ', en: 'I work abroad', ru: 'Работаю за границей', tr: 'Yurt dışında çalışıyorum', ar: 'أعمل في الخارج', he: 'אני עובד בחו״ל' },
+  FOREIGN_INCOME: { ka: 'შემოსავალს საზღვარგარეთიდან ვიღებ', en: 'My income comes from abroad', ru: 'Мой доход поступает из-за границы', tr: 'Gelirim yurt dışından geliyor', ar: 'دخلي يأتي من الخارج', he: 'ההכנסה שלי מגיעה מחו״ל' },
   FOREIGN_NATIONAL: { ka: 'უცხო ქვეყნის მოქალაქე ვარ', en: "I'm a foreign national", ru: 'Я иностранный гражданин', tr: 'Yabancı uyrukluyum', ar: 'أنا مواطن أجنبي', he: 'אני אזרח זר' },
   CO_BORROWER: { ka: 'თანამსესხებელი მყავს', en: 'I have a co-borrower', ru: 'У меня есть созаёмщик', tr: 'Ortak borçlum var', ar: 'لدي مقترض مشارك', he: 'יש לי לווה נוסף' },
 };
@@ -141,7 +145,7 @@ function docsTemplate(profile: EmploymentProfile): HomiTemplate {
     text: lead,
     cards: [{ type: 'CHECKLIST', id: `mortgage_docs_${profile.toLowerCase()}` }],
     actions: ['MORTGAGE'],
-    chips: [{ label: C.monthly, intent: 'MORTGAGE_QUICK' }, { label: C.coBorrower }],
+    chips: [{ label: C.prevStep, intent: 'MORTGAGE_DOCS' }, { label: C.nextStep, intent: 'MORTGAGE_QUICK' }, { label: C.coBorrower }],
     mood: 'explaining',
   };
 }
@@ -198,7 +202,7 @@ export const HOMI_TEMPLATES: Record<HomiDeterministicIntent, HomiTemplate> = {
       ar: 'على الرحب والسعة! 😊 أنا هنا إن احتجت أي شيء آخر.',
       he: 'בכיף! 😊 אני כאן אם תצטרך עוד משהו.',
     },
-    chips: [{ label: C.other, intent: 'OTHER_QUESTION' }, { label: C.helpChoose, intent: 'START' }],
+    chips: [{ label: C.showOptions, intent: 'START' }, { label: C.other, intent: 'OTHER_QUESTION' }, { label: C.helpChoose, intent: 'START' }],
     mood: 'happy',
   },
 
@@ -237,7 +241,7 @@ export const HOMI_TEMPLATES: Record<HomiDeterministicIntent, HomiTemplate> = {
       he: '**בדיקת נכס (Verify)** חוקרת נכס מסוים במרשמים רשמיים ובמקורות פתוחים ומכינה דוח לקונה: מי הבעלים, האם יש משכנתא או הגבלה, האם היזם אמיתי והאם המחיר הגיוני. מספיק קוד קדסטרלי או כתובת כדי להתחיל, ואת המחיר תראה בעמוד השירות לפני שמשהו מתחיל.',
     },
     actions: ['VERIFY'],
-    chips: [{ label: C.simpler }, { label: C.other, intent: 'OTHER_QUESTION' }],
+    chips: [{ label: C.simpler }, { label: C.more }, { label: C.other, intent: 'OTHER_QUESTION' }],
     mood: 'explaining',
   },
 
@@ -344,7 +348,7 @@ export const HOMI_TEMPLATES: Record<HomiDeterministicIntent, HomiTemplate> = {
       he: 'בוא נמצא את זה יחד! 🏡 בחיפוש נכס פשוט תאר מה אתה רוצה (שכונה, תקציב מקסימלי, מספר חדרים) ואבנה תוכנית חיפוש שתוכל לשנות. מחפש משהו זול יותר? תתחיל מתקרת תקציב.',
     },
     actions: ['FIND_PROPERTY'],
-    chips: [{ label: C.helpChoose }, { label: C.other, intent: 'OTHER_QUESTION' }],
+    chips: [{ label: C.showOptions, intent: 'START' }, { label: C.helpChoose, intent: 'START' }, { label: C.other, intent: 'OTHER_QUESTION' }],
     mood: 'pointing',
   },
 
@@ -373,7 +377,7 @@ export const HOMI_TEMPLATES: Record<HomiDeterministicIntent, HomiTemplate> = {
     },
     cards: [{ type: 'MORTGAGE_QUICK' }],
     actions: ['MORTGAGE'],
-    chips: [{ label: C.docs, intent: 'MORTGAGE_DOCS' }, { label: C.coBorrower }],
+    chips: [{ label: C.prevStep, intent: 'SERVICE_MORTGAGE' }, { label: C.docs, intent: 'MORTGAGE_DOCS' }, { label: C.coBorrower }],
     mood: 'encouraging',
   },
 
@@ -396,6 +400,7 @@ export const HOMI_TEMPLATES: Record<HomiDeterministicIntent, HomiTemplate> = {
   MORTGAGE_DOCS_FREELANCER: docsTemplate('FREELANCER'),
   MORTGAGE_DOCS_RENTAL: docsTemplate('RENTAL'),
   MORTGAGE_DOCS_EMIGRANT: docsTemplate('EMIGRANT'),
+  MORTGAGE_DOCS_FOREIGN_INCOME: docsTemplate('FOREIGN_INCOME'),
   MORTGAGE_DOCS_FOREIGN_NATIONAL: docsTemplate('FOREIGN_NATIONAL'),
   MORTGAGE_DOCS_CO_BORROWER: docsTemplate('CO_BORROWER'),
 
@@ -408,7 +413,21 @@ export const HOMI_TEMPLATES: Record<HomiDeterministicIntent, HomiTemplate> = {
       ar: 'بالتأكيد! اسألني عن أي شيء: عقار أو حي أو سعر أو عقد أو غير ذلك. ✍️',
       he: 'בטח! תשאל מה שמעניין אותך: נכס, שכונה, מחיר, חוזה או כל דבר אחר. ✍️',
     },
+    chips: [{ label: C.showOptions, intent: 'START' }],
     mood: 'happy',
+  },
+  PROPERTY_PRICE: {
+    text: {
+      ka: 'ფასს ორი გზით შეგიძლია მიუახლოვდე. **ქონების შემოწმება (Verify)** კონკრეტულ ბინას ამოწმებს და აჩვენებს, რამდენად ლოგიკურია ფასი უბნის ბაზრის მონაცემებთან შედარებით. **ინვესტიციის შეფასება** კი გაჩვენებს, რა ღირს ქონება შენთვის შემოსავლისა და ზრდის მიხედვით. ზუსტ ფასს მე ვერ დავასახელებ, რეალური მონაცემების გარეშე ეს მხოლოდ გამოცნობა იქნებოდა. 🏡',
+      en: "There are two ways to get at a price. **Property check (Verify)** looks at one specific property and shows how its price compares with the market in that area. **Investment assessment** shows what the property is worth to you in income and growth. I won't name a figure myself: without real data that would only be a guess. 🏡",
+      ru: 'К цене можно подойти двумя путями. **Проверка недвижимости (Verify)** изучает конкретный объект и показывает, насколько цена соответствует рынку района. **Оценка инвестиции** показывает, чего стоит объект для тебя с точки зрения дохода и роста. Сам я цену называть не буду: без реальных данных это было бы гаданием. 🏡',
+      tr: 'Fiyata iki yoldan ulaşabilirsin. **Mülk kontrolü (Verify)** belirli bir mülkü inceler ve fiyatının semt piyasasıyla nasıl karşılaştırıldığını gösterir. **Yatırım değerlendirmesi** ise mülkün gelir ve değer artışı açısından senin için ne ettiğini gösterir. Kendim bir rakam söylemem: gerçek veri olmadan bu sadece tahmin olur. 🏡',
+      ar: 'يمكنك الوصول إلى السعر بطريقتين. **فحص العقار (Verify)** يدرس عقارًا محددًا ويبيّن كيف يقارن سعره بسوق المنطقة. و**تقييم الاستثمار** يوضح قيمة العقار لك من حيث الدخل والنمو. لن أذكر رقمًا بنفسي، فبدون بيانات حقيقية سيكون مجرد تخمين. 🏡',
+      he: 'אפשר להגיע למחיר בשתי דרכים. **בדיקת נכס (Verify)** בודקת נכס מסוים ומראה איך המחיר שלו עומד מול השוק באזור. **הערכת השקעה** מראה כמה הנכס שווה לך מבחינת הכנסה וצמיחה. אני לא אנקוב בסכום בעצמי: בלי נתונים אמיתיים זה היה רק ניחוש. 🏡',
+    },
+    actions: ['VERIFY', 'INVESTMENT'],
+    chips: [{ label: C.simpler }, { label: C.showOptions, intent: 'START' }],
+    mood: 'explaining',
   },
 };
 

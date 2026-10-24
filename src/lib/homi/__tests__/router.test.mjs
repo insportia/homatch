@@ -90,3 +90,27 @@ test('HOMI never shows an em or en dash, and keeps grammatical hyphens', async (
   }
   for (const list of Object.values(HOMI_CHECKLISTS)) for (const item of list.items) for (const loc of HOMI_LOCALES) assert.doesNotMatch(item[loc], /[–—]/);
 });
+
+/* The owner's own examples (HOMI brief 2.2): each is answered by HOMATCH's own route, not a model. */
+test('the owner examples route to HOMATCH services without a model call', () => {
+  const cases = [
+    ['იაფი ბინა მინდა', 'FIND_PROPERTY'],
+    ['ჩემი ბინის ფასი მაინტერესებს', 'PROPERTY_PRICE'],
+    ['იპოთეკა მინდა', 'SERVICE_MORTGAGE'],
+    ['ხელშეკრულება შემიმოწმე', 'SERVICE_CONTRACTS'],
+    ['საქართველოში გადმოსვლა მინდა', 'SERVICE_EXPATS'],
+    ['რა არის Verify?', 'SERVICE_VERIFY'],
+    ['check my contract', 'SERVICE_CONTRACTS'],
+    ['проверь договор', 'SERVICE_CONTRACTS'],
+    ['how much is my flat worth', 'PROPERTY_PRICE'],
+  ];
+  for (const [text, intent] of cases) {
+    const r = routeHomiTurn(text);
+    assert.equal(r.kind, 'DETERMINISTIC', text);
+    assert.equal(r.intent, intent, text);
+  }
+});
+
+test('a real question about a clause is still the model\'s', () => {
+  assert.equal(routeHomiTurn('ხელშეკრულების მე-5 პუნქტი რას ნიშნავს და რატომ არის ასე დაწერილი').kind, 'MODEL');
+});

@@ -79,7 +79,7 @@ begin
            count(*) filter (where route = 'DETERMINISTIC') as deterministic,
            count(*) filter (where route = 'MODEL_LIGHT') as model_light,
            count(*) filter (where route = 'MODEL_FULL') as model_full,
-           count(*) filter (where error_code is not null) as failures,
+           count(*) filter (where error_code is not null and error_code <> 'CANCELLED') as failures,
            coalesce(sum(input_tokens), 0) as input_tokens,
            coalesce(sum(cached_tokens), 0) as cached_tokens,
            coalesce(sum(output_tokens), 0) as output_tokens,
@@ -110,7 +110,7 @@ begin
     select coalesce(surface, 'unknown') as surface, count(*) as turns,
            count(*) filter (where route = 'DETERMINISTIC') as deterministic,
            round(coalesce(sum(cost_cents) filter (where is_model and not unpriced), 0) / 100.0, 4) as cost_usd,
-           count(*) filter (where error_code is not null) as failures
+           count(*) filter (where error_code is not null and error_code <> 'CANCELLED') as failures
       from t where measured group by 1
   ),
   errs as (
@@ -125,7 +125,10 @@ begin
     select count(*) filter (where measured) as requests,
            count(*) filter (where route = 'DETERMINISTIC') as deterministic,
            count(*) filter (where is_model) as model_turns,
-           count(*) filter (where error_code is not null) as failures,
+           count(*) filter (where is_model and error_code is null and not unpriced) as priced_model_turns,
+           count(*) filter (where error_code = 'CANCELLED') as cancelled_turns,
+           count(*) filter (where error_code is not null and error_code <> 'CANCELLED') as failures,
+           count(distinct conversation_id) filter (where measured and conversation_id is not null) as conversations,
            count(*) filter (where web_calls > 0) as web_turns,
            coalesce(sum(web_calls), 0) as web_calls,
            coalesce(sum(input_tokens), 0) as input_tokens,
@@ -136,7 +139,10 @@ begin
            count(*) filter (where billed) as billed_turns,
            count(*) filter (where not measured) as legacy_turns,
            round(avg(latency_ms) filter (where measured and error_code is null)) as avg_latency_ms,
-           percentile_cont(0.95) within group (order by latency_ms) filter (where measured and error_code is null) as p95_latency_ms
+           percentile_cont(0.95) within group (order by latency_ms) filter (where measured and error_code is null) as p95_latency_ms,
+           round(avg(latency_ms) filter (where is_model and error_code is null)) as avg_model_latency_ms,
+           percentile_cont(0.95) within group (order by latency_ms) filter (where is_model and error_code is null) as p95_model_latency_ms,
+           round(avg(ttft_ms) filter (where is_model and error_code is null)) as avg_ttft_ms
       from t
   )
   select jsonb_build_object(
@@ -145,6 +151,8 @@ begin
     'totals', (select to_jsonb(totals) || jsonb_build_object(
         'deterministic_rate', case when requests > 0 then round(deterministic::numeric / requests, 4) end,
         'failure_rate', case when requests > 0 then round(failures::numeric / requests, 4) end,
+        'cost_per_conversation_usd', case when conversations > 0 then round(cost_usd / conversations, 4) end,
+        'cost_per_model_turn_usd', case when priced_model_turns > 0 then round(cost_usd / priced_model_turns, 5) end,
         'prompt_cache_rate', case when input_tokens > 0 then round(cached_tokens::numeric / input_tokens, 4) end
       ) from totals),
     'estimated_monthly_usd', (select case when days > 0 then round(cost_usd / least(days, 7) * 30, 2) end from last7),

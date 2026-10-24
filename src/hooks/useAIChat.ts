@@ -128,8 +128,11 @@ export function useAIChat() {
   const loadConversation = useCallback(async (convId: string) => {
     const { data: conversation } = await supabase.from('ai_conversations').select('context').eq('id', convId).maybeSingle();
     const saved = conversation?.context as Record<string, unknown> | null;
+    /* A reopened conversation continues with the context it was started with: a property, or a
+       HOMI workspace hand-off (investment figures, an expat plan, a contract clause, a mortgage). */
     if (saved?.surface === 'find-property') setPageContext({ type: 'property', data: saved });
-    else setPageContext((current) => current.data?.surface === 'find-property' ? { type: 'general' } : current);
+    else if (typeof saved?.surface === 'string' && saved.surface) setPageContext({ type: 'workspace', data: saved });
+    else setPageContext({ type: 'general' });
     const { data } = await supabase.from('ai_messages').select('id, role, content, created_at').eq('conversation_id', convId).order('created_at', { ascending: true });
     if (data) {
       setMessages(data.map(m => ({
@@ -159,8 +162,12 @@ export function useAIChat() {
     return null;
   }, [loadConversations]);
 
-  const sendMessage = useCallback(async (userText: string, opts: { intent?: string } = {}) => {
+  const sendMessage = useCallback(async (userText: string, opts: { intent?: string; context?: PageContext } = {}) => {
     if (streaming || !userText.trim()) return;
+    /* A caller that has just set the page context (a workspace handing a question to HOMI)
+       passes it here too: React has not re-rendered yet, so this closure still holds the
+       previous context, and the first turn would otherwise leave without the figures. */
+    const turnContext = opts.context ?? pageContext;
 
     const { data: { session } } = await supabase.auth.getSession();
     const accessToken = session?.access_token;
@@ -180,7 +187,7 @@ export function useAIChat() {
 
     let convId = activeConvId;
     if (!convId && accessToken) {
-      convId = await newConversation(pageContext) ?? null;
+      convId = await newConversation(turnContext) ?? null;
       if (!convId) convId = 'guest';
     }
 
@@ -194,8 +201,8 @@ export function useAIChat() {
      * the message text: asking the same question twice on purpose is
      * two turns and should be billed twice.
      */
-    const propertyScope = pageContext.data?.surface === 'find-property'
-      ? `${pageContext.data.searchId}:${pageContext.data.propertyKey}:${convId}` : null;
+    const propertyScope = turnContext.data?.surface === 'find-property'
+      ? `${turnContext.data.searchId}:${turnContext.data.propertyKey}:${convId}` : null;
     const retry = propertyRetry.current;
     const interactionId = propertyScope && retry?.scope === propertyScope && retry.text === userMsg.content
       ? retry.id : crypto.randomUUID();
@@ -244,7 +251,7 @@ export function useAIChat() {
        * `undefined` and the model answered about "this apartment" without
        * ever seeing which apartment. Internal-first starts with actually
        * delivering the internal context. */
-      context: pageContext.type !== 'general' ? { type: pageContext.type, ...(pageContext.data ?? {}) } : undefined,
+      context: turnContext.type !== 'general' ? { type: turnContext.type, ...(turnContext.data ?? {}) } : undefined,
         conversationId: convId && convId !== 'guest' ? convId : undefined,
         // Proves which anonymous session this belongs to. Never an id the
         // client picked: the server decides what this token owns.
@@ -421,7 +428,17 @@ export function useAIChat() {
     });
   }, [streaming, activeConvId, messages, pageContext, newConversation, loadConversations, loadConversation, lang, t, startWaitingMood, clearMoodTimers]);
 
-  const cancelStream = useCallback(() => { abortRef.current?.abort(); clearMoodTimers(); setStreaming(false); setStreamContent(''); setHomiState('idle'); }, [clearMoodTimers]);
+  /* Stopping keeps what was already written, marked as stopped, so the screen matches the
+     conversation instead of leaving a question with no answer under it. */
+  const cancelStream = useCallback(() => {
+    abortRef.current?.abort(); clearMoodTimers(); setStreaming(false); setHomiState('idle');
+    setStreamContent((partial) => {
+      const note = t('homi_stopped');
+      const content = partial.trim() ? `${partial.trim()}\n\n_${note}_` : `_${note}_`;
+      queueMicrotask(() => setMessages((m) => [...m, { id: crypto.randomUUID(), role: 'assistant', content, createdAt: new Date() }]));
+      return '';
+    });
+  }, [clearMoodTimers, t]);
   /* SIGNING IN MID-CONVERSATION.
    *
    * AuthContext hands the anonymous work to the new account and announces it.

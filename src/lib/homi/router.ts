@@ -58,6 +58,16 @@ const SERVICE_TOKENS: Array<[HomiDeterministicIntent, RegExp]> = [
   ['SERVICE_FIND_PROPERTY', /(find property|ქონების მოძებნ|поиск недвижимости|mülk arama|البحث عن عقار|חיפוש נכס)/u],
 ];
 
+/* The everyday way of asking FOR a service (not about it): a short request is answered with the
+   service itself. "ხელშეკრულება შემიმოწმე" and "საქართველოში გადმოსვლა მინდა" are the owner's examples. */
+const WANT_SERVICE: Array<[HomiDeterministicIntent, RegExp]> = [
+  ['SERVICE_CONTRACTS', /(ხელშეკრულებ\S* (შემიმოწმე|შეამოწმე|გადამიხედე|წამიკითხე|ამიხსენი)|(შემიმოწმე|შეამოწმე|გადამიხედე|წამიკითხე) ხელშეკრულებ|check (my |this |a )?contract|review (my |this )?contract|провер\S* (мой |этот )?договор|sözleşme\S* (kontrol|incele)|افحص العقد|راجع العقد|(לבדוק|תבדוק|בדוק) (את )?(ה)?חוזה)/u],
+  ['SERVICE_EXPATS', /(საქართველოში გადმოსვლ|საქართველოში გადმოსახლ|გადმოსვლა მინდა|moving to georgia|move to georgia|relocat\S* to georgia|переезд\S* в грузию|переехать в грузию|gürcistan.?a taşın|الانتقال إلى جورجيا|לעבור לגאורגיה|מעבר לגאורגיה)/u],
+];
+
+/* "What is my flat worth?": answered with the tools that can say it from data, never with a number. */
+const PROPERTY_PRICE = /((ჩემი|ჩემს|ამ) (ბინის|სახლის|ქონების) (ფასი|ღირებულება)|(ბინის|სახლის|ქონების) ფასი მაინტერესებ|რა ღირს ჩემი (ბინა|სახლი|ქონება)|how much is my (flat|apartment|home|house|property) worth|what is my (flat|apartment|home|house|property) worth|value of my (flat|apartment|home|house|property)|сколько стоит моя квартира|цена моей квартиры|evim(in)? (ne kadar eder|değeri)|كم يساوي (منزلي|شقتي|عقاري)|כמה שווה (הדירה|הבית|הנכס) שלי)/u;
+
 const MORTGAGE_DOCS = /((documents?|papers?|დოკუმენტ|документ|belge|evrak|مستند|وثائق|מסמכ).*(mortgage|loan|იპოთეკ|სესხ|ипотек|кредит|kredi|ipotek|الرهن|قرض|משכנתא|הלוואה))|((mortgage|loan|იპოთეკ|სესხ|ипотек|кредит|kredi|الرهن|قرض|משכנתא|הלוואה).*(documents?|დოკუმენტ|документ|belge|مستند|מסמכ))/u;
 const MONTHLY = /(monthly payment|how much (will|would) i pay|ყოველთვიური შენატან|თვეში რამდენს გადავიხდი|ежемесячн(ый|ого) платеж|сколько (я )?буду платить|aylık taksit|ayda ne kadar|القسط الشهري|كم سأدفع شهري|החזר חודשי|כמה אשלם בחודש)/u;
 const ROI = /(profitab|roi\b|rental yield|return on investment|მომგებიან|უკუგება|შემოსავლიან|доходност|выгодн|окупаем|karlı|getiri|kira getirisi|مربح|العائد|רווחי|תשואה)/u;
@@ -98,6 +108,8 @@ export function routeHomiTurn(text: string, opts: RouteOptions = {}): HomiRoute 
       }
       if (MORTGAGE_DOCS.test(n)) return { kind: 'DETERMINISTIC', intent: 'MORTGAGE_DOCS', reason: 'PATTERN' };
       if (MONTHLY.test(n)) return { kind: 'DETERMINISTIC', intent: 'MORTGAGE_QUICK', reason: 'PATTERN' };
+      if (PROPERTY_PRICE.test(n)) return { kind: 'DETERMINISTIC', intent: 'PROPERTY_PRICE', reason: 'PATTERN' };
+      if (w <= 6) for (const [intent, re] of WANT_SERVICE) if (re.test(n)) return { kind: 'DETERMINISTIC', intent, reason: 'PATTERN' };
       if (WHAT_IS.test(n) || w <= 3) {
         for (const [intent, re] of SERVICE_TOKENS) if (re.test(n)) return { kind: 'DETERMINISTIC', intent, reason: 'PATTERN' };
       }

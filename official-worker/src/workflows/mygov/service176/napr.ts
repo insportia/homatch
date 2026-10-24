@@ -15,7 +15,7 @@ export function parseSearch(value:unknown){const raw=object(value);if(!Array.isA
 export type SearchResult={source:'my.gov.ge';serviceId:176;cadastralCode:string;records:SourceObject[];pages:SourceObject[];retrievedAt:string;provenance:ReturnType<typeof searchRequest>[]};
 export async function search(cadastralCode:string,options:NaprOptions={}):Promise<SearchResult>{const query=validateCadastralCode(cadastralCode);const records:SourceObject[]=[];const pages:SourceObject[]=[];const provenance:ReturnType<typeof searchRequest>[]=[];for(let page=1;;page++){
   const request=searchRequest(query,page);const parsed=parseSearch(await requestJson(request,options));if(parsed.page!==page&&parsed.records.length)throw new ApiError('malformed');provenance.push(request);pages.push(parsed.raw);records.push(...parsed.records);
-  if(page>=parsed.lastpage)break;if(!parsed.records.length||page>=10000)throw new Error('Incomplete pagination; refusing to mark all records captured');
+  if(page>=parsed.lastpage||(options.maxPages!==undefined&&page>=options.maxPages))break;if(!parsed.records.length||page>=10000)throw new Error('Incomplete pagination; refusing to mark all records captured');
 }return{source:'my.gov.ge',serviceId:176,cadastralCode:query,records,pages,retrievedAt:new Date().toISOString(),provenance};}
 export type CaptchaRequired={state:'CAPTCHA_REQUIRED';cadastralCode:string;recordId:string;continuationContext:{status:unknown;browserUrl:string}};
 export type DocumentReference={recordId:string;kind:'edocument'|'status'|'letter';url:string;raw:SourceObject;registrationNumber?:unknown;cadastralCode?:unknown} & Partial<ReferenceClassification>;

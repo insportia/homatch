@@ -44,6 +44,14 @@ export type MyGovApiOptions=NaprOptions&{budgetMs?:number;recordReserveMs?:numbe
  * that still hits keeps whatever was read.
  */
 export const RECORD_RESERVE_MS=75000;
+/*
+ * THE FIRST THREE RECORDS ARE ENOUGH (owner 2026-10-24). Only the first result
+ * page is read and only its first three records are opened (CAPTCHA included);
+ * the rest stay listed from the search as recordsNotOpened. Prod a7177a89 opened
+ * ~25 records: every CAPTCHA was solved, but the result was then too large to
+ * hand back to the queue and the whole source was lost.
+ */
+export const MAX_RECORDS_OPENED=3;
 export const MAX_RECORD_LANES=4;
 /*
  * A record gated by NAPR's reCAPTCHA (status 10/15) is continued with a token
@@ -87,13 +95,14 @@ export async function runMyGovApiWorkflow(query:string,entities?:EntityQueue,opt
  };
  const http={...options,fetch:transport,retries:0,timeoutMs:options.timeoutMs??8000};
  const acquire=async()=>{
-   const result=await search(query,http);if(controller.signal.aborted)throw new Error('Provider deadline');base.searched=true;base.submitted=true;base.submissionConfirmed=true;
+   const result=await search(query,{...http,maxPages:1});if(controller.signal.aborted)throw new Error('Provider deadline');base.searched=true;base.submitted=true;base.submissionConfirmed=true;
    base.traversal={providerState:'SEARCH_RETURNED',search:result,records,continuations,documentReferences:references,failures,requests};
    if(!result.records.length){if(result.pages.some(page=>Number(page.total)>0))throw new Error('Empty page contradicts source total');base.status='NO_RESULT_CONFIRMED';base.noResultConfirmed=true;base.resultValidated=true;return;}
    // Records are opened in parallel lanes so CAPTCHA solves overlap: a parcel with many
    // records is read in full inside the budget instead of one 40 s solve after another.
    // Lanes never exceed maxAttemptsPerProvider, so in-flight solves never trip that cap.
-   const queue=prioritiseNaprRecords(result.records as any[]);
+   const ordered=prioritiseNaprRecords(result.records as any[]);const queue=ordered.slice(0,MAX_RECORDS_OPENED);
+   (base as any).recordsNotOpened=ordered.slice(MAX_RECORDS_OPENED).map((r:any)=>String(r.appID));
    const lanes=Math.max(1,Math.min(options.recordConcurrency??(options.captcha?.policy.enabled?options.captcha.policy.maxAttemptsPerProvider:1),MAX_RECORD_LANES,queue.length));
    const openRecord=async(application:any)=>{
    if(controller.signal.aborted)throw new Error('Provider deadline');

@@ -1,7 +1,7 @@
 import {URL} from 'node:url';
 ﻿import { ApiError, isAccessDeniedHtml, isExplicitCaptchaError, publicUrl } from './api.js';
 export type RequestSpec = {url:string;method:'GET'|'POST';headers:Record<string,string>;body?:string};
-export type NaprOptions = {fetch?:typeof fetch;timeoutMs?:number;retries?:number;retryDelayMs?:number};
+export type NaprOptions = {fetch?:typeof fetch;timeoutMs?:number;retries?:number;retryDelayMs?:number;/** Stop after this many result pages (unset: every page). */maxPages?:number};
 export const NAPR_ORIGIN='https://naprweb.reestri.gov.ge';
 export function requestSpec(path:string,body?:unknown):RequestSpec {
   const headers:Record<string,string>={Accept:'application/json, text/plain, */*'};

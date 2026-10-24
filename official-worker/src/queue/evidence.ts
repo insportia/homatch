@@ -167,7 +167,26 @@ function trimStructure(r: any): void {
  * to what the report needs: every status field, every document with a short
  * excerpt and its stored-text ref, the first entities, the stored full-result
  * ref. It is always under HANDOFF_MIN_BYTES, so the second hand-off succeeds.
+ *
+ * AND THE PLACE THE SOURCE SAW (prod 9f49e7e3, 2026-10-24). The cadastral map
+ * records the parcel's own zoomed views in `frameUrls` (ms.gov.ge/msmap/#C=…);
+ * they are the only official coordinates a TAS_MAP result carries, and the
+ * report's market search, neighbourhood and photo lookup all read the parcel
+ * centre from them. This cut kept scalars only, so a TAS_MAP result refused as
+ * 413 arrived with nothing but the map's default start view and every
+ * downstream stage said "location unknown". The views are a few short strings:
+ * they are kept (map views first, bounded).
  */
+const MAX_HANDOFF_FRAME_URLS = 12;
+const MAX_HANDOFF_URL_CHARS = 600;
+const MAP_VIEW = /ms\.gov\.ge\/msmap\/#C=/;
+function handoffFrameUrls(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const urls = v.filter((u): u is string => typeof u === 'string' && u.length > 0 && u.length <= MAX_HANDOFF_URL_CHARS);
+  const ordered = [...urls.filter((u) => MAP_VIEW.test(u)), ...urls.filter((u) => !MAP_VIEW.test(u))];
+  return [...new Set(ordered)].slice(0, MAX_HANDOFF_FRAME_URLS);
+}
+
 export function handoffMinimum(result: any, maxBytes = HANDOFF_MIN_BYTES): any {
   const r = result && typeof result === 'object' ? result : { value: result };
   const out: any = {};
@@ -177,6 +196,8 @@ export function handoffMinimum(result: any, maxBytes = HANDOFF_MIN_BYTES): any {
   for (const k of ['fullResultRef', 'workflowResult', 'captchaResolution', 'rsVerification', 'sourceOutcome', 'outcomeReason', '_exec']) {
     if (r[k] !== undefined) out[k] = r[k];
   }
+  const frames = handoffFrameUrls(r.frameUrls);
+  if (frames) out.frameUrls = frames;
   const docs: any[] = Array.isArray(r.documents) ? r.documents : [];
   const docOf = (d: any, chars: number) => {
     const keep: any = {};

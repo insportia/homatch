@@ -83,6 +83,10 @@ export const HOMI_STRINGS = {
   ],
   homi_card_roi_empty: ['Enter the price and the expected rent.', 'შეიყვანე ფასი და მოსალოდნელი ქირა.', 'Введи цену и ожидаемую аренду.', 'Fiyatı ve beklenen kirayı gir.', 'أدخل السعر والإيجار المتوقع.', 'הזן את המחיר ואת השכירות הצפויה.'],
   homi_card_open_investment: ['Open the full investment analysis', 'სრული საინვესტიციო შეფასების გახსნა', 'Открыть полный инвестиционный анализ', 'Tam yatırım analizini aç', 'افتح تحليل الاستثمار الكامل', 'לפתוח את ניתוח ההשקעה המלא'],
+
+  /* ── Homepage ──────────────────────────────────────────────────────── */
+  homi_home_cta: ['Talk to HOMI', 'ესაუბრე HOMI-ს', 'Поговори с HOMI', 'HOMI ile konuş', 'تحدّث مع HOMI', 'דבר עם HOMI'],
+  homi_home_cta_secondary: ['See what it can help with', 'ნახე, რაში დაგეხმარება', 'Посмотри, в чём он поможет', 'Neler yapabildiğine bak', 'اكتشف فيمَ يساعدك', 'ראה במה הוא יכול לעזור'],
 };
 
 /** Existing keys whose copy changes with the HOMI rename. */
@@ -100,6 +104,39 @@ export const HOMI_REBRAND_STRINGS = {
     'محادثتك محفوظة: بعد تسجيل الدخول ستتابعها ببساطة. الحديث مع HOMI مجاني.',
     'השיחה שלך נשמרת: אחרי ההתחברות פשוט ממשיכים. השיחה עם HOMI בחינם.',
   ],
+  /* Homepage region 09 — the specification's HOMI copy. */
+  mp_flow_eyebrow: ['HOMI assistant', 'HOMI ასისტენტი', 'Ассистент HOMI', 'HOMI asistanı', 'المساعد HOMI', 'העוזר HOMI'],
+  mp_flow_title: [
+    'Meet HOMI — your smart guide to the world of real estate',
+    'გაიცანი HOMI — შენი ჭკვიანი მეგზური უძრავი ქონების სამყაროში',
+    'Знакомься, HOMI — твой умный проводник в мире недвижимости',
+    'HOMI ile tanış — emlak dünyasındaki akıllı rehberin',
+    'تعرّف على HOMI — دليلك الذكي في عالم العقارات',
+    'הכירו את HOMI — המדריך החכם שלך לעולם הנדל״ן',
+  ],
+  mp_flow_sub: [
+    'Finding a home, checking a property, assessing an investment or planning a mortgage — HOMI helps you understand all of it, simply.',
+    'ბინის მოძებნა, ქონების შემოწმება, ინვესტიციის შეფასება თუ იპოთეკის დაგეგმვა — HOMI დაგეხმარება ყველაფრის მარტივად გაგებაში.',
+    'Поиск жилья, проверка недвижимости, оценка инвестиции или планирование ипотеки — HOMI поможет во всём разобраться просто.',
+    'Ev bulmak, mülk kontrol etmek, yatırımı değerlendirmek ya da konut kredisini planlamak — HOMI hepsini kolayca anlamana yardım eder.',
+    'البحث عن منزل، فحص عقار، تقييم استثمار أو التخطيط لرهن عقاري — يساعدك HOMI على فهم كل ذلك ببساطة.',
+    'חיפוש דירה, בדיקת נכס, הערכת השקעה או תכנון משכנתא — HOMI עוזר להבין הכול בפשטות.',
+  ],
+  mp_flow_cta: ['Talk to HOMI', 'ესაუბრე HOMI-ს', 'Поговори с HOMI', 'HOMI ile konuş', 'تحدّث مع HOMI', 'דבר עם HOMI'],
+  mp_ai_send: ['Ask HOMI', 'ჰკითხე HOMI-ს', 'Спросить HOMI', "HOMI'ye sor", 'اسأل HOMI', 'שאל את HOMI'],
+  mp_core_sub: [
+    'Find the person who wants a property. Find the property someone wants. Check what you are buying. Understand what it costs to finance. Each is a real capability with its own workflow — and HOMI reaches all of them.',
+    'იპოვე ადამიანი, ვისაც შენი ქონება სჭირდება. იპოვე ქონება, რომელსაც შენ ეძებ. გადაამოწმე, რას ყიდულობ. გაიგე, რა ჯდება დაფინანსება. თითოეული ცალკე შესაძლებლობაა თავისი პროცესით — და ყველას HOMI-ს მეშვეობით წვდები.',
+    'Найди человека, которому нужна недвижимость. Найди объект, который ищешь. Проверь, что покупаешь. Узнай, сколько стоит финансирование. Каждая возможность — отдельный процесс, и до всех них можно дойти через HOMI.',
+    'Mülk isteyen kişiyi bul. Aradığın mülkü bul. Ne satın aldığını kontrol et. Finansmanın ne kadara mal olduğunu öğren. Her biri kendi süreci olan gerçek bir yetenek — ve hepsine HOMI ile ulaşırsın.',
+    'اعثر على من يريد عقارًا. اعثر على العقار الذي تبحث عنه. تحقّق مما تشتريه. افهم كلفة التمويل. كل منها قدرة حقيقية لها مسارها — ويصل HOMI إليها جميعًا.',
+    'מצא את מי שמחפש נכס. מצא את הנכס שאתה מחפש. בדוק מה אתה קונה. הבן כמה עולה המימון. כל אחת מהן יכולת אמיתית עם תהליך משלה — ו-HOMI מגיע לכולן.',
+  ],
+  home_cta_title: ['Start with HOMI — free', 'დაიწყე HOMI-სთან ერთად — უფასოდ', 'Начни с HOMI — бесплатно', 'HOMI ile başla — ücretsiz', 'ابدأ مع HOMI — مجانًا', 'התחל עם HOMI — בחינם'],
+  home_cta_button: ['Talk to HOMI for free', 'ესაუბრე HOMI-ს უფასოდ', 'Поговори с HOMI бесплатно', "HOMI ile ücretsiz konuş", 'تحدّث مع HOMI مجانًا', 'דבר עם HOMI בחינם'],
+  dash_empty_ai_title: ['Start with HOMI', 'დაიწყე HOMI-სთან ერთად', 'Начни с HOMI', 'HOMI ile başla', 'ابدأ مع HOMI', 'התחל עם HOMI'],
+  dash_empty_open_ai: ['Open HOMI', 'გახსენი HOMI', 'Открыть HOMI', "HOMI'yi aç", 'افتح HOMI', 'פתח את HOMI'],
+  dash_continue_ai: ['Continue with HOMI', 'გააგრძელე HOMI-სთან', 'Продолжить с HOMI', 'HOMI ile devam et', 'تابع مع HOMI', 'המשך עם HOMI'],
   ai_disclaimer: [
     'HOMI can make mistakes. Check important information independently.',
     'HOMI შეიძლება შეცდეს. მნიშვნელოვანი ინფორმაცია დამოუკიდებლად გადაამოწმე.',

@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Building2, Calculator, FileText, Mail, PhoneCall, Search, ShieldCheck, UserSearch,
 } from 'lucide-react';
@@ -8,6 +9,8 @@ import { IntentCards } from '@/components/home/IntentCards';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
 import { useSectionField, useFieldProps } from '@/site/content';
+import { HomiHomeStage } from '@/components/homi/HomiHomeStage';
+import type { HomiGesture } from '@/components/homi/HomiStage3D';
 
 /**
  * REGION 09 — Homatch AI.
@@ -25,11 +28,37 @@ import { useSectionField, useFieldProps } from '@/site/content';
  * arrive thinking "is this price normal" and "what do I check before I
  * sign". Eight of those are now the centre of the region, and each is one
  * click into the real conversation.
+ *
+ * HOMI (2026-10-24, owner instruction): the assistant is introduced here by
+ * name and in person. The 3D HOMI greets once when the region appears, points
+ * at the questions a visitor hovers and gestures over the capability list;
+ * the 2D HOMI stands in until (and unless) the 3D one can load. The region's
+ * layout and black/gold identity are unchanged.
  */
 export function AISection() {
   const sf = useSectionField();
   const fp = useFieldProps();
   const { t } = useLanguage();
+  const sectionRef = useRef<HTMLElement>(null);
+  const [gesture, setGesture] = useState<HomiGesture>('idle');
+  const [pointTo, setPointTo] = useState(1);
+  /* One greeting, the first time the region is actually seen. */
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    let timer = 0;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        setGesture('greeting');
+        timer = window.setTimeout(() => setGesture((g) => (g === 'greeting' ? 'idle' : g)), 3400);
+        io.disconnect();
+      }
+    }, { threshold: 0.25 });
+    io.observe(el);
+    return () => { io.disconnect(); window.clearTimeout(timer); };
+  }, []);
+  const look = (g: HomiGesture, dir = 1) => () => { setGesture(g); setPointTo(dir); };
+  const rest = () => setGesture('idle');
 
   const reach = [
     { key: 'match', icon: UserSearch, label: sf('reach_match', 'mp_match_title') },
@@ -43,7 +72,7 @@ export function AISection() {
   ];
 
   return (
-    <section id="how" className={`${PAGE} scroll-mt-20 border-t border-border ${SECTION_Y}`}>
+    <section ref={sectionRef} id="how" className={`${PAGE} scroll-mt-20 border-t border-border ${SECTION_Y}`}>
       <div className="flex items-center gap-3.5">
         <FeatureGlyph name="ai" size={48} className="sm:h-14 sm:w-14" />
         <p className="min-w-0 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink" {...fp('eyebrow')}>
@@ -58,13 +87,31 @@ export function AISection() {
          {...fp('title')}>
           {sf('title', 'mp_flow_title')}
         </h2>
-        <p className="text-pretty text-[16px] leading-[1.65] text-ink-soft sm:text-base sm:leading-[1.7]" {...fp('body')}>
-          {sf('body', 'mp_flow_sub')}
-        </p>
+        <div>
+          <p className="text-pretty text-[16px] leading-[1.65] text-ink-soft sm:text-base sm:leading-[1.7]" {...fp('body')}>
+            {sf('body', 'mp_flow_sub')}
+          </p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Link
+              to="/ai"
+              onMouseEnter={look('happy')} onMouseLeave={rest} onFocus={look('happy')} onBlur={rest}
+              className="inline-flex min-h-11 items-center rounded-full bg-foreground px-5 text-[15px] font-semibold text-background transition-colors hover:bg-foreground/90"
+            >
+              {t('homi_home_cta')}
+            </Link>
+            <a
+              href="#homi-reach"
+              onMouseEnter={look('pointing', 1)} onMouseLeave={rest} onFocus={look('pointing', 1)} onBlur={rest}
+              className="inline-flex min-h-11 items-center rounded-full border border-foreground/25 px-5 text-[15px] font-medium text-foreground transition-colors hover:border-[hsl(var(--gold-border))]"
+            >
+              {t('homi_home_cta_secondary')}
+            </a>
+          </div>
+        </div>
       </div>
 
       <div className="mt-8 grid gap-8 sm:mt-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,21rem)] lg:gap-12">
-        <div className="min-w-0">
+        <div className="min-w-0" onMouseEnter={look('pointing', -1)} onMouseLeave={rest} onFocusCapture={look('pointing', -1)} onBlurCapture={rest}>
           <HomatchAsk variant="console" placeholder={t('mp_hero_ai_placeholder')} actions={[]} />
 
           <p className="mt-7 text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground" {...fp('intent_label')}>
@@ -82,7 +129,17 @@ export function AISection() {
 
         {/* What a question reaches. Not decoration: this is the list that
             separates an assistant from a chat window. */}
-        <div className="min-w-0 self-start rounded-[1.1rem] border border-foreground/15 bg-secondary/60 p-5 sm:p-6">
+        <div className="min-w-0 self-start">
+        <HomiHomeStage
+          gesture={gesture}
+          pointTo={pointTo}
+          className="mx-auto mb-4 h-[240px] w-[200px] sm:h-[300px] sm:w-[250px]"
+        />
+        <div
+          id="homi-reach"
+          onMouseEnter={look('explaining')} onMouseLeave={rest}
+          className="min-w-0 scroll-mt-24 rounded-[1.1rem] border border-foreground/15 bg-secondary/60 p-5 sm:p-6"
+        >
           <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground" {...fp('reach_label')}>
             {sf('reach_label', 'mp_ai_reach_label')}
           </p>
@@ -99,6 +156,7 @@ export function AISection() {
               </li>
             ))}
           </ul>
+        </div>
         </div>
       </div>
     </section>

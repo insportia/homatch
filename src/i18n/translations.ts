@@ -1894,9 +1894,9 @@ const en = {
   home_faq_5_a: 'Add or import your property. Homatch builds a demand profile and scans internal buyers/renters first. If more demand is needed, external sources are searched. Qualified leads are ranked and previewed before you open contact details.',
   home_faq_6_q: 'Is Active AI Search really automatic?',
   home_faq_6_a: 'Yes. Set your criteria once and Homatch keeps running. When new matching properties or buyer signals appear, you get notified automatically — no need to check manually.',
-  home_cta_title: 'Start with Homatch AI — free',
+  home_cta_title: 'Start with HOMI — free',
   home_cta_desc: 'Tell us what you need. We find it, match it and help you verify it.',
-  home_cta_button: 'Try Homatch AI Free',
+  home_cta_button: 'Talk to HOMI for free',
 
   // ── Active Search Page ──────────────────────────────────────────────
   as_status_active: 'Active',
@@ -1960,9 +1960,9 @@ const en = {
   dash_status_live: 'Live',
   dash_ai_process_label: 'AI process',
   dash_sources_label: 'Sources',
-  dash_empty_ai_title: 'Start with Homatch AI',
+  dash_empty_ai_title: 'Start with HOMI',
   dash_empty_ai_desc: 'Tell AI what property you need, or ask it to find people interested in yours. No forms required.',
-  dash_empty_open_ai: 'Open Homatch AI',
+  dash_empty_open_ai: 'Open HOMI',
   dash_empty_find_property_title: 'Find a Property',
   dash_empty_find_property_desc: 'Describe what you need and Homatch searches its network plus external sources. Ranked by match score.',
   dash_empty_find_buyers_title: 'Find interested people',
@@ -1977,7 +1977,7 @@ const en = {
   dash_welcome_back: 'Welcome back',
   dash_matches_summary: 'You have {{count}} matches',
   dash_new_count: '+{{count}} new',
-  dash_continue_ai: 'Continue with Homatch AI',
+  dash_continue_ai: 'Continue with HOMI',
   dash_hero_subtitle: 'Ask AI, review matches, verify properties or set an Active Search.',
   dash_view_matches: 'View Matches',
   dash_total_matches: 'Total Matches',
@@ -3724,7 +3724,7 @@ const en = {
   mp_hero_image_alt: 'A contemporary Tbilisi apartment at sunset, the city beyond floor-to-ceiling glazing',
 
 
-  mp_ai_send: 'Ask Homatch AI',
+  mp_ai_send: 'Ask HOMI',
   mp_ai_signin_note: 'Sign in to continue. Your question is carried straight over.',
 
 
@@ -4105,10 +4105,10 @@ const en = {
   mp_hero_action_capabilities: 'What Homatch can do',
   mp_hero_action_capabilities_prompt: 'What can Homatch do for me?',
 
-  mp_flow_eyebrow: 'The intelligence layer',
-  mp_flow_title: 'One question for the whole platform',
-  mp_flow_sub: 'Homatch AI is not a chat window bolted onto a website. It is the layer the whole platform is reached through, and it answers only from what it can actually confirm.',
-  mp_flow_cta: 'Ask Homatch AI',
+  mp_flow_eyebrow: 'HOMI assistant',
+  mp_flow_title: 'Meet HOMI — your smart guide to the world of real estate',
+  mp_flow_sub: 'Finding a home, checking a property, assessing an investment or planning a mortgage — HOMI helps you understand all of it, simply.',
+  mp_flow_cta: 'Talk to HOMI',
 
 
   mp_verify_code_placeholder: 'Enter a cadastral code',
@@ -4120,7 +4120,7 @@ const en = {
 
   mp_core_eyebrow: 'Core intelligence',
   mp_core_title: 'Four things Homatch does, and does properly.',
-  mp_core_sub: 'Find the person who wants a property. Find the property someone wants. Check what you are buying. Understand what it costs to finance. Each is a real capability with its own workflow — and Homatch AI reaches all of them.',
+  mp_core_sub: 'Find the person who wants a property. Find the property someone wants. Check what you are buying. Understand what it costs to finance. Each is a real capability with its own workflow — and HOMI reaches all of them.',
 
   mp_match_title: 'Find someone interested in buying or renting',
   mp_match_desc: 'Add or import a property and Homatch looks for people whose stated budget, district and requirements actually line up with it. It brings back scored demand with no duplicates, and shows where each one came from.',
@@ -22762,6 +22762,10 @@ const en = {
   homi_card_roi_note: 'Before tax and financing. Rent and empty months are your assumptions, not market data.',
   homi_card_roi_empty: 'Enter the price and the expected rent.',
   homi_card_open_investment: 'Open the full investment analysis',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_home_cta: 'Talk to HOMI',
+  homi_home_cta_secondary: 'See what it can help with',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -24590,9 +24594,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   home_faq_5_a: 'დაამატეთ ან შემოიტანეთ თქვენი ქონება. Homatch ქმნის მოთხოვნის პროფილს და ჯერ სკანირებს შიდა მყიდველებს/დამქირავებლებს. საჭიროების შემთხვევაში, მოწმდება გარე წყაროებიც. შესაბამისი კანდიდატები დარეიტინგდება და წინასწარ ჩანს გახსნამდე.',
   home_faq_6_q: 'მართლა ავტომატურია აქტიური AI ძიება?',
   home_faq_6_a: 'დიახ. დააყენეთ კრიტერიუმები ერთხელ და Homatch განაგრძობს მუშაობას. ახალი შესაბამისი ქონების ან მყიდველის სიგნალის გამოჩენისას ავტომატურად მიიღებთ შეტყობინებას — ხელით შემოწმება საჭირო არ არის.',
-  home_cta_title: 'დაიწყეთ Homatch AI-თ — უფასოდ',
+  home_cta_title: 'დაიწყე HOMI-სთან ერთად — უფასოდ',
   home_cta_desc: 'გვითხარით რა გჭირდებათ. ჩვენ ვიპოვით, დავამთხვევთ და დაგეხმარებით ვერიფიკაციაში.',
-  home_cta_button: 'სცადეთ Homatch AI უფასოდ',
+  home_cta_button: 'ესაუბრე HOMI-ს უფასოდ',
 
   // ── Active Search Page ──────────────────────────────────────────────
   as_status_active: 'აქტიური',
@@ -24656,9 +24660,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dash_status_live: 'აქტიური',
   dash_ai_process_label: 'AI პროცესი',
   dash_sources_label: 'წყაროები',
-  dash_empty_ai_title: 'დაიწყეთ Homatch AI-თ',
+  dash_empty_ai_title: 'დაიწყე HOMI-სთან ერთად',
   dash_empty_ai_desc: 'უთხარით AI-ს, რა ქონება გჭირდებათ, ან სთხოვეთ თქვენი ქონებით დაინტერესებულების პოვნა. ფორმები არ არის საჭირო.',
-  dash_empty_open_ai: 'გახსენით Homatch AI',
+  dash_empty_open_ai: 'გახსენი HOMI',
   dash_empty_find_property_title: 'იპოვეთ ქონება',
   dash_empty_find_property_desc: 'აღწერეთ რა გჭირდებათ და Homatch ეძებს თავის ქსელსა და გარე წყაროებში. დალაგებულია დამთხვევის ქულით.',
   dash_empty_find_buyers_title: 'იპოვეთ დაინტერესებული ადამიანები',
@@ -24673,7 +24677,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dash_welcome_back: 'კეთილი იყოს თქვენი დაბრუნება',
   dash_matches_summary: 'თქვენ გაქვთ {{count}} დამთხვევა',
   dash_new_count: '+{{count}} ახალი',
-  dash_continue_ai: 'განაგრძეთ Homatch AI-თ',
+  dash_continue_ai: 'გააგრძელე HOMI-სთან',
   dash_hero_subtitle: 'ჰკითხეთ AI-ს, გადახედეთ დამთხვევებს, გადაამოწმეთ ქონება ან დააყენეთ აქტიური ძიება.',
   dash_view_matches: 'დამთხვევების ნახვა',
   dash_total_matches: 'სულ დამთხვევები',
@@ -26400,7 +26404,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mp_hero_image_alt: 'თანამედროვე თბილისური ბინა მზის ჩასვლისას, პანორამული მინის მიღმა გადაშლილი ქალაქით',
 
 
-  mp_ai_send: 'ჰკითხეთ Homatch AI-ს',
+  mp_ai_send: 'ჰკითხე HOMI-ს',
   mp_ai_signin_note: 'გასაგრძელებლად შედით. თქვენი შეკითხვა შენარჩუნდება.',
 
 
@@ -26781,10 +26785,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mp_hero_action_capabilities: 'რა შეუძლია Homatch-ს?',
   mp_hero_action_capabilities_prompt: 'რა შეუძლია Homatch-ს ჩემთვის?',
 
-  mp_flow_eyebrow: 'ინტელექტის ფენა',
-  mp_flow_title: 'ერთი შეკითხვა მთელი პლატფორმისთვის',
-  mp_flow_sub: 'Homatch AI არ არის ვებგვერდზე მიმაგრებული ჩატის ფანჯარა. ეს არის ფენა, რომლითაც მთელ პლატფორმას წვდებით, და პასუხობს მხოლოდ იმაზე დაყრდნობით, რისი დადასტურებაც შეუძლია.',
-  mp_flow_cta: 'ჰკითხეთ Homatch AI-ს',
+  mp_flow_eyebrow: 'HOMI ასისტენტი',
+  mp_flow_title: 'გაიცანი HOMI — შენი ჭკვიანი მეგზური უძრავი ქონების სამყაროში',
+  mp_flow_sub: 'ბინის მოძებნა, ქონების შემოწმება, ინვესტიციის შეფასება თუ იპოთეკის დაგეგმვა — HOMI დაგეხმარება ყველაფრის მარტივად გაგებაში.',
+  mp_flow_cta: 'ესაუბრე HOMI-ს',
 
 
   mp_verify_code_placeholder: 'შეიყვანეთ საკადასტრო კოდი',
@@ -26796,7 +26800,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   mp_core_eyebrow: 'ძირითადი შესაძლებლობები',
   mp_core_title: 'ოთხი რამ, რასაც Homatch სრულფასოვნად აკეთებს.',
-  mp_core_sub: 'იპოვე ადამიანი, ვისაც შენი ქონება სჭირდება. იპოვე ქონება, რომელსაც შენ ეძებ. გადაამოწმე, რას ყიდულობ. გაიგე, რა ჯდება დაფინანსება. თითოეული ცალკე შესაძლებლობაა თავისი პროცესით — და ყველას Homatch AI-ს მეშვეობით წვდები.',
+  mp_core_sub: 'იპოვე ადამიანი, ვისაც შენი ქონება სჭირდება. იპოვე ქონება, რომელსაც შენ ეძებ. გადაამოწმე, რას ყიდულობ. გაიგე, რა ჯდება დაფინანსება. თითოეული ცალკე შესაძლებლობაა თავისი პროცესით — და ყველას HOMI-ს მეშვეობით წვდები.',
 
   mp_match_title: 'იპოვე ყიდვით ან ქირით დაინტერესებული ადამიანი',
   mp_match_desc: 'დაამატე ან შემოიტანე ქონება და Homatch მოძებნის ადამიანებს, ვისი ბიუჯეტი, სასურველი უბანი და მოთხოვნებიც რეალურად ემთხვევა მას. დაგიბრუნებს შეფასებულ, დუბლიკატებისგან გასუფთავებულ მოთხოვნას და აჩვენებს, საიდან მოვიდა თითოეული.',
@@ -45438,6 +45442,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   homi_card_roi_note: 'გადასახადებამდე და დაფინანსების გარეშე. ქირა და ცარიელი თვეები შენი დაშვებებია და არა საბაზრო მონაცემები.',
   homi_card_roi_empty: 'შეიყვანე ფასი და მოსალოდნელი ქირა.',
   homi_card_open_investment: 'სრული საინვესტიციო შეფასების გახსნა',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_home_cta: 'ესაუბრე HOMI-ს',
+  homi_home_cta_secondary: 'ნახე, რაში დაგეხმარება',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -47256,9 +47264,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   home_faq_5_a: 'Добавьте или импортируйте свою недвижимость. Homatch формирует профиль спроса и сначала сканирует внутренних покупателей/арендаторов. При необходимости проверяются и внешние источники. Подходящие клиенты ранжируются и предварительно показываются до открытия контактов.',
   home_faq_6_q: 'Активный AI-поиск действительно автоматический?',
   home_faq_6_a: 'Да. Задайте критерии один раз, и Homatch продолжит работу. Когда появляются новые подходящие объекты или сигналы покупателей, вы получаете уведомление автоматически — проверять вручную не нужно.',
-  home_cta_title: 'Начните с Homatch AI — бесплатно',
+  home_cta_title: 'Начни с HOMI — бесплатно',
   home_cta_desc: 'Скажите нам, что вам нужно. Мы найдём, подберём и поможем проверить.',
-  home_cta_button: 'Попробовать Homatch AI бесплатно',
+  home_cta_button: 'Поговори с HOMI бесплатно',
 
   // ── Active Search Page ──────────────────────────────────────────────
   as_status_active: 'Активен',
@@ -47322,9 +47330,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dash_status_live: 'В процессе',
   dash_ai_process_label: 'Процесс AI',
   dash_sources_label: 'Источники',
-  dash_empty_ai_title: 'Начните с Homatch AI',
+  dash_empty_ai_title: 'Начни с HOMI',
   dash_empty_ai_desc: 'Скажите AI, какая недвижимость вам нужна, или попросите найти покупателей для вашей. Формы не нужны.',
-  dash_empty_open_ai: 'Открыть Homatch AI',
+  dash_empty_open_ai: 'Открыть HOMI',
   dash_empty_find_property_title: 'Найти недвижимость',
   dash_empty_find_property_desc: 'Опишите, что вам нужно, и Homatch найдёт по своей сети и внешним источникам. Сортировка по баллу совпадения.',
   dash_empty_find_buyers_title: 'Найти покупателей или арендаторов',
@@ -47339,7 +47347,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dash_welcome_back: 'С возвращением',
   dash_matches_summary: 'У вас {{count}} совпадений',
   dash_new_count: '+{{count}} новых',
-  dash_continue_ai: 'Продолжить с Homatch AI',
+  dash_continue_ai: 'Продолжить с HOMI',
   dash_hero_subtitle: 'Спросите AI, просмотрите совпадения, проверьте недвижимость или настройте активный поиск.',
   dash_view_matches: 'Смотреть совпадения',
   dash_total_matches: 'Всего совпадений',
@@ -49067,7 +49075,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mp_hero_image_alt: 'Современная тбилисская квартира на закате, город за панорамным остеклением',
 
 
-  mp_ai_send: 'Спросить Homatch AI',
+  mp_ai_send: 'Спросить HOMI',
   mp_ai_signin_note: 'Войдите, чтобы продолжить. Ваш вопрос сохранится.',
 
 
@@ -49448,10 +49456,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mp_hero_action_capabilities: 'Возможности Homatch',
   mp_hero_action_capabilities_prompt: 'Что Homatch может для меня сделать?',
 
-  mp_flow_eyebrow: 'Слой интеллекта',
-  mp_flow_title: 'Один вопрос ко всей платформе',
-  mp_flow_sub: 'Homatch AI работает не как чат, приделанный к сайту. Это слой, через который работает вся платформа, и отвечает он только на основании того, что действительно может подтвердить.',
-  mp_flow_cta: 'Спросить Homatch AI',
+  mp_flow_eyebrow: 'Ассистент HOMI',
+  mp_flow_title: 'Знакомься, HOMI — твой умный проводник в мире недвижимости',
+  mp_flow_sub: 'Поиск жилья, проверка недвижимости, оценка инвестиции или планирование ипотеки — HOMI поможет во всём разобраться просто.',
+  mp_flow_cta: 'Поговори с HOMI',
 
 
   mp_verify_code_placeholder: 'Введите кадастровый код',
@@ -49463,7 +49471,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   mp_core_eyebrow: 'Основные возможности',
   mp_core_title: 'Четыре вещи, которые Homatch делает по-настоящему.',
-  mp_core_sub: 'Найдите человека, которому нужен ваш объект. Найдите объект, который ищете вы. Проверьте, что покупаете. Поймите, во что обходится финансирование. Каждое — отдельная возможность со своим процессом, и ко всем ведёт Homatch AI.',
+  mp_core_sub: 'Найди человека, которому нужна недвижимость. Найди объект, который ищешь. Проверь, что покупаешь. Узнай, сколько стоит финансирование. Каждая возможность — отдельный процесс, и до всех них можно дойти через HOMI.',
 
   mp_match_title: 'Найдите заинтересованного покупателя или арендатора',
   mp_match_desc: 'Добавьте или импортируйте объект, и Homatch найдёт людей, чей бюджет, район и требования действительно ему соответствуют. Он вернёт оценённый спрос без дублей и покажет, откуда взялся каждый.',
@@ -68105,6 +68113,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   homi_card_roi_note: 'До налогов и без финансирования. Аренда и пустые месяцы — твои допущения, а не рыночные данные.',
   homi_card_roi_empty: 'Введи цену и ожидаемую аренду.',
   homi_card_open_investment: 'Открыть полный инвестиционный анализ',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_home_cta: 'Поговори с HOMI',
+  homi_home_cta_secondary: 'Посмотри, в чём он поможет',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -69921,9 +69933,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   home_faq_5_a: 'Mülkünüzü ekleyin veya içe aktarın. Homatch bir talep profili oluşturur ve önce iç alıcıları/kiracıları tarar. Daha fazla talep gerekiyorsa dış kaynaklar da taranır. Uygun adaylar sıralanır ve kişi bilgileri açılmadan önce önizlenir.',
   home_faq_6_q: 'Aktif AI Araması gerçekten otomatik mi?',
   home_faq_6_a: 'Evet. Kriterlerinizi bir kez belirleyin, Homatch çalışmaya devam etsin. Yeni uygun mülkler veya alıcı sinyalleri belirdiğinde otomatik olarak bildirim alırsınız — elle kontrol etmenize gerek kalmaz.',
-  home_cta_title: 'Homatch AI ile Başlayın — ücretsiz',
+  home_cta_title: 'HOMI ile başla — ücretsiz',
   home_cta_desc: 'Bize ne istediğinizi söyleyin. Biz bulalım, eşleştirelim ve doğrulamanıza yardımcı olalım.',
-  home_cta_button: 'Homatch AI\'ı Ücretsiz Deneyin',
+  home_cta_button: 'HOMI ile ücretsiz konuş',
 
   // ── Active Search Page ──────────────────────────────────────────────
   as_status_active: 'Aktif',
@@ -69987,9 +69999,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dash_status_live: 'Canlı',
   dash_ai_process_label: 'AI süreci',
   dash_sources_label: 'Kaynaklar',
-  dash_empty_ai_title: 'Homatch AI ile Başlayın',
+  dash_empty_ai_title: 'HOMI ile başla',
   dash_empty_ai_desc: 'AI\'ya hangi mülkü istediğinizi söyleyin veya mülkünüz için alıcı bulmasını isteyin. Form gerekmez.',
-  dash_empty_open_ai: 'Homatch AI\'ı Aç',
+  dash_empty_open_ai: 'HOMI\'yi aç',
   dash_empty_find_property_title: 'Mülk Bul',
   dash_empty_find_property_desc: 'İhtiyacınızı tanımlayın, Homatch kendi ağında ve dış kaynaklarda arasın. Eşleşme puanına göre sıralanır.',
   dash_empty_find_buyers_title: 'Alıcı veya Kiracı Bul',
@@ -70004,7 +70016,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dash_welcome_back: 'Tekrar hoş geldiniz',
   dash_matches_summary: '{{count}} eşleşmeniz var',
   dash_new_count: '+{{count}} yeni',
-  dash_continue_ai: 'Homatch AI ile Devam Et',
+  dash_continue_ai: 'HOMI ile devam et',
   dash_hero_subtitle: 'AI\'ya sorun, eşleşmeleri inceleyin, mülkleri doğrulayın veya Aktif Arama ayarlayın.',
   dash_view_matches: 'Eşleşmeleri Görüntüle',
   dash_total_matches: 'Toplam Eşleşme',
@@ -71732,7 +71744,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mp_hero_image_alt: 'Gün batımında çağdaş bir Tiflis dairesi, tavandan tabana camın ardında şehir',
 
 
-  mp_ai_send: 'Homatch AI’a sor',
+  mp_ai_send: 'HOMI\'ye sor',
   mp_ai_signin_note: 'Devam etmek için giriş yapın. Sorunuz olduğu gibi taşınır.',
 
 
@@ -72113,10 +72125,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mp_hero_action_capabilities: 'Homatch neler yapar',
   mp_hero_action_capabilities_prompt: 'Homatch benim için neler yapabilir?',
 
-  mp_flow_eyebrow: 'Zekâ katmanı',
-  mp_flow_title: 'Tüm platform için tek bir soru',
-  mp_flow_sub: 'Homatch AI, bir siteye iliştirilmiş sohbet penceresi değildir. Tüm platforma onun üzerinden ulaşılır ve yalnızca gerçekten doğrulayabildiğine dayanarak yanıt verir.',
-  mp_flow_cta: 'Homatch AI’a sor',
+  mp_flow_eyebrow: 'HOMI asistanı',
+  mp_flow_title: 'HOMI ile tanış — emlak dünyasındaki akıllı rehberin',
+  mp_flow_sub: 'Ev bulmak, mülk kontrol etmek, yatırımı değerlendirmek ya da konut kredisini planlamak — HOMI hepsini kolayca anlamana yardım eder.',
+  mp_flow_cta: 'HOMI ile konuş',
 
 
   mp_verify_code_placeholder: 'Kadastro kodunu girin',
@@ -72128,7 +72140,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   mp_core_eyebrow: 'Temel yetenekler',
   mp_core_title: 'Homatch’in gerçekten yaptığı dört şey.',
-  mp_core_sub: 'Gayrimenkulünüzü isteyen kişiyi bulun. Aradığınız gayrimenkulü bulun. Ne aldığınızı kontrol edin. Finansmanın neye mal olduğunu anlayın. Her biri kendi akışı olan gerçek bir yetenektir ve hepsine Homatch AI üzerinden ulaşılır.',
+  mp_core_sub: 'Mülk isteyen kişiyi bul. Aradığın mülkü bul. Ne satın aldığını kontrol et. Finansmanın ne kadara mal olduğunu öğren. Her biri kendi süreci olan gerçek bir yetenek — ve hepsine HOMI ile ulaşırsın.',
 
   mp_match_title: 'Almak ya da kiralamakla ilgilenen kişiyi bulun',
   mp_match_desc: 'Bir gayrimenkul ekleyin veya içe aktarın; Homatch bütçesi, semti ve kriterleri gerçekten uyan kişileri arar. Puanlanmış ve tekrarsız talebi geri getirir, her birinin nereden geldiğini gösterir.',
@@ -90770,6 +90782,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   homi_card_roi_note: 'Vergi ve finansman öncesi. Kira ve boş aylar senin varsayımların, piyasa verisi değil.',
   homi_card_roi_empty: 'Fiyatı ve beklenen kirayı gir.',
   homi_card_open_investment: 'Tam yatırım analizini aç',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_home_cta: 'HOMI ile konuş',
+  homi_home_cta_secondary: 'Neler yapabildiğine bak',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -92586,9 +92602,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   home_faq_5_a: 'أضف أو استورد عقارك. يبني Homatch ملف طلب ويفحص أولًا المشترين/المستأجرين الداخليين. إذا لزم مزيد من الطلب، يتم البحث في مصادر خارجية. تُرتَّب العملاء المؤهّلون وتُعرض معاينتهم قبل فتح تفاصيل الاتصال.',
   home_faq_6_q: 'هل البحث النشط بالذكاء الاصطناعي تلقائي فعلًا؟',
   home_faq_6_a: 'نعم. اضبط معاييرك مرة واحدة ويستمر Homatch في العمل. عند ظهور عقارات مطابقة جديدة أو إشارات من مشترين، تصلك إشعارات تلقائية — دون الحاجة للتحقق يدويًا.',
-  home_cta_title: 'ابدأ مع Homatch AI — مجانًا',
+  home_cta_title: 'ابدأ مع HOMI — مجانًا',
   home_cta_desc: 'أخبرنا بما تحتاجه. سنجده، ونطابقه، ونساعدك على التحقق منه.',
-  home_cta_button: 'جرّب Homatch AI مجانًا',
+  home_cta_button: 'تحدّث مع HOMI مجانًا',
 
   // ── Active Search Page ──────────────────────────────────────────────
   as_status_active: 'نشط',
@@ -92652,9 +92668,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dash_status_live: 'مباشر',
   dash_ai_process_label: 'عملية الذكاء الاصطناعي',
   dash_sources_label: 'المصادر',
-  dash_empty_ai_title: 'ابدأ مع Homatch AI',
+  dash_empty_ai_title: 'ابدأ مع HOMI',
   dash_empty_ai_desc: 'أخبر الذكاء الاصطناعي بالعقار الذي تحتاجه، أو اطلب منه إيجاد مشترين لعقارك. لا حاجة لنماذج.',
-  dash_empty_open_ai: 'افتح Homatch AI',
+  dash_empty_open_ai: 'افتح HOMI',
   dash_empty_find_property_title: 'ابحث عن عقار',
   dash_empty_find_property_desc: 'صف ما تحتاجه ويبحث Homatch في شبكته والمصادر الخارجية. مرتّبة حسب درجة المطابقة.',
   dash_empty_find_buyers_title: 'ابحث عن مشترين أو مستأجرين',
@@ -92669,7 +92685,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dash_welcome_back: 'مرحبًا بعودتك',
   dash_matches_summary: 'لديك {{count}} مطابقة',
   dash_new_count: '+{{count}} جديدة',
-  dash_continue_ai: 'تابع مع Homatch AI',
+  dash_continue_ai: 'تابع مع HOMI',
   dash_hero_subtitle: 'اسأل الذكاء الاصطناعي، راجع المطابقات، تحقق من العقارات أو اضبط بحثًا نشطًا.',
   dash_view_matches: 'عرض المطابقات',
   dash_total_matches: 'إجمالي المطابقات',
@@ -94397,7 +94413,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mp_hero_image_alt: 'شقة معاصرة في تبليسي عند الغروب، والمدينة خلف زجاج ممتد من الأرض إلى السقف',
 
 
-  mp_ai_send: 'اسأل Homatch AI',
+  mp_ai_send: 'اسأل HOMI',
   mp_ai_signin_note: 'سجّل الدخول للمتابعة. يُحفظ سؤالك وينتقل معك.',
 
 
@@ -94778,10 +94794,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mp_hero_action_capabilities: 'ماذا يفعل Homatch',
   mp_hero_action_capabilities_prompt: 'ماذا يمكن أن يفعل Homatch من أجلي؟',
 
-  mp_flow_eyebrow: 'طبقة الذكاء',
-  mp_flow_title: 'سؤال واحد للمنصة كلها',
-  mp_flow_sub: 'Homatch AI ليس نافذة محادثة مضافة إلى موقع. إنه الطبقة التي تُدار من خلالها المنصة كلها، ولا يجيب إلا استنادًا إلى ما يستطيع تأكيده فعلًا.',
-  mp_flow_cta: 'اسأل Homatch AI',
+  mp_flow_eyebrow: 'المساعد HOMI',
+  mp_flow_title: 'تعرّف على HOMI — دليلك الذكي في عالم العقارات',
+  mp_flow_sub: 'البحث عن منزل، فحص عقار، تقييم استثمار أو التخطيط لرهن عقاري — يساعدك HOMI على فهم كل ذلك ببساطة.',
+  mp_flow_cta: 'تحدّث مع HOMI',
 
 
   mp_verify_code_placeholder: 'أدخل الرمز العقاري',
@@ -94793,7 +94809,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   mp_core_eyebrow: 'القدرات الأساسية',
   mp_core_title: 'أربعة أمور يقوم بها Homatch على أكمل وجه.',
-  mp_core_sub: 'اعثر على من يحتاج عقارك. اعثر على العقار الذي تبحث عنه. تحقّق مما تشتريه. افهم كلفة التمويل. كل واحدة قدرة قائمة بذاتها لها مسارها، وإليها جميعًا تصل عبر Homatch AI.',
+  mp_core_sub: 'اعثر على من يريد عقارًا. اعثر على العقار الذي تبحث عنه. تحقّق مما تشتريه. افهم كلفة التمويل. كل منها قدرة حقيقية لها مسارها — ويصل HOMI إليها جميعًا.',
 
   mp_match_title: 'اعثر على شخص مهتم بالشراء أو الإيجار',
   mp_match_desc: 'أضف عقارك أو استورده، فيبحث Homatch عن أشخاص تتوافق ميزانيتهم ومنطقتهم ومتطلباتهم معه فعلًا. يعيد إليك طلبًا مصنّفًا بلا تكرار، ويبيّن مصدر كل واحد منهم.',
@@ -113435,6 +113451,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   homi_card_roi_note: 'قبل الضرائب ودون تمويل. الإيجار والأشهر الشاغرة افتراضاتك وليست بيانات سوق.',
   homi_card_roi_empty: 'أدخل السعر والإيجار المتوقع.',
   homi_card_open_investment: 'افتح تحليل الاستثمار الكامل',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_home_cta: 'تحدّث مع HOMI',
+  homi_home_cta_secondary: 'اكتشف فيمَ يساعدك',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -115251,9 +115271,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   home_faq_5_a: 'הוסיפו או ייבאו את הנכס שלכם. Homatch בונה פרופיל ביקוש וסורק תחילה קונים/שוכרים פנימיים. אם נדרש ביקוש נוסף, נסרקים גם מקורות חיצוניים. לידים מתאימים מדורגים ומוצגים בתצוגה מקדימה לפני פתיחת פרטי הקשר.',
   home_faq_6_q: 'האם החיפוש הפעיל של ה-AI באמת אוטומטי?',
   home_faq_6_a: 'כן. הגדירו את הקריטריונים פעם אחת ו-Homatch ימשיך לפעול. כשמופיעים נכסים מתאימים חדשים או אותות מקונים, תקבלו הודעה אוטומטית — ללא צורך לבדוק ידנית.',
-  home_cta_title: 'התחילו עם Homatch AI — בחינם',
+  home_cta_title: 'התחל עם HOMI — בחינם',
   home_cta_desc: 'ספרו לנו מה אתם צריכים. אנחנו נמצא, נתאים ונעזור לכם לאמת.',
-  home_cta_button: 'נסו את Homatch AI בחינם',
+  home_cta_button: 'דבר עם HOMI בחינם',
 
   // ── Active Search Page ──────────────────────────────────────────────
   as_status_active: 'פעיל',
@@ -115317,9 +115337,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   dash_status_live: 'בשידור חי',
   dash_ai_process_label: 'תהליך ה-AI',
   dash_sources_label: 'מקורות',
-  dash_empty_ai_title: 'התחילו עם Homatch AI',
+  dash_empty_ai_title: 'התחל עם HOMI',
   dash_empty_ai_desc: 'ספרו ל-AI איזה נכס אתם צריכים, או בקשו שימצא קונים עבור הנכס שלכם. לא נדרשים טפסים.',
-  dash_empty_open_ai: 'פתיחת Homatch AI',
+  dash_empty_open_ai: 'פתח את HOMI',
   dash_empty_find_property_title: 'מציאת נכס',
   dash_empty_find_property_desc: 'תארו מה אתם צריכים ו-Homatch יחפש ברשת שלו ובמקורות חיצוניים. ממוין לפי ציון התאמה.',
   dash_empty_find_buyers_title: 'מציאת קונים או שוכרים',
@@ -115334,7 +115354,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   dash_welcome_back: 'ברוכים השבים',
   dash_matches_summary: 'יש לכם {{count}} התאמות',
   dash_new_count: '+{{count}} חדשות',
-  dash_continue_ai: 'המשיכו עם Homatch AI',
+  dash_continue_ai: 'המשך עם HOMI',
   dash_hero_subtitle: 'שאלו את ה-AI, בדקו התאמות, אמתו נכסים או הגדירו חיפוש פעיל.',
   dash_view_matches: 'צפייה בהתאמות',
   dash_total_matches: 'סה"כ התאמות',
@@ -117062,7 +117082,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   mp_hero_image_alt: 'דירה עכשווית בטביליסי בשקיעה, העיר מעבר לקיר זכוכית מלא',
 
 
-  mp_ai_send: 'שאלו את Homatch AI',
+  mp_ai_send: 'שאל את HOMI',
   mp_ai_signin_note: 'התחברו כדי להמשיך. השאלה שלכם נשמרת ועוברת איתכם.',
 
 
@@ -117443,10 +117463,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   mp_hero_action_capabilities: 'מה Homatch יודע לעשות',
   mp_hero_action_capabilities_prompt: 'מה Homatch יכול לעשות בשבילי?',
 
-  mp_flow_eyebrow: 'שכבת הבינה',
-  mp_flow_title: 'שאלה אחת לכל הפלטפורמה',
-  mp_flow_sub: 'Homatch AI הוא לא חלון צ׳אט שהוצמד לאתר. זו השכבה שדרכה מגיעים לכל הפלטפורמה, והוא עונה רק על סמך מה שהוא באמת יכול לאמת.',
-  mp_flow_cta: 'שאלו את Homatch AI',
+  mp_flow_eyebrow: 'העוזר HOMI',
+  mp_flow_title: 'הכירו את HOMI — המדריך החכם שלך לעולם הנדל״ן',
+  mp_flow_sub: 'חיפוש דירה, בדיקת נכס, הערכת השקעה או תכנון משכנתא — HOMI עוזר להבין הכול בפשטות.',
+  mp_flow_cta: 'דבר עם HOMI',
 
 
   mp_verify_code_placeholder: 'הזינו קוד קדסטרלי',
@@ -117458,7 +117478,7 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   mp_core_eyebrow: 'יכולות הליבה',
   mp_core_title: 'ארבעה דברים ש-Homatch עושה באמת.',
-  mp_core_sub: 'מצאו את מי שצריך את הנכס שלכם. מצאו את הנכס שאתם מחפשים. בדקו מה אתם קונים. הבינו כמה עולה המימון. כל אחת יכולת עצמאית עם התהליך שלה, ולכולן מגיעים דרך Homatch AI.',
+  mp_core_sub: 'מצא את מי שמחפש נכס. מצא את הנכס שאתה מחפש. בדוק מה אתה קונה. הבן כמה עולה המימון. כל אחת מהן יכולת אמיתית עם תהליך משלה — ו-HOMI מגיע לכולן.',
 
   mp_match_title: 'מצאו אדם שמתעניין בקנייה או בשכירות',
   mp_match_desc: 'הוסיפו או ייבאו נכס ו-Homatch יחפש אנשים שהתקציב, האזור והדרישות שלהם באמת מתאימים לו. הוא יחזיר ביקוש מדורג בלי כפילויות, ויראה מהיכן הגיע כל אחד.',
@@ -136100,6 +136120,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   homi_card_roi_note: 'לפני מס ומימון. השכירות והחודשים הריקים הם ההנחות שלך, לא נתוני שוק.',
   homi_card_roi_empty: 'הזן את המחיר ואת השכירות הצפויה.',
   homi_card_open_investment: 'לפתוח את ניתוח ההשקעה המלא',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_home_cta: 'דבר עם HOMI',
+  homi_home_cta_secondary: 'ראה במה הוא יכול לעזור',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

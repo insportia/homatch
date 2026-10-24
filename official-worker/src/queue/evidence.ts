@@ -17,6 +17,7 @@
 
 import { createHash } from 'node:crypto';
 import type { EvidenceRef } from './gateway.js';
+import { decodeLegacyGeorgian } from '../documents/legacyGeorgian.js';
 
 export const DOC_EXCERPT_CHARS = 8_000;
 export const TOTAL_EXCERPT_CHARS = 120_000;
@@ -69,6 +70,9 @@ export async function compactResult(raw: any, upload: Uploader): Promise<Compact
   let remaining = TOTAL_EXCERPT_CHARS;
   for (const d of order) {
     if (!d || typeof d !== 'object') continue;
+    // Legacy-font Georgian (older NAPR extracts) is decoded before it is stored or read (legacyGeorgian.ts).
+    if (typeof d.rawText === 'string') d.rawText = decodeLegacyGeorgian(d.rawText);
+    if (typeof d.fullText === 'string') d.fullText = decodeLegacyGeorgian(d.fullText);
     const full = typeof d.fullText === 'string' && d.fullText.length ? d.fullText : typeof d.rawText === 'string' ? d.rawText : '';
     delete d.fullText;
     if (!full) continue;

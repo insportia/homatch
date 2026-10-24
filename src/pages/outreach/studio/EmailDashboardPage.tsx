@@ -14,7 +14,7 @@ import { PhaseBadge, pct } from '@/components/emailStudio/shared';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { emailPhase } from '@/emailMarketing/reviewState';
+import { campaignPath, emailPhase } from '@/emailMarketing/reviewState';
 import { useOutreachProviderStatus } from '@/hooks/useOutreachProviderStatus';
 import { cn } from '@/lib/utils';
 import {
@@ -33,7 +33,7 @@ export default function EmailDashboardPage() {
   useEffect(() => {
     if (deepLink.get('new') !== '1') return;
     const list = deepLink.get('list');
-    navigate(`/outreach/email/campaigns/new?step=2${list && /^[0-9a-f-]{36}$/i.test(list) ? `&list=${list}` : ''}`, { replace: true });
+    navigate(`/outreach/email/campaigns/new?step=design${list && /^[0-9a-f-]{36}$/i.test(list) ? `&list=${list}` : ''}`, { replace: true });
   }, [deepLink, navigate]);
   const [range, setRange] = useState<(typeof RANGES)[number]>(30);
   const [campaigns, setCampaigns] = useState<StudioCampaign[] | null>(null);
@@ -150,7 +150,7 @@ export default function EmailDashboardPage() {
                 <ul className="divide-y">
                   {campaigns.slice(0, 6).map((c) => (
                     <li key={c.id}>
-                      <button type="button" onClick={() => navigate(`/outreach/email/campaigns/${c.id}`)} className="flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-muted/40">
+                      <button type="button" onClick={() => navigate(campaignPath(c))} className="flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-muted/40">
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-medium [overflow-wrap:anywhere]">{c.name || t('ems_untitled')}</span>
                           <span className="block text-2xs text-muted-foreground">{new Date(c.updated_at).toLocaleDateString(lang)}</span>

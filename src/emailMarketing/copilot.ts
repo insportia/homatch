@@ -15,9 +15,11 @@
 //   · claim consent, guarantee returns, or address a recipient by anything but merge fields.
 
 import { type Block, type LeafBlock, normalizeDoc } from './designer/document.ts';
+import { richToText } from './designer/richText.ts';
+import { TEMPLATE_KINDS, type TemplateKind } from './designer/templates.ts';
 import { assessCampaign, type Finding } from './risk/engine.ts';
 
-export const COPILOT_TASKS = ['ideas', 'subjects', 'preview', 'draft', 'rewrite', 'shorten', 'professional', 'translate', 'cta', 'review', 'audience'] as const;
+export const COPILOT_TASKS = ['ideas', 'subjects', 'preview', 'draft', 'rewrite', 'shorten', 'professional', 'translate', 'cta', 'review', 'audience', 'help', 'template'] as const;
 export type CopilotTask = (typeof COPILOT_TASKS)[number];
 
 export const LANG_NAMES: Record<string, string> = { ka: 'Georgian', en: 'English', ru: 'Russian', tr: 'Turkish', ar: 'Arabic', he: 'Hebrew' };
@@ -43,13 +45,16 @@ export interface CopilotProposal {
   edits?: Array<{ id: string; field: 'text' | 'label'; value: string }>;
   blocks?: Block[];
   ideas?: Array<{ name: string; objective: string }>;
+  /** Task "template": the built-in template HOMI recommends (one of TEMPLATE_KINDS). */
+  template?: TemplateKind;
   warnings: Finding[];
 }
 
 export const COPILOT_SYSTEM_PROMPT = `You are HOMI, the email-marketing copilot inside HOMATCH, a real-estate platform in Georgia.
 You help a customer write ONE email campaign. Answer ONLY with a JSON object, no prose outside it:
 {"message": string, "subjects"?: string[], "preview"?: string, "edits"?: [{"id": string, "field": "text"|"label", "value": string}],
- "blocks"?: [{"type": "heading"|"text"|"button", "text"?: string, "label"?: string}], "ideas"?: [{"name": string, "objective": string}]}
+ "blocks"?: [{"type": "heading"|"text"|"button", "text"?: string, "label"?: string}], "ideas"?: [{"name": string, "objective": string}],
+ "template"?: string}
 
 Rules you never break:
 - Use ONLY facts present in the request (campaign, blocks, facts, instruction). Never invent prices, sizes, dates,
@@ -67,7 +72,11 @@ Task meanings: ideas = 3 campaign names with objectives; subjects = 3 subject li
 (≤ 110 chars); draft = a complete email as blocks (heading, 2–4 text blocks, one button label); rewrite/professional/shorten =
 edits of existing blocks; translate = edits with every text in targetLanguage plus translated subjects[0] and preview;
 cta = edits of button labels (≤ 30 chars) and the sentence before it; review = explain the given risk findings and how to
-fix each, in plain words (message only); audience = suggest which audience segments fit the objective (message only).`;
+fix each, in plain words (message only); audience = suggest which audience segments fit the objective (message only);
+help = answer the customer's question (instruction) about the screen they are on, using ONLY the context in "facts" (the step,
+real counts, limits and errors the product measured): short, plain words, ≤ 120 words, never a number that is not in facts,
+never legal advice; message only. template = recommend ONE template from the list in facts for the objective, set "template"
+to its code exactly, and say why in one sentence.`;
 
 export function buildUserPayload(r: CopilotRequest, uiLanguage: string): string {
   return JSON.stringify({
@@ -83,7 +92,8 @@ export function textBlocksOf(design: unknown): CopilotRequest['blocks'] {
   const doc = normalizeDoc(design);
   const out: CopilotRequest['blocks'] = [];
   const leaf = (b: LeafBlock) => {
-    if (b.type === 'heading' || b.type === 'text' || b.type === 'footer') out.push({ id: b.id, type: b.type, text: b.text });
+    if (b.type === 'heading' || b.type === 'text') out.push({ id: b.id, type: b.type, text: b.rich ? richToText(b.rich) : b.text });
+    else if (b.type === 'footer') out.push({ id: b.id, type: b.type, text: b.text });
     else if (b.type === 'button') out.push({ id: b.id, type: b.type, label: b.label, href: b.href });
   };
   for (const b of doc.blocks) {
@@ -107,6 +117,7 @@ export function parseProposal(raw: unknown, r: CopilotRequest): CopilotProposal 
   const p: CopilotProposal = { message: s(o.message, 2000), warnings: [] };
   if (Array.isArray(o.subjects)) p.subjects = o.subjects.map((x) => s(x, 120)).filter(Boolean).slice(0, 5);
   if (typeof o.preview === 'string') p.preview = s(o.preview, 160) || undefined;
+  if (typeof o.template === 'string' && (TEMPLATE_KINDS as string[]).includes(o.template.trim().toUpperCase())) p.template = o.template.trim().toUpperCase() as TemplateKind;
   if (Array.isArray(o.ideas)) p.ideas = o.ideas.slice(0, 5).map((i) => (i && typeof i === 'object' ? i as Record<string, unknown> : {}))
     .map((i) => ({ name: s(i.name, 120), objective: s(i.objective, 300) })).filter((i) => i.name);
   if (Array.isArray(o.edits)) {
@@ -130,7 +141,7 @@ export function parseProposal(raw: unknown, r: CopilotRequest): CopilotProposal 
     ...(p.blocks ?? []).map((b) => (b.type === 'button' ? b.label : 'text' in b ? (b as { text: string }).text : '')),
     ...(p.ideas ?? []).flatMap((i) => [i.name, i.objective]),
   ].join('\n');
-  if (!proposed.trim() && !p.message) return null;
+  if (!proposed.trim() && !p.message && !p.template) return null;
 
   /* Compliance: a proposal that would itself be blocked is never offered. */
   const risk = assessCampaign({ subject: (p.subjects ?? [])[0] ?? 'x', html: `<p>${proposed.replace(/[<>]/g, ' ')}</p>`, senderVerified: true });

@@ -38,6 +38,14 @@ export function editDropsApproval(status: string | null | undefined): boolean {
   return ['READY_FOR_REVIEW', 'UNDER_REVIEW', 'APPROVED', 'SCHEDULED'].includes(emailPhase(status));
 }
 
+/** Where a campaign opens: a draft in the editor (on the step it needs), anything else in its details. */
+export function campaignPath(c: { id: string; status: string | null | undefined }): string {
+  const p = emailPhase(c.status);
+  if (p === 'DRAFT' || p === 'CHANGES_REQUESTED' || p === 'REJECTED') return `/outreach/email/campaigns/${c.id}?step=design`;
+  if (p === 'READY_FOR_REVIEW' || p === 'UNDER_REVIEW') return `/outreach/email/campaigns/${c.id}?step=review`;
+  return `/outreach/email/campaigns/${c.id}/overview`;
+}
+
 export interface GateInput {
   status: string | null;
   content_hash: string | null;

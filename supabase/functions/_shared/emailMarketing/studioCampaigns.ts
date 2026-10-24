@@ -18,6 +18,7 @@ import { inspectLinks } from './linkInspector.ts';
 import { normalizeDoc } from '../../../../src/emailMarketing/designer/document.ts';
 import { renderDesignBody } from '../../../../src/emailMarketing/designer/render.ts';
 import { unfilledPlaceholders } from '../../../../src/emailMarketing/designer/templates.ts';
+import { buttonsMissingLink } from '../../../../src/emailMarketing/designer/checks.ts';
 import { assessCampaign, reviewOutcome, type RiskInput, type RiskResult } from '../../../../src/emailMarketing/risk/engine.ts';
 import { extractLinks } from '../../../../src/emailMarketing/risk/links.ts';
 
@@ -44,6 +45,8 @@ export function sanitizeAudienceFilter(v: unknown): Record<string, string[]> | n
     sources: strList(o.sources, 6, /^(IMPORT|MANUAL|FIND_BUYERS|CURATED_LEAD|INTERNAL_MATCH)$/i).map((x) => x.toUpperCase()),
     tags: strList(o.tags, 20),
     excludeListIds: strList(o.excludeListIds, 20, UUID),
+    /* Individually selected leads (the Recipients step's "selected leads" mode). */
+    contactIds: strList(o.contactIds, 1000, UUID),
   };
   return Object.values(f).some((x) => x.length) ? f : null;
 }
@@ -101,7 +104,7 @@ async function save({ sb, callerSb, owner, body }: Ctx): Promise<Response> {
     patch.sender_email = v.address;
   }
   if (has('contact_list_ids')) {
-    const ids = strList(p.contact_list_ids, 20, UUID);
+    const ids = strList(p.contact_list_ids, 50, UUID);
     if (ids.length) {
       const { data } = await sb.from('outreach_contact_lists').select('id').eq('owner_id', owner.authId).in('id', ids);
       const mine = new Set(((data ?? []) as Array<{ id: string }>).map((r) => r.id));
@@ -124,9 +127,18 @@ async function save({ sb, callerSb, owner, body }: Ctx): Promise<Response> {
 
   const cols = 'id, name, objective, description, audience_note, language, subject, preview_text, sender_name, sender_email, reply_to, contact_list_id, contact_list_ids, audience_filter, design, status, content_hash, approved_content_hash, risk_level, risk_score, risk_reasons, review_note, scheduled_at, timezone, updated_at, created_at, sent_count, delivered_count, bounce_count, complaint_count, unsubscribe_count, failed_count, audience_count';
   if (!id) {
+    /* The browser's key for this unsaved draft: a retried or double-fired first save finds the
+       draft it already created (unique per owner) instead of making a second one. */
+    const draftKey = UUID.test(String(body.draftKey ?? '')) ? String(body.draftKey) : null;
     const { data, error } = await callerSb.from('outreach_campaigns')
-      .insert({ ...patch, owner_id: owner.authId, campaign_type: 'EMAIL', status: 'DRAFT', name: patch.name ?? 'Untitled campaign' })
+      .insert({ ...patch, owner_id: owner.authId, campaign_type: 'EMAIL', status: 'DRAFT', name: patch.name ?? 'Untitled campaign', email_draft_key: draftKey })
       .select(cols).single();
+    if (error && draftKey && String(error.code ?? '') === '23505') {
+      const { data: again, error: e2 } = await callerSb.from('outreach_campaigns').update(patch)
+        .eq('owner_id', owner.authId).eq('email_draft_key', draftKey).eq('campaign_type', 'EMAIL').select(cols).maybeSingle();
+      if (e2) return dbError(e2);
+      if (again) return json({ ok: true, campaign: again, reused: true });
+    }
     if (error) return dbError(error);
     logEvent('email-studio', 'campaign_created', {});
     return json({ ok: true, campaign: data });
@@ -149,13 +161,13 @@ interface CampaignRow {
   id: string; owner_id: string; status: string; name: string; subject: string | null; preview_text: string | null;
   html_body: string | null; text_body: string | null; sender_name: string | null; sender_email: string | null;
   contact_list_id: string | null; contact_list_ids: string[] | null; audience_filter: unknown; content_hash: string | null;
-  property_id: string | null; language: string | null;
+  property_id: string | null; language: string | null; design?: unknown;
 }
 
 async function loadCampaign(sb: Sb, owner: Owner, id: string): Promise<CampaignRow | null> {
   if (!UUID.test(id)) return null;
   const { data } = await sb.from('outreach_campaigns')
-    .select('id, owner_id, status, name, subject, preview_text, html_body, text_body, sender_name, sender_email, contact_list_id, contact_list_ids, audience_filter, content_hash, property_id, language, campaign_type')
+    .select('id, owner_id, status, name, subject, preview_text, html_body, text_body, sender_name, sender_email, contact_list_id, contact_list_ids, audience_filter, content_hash, property_id, language, campaign_type, design')
     .eq('id', id).eq('owner_id', owner.authId).eq('campaign_type', 'EMAIL').maybeSingle();
   return (data as CampaignRow | null) ?? null;
 }
@@ -205,7 +217,7 @@ async function check(ctx: Ctx): Promise<Response> {
 }
 
 /** What must be fixed before a campaign can be submitted (not risk; completeness). */
-export function validationProblems(c: Pick<CampaignRow, 'subject' | 'html_body' | 'text_body' | 'contact_list_id' | 'contact_list_ids' | 'preview_text'>, audience: Record<string, unknown> | null): string[] {
+export function validationProblems(c: Pick<CampaignRow, 'subject' | 'html_body' | 'text_body' | 'contact_list_id' | 'contact_list_ids' | 'preview_text'> & { design?: unknown }, audience: Record<string, unknown> | null): string[] {
   const p: string[] = [];
   if (!c.subject?.trim()) p.push('SUBJECT_MISSING');
   if (!c.html_body?.trim() && !c.text_body?.trim()) p.push('CONTENT_MISSING');
@@ -213,6 +225,8 @@ export function validationProblems(c: Pick<CampaignRow, 'subject' | 'html_body' 
   else if (audience && Number(audience.eligible ?? 0) === 0) p.push('NO_ELIGIBLE_RECIPIENTS');
   const text = [c.subject ?? '', c.preview_text ?? '', c.text_body ?? '', (c.html_body ?? '').replace(/<[^>]+>/g, ' ')].join('\n');
   if (unfilledPlaceholders(text).length) p.push('PLACEHOLDERS_UNFILLED');
+  /* A button with a label and no destination is dropped from the sent email: never silently. */
+  if (c.design && buttonsMissingLink(c.design).length) p.push('BUTTON_LINK_MISSING');
   return p;
 }
 

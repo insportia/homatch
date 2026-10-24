@@ -15,8 +15,11 @@ const { isStudioOnlyKey, STUDIO_ENTRY_PREFIXES } = await import(pathToFileURL(jo
 const en = translations.en;
 const keys = Object.keys(en);
 
-/* The screens that load Email Studio's strings before they render (routes.tsx withStudioStrings). */
-const STUDIO_SCREENS = /^src\/pages\/outreach\/studio\/|^src\/components\/emailStudio\/(EmailDesigner|HomiPanel|shared)\.tsx$|^src\/pages\/admin\/AdminEmailReviewPage\.tsx$|^src\/i18n\//;
+/* The screens that load Email Studio's strings before they render (routes.tsx withStudioStrings),
+   and the Email Studio components only those screens mount. EmailDomainsPage and the email
+   import wizard are Email routes wrapped the same way (pinned below); the import wizard names a
+   studio key only on its email route. */
+const STUDIO_SCREENS = /^src\/pages\/outreach\/studio\/|^src\/components\/emailStudio\/(EmailDesigner|HomiPanel|shared|AllowancePanel|LeadDialog|ImagePicker|RichTextEditor|TemplatePicker)\.tsx$|^src\/pages\/outreach\/(EmailDomainsPage|ContactImportPage)\.tsx$|^src\/pages\/admin\/AdminEmailReviewPage\.tsx$|^src\/i18n\//;
 
 function sources(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -56,8 +59,19 @@ test('the split is real: Email Studio strings leave the entry, the rail labels s
 
 test('every Email Studio route waits for the studio strings', () => {
   const routes = readFileSync(join(ROOT, 'src/routes.tsx'), 'utf8');
-  for (const page of ['EmailDashboardPage', 'EmailCampaignListPage', 'EmailCampaignWorkspacePage', 'EmailTemplatesPage', 'EmailAnalyticsPage', 'EmailDeliverabilityPage', 'AdminEmailReviewPage']) {
+  for (const page of ['EmailDashboardPage', 'EmailCampaignListPage', 'EmailCampaignWorkspacePage', 'EmailTemplatesPage', 'EmailAnalyticsPage', 'EmailDeliverabilityPage', 'AdminEmailReviewPage',
+    'EmailCampaignDetailsPage', 'EmailLeadsPage', 'EmailDomainsPage', 'EmailContactImportPage']) {
     assert.match(routes, new RegExp(`const ${page} = lazyRoute\\(withStudioStrings\\(`), `${page} renders before its strings arrive`);
+  }
+  /* The email import route uses the wrapped wizard; the calls/WhatsApp imports keep the plain one. */
+  assert.match(routes, /path: '\/outreach\/email\/contacts\/import',\s*element: <EmailContactImportPage \/>/);
+  /* Studio-only components are mounted only by studio screens. */
+  for (const c of ['AllowancePanel', 'LeadDialog', 'ImagePicker', 'RichTextEditor', 'TemplatePicker']) {
+    for (const file of sources(join(ROOT, 'src'))) {
+      const rel = relative(ROOT, file).split(sep).join('/');
+      if (STUDIO_SCREENS.test(rel)) continue;
+      assert.doesNotMatch(readFileSync(file, 'utf8'), new RegExp(`from '@/components/emailStudio/${c}'`), `${rel} mounts ${c} outside Email Studio`);
+    }
   }
   const bundles = readFileSync(join(ROOT, 'src/i18n/bundles.ts'), 'utf8');
   for (const lang of ['en', 'ka', 'ru', 'tr', 'ar', 'he']) {

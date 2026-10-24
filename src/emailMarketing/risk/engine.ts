@@ -145,7 +145,7 @@ export function assessCampaign(input: RiskInput): RiskResult {
   if (domain.verdict !== 'ALLOW' && !findings.some((f) => f.severity === 'BLOCK' || f.code.startsWith('GAMBLING_'))) {
     push({ code: 'OFF_DOMAIN', severity: 'MEDIUM', where: 'body', detail: 'not clearly real estate' });
   }
-  const placeholders = [...all.matchAll(/\[([^\]\n]{2,60})\](?!\()/g)].map((m) => m[1]);
+  const placeholders = [...all.matchAll(/\[([^\]\n]{2,160})\](?!\()/g)].map((m) => m[1]);
   if (placeholders.length) push({ code: 'TEMPLATE_PLACEHOLDER', severity: 'HIGH', where: 'body', detail: [...new Set(placeholders)].slice(0, 4).join(', ') });
   if (capsRatio(input.subject) > 0.6) push({ code: 'SUBJECT_ALL_CAPS', severity: 'LOW', where: 'subject' });
   if (/[!?]{3,}/.test(input.subject)) push({ code: 'SUBJECT_PUNCTUATION', severity: 'LOW', where: 'subject' });

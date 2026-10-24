@@ -57,13 +57,13 @@ test('inline markup: bold, italic, https links only, newlines', () => {
 });
 
 test('the designed body is one table with a marker; the campaign shell keeps the compliance footer', () => {
-  const doc = builtInTemplate('ANNOUNCEMENT', 'en');
+  const doc = builtInTemplate('LUXURY', 'en');
   doc.blocks.push(createBlock('unsubscribe'));
   const body = renderDesignBody(doc);
   assert.ok(body.html.startsWith(DESIGN_MARKER));
-  assert.deepEqual(readDesignMarker(body.html), { canvas: '#EFEAE2', card: '#FFFFFF', width: 600, radius: 14 });
+  assert.deepEqual(readDesignMarker(body.html), { canvas: '#ECE7DF', card: '#FFFFFF', width: 600, radius: 0 });
   const email = renderCampaignEmail({ subject: 'S', bodyHtml: body.html, bodyText: body.text, lang: 'ka', senderName: 'Nino', unsubscribeUrl: 'https://x.example/unsub?c=1&t=2' });
-  assert.match(email.html, /background-color:#EFEAE2/);
+  assert.match(email.html, /background-color:#ECE7DF/);
   assert.match(email.html, /max-width:600px/);
   assert.doesNotMatch(email.html, /letter-spacing:3px;color:#E8A33D;">HOMATCH/, 'no standard header bar on a designed email');
   assert.match(email.html, /გამოწერის გაუქმება/, 'the localized unsubscribe footer is always there');
@@ -75,9 +75,9 @@ test('the designed body is one table with a marker; the campaign shell keeps the
   assert.match(he.html, /dir="rtl"/);
 });
 
-test('every built-in template renders in en/ka/ru and is refused while unfilled', () => {
+test('every built-in template renders in all six languages and is refused while unfilled', () => {
   for (const kind of TEMPLATE_KINDS) {
-    for (const lang of ['en', 'ka', 'ru', 'tr']) {
+    for (const lang of ['en', 'ka', 'ru', 'tr', 'ar', 'he']) {
       const doc = builtInTemplate(kind, lang);
       const { html, text } = renderDesignBody(doc);
       assert.ok(html.length > 500, `${kind}/${lang}`);

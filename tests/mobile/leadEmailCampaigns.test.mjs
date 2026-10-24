@@ -121,7 +121,9 @@ test('?new=1&list= (the unlock handoff) opens a new Email Studio campaign on tha
   const { page, state } = await boot(t);
   await page.goto(`${BASE}/outreach/email?new=1&list=${LIST_ID}`, { waitUntil: 'domcontentloaded' });
   await page.waitForURL((u) => u.pathname === '/outreach/email/campaigns/new' && u.searchParams.get('list') === LIST_ID, { timeout: 30000 });
-  assert.equal(new URL(page.url()).searchParams.get('step'), '2', 'straight to the recipients step');
+  /* The workflow starts with the design (owner, UX pass 2026-10-24); the list arrives preselected
+     for the Recipients step. */
+  assert.equal(new URL(page.url()).searchParams.get('step'), 'design', 'starts on the design step, list preselected');
   assert.equal(state.sends, 0, 'nothing is sent');
 });
 

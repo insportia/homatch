@@ -138,7 +138,7 @@ const PRODUCT_NAV: Record<CommsProduct, NavEntry[]> = {
     { to: '/outreach/email/campaigns', labelKey: 'ems_nav_campaigns', icon: Send },
     { to: '/outreach/email/templates', labelKey: 'ems_nav_templates', icon: LayoutTemplate },
     { to: '/outreach/email/inbox', labelKey: 'emx_nav_inbox', icon: InboxIcon },
-    { to: '/outreach/email/contacts', labelKey: 'ems_nav_audiences', icon: Users },
+    { to: '/outreach/email/contacts', labelKey: 'ems_nav_leads', icon: Users, also: ['/outreach/email/lists'] },
     { to: '/outreach/email/deliverability', labelKey: 'ems_nav_settings', icon: ShieldCheck, also: ['/outreach/email/domains', '/outreach/email/plan'] },
   ],
   /* The audience surfaces are shared by all three channels and belong to

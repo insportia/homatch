@@ -97,3 +97,9 @@ test('eacaf5a0: no official task outlives its job, and a failed cancel is seen',
   const after = ra.slice(at, at + 1500);
   assert.ok(after.indexOf('await cancelJobTasks(sb, j.id);') > after.indexOf('if (finished?.error) {'), 'only once the write succeeded');
 });
+
+test('stored or cached official documents in a legacy Georgian font are read decoded', async () => {
+  const { taskResult } = await import('../queueOfficial.ts');
+  const r = taskResult({ id: 't', source: 'TAS_MAP', dedupe_key: 'TAS_MAP', state: 'SUCCEEDED', result: { status: 'SEARCH_CONFIRMED', documents: [{ rawText: 'ÌÉßÉÓ (ÖÞÒÀÅÉ ØÏÍÄÁÉÓ) ÓÀÊÀÃÀÓÔÒÏ ÊÏÃÉ ÀÌÏÍÀßÄÒÉ ÓÀãÀÒÏ ÒÄÄÓÔÒÉÃÀÍ' }] } });
+  assert.match(r.documents[0].rawText, /^მიწის \(უძრავი ქონების\) საკადასტრო კოდი/);
+});

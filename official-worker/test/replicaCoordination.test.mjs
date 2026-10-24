@@ -74,3 +74,35 @@ test('wiring: MyHome takes the shared slot on both paths; the worker builds the 
   assert.match(ra, /from\('verify_market_runs'\)\.select\('status,payload'\)/);
   assert.equal((ra.match(/await marketRun\(/g) ?? []).length, 2, 'both market polls read across replicas');
 });
+
+test('scale-down: a draining replica claims nothing new, lets a running task finish within the grace, and hands back the rest', async () => {
+  const { QueueRunner } = await import('../.tstest-build/queue/QueueRunner.js');
+  const mk = (id) => ({ id, source: 'TAS_MAP', lane: 'BROWSER', fencingToken: 1, leaseSeconds: 600, attempts: 1, input: {} });
+  const queue = [mk('fast'), mk('slow')];
+  const calls = { claim: 0, complete: [], release: [] };
+  const started = new Set();
+  const gateway = {
+    async claim(_w, _l, limit) { calls.claim++; return { tasks: queue.splice(0, limit) }; },
+    async heartbeat() { return { state: 'OK' }; },
+    async complete(t) { calls.complete.push(t.id); return { ok: true }; },
+    async fail() { return { ok: true }; },
+    async release(t) { calls.release.push(t.id); return { released: true }; },
+  };
+  const runner = new QueueRunner({
+    gateway, workerId: 'r1', lanes: { BROWSER: 2 }, idleMinMs: 5, idleMaxMs: 10, heartbeatMinMs: 5,
+    sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 10))),
+    executor: async (task, { signal }) => {
+      started.add(task.id);
+      await new Promise((res, rej) => { const t = setTimeout(res, task.id === 'fast' ? 30 : 5000); signal?.addEventListener('abort', () => { clearTimeout(t); rej(new Error('SHUTDOWN')); }); });
+      return { type: 'complete', result: { ok: true } };
+    },
+  });
+  runner.start();
+  while (started.size < 2) await new Promise((r) => setTimeout(r, 5));
+  const claimsBefore = calls.claim;
+  queue.push(mk('arrived-later'));
+  await runner.stop(200);
+  assert.deepEqual(calls.complete, ['fast'], 'the task that could finish within the grace finished');
+  assert.deepEqual(calls.release, ['slow'], 'the one that could not went back to the queue');
+  assert.ok(calls.claim <= claimsBefore + 1 && queue.length === 1, 'nothing new was claimed while draining');
+});

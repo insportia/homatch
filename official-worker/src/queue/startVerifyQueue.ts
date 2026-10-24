@@ -49,7 +49,10 @@ export function startVerifyQueue(deps: {
     executor: createVerifyExecutor({ orchestrator: deps.orchestrator, launchBrowser: deps.launchJobBrowser, closeBrowser: deps.closeJobBrowser }),
     log: (event, data) => console.log(JSON.stringify({ level: 'info', scope: 'verify_queue', event, ...data })),
   });
-  deps.beforeShutdown(() => runner.stop(25_000));
+  /* Scale-down and deploys (Verify at scale): stop claiming at once, let running tasks finish for up to
+     VERIFY_QUEUE_DRAIN_SECONDS (default 180; Railway's drainingSeconds is set to match), then hand the rest
+     back to the queue for another replica. Billing is per job and idempotent; a released task is not lost. */
+  deps.beforeShutdown(() => runner.stop(num('VERIFY_QUEUE_DRAIN_SECONDS', 180, 900) * 1000));
   runner.start();
   return runner;
 }

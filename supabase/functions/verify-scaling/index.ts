@@ -128,7 +128,13 @@ async function scale(db: any, rw: RailwayClient | null, target: unknown, who: { 
   }
 }
 
-const SETTINGS_KEYS = ['mode', 'plan', 'min', 'normal', 'burst', 'approvedMax', 'monthlyCeilingUsd', 'upQueuedPerReplica', 'upOldestSeconds', 'downBusyPerReplica', 'cooldownUpSeconds', 'cooldownDownSeconds', 'slotsPerReplica'];
+/*
+ * What an admin may change here. NOT the owner-approved ceiling (approvedMax) and NOT the Railway plan:
+ * those are owner decisions, changed only by an owner-approved admin_settings update recorded in the
+ * release log, so no admin session (or a stolen one) can lift the replica limit through this API.
+ */
+const SETTINGS_KEYS = ['mode', 'min', 'normal', 'burst', 'monthlyCeilingUsd', 'upQueuedPerReplica', 'upOldestSeconds', 'downBusyPerReplica', 'cooldownUpSeconds', 'cooldownDownSeconds', 'slotsPerReplica'];
+const OWNER_ONLY_KEYS = ['approvedMax', 'plan'];
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -178,6 +184,10 @@ serve(async (req) => {
     if (action === 'settings') {
       const current = (await setting(db, 'verify_scaling')) ?? {};
       const patch: Record<string, unknown> = {};
+      if (body?.settings && OWNER_ONLY_KEYS.some((k) => k in body.settings)) {
+        await record(db, { actor: user.id, source: 'admin', action: 'SETTINGS', status: 'REFUSED', reason: 'owner-only setting', detail: { keys: OWNER_ONLY_KEYS.filter((k) => k in body.settings) } });
+        return json({ error: 'OWNER_APPROVAL_REQUIRED' }, 403);
+      }
       for (const k of SETTINGS_KEYS) if (body?.settings && k in body.settings) patch[k] = body.settings[k];
       if (patch.mode === 'AUTOMATIC' && body?.confirmAutomatic !== true) return json({ error: 'CONFIRMATION_REQUIRED' }, 400);
       const next = scalingSettings({ ...current, ...patch });

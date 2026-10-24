@@ -5,14 +5,14 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
-## Verify at scale + dynamic Railway scaling (branch claude/verify-scale, 2026-10-24) — COMMITTED, NOT DEPLOYED, AWAITING OWNER APPROVAL
+## Verify at scale + dynamic Railway scaling (PR #329, branch claude/verify-scale, 2026-10-24) — PR OPEN, NOT MERGED/MIGRATED/DEPLOYED, AWAITING OWNER APPROVAL
 
-Release package with costs, throughput, steps and rollback: `docs/infra/VERIFY_SCALING_RELEASE.md`.
-- 7 additive migrations 20261205090000…096000 (not applied). Edge: research-agent, verify-queue, verify-synthesis, new verify-scaling. Railway worker changed.
-- Scaling: MANUAL, approved ceiling 3, autoscaler off; needs Supabase secret RAILWAY_PROJECT_TOKEN (owner) + Railway var RAILWAY_DEPLOYMENT_DRAINING_SECONDS=200.
-- Network/proxy layer off; OpenAI budget unset. No proxy purchase recommended (metering first).
-- Finding: past 3 replicas a 200-job burst is bound by source caps (MyGov 16, TAS 24), not replicas; 200 in 30 min not reachable at current caps.
-- Railway serviceInstanceUpdate(multiRegionConfig)+redeploy not yet proven against the real API (no token).
+Release package, measured latency, costs, checklist, rollback: `docs/infra/VERIFY_SCALING_RELEASE.md`.
+- 7 additive migrations 20261205090000…096000 (renumbered: #327 and HOMI #325 use 20261201…). Not applied; audited against prod.
+- Rollout: 1 replica first → health proof → scale to 3 on separate approval. Railway plan verified HOBBY (6 replicas max, 8 vCPU/8 GB each).
+- Scaling MANUAL, ceiling 3 (owner-only: approvedMax/plan not changeable via admin API), autoscaler off; needs RAILWAY_PROJECT_TOKEN (owner) + RAILWAY_DEPLOYMENT_DRAINING_SECONDS=200.
+- Measured: total p50 14.1 min (official 8.0, tail 3.3). Simulated 200 burst: 3 replicas ~101 min, 6 ~84 min, bound by RS cap 4 (government caps NOT raised).
+- HOMI #325 still collides with #327's merged 20261201090000 — its owner must renumber.
 
 ## Email Studio drag & drop builder + deliverability panel (PR #327, branch claude/email-builder-deliverability, 2026-10-24) — PR OPEN, AWAITING OWNER RELEASE APPROVAL
 

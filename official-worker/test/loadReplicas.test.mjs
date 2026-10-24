@@ -32,16 +32,25 @@ function duration(src, r) {
   return Math.min(p95 * 3, p50 * Math.exp(sigma * z));
 }
 
-/** One verification's official tasks, as production plans them: TAS, 1–3 MyGov records, the map, and for a company owner ENREG/DEBTOR/RS. */
+/**
+ * One verification's official tasks, in production's measured mix (16 jobs to 2026-10-24): TAS 1.00, map 0.94,
+ * MyGov 0.75 per job; in 14 of 16 jobs a company owner with ≈2.8 ENREG + DEBTOR pairs and 1–2 RS checks.
+ * Mirrors planJob in scripts/verify/load-sim.mjs.
+ */
 function planJobs(n, seed = 7) {
   const r = rng(seed), tasks = [];
   for (let j = 0; j < n; j++) {
     const jobId = `job-${j}`;
     const add = (source) => tasks.push({ id: `${jobId}:${source}:${tasks.length}`, jobId, source, lane: SOURCES[source].lane, dur: duration(source, r) });
-    add('tas'); add('TAS_MAP');
-    const records = 1 + Math.floor(r() * 3);
-    for (let k = 0; k < records; k++) add('mygov');
-    if (r() < 0.4) { add('enreg'); add('debtor'); add('rstax'); }
+    add('tas');
+    if (r() < 0.94) add('TAS_MAP');
+    if (r() < 0.75) add('mygov');
+    if (r() < 14 / 16) {
+      const companies = r() < 0.79 ? 3 : 2;
+      for (let k = 0; k < companies; k++) { add('enreg'); add('debtor'); }
+      add('rstax');
+      if (r() < 0.3) add('rstax');
+    }
   }
   return tasks;
 }
@@ -123,17 +132,15 @@ test('50 verifications on 1 replica: all complete once, caps hold', async () => 
   console.log(`[load] 50 jobs, 1 replica: ~${Math.round(seconds / 60)} min equivalent (${q.rows.size} tasks)`);
 });
 
-test('200 verifications: 3 replicas beat 1; 6 add little once the source caps bind', async () => {
+test('200 verifications: 3 replicas beat 1; past that RS (cap 4, a government source) binds, not replicas', async () => {
   const one = await burst(200, 1);
   const three = await burst(200, 3);
   const six = await burst(200, 6);
   for (const r of [one, three, six]) assertExactlyOnce(r.q);
-  console.log(`[load] 200 jobs: 1 replica ~${Math.round(one.seconds / 60)} min, 3 ~${Math.round(three.seconds / 60)} min, 6 ~${Math.round(six.seconds / 60)} min (equivalent)`);
-  assert.ok(three.ms < one.ms * 0.75, `3 replicas (${three.ms} ms) should clearly beat 1 (${one.ms} ms)`);
-  assert.ok(six.ms > three.ms * 0.6, 'past the source caps, doubling replicas cannot halve the time');
-  // What binds at 3+ replicas is a source cap, not worker slots: MyGov (cap 16, 1–3 records per verification).
-  assert.equal(three.q.peak.mygov, SOURCES.mygov.cap, 'with 3 replicas MyGov runs at its full cap');
-  assert.equal(six.q.peak.mygov, SOURCES.mygov.cap);
+  console.log(`[load] 200 jobs: 1 replica ~${Math.round(one.seconds / 60)} min, 3 ~${Math.round(three.seconds / 60)} min, 6 ~${Math.round(six.seconds / 60)} min (equivalent, official stage only)`);
+  assert.ok(three.ms < one.ms * 0.6, `3 replicas (${three.ms} ms) should clearly beat 1 (${one.ms} ms)`);
+  assert.ok(six.ms <= three.ms * 1.05, '6 replicas are never slower than 3');
+  assert.equal(six.q.peak.rstax, SOURCES.rstax.cap, 'with 6 replicas RS runs at its full cap: the limit is the source, which stays as it is');
 });
 
 test('1,000 verifications on 6 replicas, scaled down to 3 mid-burst: nothing lost, nothing run twice', async () => {

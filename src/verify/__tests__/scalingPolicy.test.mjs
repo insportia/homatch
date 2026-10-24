@@ -127,3 +127,22 @@ test('admin page: admin-only route, talks only to verify-scaling, confirms befor
   const nav = code('src/admin/navigation.ts');
   assert.match(nav, /path: '\/admin\/verify-scaling', labelKey: 'admin_nav_verify_scaling'/);
 });
+
+test('limits: the server checks before Railway is called; no admin request can lift the ceiling or touch another service', () => {
+  const fn = code('supabase/functions/verify-scaling/index.ts');
+  const scaleFn = fn.slice(fn.indexOf('async function scale('), fn.indexOf('const SETTINGS_KEYS'));
+  assert.ok(scaleFn.indexOf('validateTarget(') > 0 && scaleFn.indexOf('validateTarget(') < scaleFn.indexOf('rw.setReplicas('), 'validated before any Railway write');
+  assert.match(scaleFn, /if \(refusal\) \{[\s\S]*?status: 'REFUSED'[\s\S]*?return \{ ok: false, refusal/);
+  // approvedMax and plan are owner-only: not in the admin settings keys, and a request carrying them is refused and logged.
+  const keys = fn.match(/const SETTINGS_KEYS = \[([^\]]+)\]/)[1];
+  assert.doesNotMatch(keys, /approvedMax|'plan'/);
+  assert.match(fn, /OWNER_ONLY_KEYS\.some\(\(k\) => k in body\.settings\)[\s\S]*?OWNER_APPROVAL_REQUIRED/);
+  // Whatever arrives, the stored settings are clamped: the ceiling never exceeds the plan or 10.
+  assert.equal(scalingSettings({ approvedMax: 99, plan: 'HOBBY' }).approvedMax, 6);
+  for (let n = 4; n <= 10; n++) assert.equal(validateTarget(n, { settings: scalingSettings(null), current: 1, executionMode: 'QUEUE', estimateUsd: 0 }) !== null, true, `${n} refused at the default ceiling of 3`);
+  // One service only: the ids are constants and the client refuses any other serviceId before sending.
+  const shared = code('supabase/functions/_shared/railwayScaling.ts');
+  assert.match(shared, /export const WORKER_SERVICE_ID = '3e7f132b-d0be-4804-9bc0-0b6ad368ad15'/);
+  assert.match(shared, /variables\.serviceId !== WORKER_SERVICE_ID\) throw new Error\('RAILWAY_SERVICE_NOT_ALLOWED'\)/);
+  assert.doesNotMatch(fn, /serviceId/, 'the edge function never names a service; only the shared client does');
+});

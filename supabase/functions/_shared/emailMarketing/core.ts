@@ -18,6 +18,19 @@
 type SupabaseClient = any;
 import { formatFrom, newRouteToken, replyAddress, resolveResendKey, type ResolvedKey } from '../resend/client.ts';
 
+/*
+ * LINKS A RECIPIENT SEES ARE ON THE SENDER'S BRAND DOMAIN (deliverability, 2026-10-24). Images
+ * and unsubscribe links used to point at <project>.supabase.co — a shared domain unrelated to the
+ * From domain, which receivers weigh against a message. They are now www.homatch.live paths that
+ * vercel.json rewrites to the same functions (/m/a/<asset>, /m/u, /m/s), so every link in a
+ * campaign is on homatch.live. EMAIL_LINK_BASE overrides it (a staging host), never per request.
+ */
+declare const Deno: { env: { get(k: string): string | undefined } };
+export function emailLinkBase(): string {
+  const v = (Deno.env.get('EMAIL_LINK_BASE') ?? '').trim().replace(/\/+$/, '');
+  return /^https:\/\/[a-z0-9.-]+$/i.test(v) ? v : 'https://www.homatch.live';
+}
+
 export interface EmailSettings {
   killSwitch: boolean;
   studioEnabled: boolean;

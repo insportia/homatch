@@ -56,6 +56,6 @@ test('wiring: both functions reserve, honour Retry-After, and an exhausted repor
   assert.match(vs, /SYNTHESIS_TRANSIENT_UNAVAILABLE/);
   const callReport = vs.slice(vs.indexOf('callReport = async'), vs.indexOf('callReport = async') + 4000);
   assert.doesNotMatch(callReport.slice(0, callReport.indexOf('} catch (e) {\n        const reason')), /console\.error\(reason\);\n\s+return null;/, 'a 429/5xx no longer degrades silently');
-  const sql = code('supabase/migrations/20261201095000_openai_rate_budget.sql');
+  const sql = code('supabase/migrations/20261205095000_openai_rate_budget.sql');
   assert.match(sql, /grant execute on function public\.openai_rate_reserve\(text, integer, integer, integer\) to service_role/);
 });

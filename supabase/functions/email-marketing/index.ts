@@ -25,6 +25,7 @@ import { renderCampaignEmail } from '../../../src/emailMarketing/campaignTemplat
 import { handleStudioCampaignAction } from '../_shared/emailMarketing/studioCampaigns.ts';
 import { handleCopilot } from '../_shared/emailMarketing/copilot.ts';
 import { deleteAsset, uploadAsset } from '../_shared/emailMarketing/assets.ts';
+import { deliverabilityCheck } from '../_shared/emailMarketing/deliverability.ts';
 import { assessCampaign } from '../../../src/emailMarketing/risk/engine.ts';
 
 type Sb = ReturnType<typeof serviceClient>;
@@ -72,6 +73,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       case 'copilot': return await handleCopilot(sb, owner, body);
       case 'asset_upload': return await uploadAsset(sb, owner, body);
       case 'asset_delete': return await deleteAsset(sb, owner, body);
+      case 'deliverability_check': return await deliverabilityCheck(sb, settings, owner);
       case 'usage_refresh': {
         const { data: admin } = await caller.sb.rpc('is_admin');
         if (admin !== true) return json({ ok: false, error: 'FORBIDDEN' }, 403);

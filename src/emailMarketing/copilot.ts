@@ -14,7 +14,7 @@
 //     hard finding (gambling promotion, phishing, unsafe link…) drops the proposal entirely;
 //   · claim consent, guarantee returns, or address a recipient by anything but merge fields.
 
-import { type Block, type LeafBlock, normalizeDoc } from './designer/document.ts';
+import { type Block, type LeafBlock, normalizeDoc, walkBlocks } from './designer/document.ts';
 import { richToText } from './designer/richText.ts';
 import { TEMPLATE_KINDS, type TemplateKind } from './designer/templates.ts';
 import { assessCampaign, type Finding } from './risk/engine.ts';
@@ -87,7 +87,7 @@ export function buildUserPayload(r: CopilotRequest, uiLanguage: string): string 
   });
 }
 
-/** Text-bearing blocks of a design, for the request (columns flattened). */
+/** Text-bearing blocks of a design, for the request (columns and sections flattened). */
 export function textBlocksOf(design: unknown): CopilotRequest['blocks'] {
   const doc = normalizeDoc(design);
   const out: CopilotRequest['blocks'] = [];
@@ -96,9 +96,7 @@ export function textBlocksOf(design: unknown): CopilotRequest['blocks'] {
     else if (b.type === 'footer') out.push({ id: b.id, type: b.type, text: b.text });
     else if (b.type === 'button') out.push({ id: b.id, type: b.type, label: b.label, href: b.href });
   };
-  for (const b of doc.blocks) {
-    if (b.type === 'columns') { b.columns[0].forEach(leaf); b.columns[1].forEach(leaf); } else leaf(b);
-  }
+  for (const b of walkBlocks(doc.blocks)) if (b.type !== 'columns' && b.type !== 'section') leaf(b);
   return out;
 }
 

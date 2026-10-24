@@ -21,7 +21,7 @@ import { checkSpendCap } from '../_shared/spend_cap.ts';
 import { listUnsubscribeHeaders, sendEmail } from '../_shared/resend/client.ts';
 import {
   createReplyRoute, isSuppressed, loadEmailSettings, loadTestMode, marketingKey, ownerFromAuth, reserveQuota, resolveSender, settleQuota,
-  testModeAllows, EMAIL_LIVE_SETTING, emailKillSwitchOn,
+  testModeAllows, EMAIL_LIVE_SETTING, emailKillSwitchOn, emailLinkBase,
 } from '../_shared/emailMarketing/core.ts';
 import { handleStudioAction, isStudioAction } from '../_shared/emailStudio.ts';
 import { broadcastStep } from '../_shared/emailMarketing/broadcast.ts';
@@ -539,7 +539,8 @@ async function outreachSend(req: Request): Promise<Response> {
         // click. Token is per-contact HMAC-SHA256, verified server-side in
         // outreach-unsubscribe — a contact can only unsubscribe themselves.
         const unsubToken = await signUnsubscribeToken(contact.id, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-        const unsubUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/outreach-unsubscribe?contact=${encodeURIComponent(contact.id)}&token=${unsubToken}`;
+        /* On the brand domain (www.homatch.live/m/u → outreach-unsubscribe): every link in the email is homatch.live. */
+        const unsubUrl = `${emailLinkBase()}/m/u?contact=${encodeURIComponent(contact.id)}&token=${unsubToken}`;
         /* The branded campaign template (src/emailMarketing/campaignTemplate.ts): the same one the
            preview renders, with the recipient's own one-click unsubscribe link in its footer. */
         const rendered = renderCampaignEmail({

@@ -12,12 +12,18 @@ import { Input } from '@/components/ui/input';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { deleteAsset, type EmailAsset, listAssets, StudioError, uploadAsset } from '@/services/emailCampaignStudio';
+import { CropDialog } from './designer/CropDialog';
+import { addPlayMark, cropImage } from './designer/imageTools';
 
 const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif,image/avif';
 
-export function ImagePicker({ value, onChange, kind = 'IMAGE', label }: {
+export function ImagePicker({ value, onChange, kind = 'IMAGE', label, crop = true, playMark = false }: {
   value: string; onChange: (src: string, meta?: { width: number | null; height: number | null; name: string | null }) => void;
   kind?: 'IMAGE' | 'LOGO'; label: string;
+  /** Offer cropping before upload (the file is cropped in the browser, then uploaded). */
+  crop?: boolean;
+  /** Video thumbnails: draw a play button into the image before upload. */
+  playMark?: boolean;
 }) {
   const { t } = useLanguage();
   const input = useRef<HTMLInputElement>(null);
@@ -33,10 +39,18 @@ export function ImagePicker({ value, onChange, kind = 'IMAGE', label }: {
     return t(k) === k ? t('ems_img_err_upload_failed') : t(k);
   };
 
+  const [cropping, setCropping] = useState<File | null>(null);
+  /* A picked file goes through the crop step first (GIFs keep their animation: no crop). */
   const pick = async (file: File | undefined) => {
     if (!file) return;
+    if (crop && file.type !== 'image/gif' && !/heic|heif/i.test(file.type)) { setCropping(file); return; }
+    await upload(file);
+  };
+  const upload = async (picked: File, rect: Parameters<typeof cropImage>[1] | null = null) => {
     setBusy(true);
     try {
+      let file = rect ? await cropImage(picked, rect) : picked;
+      if (playMark) file = await addPlayMark(file);
       const a = await uploadAsset(file, kind);
       onChange(a.url, { width: a.width, height: a.height, name: a.original_filename });
       setAssets((list) => (list ? [a, ...list] : list));
@@ -96,6 +110,11 @@ export function ImagePicker({ value, onChange, kind = 'IMAGE', label }: {
           <Button type="button" size="sm" className="h-8" onClick={() => { if (/^https:\/\//i.test(url.trim())) { onChange(url.trim()); setUrlOpen(false); } else toast.error(t('ems_d_url_https_image')); }}>{t('ems_rt_apply')}</Button>
         </div>
       ) : null}
+
+      <CropDialog file={cropping} onCancel={() => { setCropping(null); if (input.current) input.current.value = ''; }}
+        onDone={(rect) => { const f = cropping; setCropping(null); if (f) void upload(f, rect); }} />
+      {value && crop ? <p className="text-2xs text-muted-foreground">{t('ems_b_crop_existing')}</p> : null}
+      {playMark ? <p className="text-2xs text-muted-foreground">{t('ems_b_play_mark_hint')}</p> : null}
 
       <Dialog open={libOpen} onOpenChange={setLibOpen}>
         <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl">

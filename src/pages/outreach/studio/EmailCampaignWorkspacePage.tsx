@@ -154,6 +154,16 @@ export default function EmailCampaignWorkspacePage() {
   const draftKey = useRef<string>(readLocal(null)?.draftKey ?? crypto.randomUUID());
   const latest = useRef<Working>(w);
   latest.current = w;
+  /* The server version the next save builds on (stale-save protection), and the one save chain:
+     saves run strictly one after another, so a slow save never lands after a newer one. */
+  const baseRef = useRef<string | null>(null);
+  const chain = useRef<Promise<unknown>>(Promise.resolve());
+  const [conflict, setConflict] = useState<StudioCampaign | null>(null);
+  /* Any fresher copy this page receives (submit, schedule, approval) becomes the base. */
+  useEffect(() => {
+    const at = campaign?.updated_at;
+    if (at && (!baseRef.current || Date.parse(at) > Date.parse(baseRef.current))) baseRef.current = at;
+  }, [campaign?.updated_at]);
 
   const rawStep = search.get('step') ?? 'design';
   const step: Step = (STEPS as readonly string[]).includes(rawStep) ? rawStep as Step : LEGACY_STEP[rawStep] ?? 'design';
@@ -181,6 +191,7 @@ export default function EmailCampaignWorkspacePage() {
       const c = await getCampaign(campaignId);
       if (!c) { setLoadError(true); return; }
       setCampaign(c);
+      baseRef.current = c.updated_at;
       const server = fromCampaign(c, lang);
       setW(server);
       setSavedAt(Date.parse(c.updated_at));
@@ -191,14 +202,15 @@ export default function EmailCampaignWorkspacePage() {
   useEffect(() => { void load(); }, [load]);
 
   /* ── save ──────────────────────────────────────────────────────────────────────────────── */
-  const flush = useCallback(async (working: Working): Promise<StudioCampaign | null> => {
+  const flushNow = useCallback(async (working: Working, version?: 'MANUAL' | 'RESTORE'): Promise<StudioCampaign | null> => {
     if (readOnly) return null;
     if (!idRef.current && creating.current) await creating.current;
     setSaving('saving');
     const wasNew = !idRef.current;
     const run = (async () => {
-      const saved = await saveCampaign(idRef.current, toPatch(working, fallbackName), draftKey.current);
+      const saved = await saveCampaign(idRef.current, toPatch(working, fallbackName), draftKey.current, { baseUpdatedAt: baseRef.current, version });
       idRef.current = saved.id;
+      baseRef.current = saved.updated_at;
       return saved;
     })();
     if (wasNew) creating.current = run.catch(() => null);
@@ -219,11 +231,21 @@ export default function EmailCampaignWorkspacePage() {
       return saved;
     } catch (e) {
       setSaving('error');
+      /* Changed elsewhere since this page loaded it: nothing was written; the owner chooses. */
+      if (e instanceof StudioError && e.code === 'STALE' && e.body?.campaign) {
+        setConflict(e.body.campaign as StudioCampaign);
+        return null;
+      }
       const code = e instanceof StudioError ? e.code : 'SAVE_FAILED';
       toast.error(t(`ems_err_${code.toLowerCase()}`) === `ems_err_${code.toLowerCase()}` ? t('ems_err_save_failed') : t(`ems_err_${code.toLowerCase()}`));
       return null;
     }
   }, [navigate, readOnly, search, t, fallbackName]);
+  const flush = useCallback((working: Working, version?: 'MANUAL' | 'RESTORE'): Promise<StudioCampaign | null> => {
+    const next = chain.current.catch(() => null).then(() => flushNow(working, version));
+    chain.current = next;
+    return next;
+  }, [flushNow]);
 
   const update = useCallback((patch: Partial<Working>) => {
     if (readOnly) return;
@@ -249,14 +271,35 @@ export default function EmailCampaignWorkspacePage() {
     return () => {
       window.removeEventListener('beforeunload', before);
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
-      if (dirtyRef.current) void saveCampaign(idRef.current, toPatch(latest.current, fallbackName), draftKey.current).then((s) => clearLocal(s.id)).catch(() => undefined);
+      if (dirtyRef.current) void saveCampaign(idRef.current, toPatch(latest.current, fallbackName), draftKey.current, { baseUpdatedAt: baseRef.current }).then((s) => clearLocal(s.id)).catch(() => undefined);
     };
   }, []);
 
-  const saveNow = async () => {
+  const saveNow = async (version?: 'MANUAL' | 'RESTORE') => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     if (inflight.current) await inflight.current.catch(() => null);
-    return flush(latest.current);
+    return flush(latest.current, version);
+  };
+  /* A designer snapshot request: save what is on screen now and keep it as a named version. The
+     restore is a design change, so its save waits for the state update to land first. */
+  const snapshot = (reason: 'MANUAL' | 'RESTORE') => {
+    window.setTimeout(() => {
+      void saveNow(reason).then((c) => { if (c && reason === 'MANUAL') toast.success(t('ems_b_version_saved')); });
+    }, 0);
+  };
+  const resolveConflict = (keep: 'mine' | 'theirs') => {
+    const c = conflict;
+    setConflict(null);
+    if (!c) return;
+    baseRef.current = c.updated_at;
+    if (keep === 'theirs') {
+      setCampaign(c);
+      setW(fromCampaign(c, lang));
+      dirtyRef.current = false;
+      setSaving('saved');
+      setSavedAt(Date.parse(c.updated_at));
+      clearLocal(c.id);
+    } else void saveNow();
   };
 
   /* Preselected leads arrive without their lists: resolve them once, so the estimate can count. */
@@ -558,7 +601,8 @@ export default function EmailCampaignWorkspacePage() {
         <div className="min-w-0 space-y-5">
           {step === 'design' ? (
             <DesignStep w={w} update={update} readOnly={readOnly} templates={templates} sections={sections} fallbackName={fallbackName}
-              onSaveTemplate={() => void saveAsTemplate()} onSaveSection={(b) => void saveSection(b)} placeholders={placeholders} noLink={noLink} noAlt={noAlt} />
+              onSaveTemplate={() => void saveAsTemplate()} onSaveSection={(b) => void saveSection(b)} placeholders={placeholders} noLink={noLink} noAlt={noAlt}
+              campaignId={campaignId} onSnapshot={snapshot} />
           ) : null}
           {step === 'sender' ? <SenderStep w={w} update={update} senders={senders} domains={domains} readOnly={readOnly} campaignId={campaignId} /> : null}
           {step === 'recipients' ? (
@@ -599,6 +643,18 @@ export default function EmailCampaignWorkspacePage() {
         </SheetContent>
       </Sheet>
 
+      <AlertDialog open={Boolean(conflict)} onOpenChange={(o) => { if (!o) setConflict(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('ems_b_stale_title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('ems_b_stale_body')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => resolveConflict('theirs')}>{t('ems_b_stale_theirs')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => resolveConflict('mine')}>{t('ems_b_stale_mine')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={Boolean(confirmEdit)} onOpenChange={(o) => { if (!o) setConfirmEdit(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -694,9 +750,10 @@ function F({ id, label, hint, children, counter }: { id?: string; label: string;
   );
 }
 
-function DesignStep({ w, update, readOnly, templates, sections, onSaveTemplate, onSaveSection, placeholders, noLink, noAlt, fallbackName }: StepProps & {
+function DesignStep({ w, update, readOnly, templates, sections, onSaveTemplate, onSaveSection, placeholders, noLink, noAlt, fallbackName, campaignId, onSnapshot }: StepProps & {
   templates: UserTemplate[]; sections: Array<{ id: string; name: string; block: Block }>; onSaveTemplate: () => void; onSaveSection: (b: Block) => void;
   placeholders: string[]; noLink: string[]; noAlt: string[]; fallbackName: string;
+  campaignId: string | null; onSnapshot: (reason: 'MANUAL' | 'RESTORE') => void;
 }) {
   const { t } = useLanguage();
   const [picker, setPicker] = useState(w.design.blocks.length === 0);
@@ -749,7 +806,8 @@ function DesignStep({ w, update, readOnly, templates, sections, onSaveTemplate, 
           </div>
           <Suspense fallback={<Skeleton className="h-[32rem] w-full rounded-2xl" />}>
             <EmailDesigner value={w.design} onChange={(doc) => update({ design: doc })} rtl={rtl} subject={w.subject} previewText={w.preview_text}
-              senderName={w.sender_name} language={w.language} sections={sections} onSaveSection={onSaveSection} onSaveTemplate={onSaveTemplate} flagged={noLink} />
+              senderName={w.sender_name} language={w.language} sections={sections} onSaveSection={onSaveSection} onSaveTemplate={onSaveTemplate} flagged={noLink}
+              campaignId={campaignId} onSnapshot={onSnapshot} />
           </Suspense>
         </div>
       )}

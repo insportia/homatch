@@ -3,7 +3,7 @@
 // A limit kept in one process multiplies by the number of replicas: six
 // replicas of "one MyHome run at a time" are six MyHome runs, enough to draw
 // MyHome's Cloudflare challenge for every customer. Slots live in the
-// database (worker_semaphore_slots, migration 20261201093000) and are reached
+// database (worker_semaphore_slots, migration 20261205093000) and are reached
 // through verify-queue. A slot is renewed while held and expires at its TTL if
 // the process dies. Without a configured gateway this degrades to the process
 // limit the caller already enforces — one replica behaves exactly as before.

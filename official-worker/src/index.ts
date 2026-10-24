@@ -63,7 +63,7 @@ function startUsageFlush(gateway: QueueGateway | null): void {
 }
 
 /*
- * Replica heartbeat (Verify Scaling, 20261201096000): every 30 s this process
+ * Replica heartbeat (Verify Scaling, 20261205096000): every 30 s this process
  * says it is alive, how many queue slots it has, how busy it is and how much
  * memory it holds. The Admin's "healthy replicas" is these beats, not
  * Railway's own count; the last beat on shutdown says it is draining.

@@ -1,4 +1,4 @@
-// PGlite behaviour test for 20261201093000_worker_global_semaphore.sql and 20261201092000_verify_market_runs.sql:
+// PGlite behaviour test for 20261205093000_worker_global_semaphore.sql and 20261205092000_verify_market_runs.sql:
 // at most p_max live holders per key across "replicas", renew by re-acquire, release frees, expiry frees, grants.
 //   node scripts/verify/worker-semaphore-db-check.mjs <repo-root> [<dir with node_modules/@electric-sql/pglite>]
 import { readFileSync } from 'node:fs';
@@ -12,8 +12,8 @@ const { PGlite } = process.argv[3]
   : require('@electric-sql/pglite');
 const db = new PGlite();
 await db.exec('create role anon; create role authenticated; create role service_role;');
-await db.exec(readFileSync(ROOT + '/supabase/migrations/20261201093000_worker_global_semaphore.sql', 'utf8'));
-await db.exec(readFileSync(ROOT + '/supabase/migrations/20261201092000_verify_market_runs.sql', 'utf8'));
+await db.exec(readFileSync(ROOT + '/supabase/migrations/20261205093000_worker_global_semaphore.sql', 'utf8'));
+await db.exec(readFileSync(ROOT + '/supabase/migrations/20261205092000_verify_market_runs.sql', 'utf8'));
 
 const acq = async (key, holder, max, ttl = 120) => (await db.query('select public.worker_semaphore_acquire($1,$2,$3,$4) a', [key, holder, max, ttl])).rows[0].a;
 const rel = async (key, holder) => (await db.query('select public.worker_semaphore_release($1,$2) r', [key, holder])).rows[0].r;

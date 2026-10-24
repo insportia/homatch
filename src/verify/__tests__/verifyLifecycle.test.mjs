@@ -317,7 +317,7 @@ test('the driver never resurrects a cancelled or deleted job', () => {
   const sweep = agent.slice(agent.indexOf("event: 'claim_rpc_unavailable'"), agent.indexOf("event: 'claim_rpc_unavailable'") + 1400);
   assert.ok(sweep.includes("is('cancelled_at', null)"), 'cancelled jobs are swept up again');
   assert.ok(sweep.includes("is('deleted_at', null)"), 'deleted jobs are swept up again');
-  const claim = code('supabase/migrations/20261201090000_verify_drive_claim.sql');
+  const claim = code('supabase/migrations/20261205090000_verify_drive_claim.sql');
   assert.ok(claim.includes('j.deleted_at is null') && claim.includes('j.cancelled_at is null'), 'the claim resurrects a cancelled or deleted job');
 });
 

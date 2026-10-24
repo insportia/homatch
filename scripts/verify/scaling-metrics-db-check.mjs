@@ -1,4 +1,4 @@
-// PGlite behaviour test for 20261201096000_verify_scaling.sql: healthy replicas come from fresh, non-draining beats;
+// PGlite behaviour test for 20261205096000_verify_scaling.sql: healthy replicas come from fresh, non-draining beats;
 // queue depth, age and throughput are read from verify_tasks; the default setting is MANUAL and never overwrites.
 //   node scripts/verify/scaling-metrics-db-check.mjs <repo-root> [<dir with node_modules/@electric-sql/pglite>]
 import { readFileSync } from 'node:fs';
@@ -19,7 +19,7 @@ await db.exec(`
     run_after timestamptz default now(), created_at timestamptz default now(), started_at timestamptz, finished_at timestamptz);
   insert into public.admin_settings values ('verify_scaling', '{"mode":"AUTOMATIC","approvedMax":6}', now());
 `);
-const sql = readFileSync(ROOT + '/supabase/migrations/20261201096000_verify_scaling.sql', 'utf8');
+const sql = readFileSync(ROOT + '/supabase/migrations/20261205096000_verify_scaling.sql', 'utf8');
 await db.exec(sql);
 await db.exec(sql); // re-runnable
 assert.equal((await db.query(`select value->>'mode' m from public.admin_settings where key = 'verify_scaling'`)).rows[0].m, 'AUTOMATIC', 'the owner\'s setting is kept');

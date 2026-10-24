@@ -137,7 +137,7 @@ Deno.serve(async (req: Request) => {
         return json(data);
       }
       case 'sem_acquire': {
-        // A limit shared by every worker replica (20261201093000).
+        // A limit shared by every worker replica (20261205093000).
         const key = str(body.key, 120), holder = str(body.holder, 120);
         if (!key || !holder) return json({ error: 'BAD_REQUEST' }, 400);
         const max = Number(body.max);
@@ -157,7 +157,7 @@ Deno.serve(async (req: Request) => {
         return json({ released: data === true });
       }
       case 'proxy_usage': {
-        // The worker network layer's traffic ledger (20261201094000): aggregates only, never URLs or content.
+        // The worker network layer's traffic ledger (20261205094000): aggregates only, never URLs or content.
         const rows = (Array.isArray(body.rows) ? body.rows : []).slice(0, 500);
         const n = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.trunc(Number(v)) : 0);
         const insert = rows.map((r: any) => ({
@@ -175,7 +175,7 @@ Deno.serve(async (req: Request) => {
           const { error } = await db.from('proxy_usage_events').insert(insert);
           if (error) throw error;
         }
-        // Keep the ledger bounded (20261201094000): at most one prune an hour per isolate.
+        // Keep the ledger bounded (20261205094000): at most one prune an hour per isolate.
         if (Date.now() - proxyUsagePrunedAt > 3_600_000) {
           proxyUsagePrunedAt = Date.now();
           await db.rpc('proxy_usage_prune', { p_days: 90 }).then(() => {}, () => {});
@@ -183,7 +183,7 @@ Deno.serve(async (req: Request) => {
         return json({ recorded: insert.length });
       }
       case 'replica_beat': {
-        // One worker process says it is alive (20261201096000): the honest healthy-replica count for Verify Scaling.
+        // One worker process says it is alive (20261205096000): the honest healthy-replica count for Verify Scaling.
         const replica = str(body.worker, 120);
         if (!replica) return json({ error: 'BAD_REQUEST' }, 400);
         const n = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.trunc(Number(v)) : null);
@@ -203,7 +203,7 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true });
       }
       case 'market_put': {
-        // A worker's /verify/market run, readable by research-agent from any replica (20261201092000).
+        // A worker's /verify/market run, readable by research-agent from any replica (20261205092000).
         const runId = str(body.runId, 40);
         const status = str(body.status, 20);
         if (!UUID.test(runId) || !['RUNNING', 'COMPLETE'].includes(status)) return json({ error: 'BAD_REQUEST' }, 400);

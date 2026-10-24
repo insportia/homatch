@@ -108,7 +108,7 @@ test('wiring: admin-only and server-checked, confirmation required, every outcom
   assert.match(fn, /if \(s\.mode !== 'AUTOMATIC' \|\| !rw\) return json\(\{ ok: true, skipped/);
   for (const st of ['REFUSED', 'VERIFIED', 'FAILED']) assert.ok(fn.includes(`status: '${st}'`) || fn.includes(`'${st}'`), st);
   assert.doesNotMatch(fn, /RAILWAY_(PROJECT|API)_TOKEN/, 'the token is read only inside _shared/railwayScaling.ts');
-  const sql = code('supabase/migrations/20261201096000_verify_scaling.sql');
+  const sql = code('supabase/migrations/20261205096000_verify_scaling.sql');
   assert.match(sql, /'\{"mode":"MANUAL"/);
   assert.match(sql, /on conflict \(key\) do nothing/, 'an existing owner setting is never overwritten');
   const shared = code('supabase/functions/_shared/railwayScaling.ts');

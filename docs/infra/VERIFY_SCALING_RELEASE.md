@@ -17,7 +17,7 @@ Branch `claude/verify-scale`: 13 commits, built on the existing pipeline and tou
 | Load tests | the real `QueueRunner` at 50, 200 and 1,000 jobs on 1, 3 and 6 replicas, plus a scale-down mid-burst; a burst simulator fed by production durations | — |
 
 7 migrations, all additive (new tables and functions plus one index; nothing dropped or altered):
-`20261201090000_verify_drive_claim`, `…091000_verify_queue_position`, `…092000_verify_market_runs`,
+`20261205090000_verify_drive_claim`, `…091000_verify_queue_position`, `…092000_verify_market_runs`,
 `…093000_worker_global_semaphore`, `…094000_proxy_usage_events`, `…095000_openai_rate_budget`, `…096000_verify_scaling`.
 These were audited by the database auditor; its two Medium findings (double claim, unindexed throughput scan) are fixed.
 

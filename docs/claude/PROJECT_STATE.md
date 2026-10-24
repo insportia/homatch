@@ -1,6 +1,6 @@
 # PROJECT STATE
 
-last_updated: 2026-10-23
+last_updated: 2026-10-24
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
@@ -8,11 +8,20 @@ MATTERS right now, verify against the live systems, not this file)
 ## Verify at scale + dynamic Railway scaling (branch claude/verify-scale, 2026-10-24) — COMMITTED, NOT DEPLOYED, AWAITING OWNER APPROVAL
 
 Release package with costs, throughput, steps and rollback: `docs/infra/VERIFY_SCALING_RELEASE.md`.
-- 7 additive migrations 20261201090000…096000 (not applied). Edge: research-agent, verify-queue, verify-synthesis, new verify-scaling. Railway worker changed.
+- 7 additive migrations 20261205090000…096000 (not applied). Edge: research-agent, verify-queue, verify-synthesis, new verify-scaling. Railway worker changed.
 - Scaling: MANUAL, approved ceiling 3, autoscaler off; needs Supabase secret RAILWAY_PROJECT_TOKEN (owner) + Railway var RAILWAY_DEPLOYMENT_DRAINING_SECONDS=200.
 - Network/proxy layer off; OpenAI budget unset. No proxy purchase recommended (metering first).
 - Finding: past 3 replicas a 200-job burst is bound by source caps (MyGov 16, TAS 24), not replicas; 200 in 30 min not reachable at current caps.
 - Railway serviceInstanceUpdate(multiRegionConfig)+redeploy not yet proven against the real API (no token).
+
+## Email Studio drag & drop builder + deliverability panel (PR #327, branch claude/email-builder-deliverability, 2026-10-24) — PR OPEN, AWAITING OWNER RELEASE APPROVAL
+
+- Release order: apply `20261201090000_email_builder_deliverability.sql` (exact text, ledger-hash check) → merge → edge PROVEN_EXACT for email-marketing, email-webhook, jobs-worker, outreach-send → Vercel (www.homatch.live/m/* rewrites).
+- New: designer/tree.ts (structural edits), compat.ts, readySections.ts, emailHtml.ts (HTML block allowlist; admins only, enforced in campaign_save), deliverability/headers.ts + dnsCheck.ts; tables email_design_versions / email_deliverability_checks / email_placement_tests.
+- Email links/images move to the brand domain (`EMAIL_LINK_BASE`, default https://www.homatch.live). Old `?ema=` links keep working.
+- Inbox/Spam exist only as owner-recorded controlled tests; never derive placement from provider `delivered`.
+- #322 (Email Studio UX pass) is fully live: edge PROVEN_EXACT at 68c1aba5 after applying the held Publishing migration `publishing_central_accounts` (owner-approved 2026-10-24).
+- Spam investigation: DNS SPF/DKIM/alignment pass; DMARC `p=none` with no rua (owner DNS approval needed to add rua); test sends carry `[TEST]` and no List-Unsubscribe; raw headers of the spam-delivered message still needed from the owner.
 
 ## Verify fixed price + 30-day validity + Snake/ads fixes (branch claude/verify-fixed-price-validity, 2026-10-23) — PR OPEN, NOT DEPLOYED
 

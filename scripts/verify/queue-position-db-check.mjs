@@ -1,4 +1,4 @@
-// PGlite behaviour test for 20261201091000_verify_queue_position.sql: position counts the same lane in claim order,
+// PGlite behaviour test for 20261205091000_verify_queue_position.sql: position counts the same lane in claim order,
 // the estimate comes from measured throughput only, and a job with nothing waiting reports zero.
 //   node scripts/verify/queue-position-db-check.mjs <repo-root> [<dir with node_modules/@electric-sql/pglite>]
 import { readFileSync } from 'node:fs';
@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 const { PGlite } = process.argv[3]
   ? require(process.argv[3] + '/node_modules/@electric-sql/pglite/dist/index.cjs')
   : require('@electric-sql/pglite');
-const MIGRATION = readFileSync(ROOT + '/supabase/migrations/20261201091000_verify_queue_position.sql', 'utf8');
+const MIGRATION = readFileSync(ROOT + '/supabase/migrations/20261205091000_verify_queue_position.sql', 'utf8');
 
 const db = new PGlite();
 await db.exec(`

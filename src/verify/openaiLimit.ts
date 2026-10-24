@@ -2,7 +2,7 @@
 //
 // Every model call made by research-agent and verify-synthesis goes through
 // these rules:
-//   * a shared per-model budget (openai_rate_reserve, migration 20261201095000)
+//   * a shared per-model budget (openai_rate_reserve, migration 20261205095000)
 //     when admin_settings.openai_limits sets RPM/TPM: over it, the caller waits
 //     for the next minute instead of adding to a 429 storm;
 //   * Retry-After is honoured on 429/5xx (capped), otherwise exponential

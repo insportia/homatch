@@ -1,4 +1,4 @@
-// PGlite behaviour test for 20261201090000_verify_drive_claim.sql on a production-shaped research_jobs stub.
+// PGlite behaviour test for 20261205090000_verify_drive_claim.sql on a production-shaped research_jobs stub.
 // Proves: two concurrent claimers never get the same job; one customer's backlog does not starve another;
 // an expired claim is reclaimable, a fresh one is not; recently-polled, old, cancelled and finished jobs are skipped.
 //   node scripts/verify/drive-claim-db-check.mjs <repo-root> [<dir with node_modules/@electric-sql/pglite>]
@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url);
 const { PGlite } = process.argv[3]
   ? require(process.argv[3] + '/node_modules/@electric-sql/pglite/dist/index.cjs')
   : require('@electric-sql/pglite');
-const MIGRATION = readFileSync(ROOT + '/supabase/migrations/20261201090000_verify_drive_claim.sql', 'utf8');
+const MIGRATION = readFileSync(ROOT + '/supabase/migrations/20261205090000_verify_drive_claim.sql', 'utf8');
 
 const db = new PGlite();
 await db.exec(`

@@ -19,7 +19,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
-const PORT = 4397;
+const PORT = 4398; /* 4397 is matchingWorkspace's: npm run test:mobile runs files in parallel. */
 const BASE = `http://127.0.0.1:${PORT}`;
 
 function findChrome() {

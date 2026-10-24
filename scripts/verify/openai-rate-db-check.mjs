@@ -1,4 +1,4 @@
-// PGlite behaviour test for 20261201095000_openai_rate_budget.sql: the shared per-model OpenAI budget admits up to
+// PGlite behaviour test for 20261205095000_openai_rate_budget.sql: the shared per-model OpenAI budget admits up to
 // RPM requests and TPM tokens per minute across callers, then answers with the wait to the next minute.
 //   node scripts/verify/openai-rate-db-check.mjs <repo-root> [<dir with node_modules/@electric-sql/pglite>]
 import { readFileSync } from 'node:fs';
@@ -12,7 +12,7 @@ const { PGlite } = process.argv[3]
   : require('@electric-sql/pglite');
 const db = new PGlite();
 await db.exec('create role anon; create role authenticated; create role service_role;');
-await db.exec(readFileSync(ROOT + '/supabase/migrations/20261201095000_openai_rate_budget.sql', 'utf8'));
+await db.exec(readFileSync(ROOT + '/supabase/migrations/20261205095000_openai_rate_budget.sql', 'utf8'));
 
 const reserve = async (bucket, tokens, rpm, tpm) => (await db.query('select public.openai_rate_reserve($1,$2,$3,$4) w', [bucket, tokens, rpm, tpm])).rows[0].w;
 

@@ -862,6 +862,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
       // Provenance for the prose, without the internal job id.
       registerSource: registerSource ? { asOf: registerSource.asOf, reused: true, freshExtractAdvised: registerSource.freshExtractAdvised } : null,
       propertyKind: subjectKind,
+      landProfile: rj?.landProfile ?? null,
     });
     callReport = async (model: string) => {
       try {

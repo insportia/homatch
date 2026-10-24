@@ -66,7 +66,7 @@ const Insufficient: React.FC<{ info: NonNullable<MarketView['insufficiency']> }>
       <div className="flex items-start gap-3">
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
         <div className="min-w-0 space-y-1">
-          <p className="text-sm font-semibold break-words">{t('vfm_insufficient_title')}</p>
+          <p className="text-sm font-semibold break-words">{t(info.titleKey ?? 'vfm_insufficient_title')}</p>
           <p className="text-sm leading-6 text-foreground/85 break-words">{t(info.bodyKey ?? 'vfm_insufficient_body', vars)}</p>
         </div>
       </div>

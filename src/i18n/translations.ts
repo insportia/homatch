@@ -24263,6 +24263,12 @@ const en = {
   adm_vsc_scale_failed: 'The change could not be made. Nothing was changed.',
   adm_vsc_settings_saved: 'Saved.',
 
+  /* ── VERIFY MARKET: LOCATION UNAVAILABLE ── */
+  vfm7_insufficient_title_no_location: 'Market comparison not possible: location not confirmed',
+  vfm7_insufficient_body_no_location: 'The official sources did not give us this property\'s exact location, so no market search was run and no comparable properties are shown. We are not giving a price for it. This is not a finding about the market — it was not compared.',
+  vfm7_missing_location: 'The property\'s confirmed location from an official source (its position on the cadastral map or its district).',
+  vfm7_next_location: 'Confirm the property\'s location (its cadastral map position or district); the market can then be compared with nearby listings of the same kind.',
+
   /* ── HOMI ASSISTANT ── */
   expat_starter_count: 'Your plan has {{n}} steps. Here are the first ones.',
   expat_starter_save_body: 'Create a free account to keep this plan, tick steps off and get a reminder before the dates that matter.',
@@ -48598,6 +48604,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   adm_vsc_scale_failed: 'ცვლილება ვერ განხორციელდა. არაფერი შეცვლილა.',
   adm_vsc_settings_saved: 'შენახულია.',
 
+  /* ── VERIFY MARKET: LOCATION UNAVAILABLE ── */
+  vfm7_insufficient_title_no_location: 'ბაზრის შედარება შეუძლებელია: მდებარეობა არ დადასტურდა',
+  vfm7_insufficient_body_no_location: 'ოფიციალურმა წყაროებმა ამ ქონების ზუსტი მდებარეობა ვერ მოგვცა, ამიტომ ბაზრის ძიება არ ჩატარებულა და შესადარებელი ქონება არ არის ნაჩვენები. ფასს ამ ქონებისთვის არ ვაძლევთ. ეს ბაზრის შესახებ დასკვნა არ არის — შედარება არ მომხდარა.',
+  vfm7_missing_location: 'ქონების დადასტურებული მდებარეობა ოფიციალური წყაროდან (მისი ადგილი საკადასტრო რუკაზე ან უბანი).',
+  vfm7_next_location: 'დაადასტურეთ ქონების მდებარეობა (მისი ადგილი საკადასტრო რუკაზე ან უბანი); ამის შემდეგ ბაზარი შეგვიძლია შევადაროთ იმავე ტიპის ახლომდებარე განცხადებებს.',
+
   /* ── HOMI ASSISTANT ── */
   expat_starter_count: 'შენს გეგმაში {{n}} ნაბიჯია. აი პირველები.',
   expat_starter_save_body: 'შექმენი უფასო ანგარიში, რომ გეგმა შეინახო, ნაბიჯები მონიშნო და მნიშვნელოვან თარიღებამდე შეხსენება მიიღო.',
@@ -72924,6 +72936,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   adm_vsc_scale_failed: 'Изменение не выполнено. Ничего не изменилось.',
   adm_vsc_settings_saved: 'Сохранено.',
 
+  /* ── VERIFY MARKET: LOCATION UNAVAILABLE ── */
+  vfm7_insufficient_title_no_location: 'Сравнение с рынком невозможно: местоположение не подтверждено',
+  vfm7_insufficient_body_no_location: 'Официальные источники не дали нам точного местоположения этой недвижимости, поэтому поиск по рынку не проводился и сопоставимые объекты не показаны. Мы не называем для неё цену. Это не вывод о рынке — сравнение не проводилось.',
+  vfm7_missing_location: 'Подтверждённое местоположение объекта из официального источника (его место на кадастровой карте или район).',
+  vfm7_next_location: 'Подтвердите местоположение объекта (его место на кадастровой карте или район); тогда рынок можно будет сравнить с ближайшими объявлениями того же типа.',
+
   /* ── HOMI ASSISTANT ── */
   expat_starter_count: 'В твоём плане {{n}} шагов. Вот первые.',
   expat_starter_save_body: 'Создай бесплатный аккаунт, чтобы сохранить план, отмечать шаги и получать напоминания перед важными датами.',
@@ -97247,6 +97265,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   adm_vsc_scale_refused: 'Değiştirilmedi: {{why}}',
   adm_vsc_scale_failed: 'Değişiklik yapılamadı. Hiçbir şey değişmedi.',
   adm_vsc_settings_saved: 'Kaydedildi.',
+
+  /* ── VERIFY MARKET: LOCATION UNAVAILABLE ── */
+  vfm7_insufficient_title_no_location: 'Piyasa karşılaştırması yapılamadı: konum doğrulanmadı',
+  vfm7_insufficient_body_no_location: 'Resmi kaynaklar bu mülkün kesin konumunu vermedi; bu nedenle piyasa araması yapılmadı ve karşılaştırılabilir mülk gösterilmiyor. Bu mülk için fiyat vermiyoruz. Bu, piyasa hakkında bir bulgu değildir — karşılaştırma yapılmadı.',
+  vfm7_missing_location: 'Mülkün resmi bir kaynaktan doğrulanmış konumu (kadastro haritasındaki yeri veya semti).',
+  vfm7_next_location: 'Mülkün konumunu doğrulayın (kadastro haritasındaki yeri veya semti); ardından piyasa aynı türdeki yakın ilanlarla karşılaştırılabilir.',
 
   /* ── HOMI ASSISTANT ── */
   expat_starter_count: 'Planında {{n}} adım var. İşte ilkleri.',
@@ -121572,6 +121596,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   adm_vsc_scale_failed: 'تعذّر إجراء التغيير. لم يتغير شيء.',
   adm_vsc_settings_saved: 'تم الحفظ.',
 
+  /* ── VERIFY MARKET: LOCATION UNAVAILABLE ── */
+  vfm7_insufficient_title_no_location: 'تعذّرت مقارنة السوق: لم يتم تأكيد الموقع',
+  vfm7_insufficient_body_no_location: 'لم تُعطنا المصادر الرسمية الموقع الدقيق لهذا العقار، لذلك لم يُجرَ بحث في السوق ولا تُعرض عقارات قابلة للمقارنة. لا نعطي سعرًا لهذا العقار. هذا ليس استنتاجًا عن السوق — لم تتم المقارنة.',
+  vfm7_missing_location: 'الموقع المؤكد للعقار من مصدر رسمي (موضعه على الخريطة المساحية أو حيّه).',
+  vfm7_next_location: 'أكّد موقع العقار (موضعه على الخريطة المساحية أو حيّه)؛ بعدها يمكن مقارنة السوق بالإعلانات القريبة من النوع نفسه.',
+
   /* ── HOMI ASSISTANT ── */
   expat_starter_count: 'في خطتك {{n}} خطوات. هذه أولاها.',
   expat_starter_save_body: 'أنشئ حسابًا مجانيًا لتحفظ هذه الخطة وتعلّم الخطوات المنجزة وتتلقى تذكيرًا قبل المواعيد المهمة.',
@@ -145895,6 +145925,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   adm_vsc_scale_refused: 'לא שונה: {{why}}',
   adm_vsc_scale_failed: 'לא ניתן היה לבצע את השינוי. דבר לא שונה.',
   adm_vsc_settings_saved: 'נשמר.',
+
+  /* ── VERIFY MARKET: LOCATION UNAVAILABLE ── */
+  vfm7_insufficient_title_no_location: 'לא ניתן להשוות לשוק: המיקום לא אומת',
+  vfm7_insufficient_body_no_location: 'המקורות הרשמיים לא מסרו לנו את המיקום המדויק של הנכס, ולכן לא בוצע חיפוש בשוק ולא מוצגים נכסים להשוואה. איננו נותנים לו מחיר. זה אינו ממצא על השוק — לא בוצעה השוואה.',
+  vfm7_missing_location: 'המיקום המאומת של הנכס ממקור רשמי (מקומו במפת הקדסטר או השכונה).',
+  vfm7_next_location: 'אמתו את מיקום הנכס (מקומו במפת הקדסטר או השכונה); לאחר מכן ניתן יהיה להשוות לשוק מול מודעות סמוכות מאותו סוג.',
 
   /* ── HOMI ASSISTANT ── */
   expat_starter_count: 'בתוכנית שלך יש {{n}} צעדים. הנה הראשונים.',

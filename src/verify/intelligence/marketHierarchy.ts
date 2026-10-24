@@ -139,7 +139,12 @@ export interface MarketValuation {
   priceBasis: 'ASKING' | 'TRANSACTION' | 'MIXED' | null;
   levelsUsed: HierarchyLevel[];
   sizeBand: { min: number; max: number } | null;
-  reasonCode: 'TOO_FEW_DEFENSIBLE_COMPARABLES' | null;
+  /**
+   * Why there is no estimate. LOCATION_UNAVAILABLE (prod 9f49e7e3): the subject's
+   * place could not be established, so no market search ran at all; set by
+   * buildMarketIntelligence from the eligibility gate, never guessed here.
+   */
+  reasonCode: 'TOO_FEW_DEFENSIBLE_COMPARABLES' | 'LOCATION_UNAVAILABLE' | null;
   /** The subject's property kind the gate compared against, when known (v6). */
   subjectKind?: PropertyKind | null;
   /** Always true: no district or citywide listing is ever in these numbers. */

@@ -110,6 +110,8 @@ export interface MarketInsufficiency {
   otherKind?: number;
   /** The explanation's i18n key: land is compared with plots, not homes. */
   bodyKey: string;
+  /** The heading's i18n key; absent means vfm_insufficient_title. */
+  titleKey?: string;
 }
 
 /** v6: the subject's own price, and whether any verdict on it is allowed. */
@@ -143,6 +145,8 @@ export interface MarketView {
   subjectPrice?: SubjectPriceView;
   subjectKind?: string | null;
   method?: MarketMethod | null;
+  /** Location unavailable / searched but nothing comparable / comparables found (MarketIntelligence.availability). */
+  availability?: 'LOCATION_UNAVAILABLE' | 'NO_COMPARABLES' | 'COMPARABLES' | null;
 }
 
 const n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
@@ -258,6 +262,18 @@ export function insufficiencyOf(m: Record<string, any>): MarketInsufficiency | n
   const v = obj(m.valuation);
   if (v.state !== 'INSUFFICIENT_EVIDENCE') return null;
   const h = obj(m.hierarchy);
+  if (v.reasonCode === 'LOCATION_UNAVAILABLE') {
+    // Nothing was searched, so nothing was "found": no counts, no size or district talk (prod 9f49e7e3).
+    const need = Number(v.minimumComparables) || 3;
+    return {
+      have: 0, need, otherDistricts: 0, sizeOutOfBand: 0, sizeBand: null, subjectAreaKnown: !!n(m.subjectArea),
+      missingKeys: ['vfm7_missing_location'],
+      nextStepKeys: ['vfm7_next_location', 'vfm_next_registered_sales'],
+      otherKind: 0,
+      bodyKey: 'vfm7_insufficient_body_no_location',
+      titleKey: 'vfm7_insufficient_title_no_location',
+    };
+  }
   const ex = obj(h.excluded);
   const sb = obj(v.sizeBand ?? h.sizeBand);
   const sizeBand = n(sb.min) && n(sb.max) ? { min: sb.min as number, max: sb.max as number } : null;
@@ -412,5 +428,6 @@ export function marketView(raw: unknown): MarketView | null {
     subjectPrice: subjectPriceOf(m, currency),
     subjectKind: typeof kind === 'string' ? kind : null,
     method: methodOf(m),
+    availability: m.availability === 'LOCATION_UNAVAILABLE' || m.availability === 'NO_COMPARABLES' || m.availability === 'COMPARABLES' ? m.availability : null,
   };
 }

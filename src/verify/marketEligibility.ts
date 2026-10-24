@@ -748,7 +748,12 @@ export function eligibilitySummary(gate: MarketEligibility): Record<string, unkn
 export function marketEligibilityBrief(gate: { state?: unknown; reason?: unknown; subject?: { assetClass?: unknown } } | null | undefined): string {
   if (!gate || gate.state !== 'INSUFFICIENT_DATA') return '';
   const kind = String(gate.subject?.assetClass ?? 'UNKNOWN');
+  // No place, no search (prod 9f49e7e3): the prose must not say that comparables were looked for and not found.
+  const noPlace = gate.reason === 'LOCATION_UNKNOWN'
+    ? 'The location of the subject could NOT be established from the official sources, so NO marketplace search was run: say exactly that, and do not write that comparables were searched for and not found. '
+    : '';
   return (
+    noPlace +
     `MARKET ELIGIBILITY (deterministic, binding): reliable comparables for this subject are INSUFFICIENT (${String(gate.reason)}; subject class ${kind}). ` +
     'Do NOT produce, estimate or imply a valuation, a price range, a median, a price per m² for the subject, or a price position. ' +
     `Return only comparables that are the same property class (${kind}), the same deal type and in the subject's own neighbourhood — never city-wide stock and never a different property class; ` +

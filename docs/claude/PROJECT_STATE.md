@@ -5,6 +5,15 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## Verify at scale + dynamic Railway scaling (branch claude/verify-scale, 2026-10-24) — COMMITTED, NOT DEPLOYED, AWAITING OWNER APPROVAL
+
+Release package with costs, throughput, steps and rollback: `docs/infra/VERIFY_SCALING_RELEASE.md`.
+- 7 additive migrations 20261201090000…096000 (not applied). Edge: research-agent, verify-queue, verify-synthesis, new verify-scaling. Railway worker changed.
+- Scaling: MANUAL, approved ceiling 3, autoscaler off; needs Supabase secret RAILWAY_PROJECT_TOKEN (owner) + Railway var RAILWAY_DEPLOYMENT_DRAINING_SECONDS=200.
+- Network/proxy layer off; OpenAI budget unset. No proxy purchase recommended (metering first).
+- Finding: past 3 replicas a 200-job burst is bound by source caps (MyGov 16, TAS 24), not replicas; 200 in 30 min not reachable at current caps.
+- Railway serviceInstanceUpdate(multiRegionConfig)+redeploy not yet proven against the real API (no token).
+
 ## Verify fixed price + 30-day validity + Snake/ads fixes (branch claude/verify-fixed-price-validity, 2026-10-23) — PR OPEN, NOT DEPLOYED
 
 - Owner decisions 2026-10-23: one admin-editable Verify price (initial $1.90 = 19 credits, VAT included,

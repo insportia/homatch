@@ -4,12 +4,10 @@
 // and the contacts query answered by fixtures shaped like the SQL / edge functions
 // (20261128090000_curated_leads_marketplace.sql §12, outreach-campaign-preview):
 //
-//   * /outreach/email?new=1&list=<id> opens the create dialog on that list, and the
-//     launch params leave the URL (a refresh does not reopen it);
-//   * the audience shows total vs eligible (the rule outreach-send applies) and says why
-//     not everyone receives the campaign;
-//   * "one campaign per language" with a CHOSEN fallback language creates one DRAFT per
-//     language through outreach-campaign-preview — never a send;
+//   * /outreach/email?new=1&list=<id> — the link the matching workspace hands over after an
+//     unlock — opens a NEW Email Studio campaign on that list (Email Studio #309 replaced the old
+//     campaigns page and its create dialog on 2026-10-24; its recipients step owns the audience
+//     estimate and per-language filtering), and nothing is sent;
 //   * /outreach/contacts?source=CURATED_LEAD filters server-side and badges the source.
 
 import test from 'node:test';
@@ -119,35 +117,11 @@ async function boot(t) {
   return { page, state };
 }
 
-test('?new=1&list= opens the dialog on the list; audience; one DRAFT per language with the chosen fallback', opts, async (t) => {
+test('?new=1&list= (the unlock handoff) opens a new Email Studio campaign on that list; nothing is sent', opts, async (t) => {
   const { page, state } = await boot(t);
   await page.goto(`${BASE}/outreach/email?new=1&list=${LIST_ID}`, { waitUntil: 'domcontentloaded' });
-  const dialog = page.getByRole('dialog');
-  await dialog.waitFor({ timeout: 30000 });
-  /* consumed: the launch params leave the URL */
-  await page.waitForFunction(() => !window.location.search.includes('new=1'));
-  assert.match(await dialog.locator('[data-testid="email-list-create"]').textContent(), /HOMATCH Curated Leads/);
-
-  const aud = dialog.locator('[data-testid="email-audience"]');
-  await aud.waitFor();
-  assert.equal((await aud.locator('[data-testid="aud-total"]').textContent()).trim(), '5');
-  assert.equal((await aud.locator('[data-testid="aud-eligible"]').textContent()).trim(), '2');
-  assert.match(await aud.textContent(), /3 contacts will not receive this campaign/);
-  assert.equal(await aud.locator('[data-lang]').count(), 3, 'ka, en and unknown');
-
-  await dialog.locator('input').first().fill('Vake offer');
-  await dialog.locator('[data-testid="email-split"]').check();
-  /* Unknown-language contacts present: nothing is created until the owner chooses. */
-  assert.equal(await dialog.locator('[data-testid="email-create"]').isDisabled(), true);
-  await dialog.locator('[data-testid="email-split-fallback"]').click();
-  await page.getByRole('option', { name: 'KA', exact: true }).click();
-  await dialog.locator('[data-testid="email-create"]').click();
-
-  await page.locator('[data-testid="email-language-drafts"]').waitFor();
-  assert.deepEqual(state.splitCalls, [{ p_list_id: LIST_ID, p_fallback_language: 'ka' }]);
-  assert.deepEqual(state.creates.map((c) => [c.name, c.language, c.contact_list_id, c.campaign_type]), [
-    ['Vake offer · EN', 'en', 'list-en', 'EMAIL'], ['Vake offer · KA', 'ka', 'list-ka', 'EMAIL'],
-  ]);
+  await page.waitForURL((u) => u.pathname === '/outreach/email/campaigns/new' && u.searchParams.get('list') === LIST_ID, { timeout: 30000 });
+  assert.equal(new URL(page.url()).searchParams.get('step'), '2', 'straight to the recipients step');
   assert.equal(state.sends, 0, 'nothing is sent');
 });
 

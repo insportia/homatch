@@ -214,6 +214,7 @@ const AdminServiceControlPage = lazyRoute(() => import('./pages/admin/AdminServi
 const AdminLeadsDatabasePage = lazyRoute(() => import('./pages/admin/AdminLeadsDatabasePage'));
 const AdminBrokersPage = lazyRoute(() => import('./pages/admin/AdminBrokersPage'));
 const AdminVerifyCogsPage = lazyRoute(() => import('./pages/admin/AdminVerifyCogsPage'));
+const AdminHomiServicesPage = lazyRoute(() => import('./pages/admin/AdminHomiServicesPage'));
 const AdminVoiceAiPage = lazyRoute(() => import('./pages/admin/AdminVoiceAiPage'));
 const AdminPricingPage = lazyRoute(() => import('./pages/admin/AdminPricingPage'));
 const AdminSpendCapsPage = lazyRoute(() => import('./pages/admin/AdminSpendCapsPage'));
@@ -693,6 +694,14 @@ const routeTable: RouteConfig[] = [
      independent matching switches, and oversight of user-uploaded contact lists. */
   { name: 'Admin Leads Database', path: '/admin/leads-database', element: adminWrap(<AdminLeadsDatabasePage />), adminOnly: true },
   { name: 'Admin Verify COGS', path: '/admin/verify-cogs',        element: adminWrap(<AdminVerifyCogsPage />),  adminOnly: true },
+  /* HOMI and the services it reaches: one page, an address per section, read-only figures from admin RPCs. */
+  { name: 'Admin HOMI', path: '/admin/homi', element: adminWrap(<AdminHomiServicesPage section="homi" />), adminOnly: true },
+  { name: 'Admin AI Costs', path: '/admin/ai-costs', element: adminWrap(<AdminHomiServicesPage section="ai-costs" />), adminOnly: true },
+  { name: 'Admin Mortgage Rules', path: '/admin/mortgage-rules', element: adminWrap(<AdminHomiServicesPage section="mortgage" />), adminOnly: true },
+  { name: 'Admin Mortgage Buyers', path: '/admin/mortgage-buyers', element: adminWrap(<AdminHomiServicesPage section="mortgage-leads" />), adminOnly: true },
+  { name: 'Admin Contract Costs', path: '/admin/contract-costs', element: adminWrap(<AdminHomiServicesPage section="contracts" />), adminOnly: true },
+  { name: 'Admin Notification Delivery', path: '/admin/notification-delivery', element: adminWrap(<AdminHomiServicesPage section="notifications" />), adminOnly: true },
+  { name: 'Admin Languages', path: '/admin/languages', element: adminWrap(<AdminHomiServicesPage section="languages" />), adminOnly: true },
   /*
    * The eleven-tab voice tooling moved into AI & communication. The URL
    * still resolves, because bookmarks to it predate the redesign and a

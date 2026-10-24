@@ -17,6 +17,7 @@
 
 import { createHash } from 'node:crypto';
 import type { EvidenceRef } from './gateway.js';
+import { decodeLegacyGeorgian } from '../documents/legacyGeorgian.js';
 
 export const DOC_EXCERPT_CHARS = 8_000;
 export const TOTAL_EXCERPT_CHARS = 120_000;
@@ -27,6 +28,21 @@ export const TOTAL_EXCERPT_CHARS = 120_000;
  * 2.0 MB leaves room for evidenceRefs and the request envelope.
  */
 export const MAX_RESULT_BYTES = 2_000_000;
+/*
+ * AND A CHARACTER BOUND (prod eacaf5a0, 2026-10-24). verify-queue ALSO refuses
+ * a result whose JSON is over 1,500,000 CHARACTERS (its MAX_RESULT_BYTES counts
+ * string length). A mostly-ASCII result of 1.6-2.0 MB passed the byte bound
+ * here and was refused there (413 RESULT_TOO_LARGE): the TAS map's whole
+ * result was lost and the task waited out its lease. Both bounds now hold:
+ * Georgian text (3 bytes a character) meets the byte bound first, Latin text
+ * the character bound.
+ */
+export const QUEUE_MAX_RESULT_CHARS = 1_500_000;
+export const MAX_RESULT_STRING_CHARS = 1_400_000;
+/** How far a serialized result is over either bound (bytes or characters), 0 when within both. */
+const overBy = (s: string) => Math.max(0, bytesOf(s) - MAX_RESULT_BYTES, s.length - MAX_RESULT_STRING_CHARS);
+/** What handoffMinimum guarantees: a result the queue always accepts. */
+export const HANDOFF_MIN_BYTES = 400_000;
 /** @deprecated kept for callers that still import it; the bound is MAX_RESULT_BYTES. */
 export const MAX_RESULT_CHARS = MAX_RESULT_BYTES;
 const utf8 = new TextEncoder();
@@ -54,6 +70,9 @@ export async function compactResult(raw: any, upload: Uploader): Promise<Compact
   let remaining = TOTAL_EXCERPT_CHARS;
   for (const d of order) {
     if (!d || typeof d !== 'object') continue;
+    // Legacy-font Georgian (older NAPR extracts) is decoded before it is stored or read (legacyGeorgian.ts).
+    if (typeof d.rawText === 'string') d.rawText = decodeLegacyGeorgian(d.rawText);
+    if (typeof d.fullText === 'string') d.fullText = decodeLegacyGeorgian(d.fullText);
     const full = typeof d.fullText === 'string' && d.fullText.length ? d.fullText : typeof d.rawText === 'string' ? d.rawText : '';
     delete d.fullText;
     if (!full) continue;
@@ -94,7 +113,7 @@ export async function compactResult(raw: any, upload: Uploader): Promise<Compact
   }
 
   let serialized = JSON.stringify(result);
-  if (bytesOf(serialized) > MAX_RESULT_BYTES) {
+  if (overBy(serialized) > 0) {
     // The complete structured result is preserved in storage first.
     const hash = sha256(serialized);
     const path = await upload(hash, 'application/json', serialized);
@@ -105,7 +124,7 @@ export async function compactResult(raw: any, upload: Uploader): Promise<Compact
     serialized = JSON.stringify(result);
     // Still too large: the priority texts give way (largest first); each
     // keeps its stored ref and says it is no longer complete inline.
-    let over = bytesOf(serialized) - MAX_RESULT_BYTES;
+    let over = overBy(serialized);
     if (over > 0) {
       for (const d of docs.filter((x) => x?.priority && typeof x.rawText === 'string').sort((a, b) => b.rawText.length - a.rawText.length)) {
         if (over <= 0) break;
@@ -137,4 +156,49 @@ function trimStructure(r: any): void {
     }
   }
   if (Array.isArray(r.discoveredEntities)) r.discoveredEntities = r.discoveredEntities.slice(0, 200);
+}
+
+/*
+ * THE HAND-OFF NEVER LOSES A FINISHED SOURCE (prod a7177a89, eacaf5a0).
+ *
+ * When the queue refuses a result (413) or does not answer in time, the work
+ * behind it (CAPTCHA solves, PDFs, TAS pages) is already paid for and its
+ * texts are already in storage (compactResult). This is the same result cut
+ * to what the report needs: every status field, every document with a short
+ * excerpt and its stored-text ref, the first entities, the stored full-result
+ * ref. It is always under HANDOFF_MIN_BYTES, so the second hand-off succeeds.
+ */
+export function handoffMinimum(result: any, maxBytes = HANDOFF_MIN_BYTES): any {
+  const r = result && typeof result === 'object' ? result : { value: result };
+  const out: any = {};
+  for (const [k, v] of Object.entries(r)) {
+    if (v == null || typeof v !== 'object') out[k] = v;
+  }
+  for (const k of ['fullResultRef', 'workflowResult', 'captchaResolution', 'rsVerification', 'sourceOutcome', 'outcomeReason', '_exec']) {
+    if (r[k] !== undefined) out[k] = r[k];
+  }
+  const docs: any[] = Array.isArray(r.documents) ? r.documents : [];
+  const docOf = (d: any, chars: number) => {
+    const keep: any = {};
+    for (const [k, v] of Object.entries(d ?? {})) if (v == null || typeof v !== 'object') keep[k] = v;
+    for (const k of ['fullTextRef', 'textRef', 'contentMetadata']) if (d?.[k] !== undefined) keep[k] = d[k];
+    if (typeof d?.rawText === 'string') {
+      keep.rawText = d.rawText.slice(0, chars);
+      if (keep.rawText.length < d.rawText.length) { keep.textTruncated = true; keep.textComplete = false; }
+    }
+    return keep;
+  };
+  if (Array.isArray(r.queueEntities)) out.queueEntities = r.queueEntities.slice(0, 50);
+  if (Array.isArray(r.discoveredEntities)) out.discoveredEntities = r.discoveredEntities.slice(0, 50);
+  out.handoffMinimum = true;
+  // Newest first (owner 2026-10-24: "priority to the latest information"): the newest documents keep the most text.
+  const newestFirst = [...docs].sort((a, b) => String(b?.documentDate ?? b?.date ?? '').localeCompare(String(a?.documentDate ?? a?.date ?? ''))).slice(0, 120);
+  for (const [top, rest] of [[8000, 3000], [4000, 1000], [2000, 300], [1000, 0], [0, 0]] as const) {
+    out.documents = newestFirst.map((d, i) => docOf(d, i < 5 ? top : rest));
+    if (bytesOf(JSON.stringify(out)) <= maxBytes) return out;
+  }
+  out.documents = out.documents.slice(0, 20);
+  delete out.queueEntities;
+  delete out.discoveredEntities;
+  return out;
 }

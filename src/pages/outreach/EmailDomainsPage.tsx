@@ -6,6 +6,7 @@
 // are separate from receiving: nothing here asks anyone to change their MX records,
 // and replies keep arriving in the HOMATCH inbox through HOMATCH's reply routing.
 import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, Copy, Globe2, Loader2, Plus, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -104,6 +105,10 @@ function DomainCard({ d, onChange, onRemove }: { d: SendingDomain; onChange: (d:
 
 export default function EmailDomainsPage() {
   const { t } = useLanguage();
+  const navigate = useNavigate();
+  /* Opened from a campaign's Sender step (?return=…): a way straight back to it. */
+  const [params] = useSearchParams();
+  const returnTo = /^\/outreach\/email\/[\w/?=&%-]*$/.test(params.get('return') ?? '') ? params.get('return') : null;
   const [domains, setDomains] = useState<SendingDomain[] | null>(null);
   const [input, setInput] = useState('');
   const [adding, setAdding] = useState(false);
@@ -130,6 +135,12 @@ export default function EmailDomainsPage() {
     <CommsWorkspace product="email" header={(
       <PageHeader eyebrow={t('dnav_email')} title={t('emd_title')} subtitle={t('emd_subtitle')} />
     )}>
+      {returnTo ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-2.5 text-sm text-sky-900">
+          <span className="me-auto">{t('ems_domains_return_note')}</span>
+          <Button size="sm" className="h-8" onClick={() => navigate(returnTo)}>{t('ems_back_to_campaign')}</Button>
+        </div>
+      ) : null}
       <EmailSettingsTabs />
       <div className="space-y-4 pb-16">
         <form className="flex flex-col gap-2 rounded-2xl border bg-card p-4 sm:flex-row sm:items-end" onSubmit={(e) => { e.preventDefault(); void add(); }}>

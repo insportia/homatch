@@ -15,8 +15,9 @@
 // every marketing email.
 
 import {
-  type Block, type ColumnsBlock, type EmailDoc, FONT_STACKS, type LeafBlock, normalizeDoc, type Pad, type Theme,
+  type Block, type ButtonBlock, type ColumnsBlock, type EmailDoc, FONT_STACKS, type LeafBlock, normalizeDoc, type Pad, type Theme,
 } from './document.ts';
+import { richToEmailHtml, richToText } from './richText.ts';
 
 export const DESIGN_MARKER = '<!--homatch-designer:v1';
 
@@ -50,39 +51,120 @@ const SOCIAL_LABEL: Record<string, string> = {
   telegram: 'Telegram', whatsapp: 'WhatsApp', website: 'Website',
 };
 
+/* Button size presets: [paddingY, paddingX, fontSize]. */
+const BUTTON_SIZE = { sm: [10, 20, 14], md: [14, 28, 15], lg: [18, 36, 17] } as const;
+
+/**
+ * A bulletproof button: the colour lives on the table cell (so Outlook paints it), the padding on
+ * the link (so the whole button is clickable) and again as mso-padding-alt for Outlook, which
+ * ignores padding on links. The hover colour is a class the optional <style> block fills.
+ */
+function buttonHtml(b: Pick<ButtonBlock, 'id' | 'label' | 'href' | 'align' | 'buttonColor' | 'textColor' | 'radius' | 'fullWidth' | 'fontSize' | 'fontWeight' | 'size' | 'paddingX' | 'paddingY' | 'strokeWidth' | 'strokeColor' | 'hoverColor'>, font: string, al: string, draft = false): string {
+  /* A button without a destination is never sent; the designer (draft) still shows it so the
+     author sees what to finish, and submission refuses it (BUTTON_LINK_MISSING). */
+  if (!b.label.trim() || (!b.href && !draft)) return '';
+  const [py0, px0, fs0] = BUTTON_SIZE[b.size ?? 'md'];
+  const py = b.paddingY ?? py0, px = b.paddingX ?? px0, fs = b.fontSize ?? fs0;
+  const stroke = b.strokeWidth && b.strokeColor ? `border:${b.strokeWidth}px solid ${b.strokeColor};` : '';
+  const hover = b.hoverColor ? ` class="hm-btn-${b.id}"` : '';
+  const a = `<a ${b.href ? `href="${attrUrl(b.href)}" target="_blank"` : 'data-hm-nolink="1"'}${hover} style="display:${b.fullWidth ? 'block' : 'inline-block'};padding:${py}px ${px}px;font-family:${font};font-size:${fs}px;font-weight:${b.fontWeight ?? 700};line-height:1.2;color:${b.textColor};text-decoration:none;border-radius:${b.radius}px;text-align:center;">${esc(b.label)}</a>`;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" ${b.fullWidth ? 'width="100%"' : ''} align="${b.fullWidth ? 'center' : al}" style="${b.fullWidth ? 'width:100%;' : ''}border-collapse:separate;${al === 'center' && !b.fullWidth ? 'margin:0 auto;' : ''}"><tr><td bgcolor="${b.buttonColor}"${hover} style="background-color:${b.buttonColor};border-radius:${b.radius}px;text-align:center;mso-padding-alt:${py}px ${px}px;${stroke}">${a}</td></tr></table>`;
+}
+
+/* Draft only (designer canvas, template previews): where an image will go, at its proportions.
+   Never in a stored or sent email — an empty image renders nothing there. */
+const imageSlot = (w: number, h: number, radius = 0) =>
+  `<div style="width:100%;max-width:${w}px;height:${h}px;margin:0 auto;border-radius:${radius}px;background-color:#E6E0D5;background-image:linear-gradient(135deg,#ECE7DE 25%,#E2DBCE 25%,#E2DBCE 50%,#ECE7DE 50%,#ECE7DE 75%,#E2DBCE 75%);background-size:24px 24px;"></div>`;
+
 function cellAttrs(b: Block, theme: Theme, extraClass = ''): string {
   const cls = [b.hideOnMobile ? 'hm-hide-mobile' : '', b.hideOnDesktop ? 'hm-hide-desktop' : '', extraClass].filter(Boolean).join(' ');
   const bg = b.background ? `background-color:${b.background};` : '';
-  const border = b.borderWidth && b.borderColor ? `border:${b.borderWidth}px solid ${b.borderColor};` : '';
+  /* A card draws its own border around the card, not around the padded row. */
+  const border = b.type !== 'card' && b.borderWidth && b.borderColor ? `border:${b.borderWidth}px solid ${b.borderColor};` : '';
   const desktopHidden = b.hideOnDesktop ? 'display:none;mso-hide:all;max-height:0;overflow:hidden;' : '';
   void theme;
   return `${cls ? ` class="${cls}"` : ''} style="padding:${padCss(b.padding)};${bg}${border}${desktopHidden}"${b.background ? ` bgcolor="${b.background}"` : ''}`;
 }
 
-function leafHtml(b: LeafBlock, theme: Theme, width: number, dirAlign: 'left' | 'right'): string {
+function leafHtml(b: LeafBlock, theme: Theme, width: number, dirAlign: 'left' | 'right', draft = false): string {
   const font = FONT_STACKS[('fontFamily' in b && b.fontFamily) || theme.fontFamily];
   const al = (a: string) => (a === 'left' ? dirAlign : a === 'right' ? (dirAlign === 'left' ? 'right' : 'left') : 'center');
   switch (b.type) {
     case 'heading': {
       const size = b.fontSize ?? (b.level === 1 ? 28 : b.level === 2 ? 22 : 18);
-      return `<h${b.level} style="margin:0;font-family:${font};font-size:${size}px;line-height:1.3;font-weight:${b.fontWeight ?? 700};color:${b.color ?? theme.text};text-align:${al(b.align)};">${inlineMarkup(b.text, theme.link)}</h${b.level}>`;
+      const ls = b.letterSpacing ? `letter-spacing:${b.letterSpacing / 100}em;` : '';
+      const body = b.rich ? richToEmailHtml(b.rich, b.color ?? theme.link) : inlineMarkup(b.text, theme.link);
+      return `<h${b.level} style="margin:0;font-family:${font};font-size:${size}px;line-height:1.3;font-weight:${b.fontWeight ?? 700};color:${b.color ?? theme.text};text-align:${al(b.align)};${ls}">${body}</h${b.level}>`;
     }
-    case 'text':
-      return `<div style="margin:0;font-family:${font};font-size:${b.fontSize ?? 16}px;line-height:${b.lineHeight ?? 1.65};font-weight:${b.fontWeight ?? 400};color:${b.color ?? theme.text};text-align:${al(b.align)};">${inlineMarkup(b.text, theme.link)}</div>`;
+    case 'text': {
+      const body = b.rich ? richToEmailHtml(b.rich, theme.link) : inlineMarkup(b.text, theme.link);
+      return `<div style="margin:0;font-family:${font};font-size:${b.fontSize ?? 16}px;line-height:${b.lineHeight ?? 1.65};font-weight:${b.fontWeight ?? 400};color:${b.color ?? theme.text};text-align:${al(b.align)};">${body}</div>`;
+    }
     case 'image': {
-      if (!b.src) return '';
+      if (!b.src) return draft ? imageSlot(Math.min(b.width, width), Math.round(Math.min(b.width, width) * 0.56), b.radius ?? 0) : '';
       const w = Math.min(b.width, width);
       const img = `<img src="${attrUrl(b.src)}" alt="${esc(b.alt)}" width="${w}" style="display:block;width:100%;max-width:${w}px;height:auto;border:0;outline:none;text-decoration:none;border-radius:${b.radius ?? 0}px;${b.align === 'center' ? 'margin:0 auto;' : ''}" />`;
       return `<div style="text-align:${al(b.align)};">${b.href ? `<a href="${attrUrl(b.href)}" target="_blank" style="text-decoration:none;">${img}</a>` : img}</div>`;
     }
-    case 'button': {
-      if (!b.label.trim() || !b.href) return '';
-      const fs = b.fontSize ?? 15;
-      const a = `<a href="${attrUrl(b.href)}" target="_blank" style="display:${b.fullWidth ? 'block' : 'inline-block'};padding:14px 28px;font-family:${font};font-size:${fs}px;font-weight:${b.fontWeight ?? 700};line-height:1.2;color:${b.textColor};text-decoration:none;border-radius:${b.radius}px;text-align:center;">${esc(b.label)}</a>`;
-      return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" ${b.fullWidth ? 'width="100%"' : ''} align="${b.fullWidth ? 'center' : al(b.align)}" style="${b.fullWidth ? 'width:100%;' : ''}border-collapse:separate;"><tr><td bgcolor="${b.buttonColor}" style="background-color:${b.buttonColor};border-radius:${b.radius}px;text-align:center;">${a}</td></tr></table>`;
+    case 'button':
+      return buttonHtml(b, font, al(b.align), draft);
+    case 'banner': {
+      const a = al(b.align);
+      const parts = [
+        b.imageSrc ? `<img src="${attrUrl(b.imageSrc)}" alt="${esc(b.imageAlt)}" width="${width}" style="display:block;width:100%;max-width:${width}px;height:auto;border:0;margin:0 0 22px 0;" />` : '',
+        b.eyebrow ? `<div style="font-family:${font};font-size:12px;line-height:1.4;font-weight:700;letter-spacing:0.18em;color:${b.buttonColor};text-align:${a};margin:0 0 10px 0;">${esc(b.eyebrow)}</div>` : '',
+        b.title ? `<h1 style="margin:0;font-family:${font};font-size:30px;line-height:1.2;font-weight:700;color:${b.textColor};text-align:${a};">${esc(b.title)}</h1>` : '',
+        b.subtitle ? `<div style="font-family:${font};font-size:16px;line-height:1.6;color:${b.textColor};text-align:${a};margin:12px 0 0 0;">${inlineMarkup(b.subtitle, b.buttonColor)}</div>` : '',
+      ];
+      const btn = buttonHtml({ id: b.id, label: b.buttonLabel, href: b.buttonHref, align: b.align, buttonColor: b.buttonColor, textColor: b.buttonTextColor, radius: b.radius, size: 'md' }, font, a, draft);
+      return `${parts.join('')}${btn ? `<div style="height:22px;line-height:22px;font-size:0;">&nbsp;</div>${btn}` : ''}`;
     }
-    case 'divider':
-      return `<div style="height:${b.thickness}px;line-height:${b.thickness}px;font-size:0;background-color:${b.color};">&nbsp;</div>`;
+    case 'card': {
+      const a = al(b.align);
+      const border = b.borderWidth && b.borderColor ? `border:${b.borderWidth}px solid ${b.borderColor};` : '';
+      const btn = buttonHtml({ id: b.id, label: b.buttonLabel, href: b.buttonHref, align: b.align, buttonColor: b.buttonColor, textColor: b.buttonTextColor, radius: Math.min(b.radius, 10), size: 'sm' }, font, a, draft);
+      const content = [
+        b.title ? `<div style="font-family:${font};font-size:19px;line-height:1.3;font-weight:700;color:${theme.text};text-align:${a};margin:0 0 6px 0;">${esc(b.title)}</div>` : '',
+        b.text ? `<div style="font-family:${font};font-size:15px;line-height:1.6;color:${theme.text};text-align:${a};">${inlineMarkup(b.text, theme.link)}</div>` : '',
+        btn ? `<div style="height:14px;line-height:14px;font-size:0;">&nbsp;</div>${btn}` : '',
+      ].join('');
+      const imgW = b.layout === 'side' ? Math.floor(width * 0.42) : width;
+      const img = b.imageSrc ? `<img src="${attrUrl(b.imageSrc)}" alt="${esc(b.imageAlt)}" width="${imgW}" style="display:block;width:100%;max-width:${imgW}px;height:auto;border:0;border-radius:${Math.max(0, b.radius - 2)}px;" />`
+        : draft ? imageSlot(imgW, Math.round(imgW * 0.62), Math.max(0, b.radius - 2)) : '';
+      const inner = b.layout === 'side' && img
+        ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="hm-col" width="${imgW}" valign="top" style="width:${imgW}px;vertical-align:top;padding:0 18px 0 0;">${img}</td><td class="hm-col" valign="top" style="vertical-align:top;">${content}</td></tr></table>`
+        : `${img ? `${img}<div style="height:16px;line-height:16px;font-size:0;">&nbsp;</div>` : ''}${content}`;
+      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;"><tr><td bgcolor="${b.cardColor}" style="background-color:${b.cardColor};border-radius:${b.radius}px;padding:20px;${border}">${inner}</td></tr></table>`;
+    }
+    case 'header': {
+      const logo = b.logoSrc ? `<img src="${attrUrl(b.logoSrc)}" alt="${esc(b.logoAlt || b.brand)}" width="${b.logoWidth}" style="display:inline-block;width:${b.logoWidth}px;max-width:100%;height:auto;border:0;vertical-align:middle;" />` : '';
+      const linked = (s: string) => (b.href && s ? `<a href="${attrUrl(b.href)}" target="_blank" style="text-decoration:none;color:${b.textColor};">${s}</a>` : s);
+      const brand = b.brand ? `<div style="font-family:${font};font-size:17px;line-height:1.3;font-weight:800;letter-spacing:0.08em;color:${b.textColor};">${esc(b.brand)}</div>` : '';
+      const tag = b.tagline ? `<div style="font-family:${font};font-size:12px;line-height:1.5;color:${b.textColor};margin-top:2px;">${esc(b.tagline)}</div>` : '';
+      const a = al(b.align);
+      if (a === 'center' || !logo || !(brand || tag)) {
+        return `<div style="text-align:${a};">${linked(logo)}${logo && (brand || tag) ? '<div style="height:10px;line-height:10px;font-size:0;">&nbsp;</div>' : ''}${linked(brand)}${tag}</div>`;
+      }
+      return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="${a}"><tr><td valign="middle" style="vertical-align:middle;padding:0 14px 0 0;">${linked(logo)}</td><td valign="middle" style="vertical-align:middle;text-align:${a};">${linked(brand)}${tag}</td></tr></table>`;
+    }
+    case 'facts': {
+      if (!b.items.length) return '';
+      const n = b.columns;
+      const cellW = Math.floor(100 / n);
+      const rows: string[] = [];
+      for (let i = 0; i < b.items.length; i += n) {
+        const cells = b.items.slice(i, i + n).map((it) => `<td class="hm-col" width="${cellW}%" valign="top" style="width:${cellW}%;vertical-align:top;padding:6px;"><div style="${b.tileColor ? `background-color:${b.tileColor};` : ''}border-radius:10px;padding:${b.tileColor ? '14px 12px' : '4px 0'};text-align:center;">
+<div style="font-family:${font};font-size:20px;line-height:1.25;font-weight:700;color:${b.valueColor ?? theme.text};">${esc(it.value)}</div>
+<div style="font-family:${font};font-size:12px;line-height:1.4;letter-spacing:0.06em;color:${b.labelColor ?? theme.muted};margin-top:4px;">${esc(it.label)}</div></div></td>`);
+        rows.push(`<tr>${cells.join('')}</tr>`);
+      }
+      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows.join('')}</table>`;
+    }
+    case 'divider': {
+      const rule = `<div style="height:${b.thickness}px;line-height:${b.thickness}px;font-size:0;background-color:${b.color};">&nbsp;</div>`;
+      if (!b.widthPct || b.widthPct >= 100) return rule;
+      return `<table role="presentation" width="${b.widthPct}%" align="center" cellpadding="0" cellspacing="0" border="0" style="width:${b.widthPct}%;margin:0 auto;"><tr><td>${rule}</td></tr></table>`;
+    }
     case 'spacer':
       return `<div style="height:${b.height}px;line-height:${b.height}px;font-size:0;">&nbsp;</div>`;
     case 'logo': {
@@ -111,11 +193,11 @@ function leafHtml(b: LeafBlock, theme: Theme, width: number, dirAlign: 'left' | 
   }
 }
 
-function columnsHtml(b: ColumnsBlock, theme: Theme, width: number, dirAlign: 'left' | 'right'): string {
+function columnsHtml(b: ColumnsBlock, theme: Theme, width: number, dirAlign: 'left' | 'right', draft = false): string {
   const [l, r] = b.ratio === '40-60' ? [40, 60] : b.ratio === '60-40' ? [60, 40] : [50, 50];
   const inner = width - (b.padding ? b.padding.l + b.padding.r : 64);
   const w1 = Math.floor((inner - b.gap) * l / 100), w2 = Math.floor((inner - b.gap) * r / 100);
-  const col = (blocks: LeafBlock[], w: number) => blocks.map((x) => `<div style="padding:${padCss({ ...(x.padding ?? { t: 6, r: 0, b: 6, l: 0 }), l: 0, r: 0 })};${x.background ? `background-color:${x.background};` : ''}">${leafHtml(x, theme, w, dirAlign)}</div>`).join('');
+  const col = (blocks: LeafBlock[], w: number) => blocks.map((x) => `<div style="padding:${padCss({ ...(x.padding ?? { t: 6, r: 0, b: 6, l: 0 }), l: 0, r: 0 })};${x.background ? `background-color:${x.background};` : ''}">${leafHtml(x, theme, w, dirAlign, draft)}</div>`).join('');
   const stack = b.stackOnMobile ? ' class="hm-col"' : '';
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
 <td${stack} width="${w1}" valign="top" style="width:${w1}px;vertical-align:top;">${col(b.columns[0], w1)}</td>
@@ -128,11 +210,11 @@ function columnsHtml(b: ColumnsBlock, theme: Theme, width: number, dirAlign: 'le
  * One block as the designer canvas shows it: the SAME renderer output (escaped, inline-styled,
  * no <style>, no script) inside its padded cell, so what the canvas shows is what is sent.
  */
-export function renderBlockHtml(b: Block, theme: Theme, rtl = false): string {
+export function renderBlockHtml(b: Block, theme: Theme, rtl = false, draft = true): string {
   const dirAlign = rtl ? 'right' : 'left';
   const inner = b.type === 'columns'
-    ? columnsHtml(b, theme, theme.width, dirAlign)
-    : leafHtml(b, theme, theme.width - (b.padding ? b.padding.l + b.padding.r : 64), dirAlign);
+    ? columnsHtml(b, theme, theme.width, dirAlign, draft)
+    : leafHtml(b, theme, theme.width - (b.padding ? b.padding.l + b.padding.r : 64), dirAlign, draft);
   const bg = b.background ? `background-color:${b.background};` : '';
   const border = b.borderWidth && b.borderColor ? `border:${b.borderWidth}px solid ${b.borderColor};` : '';
   return `<div style="padding:${padCss(b.padding)};${bg}${border}">${inner}</div>`;
@@ -141,16 +223,19 @@ export function renderBlockHtml(b: Block, theme: Theme, rtl = false): string {
 export interface RenderedBody { html: string; text: string; theme: Theme }
 
 /** The designed body: one self-contained table (plus the marker carrying canvas/width). */
-export function renderDesignBody(input: unknown, opts: { rtl?: boolean } = {}): RenderedBody {
+export function renderDesignBody(input: unknown, opts: { rtl?: boolean; draft?: boolean } = {}): RenderedBody {
   const doc: EmailDoc = normalizeDoc(input);
   const t = doc.theme;
   const dirAlign = opts.rtl ? 'right' : 'left';
   const rows = doc.blocks.map((b) => {
-    const content = b.type === 'columns' ? columnsHtml(b, t, t.width, dirAlign) : leafHtml(b, t, t.width - (b.padding ? b.padding.l + b.padding.r : 64), dirAlign);
+    const content = b.type === 'columns' ? columnsHtml(b, t, t.width, dirAlign, opts.draft) : leafHtml(b, t, t.width - (b.padding ? b.padding.l + b.padding.r : 64), dirAlign, opts.draft);
     if (!content) return '';
     return `<tr><td${cellAttrs(b, t)}>${content}</td></tr>`;
   }).filter(Boolean);
-  const style = `<style type="text/css">@media only screen and (max-width:620px){.hm-col{display:block!important;width:100%!important;max-width:100%!important;}.hm-gap{display:none!important;}.hm-hide-mobile{display:none!important;max-height:0!important;overflow:hidden!important;}.hm-hide-desktop{display:table-cell!important;max-height:none!important;}.hm-body{width:100%!important;}}</style>`;
+  const hovers = doc.blocks.flatMap((b) => (b.type === 'columns' ? [...b.columns[0], ...b.columns[1]] : [b]))
+    .filter((b): b is ButtonBlock => b.type === 'button' && Boolean(b.hoverColor))
+    .map((b) => `td.hm-btn-${b.id}:hover,a.hm-btn-${b.id}:hover{background-color:${b.hoverColor}!important;}`).join('');
+  const style = `<style type="text/css">${hovers}@media only screen and (max-width:620px){.hm-col{display:block!important;width:100%!important;max-width:100%!important;padding-left:0!important;padding-right:0!important;}.hm-gap{display:none!important;}.hm-hide-mobile{display:none!important;max-height:0!important;overflow:hidden!important;}.hm-hide-desktop{display:table-cell!important;max-height:none!important;}.hm-body{width:100%!important;}}</style>`;
   const html = `${DESIGN_MARKER} canvas=${t.canvas} card=${t.card} width=${t.width} radius=${t.radius}-->
 ${style}
 <table role="presentation" class="hm-body" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${t.card}" style="width:100%;background-color:${t.card};border-collapse:collapse;">
@@ -164,9 +249,13 @@ export function designToText(doc: EmailDoc): string {
   const strip = (s: string) => s.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1').replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)');
   const leaf = (b: LeafBlock): string => {
     switch (b.type) {
-      case 'heading': return strip(b.text).toUpperCase() === strip(b.text) ? strip(b.text) : strip(b.text);
-      case 'text': case 'footer': return strip(b.text);
+      case 'heading': case 'text': return b.rich ? richToText(b.rich) : strip(b.text);
+      case 'footer': return strip(b.text);
       case 'button': return b.label && b.href ? `${b.label}: ${b.href}` : '';
+      case 'banner': return [b.eyebrow, b.title, strip(b.subtitle), b.buttonLabel && b.buttonHref ? `${b.buttonLabel}: ${b.buttonHref}` : ''].filter(Boolean).join('\n');
+      case 'card': return [b.title, strip(b.text), b.buttonLabel && b.buttonHref ? `${b.buttonLabel}: ${b.buttonHref}` : ''].filter(Boolean).join('\n');
+      case 'header': return [b.brand, b.tagline].filter(Boolean).join('\n');
+      case 'facts': return b.items.map((it) => [it.label, it.value].filter(Boolean).join(': ')).join('\n');
       case 'image': return b.href ? `${b.alt || 'Image'}: ${b.href}` : '';
       case 'social': return b.links.map((l) => `${SOCIAL_LABEL[l.network]}: ${l.url}`).join('\n');
       case 'contact': return [b.name, b.email, b.phone, b.address].filter(Boolean).join('\n');

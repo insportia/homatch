@@ -8,6 +8,11 @@
 //
 // Text supports a tiny, safe inline syntax: **bold**, *italic*, [label](https://…) and
 // merge fields {{first_name|fallback}} / {{name|fallback}}. Newlines are line breaks.
+// Text and heading blocks written with the in-canvas editor carry `rich` instead: a small HTML
+// subset rebuilt by sanitizeRich (richText.ts) — links on a selected word, bold, italic,
+// underline, colour, lists — never arbitrary markup.
+
+import { RICH_MAX, sanitizeRich } from './richText.ts';
 
 export const DOC_VERSION = 1 as const;
 
@@ -24,18 +29,42 @@ interface BaseBlock {
   hideOnDesktop?: boolean;
 }
 
-export interface HeadingBlock extends BaseBlock { type: 'heading'; text: string; level: 1 | 2 | 3; align: Align; color?: string | null; fontSize?: number; fontWeight?: number; fontFamily?: FontKey }
-export interface TextBlock extends BaseBlock { type: 'text'; text: string; align: Align; color?: string | null; fontSize?: number; lineHeight?: number; fontFamily?: FontKey; fontWeight?: number }
+export interface HeadingBlock extends BaseBlock { type: 'heading'; text: string; rich?: string | null; level: 1 | 2 | 3; align: Align; color?: string | null; fontSize?: number; fontWeight?: number; fontFamily?: FontKey; letterSpacing?: number }
+export interface TextBlock extends BaseBlock { type: 'text'; text: string; rich?: string | null; align: Align; color?: string | null; fontSize?: number; lineHeight?: number; fontFamily?: FontKey; fontWeight?: number }
 export interface ImageBlock extends BaseBlock { type: 'image'; src: string; alt: string; href?: string | null; width: number; align: Align; radius?: number }
-export interface ButtonBlock extends BaseBlock { type: 'button'; label: string; href: string; align: Align; buttonColor: string; textColor: string; radius: number; fullWidth?: boolean; fontSize?: number; fontWeight?: number }
-export interface DividerBlock extends BaseBlock { type: 'divider'; color: string; thickness: number }
+export type ButtonSize = 'sm' | 'md' | 'lg';
+export interface ButtonBlock extends BaseBlock {
+  type: 'button'; label: string; href: string; align: Align; buttonColor: string; textColor: string; radius: number; fullWidth?: boolean; fontSize?: number; fontWeight?: number;
+  /** Size preset (padding and type size); paddingX/paddingY override it. */
+  size?: ButtonSize; paddingX?: number; paddingY?: number;
+  /** The button's own outline (the section border is borderWidth/borderColor). */
+  strokeWidth?: number; strokeColor?: string | null;
+  /** Hover colour where the client supports :hover (Apple Mail, some webmail); ignored elsewhere. */
+  hoverColor?: string | null;
+}
+/** A full-width branded band: eyebrow, title, subtitle, optional image above and a CTA. */
+export interface BannerBlock extends BaseBlock {
+  type: 'banner'; eyebrow: string; title: string; subtitle: string; imageSrc: string; imageAlt: string;
+  buttonLabel: string; buttonHref: string; align: Align; textColor: string; buttonColor: string; buttonTextColor: string; radius: number;
+}
+/** A content card: image, title, text and a link button, stacked or side by side. */
+export interface CardBlock extends BaseBlock {
+  type: 'card'; imageSrc: string; imageAlt: string; title: string; text: string; buttonLabel: string; buttonHref: string;
+  align: Align; layout: 'stack' | 'side'; cardColor: string; radius: number; buttonColor: string; buttonTextColor: string;
+}
+/** The email's header: logo and/or brand name, optional tagline. */
+export interface HeaderBlock extends BaseBlock { type: 'header'; logoSrc: string; logoAlt: string; logoWidth: number; brand: string; tagline: string; align: Align; textColor: string; href?: string | null }
+/** Key facts (price, area, date…) as a grid of label/value pairs. */
+export interface FactsBlock extends BaseBlock { type: 'facts'; items: Array<{ label: string; value: string }>; columns: 2 | 3 | 4; valueColor?: string | null; labelColor?: string | null; tileColor?: string | null }
+export interface DividerBlock extends BaseBlock { type: 'divider'; color: string; thickness: number; /** A short rule: percent of the row, centred. */ widthPct?: number }
 export interface SpacerBlock extends BaseBlock { type: 'spacer'; height: number }
 export interface LogoBlock extends BaseBlock { type: 'logo'; src: string; alt: string; width: number; href?: string | null; align: Align }
 export interface SocialBlock extends BaseBlock { type: 'social'; links: Array<{ network: SocialNetwork; url: string }>; align: Align }
 export interface FooterBlock extends BaseBlock { type: 'footer'; text: string; align: Align; color?: string | null }
 export interface ContactBlock extends BaseBlock { type: 'contact'; name: string; email: string; phone: string; address: string; align: Align }
 export interface UnsubscribeBlock extends BaseBlock { type: 'unsubscribe'; text: string; align: Align }
-export type LeafBlock = HeadingBlock | TextBlock | ImageBlock | ButtonBlock | DividerBlock | SpacerBlock | LogoBlock | SocialBlock | FooterBlock | ContactBlock | UnsubscribeBlock;
+export type LeafBlock = HeadingBlock | TextBlock | ImageBlock | ButtonBlock | DividerBlock | SpacerBlock | LogoBlock | SocialBlock | FooterBlock | ContactBlock | UnsubscribeBlock
+  | BannerBlock | CardBlock | HeaderBlock | FactsBlock;
 export interface ColumnsBlock extends BaseBlock { type: 'columns'; columns: [LeafBlock[], LeafBlock[]]; ratio: '50-50' | '40-60' | '60-40'; stackOnMobile: boolean; gap: number }
 export type Block = LeafBlock | ColumnsBlock;
 export type BlockType = Block['type'];
@@ -55,7 +84,9 @@ export interface Theme {
   radius: number;
 }
 
-export interface EmailDoc { version: typeof DOC_VERSION; theme: Theme; blocks: Block[] }
+/** Where the design started (a built-in template kind or 'blank'); restored with the draft. */
+export interface DocMeta { template?: string | null }
+export interface EmailDoc { version: typeof DOC_VERSION; theme: Theme; blocks: Block[]; meta?: DocMeta }
 
 export const FONT_STACKS: Record<FontKey, string> = {
   system: "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, 'Noto Sans Georgian', 'Noto Sans Arabic', 'Noto Sans Hebrew', sans-serif",
@@ -119,12 +150,40 @@ function leaf(raw: unknown): LeafBlock | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   const b = base(o);
+  const rich = (v: unknown) => (typeof v === 'string' && v.trim() ? sanitizeRich(v).slice(0, RICH_MAX) || null : null);
   switch (o.type) {
-    case 'heading': return { ...b, type: 'heading', text: str(o.text, LIMITS.headingChars), level: ([1, 2, 3].includes(Number(o.level)) ? Number(o.level) : 1) as 1 | 2 | 3, align: align(o.align), color: color(o.color, null), fontSize: o.fontSize == null ? undefined : num(o.fontSize, 14, 48, 26), fontWeight: o.fontWeight == null ? undefined : num(o.fontWeight, 300, 900, 700), fontFamily: font(o.fontFamily) };
-    case 'text': return { ...b, type: 'text', text: str(o.text, LIMITS.textChars), align: align(o.align), color: color(o.color, null), fontSize: o.fontSize == null ? undefined : num(o.fontSize, 11, 28, 16), lineHeight: o.lineHeight == null ? undefined : Math.min(2.2, Math.max(1, Number(o.lineHeight) || 1.6)), fontFamily: font(o.fontFamily), fontWeight: o.fontWeight == null ? undefined : num(o.fontWeight, 300, 900, 400) };
+    case 'heading': return { ...b, type: 'heading', text: str(o.text, LIMITS.headingChars), rich: rich(o.rich), level: ([1, 2, 3].includes(Number(o.level)) ? Number(o.level) : 1) as 1 | 2 | 3, align: align(o.align), color: color(o.color, null), fontSize: o.fontSize == null ? undefined : num(o.fontSize, 14, 48, 26), fontWeight: o.fontWeight == null ? undefined : num(o.fontWeight, 300, 900, 700), fontFamily: font(o.fontFamily), letterSpacing: o.letterSpacing == null ? undefined : num(o.letterSpacing, 0, 8, 0) };
+    case 'text': return { ...b, type: 'text', text: str(o.text, LIMITS.textChars), rich: rich(o.rich), align: align(o.align), color: color(o.color, null), fontSize: o.fontSize == null ? undefined : num(o.fontSize, 11, 28, 16), lineHeight: o.lineHeight == null ? undefined : Math.min(2.2, Math.max(1, Number(o.lineHeight) || 1.6)), fontFamily: font(o.fontFamily), fontWeight: o.fontWeight == null ? undefined : num(o.fontWeight, 300, 900, 400) };
     case 'image': return { ...b, type: 'image', src: safeImageUrl(o.src), alt: str(o.alt, LIMITS.altChars), href: safeLinkUrl(o.href) || null, width: num(o.width, 40, 600, 536), align: align(o.align, 'center'), radius: num(o.radius, 0, 40, 8) };
-    case 'button': return { ...b, type: 'button', label: str(o.label, LIMITS.labelChars), href: safeLinkUrl(o.href), align: align(o.align), buttonColor: color(o.buttonColor, DEFAULT_THEME.accent) as string, textColor: color(o.textColor, '#0C1119') as string, radius: num(o.radius, 0, 40, 10), fullWidth: o.fullWidth === true, fontSize: o.fontSize == null ? undefined : num(o.fontSize, 12, 22, 15), fontWeight: o.fontWeight == null ? undefined : num(o.fontWeight, 400, 900, 700) };
-    case 'divider': return { ...b, type: 'divider', color: color(o.color, '#E7E1D6') as string, thickness: num(o.thickness, 1, 6, 1) };
+    case 'button': return {
+      ...b, type: 'button', label: str(o.label, LIMITS.labelChars), href: safeLinkUrl(o.href), align: align(o.align), buttonColor: color(o.buttonColor, DEFAULT_THEME.accent) as string, textColor: color(o.textColor, '#0C1119') as string, radius: num(o.radius, 0, 40, 10), fullWidth: o.fullWidth === true, fontSize: o.fontSize == null ? undefined : num(o.fontSize, 12, 22, 15), fontWeight: o.fontWeight == null ? undefined : num(o.fontWeight, 400, 900, 700),
+      size: (['sm', 'md', 'lg'].includes(o.size as string) ? o.size : undefined) as ButtonSize | undefined,
+      paddingX: o.paddingX == null ? undefined : num(o.paddingX, 8, 64, 28), paddingY: o.paddingY == null ? undefined : num(o.paddingY, 6, 28, 14),
+      strokeWidth: o.strokeWidth == null ? undefined : num(o.strokeWidth, 0, 4, 0), strokeColor: color(o.strokeColor, null), hoverColor: color(o.hoverColor, null),
+    };
+    case 'banner': return {
+      ...b, type: 'banner', eyebrow: str(o.eyebrow, 80), title: str(o.title, LIMITS.headingChars), subtitle: str(o.subtitle, 600),
+      imageSrc: safeImageUrl(o.imageSrc), imageAlt: str(o.imageAlt, LIMITS.altChars), buttonLabel: str(o.buttonLabel, LIMITS.labelChars), buttonHref: safeLinkUrl(o.buttonHref),
+      align: align(o.align, 'center'), textColor: color(o.textColor, '#FFFFFF') as string, buttonColor: color(o.buttonColor, DEFAULT_THEME.accent) as string,
+      buttonTextColor: color(o.buttonTextColor, '#0C1119') as string, radius: num(o.radius, 0, 40, 10),
+    };
+    case 'card': return {
+      ...b, type: 'card', imageSrc: safeImageUrl(o.imageSrc), imageAlt: str(o.imageAlt, LIMITS.altChars), title: str(o.title, LIMITS.headingChars), text: str(o.text, 1500),
+      buttonLabel: str(o.buttonLabel, LIMITS.labelChars), buttonHref: safeLinkUrl(o.buttonHref), align: align(o.align), layout: o.layout === 'side' ? 'side' : 'stack',
+      cardColor: color(o.cardColor, '#FFFFFF') as string, radius: num(o.radius, 0, 32, 12), buttonColor: color(o.buttonColor, DEFAULT_THEME.accent) as string, buttonTextColor: color(o.buttonTextColor, '#0C1119') as string,
+    };
+    case 'header': return {
+      ...b, type: 'header', logoSrc: safeImageUrl(o.logoSrc), logoAlt: str(o.logoAlt, LIMITS.altChars), logoWidth: num(o.logoWidth, 40, 260, 120),
+      brand: str(o.brand, 80), tagline: str(o.tagline, 160), align: align(o.align), textColor: color(o.textColor, '#1F2430') as string, href: safeLinkUrl(o.href) || null,
+    };
+    case 'facts': {
+      const items = (Array.isArray(o.items) ? o.items : []).slice(0, 8).map((x) => {
+        const r = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+        return { label: str(r.label, 60), value: str(r.value, 80) };
+      }).filter((x) => x.label || x.value);
+      return { ...b, type: 'facts', items, columns: ([2, 3, 4].includes(Number(o.columns)) ? Number(o.columns) : 3) as 2 | 3 | 4, valueColor: color(o.valueColor, null), labelColor: color(o.labelColor, null), tileColor: color(o.tileColor, null) };
+    }
+    case 'divider': return { ...b, type: 'divider', color: color(o.color, '#E7E1D6') as string, thickness: num(o.thickness, 1, 6, 1), widthPct: o.widthPct == null ? undefined : num(o.widthPct, 5, 100, 100) };
     case 'spacer': return { ...b, type: 'spacer', height: num(o.height, 4, 120, 24) };
     case 'logo': return { ...b, type: 'logo', src: safeImageUrl(o.src), alt: str(o.alt, LIMITS.altChars), width: num(o.width, 40, 300, 140), href: safeLinkUrl(o.href) || null, align: align(o.align, 'center') };
     case 'social': {
@@ -169,7 +228,9 @@ export function normalizeTheme(raw: unknown): Theme {
 export function normalizeDoc(raw: unknown): EmailDoc {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const blocks = (Array.isArray(o.blocks) ? o.blocks : []).map(block).filter((b): b is Block => b != null).slice(0, LIMITS.blocks);
-  return { version: DOC_VERSION, theme: normalizeTheme(o.theme), blocks };
+  const m = (o.meta && typeof o.meta === 'object' ? o.meta : {}) as Record<string, unknown>;
+  const template = typeof m.template === 'string' && /^[a-z0-9_-]{1,40}$/i.test(m.template) ? m.template : null;
+  return { version: DOC_VERSION, theme: normalizeTheme(o.theme), blocks, ...(template ? { meta: { template } } : {}) };
 }
 
 /* ── factories for the designer palette ──────────────────────────────────────────────────── */
@@ -188,6 +249,10 @@ export function createBlock(type: BlockType): Block {
     case 'footer': return { ...b, type, text: '', align: 'center' };
     case 'contact': return { ...b, type, name: '', email: '', phone: '', address: '', align: 'left' };
     case 'unsubscribe': return { ...b, type, text: '', align: 'center' };
+    case 'banner': return { ...b, type, eyebrow: '', title: '', subtitle: '', imageSrc: '', imageAlt: '', buttonLabel: '', buttonHref: '', align: 'center', textColor: '#FFFFFF', buttonColor: DEFAULT_THEME.accent, buttonTextColor: '#0C1119', radius: 10, background: '#0C1119', padding: { t: 36, r: 32, b: 36, l: 32 } };
+    case 'card': return { ...b, type, imageSrc: '', imageAlt: '', title: '', text: '', buttonLabel: '', buttonHref: '', align: 'left', layout: 'stack', cardColor: '#FFFFFF', radius: 12, buttonColor: DEFAULT_THEME.accent, buttonTextColor: '#0C1119', borderWidth: 1, borderColor: '#E7E1D6' };
+    case 'header': return { ...b, type, logoSrc: '', logoAlt: '', logoWidth: 120, brand: '', tagline: '', align: 'left', textColor: '#1F2430', padding: { t: 20, r: 32, b: 20, l: 32 } };
+    case 'facts': return { ...b, type, items: [{ label: '', value: '' }, { label: '', value: '' }, { label: '', value: '' }], columns: 3 };
     case 'columns': return { ...b, type, columns: [[createBlock('text') as LeafBlock], [createBlock('text') as LeafBlock]], ratio: '50-50', stackOnMobile: true, gap: 16 };
   }
 }

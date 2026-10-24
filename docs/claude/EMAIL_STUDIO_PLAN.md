@@ -121,3 +121,56 @@ Audience: one list with ONLY the owner's own address and Resend simulator addres
 | 9 | **Send now (owner confirms)** | 4 accepted; delivered/bounced/complained webhooks; bounced+complained suppressed |
 | 10 | Click unsubscribe in the owner's copy | contact unsubscribed; a second campaign to the list skips it |
 | 11 | Analytics | counts equal `outreach_sends` rows |
+
+---
+
+# UX pass — Email Studio & Leads (2026-10-24, branch claude/email-studio-ux-final)
+
+Owner brief "Final Email Studio & Leads UX Overhaul". One coordinated release; nothing merged,
+migrated or deployed without the owner's approval.
+
+## What changed
+- **Workflow** Design → Sender → Recipients → Review & send (`?step=design|sender|recipients|review`;
+  old `?step=1…6` links still land). One route entry for `/campaigns/new` and `/campaigns/:id`, so the
+  first autosave keeps the page mounted. Back never loses work.
+- **Autosave** localStorage at once + server after 1.2 s; the first save carries a `draftKey`
+  (unique per owner, `outreach_campaigns.email_draft_key`) so a doubled first save returns the same
+  draft; leaving the page saves pending work; Saving / Saved hh:mm / Unsaved / Not saved + retry.
+- **Designer** text and headings edited in place (rich text: link on a selected word, bold, italic,
+  underline, colour, lists — `designer/richText.ts` sanitizes; server re-sanitizes); CTA builder
+  (presets, size, padding, outline, hover, radius, live preview, Outlook `mso-padding-alt`); new
+  blocks header, banner, card, key facts; short dividers; images uploaded from the computer.
+- **Images** `email-marketing` `asset_upload` (type read from bytes: PNG/JPEG/GIF; ≤ 5 MB; browser
+  converts WebP/HEIC; 60/h, 300 active) → R2 `users/<account>/email-assets/<uuid>.<ext>`, confirmed,
+  indexed in `storage_objects`, registered in `email_assets`; delivered by `email-webhook ?ema=<id>`
+  (ACTIVE registered rows only, nosniff, no-script CSP, immutable cache). Deleting refuses an image
+  still used in a campaign.
+- **Templates** ten distinct compositions (luxury, launch, corporate, VIP, event, newsletter, product,
+  promo, follow-up, personal) in all six languages, live miniatures + desktop/phone preview.
+- **Leads** `/outreach/email/contacts` and `/lists`: KPIs that filter, add/edit lead (first, last,
+  email required; never opted in), duplicate check, consent only with a lawful basis + attestation,
+  bulk add-to-list / consent / unsubscribe / delete (contacted leads kept), "Email these leads".
+- **Recipients** lists & segments or individually selected leads (`audience_filter.contactIds`, same
+  predicate in batch, estimate and scheduler); estimate now excludes global suppressions.
+- **Allowance** `my_email_allowance()`: plan period, overage terms, tenant daily ceiling, HOMATCH
+  provider day/month ceilings (remaining only), latest Resend reading (or "unavailable"), switches.
+- **Details** `/campaigns/:id/overview`: provider-confirmed metrics, errors, preview, duplicate,
+  pause/resume/cancel. Drafts open in the editor, everything else in details.
+- **HOMI** contextual help per step and on Leads (answers only from measured facts), template
+  recommendation; generic "AI" writing labels renamed to HOMI.
+
+## Release plan
+1. CI green on the PR (TARGETED: email studio, leads, edge closure email-marketing + email-webhook +
+   outreach-send (imports `_shared/emailMarketing`), comm-campaign-launch unchanged).
+2. Apply `20261130090000_email_studio_ux.sql` (additive) — verify ledger md5 = migration-gate sqlHash.
+3. Merge; watch refs/deployed/edge and refs/deployed/frontend by ancestry; confirm function versions
+   advanced for email-marketing and email-webhook.
+4. Production proof: `email-webhook?ema=<unknown uuid>` → 404; my_email_allowance returns for the
+   owner; leads overview loads.
+
+## First real email test (owner signed in; to the owner's own address only)
+Open Leads → add a lead manually → edit it → new campaign → pick a template → upload logo + image
+(confirm `email_assets` row + R2 object) → link a word → customise the CTA → leave and return
+(work restored) → choose the verified sender → choose recipients (counts) → review limits → send a
+test (goes to the account address) → check images, links and buttons in the received email →
+open campaign details.

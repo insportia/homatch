@@ -4,6 +4,7 @@
 //   domains_list / domain_add / domain_refresh / domain_verify / domain_set_sender / domain_disconnect
 //   inbox_reply                                           one CRM reply in a conversation
 //   usage_refresh (admin or cron)                         Resend GET /usage snapshot
+//   asset_upload / asset_delete                           email design images in R2 (_shared/emailMarketing/assets.ts)
 //
 // Every customer action resolves the caller from their JWT and acts on rows that
 // belong to that account; the service role is used for writes the customer may not
@@ -23,6 +24,7 @@ import {
 import { renderCampaignEmail } from '../../../src/emailMarketing/campaignTemplate.ts';
 import { handleStudioCampaignAction } from '../_shared/emailMarketing/studioCampaigns.ts';
 import { handleCopilot } from '../_shared/emailMarketing/copilot.ts';
+import { deleteAsset, uploadAsset } from '../_shared/emailMarketing/assets.ts';
 import { assessCampaign } from '../../../src/emailMarketing/risk/engine.ts';
 
 type Sb = ReturnType<typeof serviceClient>;
@@ -68,6 +70,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       case 'campaign_save': case 'campaign_check': case 'campaign_submit':
         return await handleStudioCampaignAction(action, { sb, callerSb: caller.sb, settings, owner, body });
       case 'copilot': return await handleCopilot(sb, owner, body);
+      case 'asset_upload': return await uploadAsset(sb, owner, body);
+      case 'asset_delete': return await deleteAsset(sb, owner, body);
       case 'usage_refresh': {
         const { data: admin } = await caller.sb.rpc('is_admin');
         if (admin !== true) return json({ ok: false, error: 'FORBIDDEN' }, 403);

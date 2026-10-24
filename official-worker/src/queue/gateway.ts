@@ -44,7 +44,7 @@ export interface GatewayOptions {
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** The complete call's per-attempt timeout (results can be large). */
-export const COMPLETE_TIMEOUT_MS = 90_000;
+export const COMPLETE_TIMEOUT_MS = 60_000;
 
 export class QueueGateway {
   private readonly url: string;
@@ -63,9 +63,9 @@ export class QueueGateway {
     this.sleep = o.sleep ?? wait;
   }
 
-  async call<T = any>(action: string, body: Record<string, unknown> = {}, timeoutMs = this.timeoutMs): Promise<T> {
+  async call<T = any>(action: string, body: Record<string, unknown> = {}, timeoutMs = this.timeoutMs, retries = this.retries): Promise<T> {
     let last: unknown = null;
-    for (let attempt = 0; attempt <= this.retries; attempt++) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const r = await this.fetcher(this.url, {
           method: 'POST',
@@ -87,7 +87,7 @@ export class QueueGateway {
         if ((e as any)?.fatal) throw e;
         last = e;
       }
-      if (attempt < this.retries) await this.sleep(Math.min(8_000, 500 * 2 ** attempt) * (0.5 + Math.random()));
+      if (attempt < retries) await this.sleep(Math.min(8_000, 500 * 2 ** attempt) * (0.5 + Math.random()));
     }
     throw last instanceof Error ? last : new Error(String(last));
   }
@@ -101,7 +101,8 @@ export class QueueGateway {
   complete(t: QueueTask, p: { result: unknown; evidenceRefs?: EvidenceRef[]; contentHash?: string | null; cacheScope?: string | null }) {
     /* A finished result is the expensive part of a task (CAPTCHA solves, PDFs read). Prod a7177a89 lost one to
        four 20 s timeouts and the lease expiry re-ran every solve; its hand-off gets a longer window. */
-    return this.call<{ ok: boolean; reason?: string }>('complete', { id: t.id, token: t.fencingToken, ...p }, COMPLETE_TIMEOUT_MS);
+    // Two attempts, not four: a refused or unanswered hand-off goes to handoffMinimum (QueueRunner) instead of six minutes of retries.
+    return this.call<{ ok: boolean; reason?: string }>('complete', { id: t.id, token: t.fencingToken, ...p }, COMPLETE_TIMEOUT_MS, Math.min(1, this.retries));
   }
   fail(t: QueueTask, error: string, retryable = true, retryAfterSeconds: number | null = null) {
     return this.call<{ ok: boolean; state?: string }>('fail', { id: t.id, token: t.fencingToken, error, retryable, retryAfterSeconds });

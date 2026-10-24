@@ -17,6 +17,7 @@
 
 import { rsDomOnlyNoResult, rsStatusFromTaskError, withoutRsRaw } from './rsTaxpayer.ts';
 import { parentCadastral } from './cadastralInput.ts';
+import { decodeLegacyGeorgian } from './legacyGeorgian.ts';
 
 export const QUEUE_SOURCES_CADASTRAL = ['TAS_MAP', 'tas', 'mygov'] as const;
 /** Same bound as the worker's in-job entity follow-ups (MAX_AUTO_ENREG_ENTITIES). */
@@ -262,6 +263,8 @@ export function taskResult(r: QueueTaskRow): any | null {
     // _exec: the worker's timing stamp — performance diagnostics only.
     // RS.ge's raw answer lives in evidence storage, never in the job row.
     const { queueEntities: _drop, _exec: _dropExec, ...rest } = withoutRsRaw(r.result);
+    // Results stored (or reused from the 24 h cache) before the worker decoded legacy-font Georgian.
+    if (Array.isArray(rest.documents)) rest.documents = rest.documents.map((d: any) => (d && typeof d.rawText === 'string' ? { ...d, rawText: decodeLegacyGeorgian(d.rawText) } : d));
     // An RS.ge "no record" that only the page said, over an unreadable
     // answer (stored before the worker fix, or reused from the 24 h cache),
     // is not a confirmed absence: it reads as the failed check it was.

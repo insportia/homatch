@@ -85,7 +85,9 @@ export function analyzeHeaders(raw: string): HeaderReport {
   const spamFlagV = first('x-spam-flag');
   const spamStatus = first('x-spam-status');
   const received = get('received');
-  const lastHop = received[0] ?? '';
+  /* The hop where the receiver accepted the message from the sender: the first Received with a
+     "from" clause (Gmail and Outlook put internal hops above it). */
+  const lastHop = received.find((r) => /^from\s/i.test(r)) ?? received[0] ?? '';
   const tls = received.length ? /\b(TLS|ESMTPS|version=TLS)/i.test(lastHop) : null;
 
   const report: HeaderReport = {

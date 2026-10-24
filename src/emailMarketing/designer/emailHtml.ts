@@ -57,9 +57,21 @@ export function emailHtmlToText(html: string): string {
     .replace(/<[^>]+>/g, '')).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-/** Anything → the email-safe subset. Idempotent. */
+/** Anything → the email-safe subset, at most HTML_BLOCK_MAX characters. Idempotent. */
 export function sanitizeEmailHtml(input: unknown): string {
-  let html = typeof input === 'string' ? input.slice(0, HTML_BLOCK_MAX * 2) : '';
+  let s = clean(typeof input === 'string' ? input.slice(0, HTML_BLOCK_MAX * 2) : '');
+  /* Over the cap: cut the SOURCE shorter and rebuild, so the result stays balanced markup.
+     Each pass cuts by at least the overflow plus a margin for the closing tags it re-adds. */
+  let cut = s.length;
+  while (s.length > HTML_BLOCK_MAX && cut > 0) {
+    cut = Math.max(0, cut - (s.length - HTML_BLOCK_MAX) - 256);
+    s = clean(s.slice(0, cut));
+  }
+  return s;
+}
+
+function clean(source: string): string {
+  let html = source;
   html = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<!\[[\s\S]*?\]>/g, '')
     .replace(/<(script|style|template|iframe|object|embed|svg|math|noscript|title|head|form|textarea|select|button|link|meta|base)\b[\s\S]*?<\/\1\s*>/gi, '')
     .replace(/<\/?(script|style|template|iframe|object|embed|svg|math|noscript|title|head|form|textarea|select|button|input|link|meta|base)\b[^>]*>/gi, '');
@@ -93,6 +105,5 @@ export function sanitizeEmailHtml(input: unknown): string {
     if (!VOID.has(tag)) stack.push(tag);
   }
   while (stack.length) out.push(`</${stack.pop()}>`);
-  const s = out.join('');
-  return s.length > HTML_BLOCK_MAX ? sanitizeEmailHtml(s.slice(0, HTML_BLOCK_MAX)) : s;
+  return out.join('');
 }

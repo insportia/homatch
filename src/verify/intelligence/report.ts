@@ -55,6 +55,13 @@ import { polishText, provenanceOpening, stripProvenanceOpening, stripCaseIdentif
 
 /** Restrained, and deliberately three. "Attention" is not "bad". */
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
+
+/** A short headline from a highlight's detail: its first clause, at most six words, no closing stop. */
+export function headlineFromDetail(detail: string): string {
+  const clause = String(detail ?? '').split(/[,;:.!?]\s/)[0] ?? '';
+  const words = clause.replace(/[.!?]+$/, '').trim().split(/\s+/).filter(Boolean);
+  return words.slice(0, 6).join(' ');
+}
 export type Sentiment = 'POSITIVE' | 'BALANCED' | 'ATTENTION';
 
 /** The dimensions a summary highlight may speak to. Only evidenced ones appear. */
@@ -505,7 +512,10 @@ export function salvageReport(
     c.summary = {
       ...c.summary,
       statement: clean(c.summary.statement, 'summary'),
-      highlights: (c.summary.highlights ?? []).map((h) => grounded({ ...h, headline: clean(h.headline, 'highlight'), detail: clean(h.detail, 'highlight') }, 'summary highlight')).filter((h) => h.headline || h.detail),
+      highlights: (c.summary.highlights ?? []).map((h) => grounded({ ...h, headline: clean(h.headline, 'highlight'), detail: clean(h.detail, 'highlight') }, 'summary highlight'))
+        // A headline cleaned away leaves a card with a blank title (live test 307a60b1): it gets the detail's first clause.
+        .map((h) => (!h.headline && h.detail ? { ...h, headline: headlineFromDetail(h.detail) } : h))
+        .filter((h) => h.headline || h.detail),
     };
   }
   if (c.keyFindings) {

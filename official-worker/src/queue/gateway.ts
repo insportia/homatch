@@ -43,6 +43,8 @@ export interface GatewayOptions {
 }
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/** The complete call's per-attempt timeout (results can be large). */
+export const COMPLETE_TIMEOUT_MS = 90_000;
 
 export class QueueGateway {
   private readonly url: string;
@@ -61,7 +63,7 @@ export class QueueGateway {
     this.sleep = o.sleep ?? wait;
   }
 
-  async call<T = any>(action: string, body: Record<string, unknown> = {}): Promise<T> {
+  async call<T = any>(action: string, body: Record<string, unknown> = {}, timeoutMs = this.timeoutMs): Promise<T> {
     let last: unknown = null;
     for (let attempt = 0; attempt <= this.retries; attempt++) {
       try {
@@ -69,7 +71,7 @@ export class QueueGateway {
           method: 'POST',
           headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ action, ...body }),
-          signal: AbortSignal.timeout(this.timeoutMs),
+          signal: AbortSignal.timeout(timeoutMs),
         });
         const text = await r.text();
         let data: any = null;
@@ -97,7 +99,9 @@ export class QueueGateway {
     return this.call('heartbeat', { id: t.id, token: t.fencingToken });
   }
   complete(t: QueueTask, p: { result: unknown; evidenceRefs?: EvidenceRef[]; contentHash?: string | null; cacheScope?: string | null }) {
-    return this.call<{ ok: boolean; reason?: string }>('complete', { id: t.id, token: t.fencingToken, ...p });
+    /* A finished result is the expensive part of a task (CAPTCHA solves, PDFs read). Prod a7177a89 lost one to
+       four 20 s timeouts and the lease expiry re-ran every solve; its hand-off gets a longer window. */
+    return this.call<{ ok: boolean; reason?: string }>('complete', { id: t.id, token: t.fencingToken, ...p }, COMPLETE_TIMEOUT_MS);
   }
   fail(t: QueueTask, error: string, retryable = true, retryAfterSeconds: number | null = null) {
     return this.call<{ ok: boolean; state?: string }>('fail', { id: t.id, token: t.fencingToken, error, retryable, retryAfterSeconds });

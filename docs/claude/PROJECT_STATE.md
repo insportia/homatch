@@ -1,9 +1,35 @@
 # PROJECT STATE
 
-last_updated: 2026-10-23
+last_updated: 2026-10-24
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## HOMI experience and platform intelligence (branch claude/homi-experience, 2026-10-24) — ONE PR, NOT DEPLOYED
+
+- Scope: HOMI assistant (internal-first routing, deterministic answers with no model, free streamed chat,
+  telemetry), HOMI 3D on the homepage and in chat (public/models/homi/homi.glb, stills in
+  public/images/homi), Expat journey, Investment goal-first entry and three scenarios, Mortgage readiness,
+  financial-literacy glossary and offer comparison (2 pt rise, appraisal, fixed period, unstated costs),
+  "ჩემი იპოთეკები" saved scenarios (immutable versions, stale-rule detection), consented mortgage buyer
+  leads in the Matching workspace, Contract clause review with accept/edit/reject, DOCX (clean and tracked)
+  and print-to-PDF, revision history, truthful progress stages and optional Snake, transactional email,
+  admin insight pages. Georgian voice and terms: docs/claude/HOMI_GLOSSARY.md.
+- Migrations (append-only, all applied twice on PGlite): 20261130090000 HOMI telemetry,
+  20261130091000 homepage section order (data), 20261130092000 mortgage readiness/bank products,
+  20261130093000 mortgage workspace + buyer leads, 20261130094000 contract revisions,
+  20261130095000 notification types + admin insight RPCs. Release order: merge -> apply -> deploy.
+- Money: mortgage-origin unlock = billable product MORTGAGE_BUYER_LEAD, 30 cents = 3 credits
+  (1 credit = 10 cents). Entitlement reuses internal_lead_unlocks (segment MORTGAGE): at most one charge per
+  purchasing account per member, by any route; same advisory lock as internal unlocks. Proof:
+  scripts/matching/mortgage-leads-db-check.mjs. No other price changed; contract pricing ($0.20/$0.50) is
+  analysis only on /admin/contract-costs.
+- Email: notify() sends a transactional email only for VERIFY_COMPLETE, DOCUMENT_ANALYZED,
+  CREDITS_TOPPED_UP, PAYMENT_FAILED, SERVICE_FAILED; preferred_language, Georgian default; honours
+  notification_preferences.email_enabled (payment failure always sent); once per notification id.
+- Edge functions touched: homatch-ai, deal-room-document-analyze, atomic-unlock (kind mortgage_leads),
+  jobs-worker, payment-webhook, and every producer that imports _shared/notify.ts (deploy-scope computes it).
+  No new edge function.
 
 ## Verify fixed price + 30-day validity + Snake/ads fixes (branch claude/verify-fixed-price-validity, 2026-10-23) — PR OPEN, NOT DEPLOYED
 

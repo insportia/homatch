@@ -84,6 +84,17 @@ const NOT_RESULT_ACCESS = {
   hl_unlock_receive_crm: 'Find Buyers 2.0: an unlocked contact joins the owner-named "Unlocked Leads" CRM (owner request 2026-10-18)',
   lp_unlocked: 'Find Buyers 2.0: the unlock date in the Unlocked Leads profile (owner request 2026-10-18)',
   svc_desc_internal_matching: 'Matching workspace: the service is the paid per-member contact unlock of HOMATCH Internal Matches (owner brief 2026-10-24)',
+  /* Mortgage-origin buyer leads (owner HOMI master brief 2026-10-24, part 8.10): the owner's own words for
+     this paid per-member contact unlock are "საკონტაქტო ინფორმაციის განბლოკვა", "განბლოკვის ფასი: $0.30",
+     "უკვე განბლოკილია". Shown only to the listing owner in the Matching workspace. */
+  mortgage_buyer_price: 'Mortgage buyer leads: the owner-named unlock price line (HOMI brief 2026-10-24)',
+  mortgage_buyer_unlock: 'Mortgage buyer leads: the owner-named contact unlock action (HOMI brief 2026-10-24)',
+  mortgage_buyer_unlock_cta: 'Mortgage buyer leads: the confirm button of that unlock (HOMI brief 2026-10-24)',
+  mortgage_buyer_confirm: 'Mortgage buyer leads: what one unlock costs and that it is charged once (HOMI brief 2026-10-24)',
+  mortgage_buyer_already: 'Mortgage buyer leads: the owner-named "already unlocked" state (HOMI brief 2026-10-24)',
+  mortgage_buyer_already_note: 'Mortgage buyer leads: the owner-named "no need to pay again" note (HOMI brief 2026-10-24)',
+  mortgage_buyer_privacy: 'Mortgage buyer leads: one charge per buyer and no bank approval implied by an unlock (HOMI brief 2026-10-24)',
+  mortgage_buyer_err_unlock: 'Mortgage buyer leads: a failed unlock is not charged twice (HOMI brief 2026-10-24)',
 };
 /*
  * Matching workspace (owner brief 2026-10-24): the owner names the product "Available Leads (Locked) |

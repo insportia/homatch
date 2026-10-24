@@ -217,7 +217,7 @@ export function AISection() {
                     </span>
                     {/* Phones: the short name. sm+: full name and what it does. */}
                     {(() => { const short = t(`homi_reach_${item.key}_s`); return (
-                      <span aria-hidden="true" className={`block max-w-full font-semibold leading-tight text-white sm:hidden ${[...short].length >= 11 && !short.includes(" ") ? "text-[10.5px] tracking-[-0.015em]" : "text-[11.5px]"}`}>{short}</span>
+                      <span aria-hidden="true" className={`block max-w-full font-semibold leading-tight text-white sm:hidden ${[...short].length >= 11 && !short.includes(" ") ? "text-2xs tracking-[-0.03em]" : "text-2xs"}`}>{short}</span>
                     ); })()}
                     <span className="hidden min-w-0 sm:block">
                       <span className="block text-[15px] font-semibold leading-snug text-white" {...fp(`reach_${item.key}`)}>{item.label}</span>

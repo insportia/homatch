@@ -13,7 +13,9 @@ import { supabase } from '@/db/supabase';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { Confirm, Empty, ErrorNote, PageHeader } from '@/components/admin/control/AdminKit';
-import { translations } from '@/i18n/translations';
+import { english, loadLanguage } from '@/i18n/bundles';
+import { LOCALES } from '@/i18n/locales';
+import { isAdminOnlyKey, isStudioOnlyKey } from '@/i18n/adminSplit';
 
 export type HomiAdminSection = 'homi' | 'ai-costs' | 'mortgage' | 'mortgage-leads' | 'contracts' | 'notifications' | 'languages';
 
@@ -266,15 +268,25 @@ function NotificationsSection({ days }: { days: number }) {
 
 function LanguagesSection() {
   const { t } = useLanguage();
-  const rows = useMemo(() => {
-    const all = translations as unknown as Record<string, Record<string, string>>;
-    const en = Object.keys(all.en ?? {});
-    return ['ka', 'en', 'ru', 'tr', 'ar', 'he'].map((lang) => {
-      const bundle = all[lang] ?? {};
-      const have = en.filter((k) => typeof bundle[k] === 'string' && bundle[k].trim() !== '').length;
-      return { lang, have, total: en.length };
-    });
+  /* Each language arrives as its own chunk (src/i18n/bundles.ts), the same way the site loads it. */
+  const [rows, setRows] = useState<{ lang: string; have: number; total: number }[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    /* Customer-facing keys: the admin and Email Studio halves load separately and are not what visitors read. */
+    const keys = Object.keys(english).filter((k) => !isAdminOnlyKey(k) && !isStudioOnlyKey(k));
+    const order = ['ka', ...LOCALES.filter((l) => l !== 'ka')];
+    Promise.all(order.map((lang) => loadLanguage(lang as never).then((b) => ({ lang, b })).catch(() => ({ lang, b: {} as Record<string, string> }))))
+      .then((loaded) => {
+        if (!alive) return;
+        setRows(loaded.map(({ lang, b }) => {
+          const bundle = lang === 'en' ? english : b;
+          const have = keys.filter((k) => typeof bundle[k] === 'string' && bundle[k].trim() !== '').length;
+          return { lang, have, total: keys.length };
+        }));
+      });
+    return () => { alive = false; };
   }, []);
+  if (!rows) return <p className="text-sm text-muted-foreground">{t('admin_hs_loading')}</p>;
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">{t('admin_hs_lang_sub')}</p>

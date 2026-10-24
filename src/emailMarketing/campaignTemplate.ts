@@ -142,6 +142,13 @@ function renderDesigned(
   ctx: { lang: CampaignEmailLang; dir: string; align: string; f: (typeof FOOTER)[CampaignEmailLang]; sender: string },
 ): { html: string; text: string } {
   const { lang, dir, align, f, sender } = ctx;
+  /* The compliance footer sits on the designer's canvas: on a dark canvas it turns light, so the
+     sender line and the unsubscribe link stay readable (WCAG AA against the canvas). */
+  const lum = (hex: string) => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const footerColor = lum(d.canvas) < 0.2 ? '#C9C3B8' : MUTED;
   let body = String(input.bodyHtml ?? '');
   const styles: string[] = [];
   body = body.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (_m, css: string) => { styles.push(css.replace(/<\/?[a-z][^>]*>/gi, '')); return ''; });
@@ -164,9 +171,9 @@ ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;c
 ${body.trim()}
       </td></tr>
       <tr><td style="padding:18px 24px 6px 24px;text-align:${align};">
-        <p style="margin:0 0 6px 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${MUTED};">${escapeHtml(f.sentBy(sender))}</p>
-        <p style="margin:0 0 10px 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${MUTED};">${escapeHtml(f.why)}</p>
-        <p style="margin:0;font-family:${FONT};font-size:12px;line-height:1.6;"><a href="${safeHref(input.unsubscribeUrl)}" style="color:${MUTED};text-decoration:underline;">${escapeHtml(f.unsubscribe)}</a></p>
+        <p style="margin:0 0 6px 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${footerColor};">${escapeHtml(f.sentBy(sender))}</p>
+        <p style="margin:0 0 10px 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${footerColor};">${escapeHtml(f.why)}</p>
+        <p style="margin:0;font-family:${FONT};font-size:12px;line-height:1.6;"><a href="${safeHref(input.unsubscribeUrl)}" style="color:${footerColor};text-decoration:underline;">${escapeHtml(f.unsubscribe)}</a></p>
       </td></tr>
     </table>
   </td></tr>

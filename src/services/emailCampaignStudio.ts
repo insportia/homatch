@@ -32,6 +32,8 @@ async function edge<T>(action: string, payload: Record<string, unknown>): Promis
 
 export interface AudienceFilter {
   languages?: string[]; countries?: string[]; leadTypes?: string[]; sources?: string[]; tags?: string[]; excludeListIds?: string[];
+  /** Individually selected leads ("selected leads" mode); their lists are the campaign's lists. */
+  contactIds?: string[];
 }
 
 export interface StudioCampaign {
@@ -94,14 +96,132 @@ export async function getCampaign(id: string): Promise<StudioCampaign | null> {
   return (data ?? null) as unknown as StudioCampaign | null;
 }
 
-export async function saveCampaign(id: string | null, campaign: CampaignPatch): Promise<StudioCampaign> {
-  const r = await edge<{ campaign: StudioCampaign }>('campaign_save', { id, campaign });
+/** `draftKey` (first save only) makes a retried create return the same draft, never a second. */
+export async function saveCampaign(id: string | null, campaign: CampaignPatch, draftKey?: string | null): Promise<StudioCampaign> {
+  const r = await edge<{ campaign: StudioCampaign }>('campaign_save', { id, campaign, draftKey: id ? null : draftKey ?? null });
   return r.campaign;
+}
+
+/** A new draft with the same content (never a copy of the approval, the schedule or the results). */
+export async function duplicateCampaign(c: StudioCampaign, copyLabel: string): Promise<StudioCampaign> {
+  return saveCampaign(null, {
+    name: `${copyLabel} ${c.name}`.slice(0, 160), objective: c.objective, description: c.description, audience_note: c.audience_note ?? null,
+    language: c.language, subject: c.subject, preview_text: c.preview_text, sender_name: c.sender_name, sender_email: c.sender_email,
+    reply_to: c.reply_to, contact_list_ids: c.contact_list_ids?.length ? c.contact_list_ids : c.contact_list_id ? [c.contact_list_id] : [],
+    audience_filter: c.audience_filter, design: c.design,
+  }, crypto.randomUUID());
+}
+
+/* ── sending allowance (my_email_allowance: the same settings email_quota_reserve enforces) ── */
+export interface EmailAllowance {
+  plan: { code: 'FREE' | 'PRO' | 'SCALE'; periodKind: 'FREE_LIFETIME' | 'MONTHLY'; endsAt: string | null; included: number; used: number; reserved: number; remaining: number };
+  overage: { enabled: boolean; room: number | null; pricePer1kUsd: number };
+  tenantDaily: { cap: number; used: number; remaining: number; resetsAt: string } | null;
+  providerDaily: { remaining: number; resetsAt: string } | null;
+  providerMonthly: { remaining: number; resetsAt: string } | null;
+  provider: { capturedAt: string; dailyRemaining: number | null; monthlyRemaining: number | null; ratePerSecond: number | null } | null;
+  sending: { enabled: boolean };
+  computedAt: string;
+}
+
+export async function getAllowance(): Promise<EmailAllowance> {
+  const { data, error } = await supabase.rpc('my_email_allowance');
+  if (error) throw new StudioError('ALLOWANCE_UNAVAILABLE');
+  return data as EmailAllowance;
+}
+
+/* outreach-send dispatches BATCH_SIZE emails per run and the scheduler runs every 30 s
+   (cron "homatch-jobs-worker"); a test pins this against outreach-send's own constant. */
+export const SEND_BATCH_SIZE = 40;
+export const SEND_TICK_SECONDS = 30;
+
+export type AllowanceLimit = 'PLAN' | 'TENANT_DAILY' | 'PROVIDER_DAILY' | 'PROVIDER_MONTHLY' | 'PROVIDER' | 'SENDING_OFF';
+
+/** What a campaign of `recipients` can actually send right now, and which ceiling stops it. */
+export function sendable(a: EmailAllowance, recipients: number): { now: number; limitedBy: AllowanceLimit | null; overage: number } {
+  if (!a.sending.enabled) return { now: 0, limitedBy: 'SENDING_OFF', overage: 0 };
+  const planRoom = a.plan.remaining + (a.overage.enabled ? a.overage.room ?? Number.POSITIVE_INFINITY : a.overage.room ?? 0);
+  const caps: Array<[number, AllowanceLimit]> = [
+    [planRoom, 'PLAN'],
+    [a.tenantDaily?.remaining ?? Number.POSITIVE_INFINITY, 'TENANT_DAILY'],
+    [a.providerDaily?.remaining ?? Number.POSITIVE_INFINITY, 'PROVIDER_DAILY'],
+    [a.providerMonthly?.remaining ?? Number.POSITIVE_INFINITY, 'PROVIDER_MONTHLY'],
+    [a.provider?.dailyRemaining ?? Number.POSITIVE_INFINITY, 'PROVIDER'],
+  ];
+  let now = recipients;
+  let by: AllowanceLimit | null = null;
+  for (const [room, why] of caps) if (room < now) { now = Math.max(0, room); by = why; }
+  return { now: Math.floor(now), limitedBy: by, overage: Math.max(0, Math.floor(now) - a.plan.remaining) };
+}
+
+/** Rough minutes to DISPATCH `n` emails at the scheduler's pace (dispatch, not delivery). */
+export function dispatchMinutes(n: number): number {
+  return n <= SEND_BATCH_SIZE ? 1 : Math.ceil((Math.ceil(n / SEND_BATCH_SIZE) * SEND_TICK_SECONDS) / 60);
+}
+
+/* ── design images (R2 via email-marketing asset_upload; delivered by email-webhook ?ema=) ── */
+export interface EmailAsset { id: string; url: string; content_type: string; byte_size: number; width: number | null; height: number | null; kind: 'IMAGE' | 'LOGO'; original_filename: string | null; created_at: string }
+
+const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '');
+export const assetUrl = (id: string) => `${SUPABASE_URL}/functions/v1/email-webhook?ema=${id}`;
+export const ASSET_MAX_BYTES = 5 * 1024 * 1024;
+
+export async function listAssets(): Promise<EmailAsset[]> {
+  const { data } = await supabase.from('email_assets').select('id, content_type, byte_size, width, height, kind, original_filename, created_at')
+    .order('created_at', { ascending: false }).limit(300);
+  return ((data ?? []) as Array<Omit<EmailAsset, 'url'>>).map((a) => ({ ...a, url: assetUrl(a.id) }));
+}
+
+/**
+ * Prepare a picked file for email: decoded in the browser, scaled down to what an email can use
+ * (1200 px images, 600 px logos); WebP/HEIC/AVIF and large photos re-encoded as JPEG (Outlook
+ * shows no WebP), PNG logos kept PNG for transparency, GIFs kept as they are (animation). The
+ * server reads the bytes again and accepts PNG/JPEG/GIF only.
+ */
+export async function prepareImage(file: File, kind: 'IMAGE' | 'LOGO'): Promise<{ blob: Blob; name: string }> {
+  const type = file.type.toLowerCase();
+  if (type === 'image/gif') return { blob: file, name: file.name };
+  if (!/^image\/(png|jpeg|jpg|webp|heic|heif|avif)$/.test(type)) throw new StudioError('TYPE_NOT_ALLOWED');
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) throw new StudioError('BAD_FILE');
+  const max = kind === 'LOGO' ? 600 : 1200;
+  const scale = Math.min(1, max / Math.max(bitmap.width, 1));
+  const keepPng = type === 'image/png' && (kind === 'LOGO' || file.size < 400_000);
+  if ((type === 'image/jpeg' || type === 'image/jpg' || keepPng) && scale === 1 && file.size <= 1_500_000) return { blob: file, name: file.name };
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new StudioError('BAD_FILE');
+  if (!keepPng) { ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, w, h); }
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  const out = await new Promise<Blob | null>((res) => canvas.toBlob(res, keepPng ? 'image/png' : 'image/jpeg', 0.86));
+  if (!out) throw new StudioError('BAD_FILE');
+  return { blob: out, name: file.name.replace(/\.[a-z0-9]+$/i, '') + (keepPng ? '.png' : '.jpg') };
+}
+
+const toBase64 = (b: Blob) => new Promise<string>((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => res(String(r.result).replace(/^data:[^,]*,/, ''));
+  r.onerror = () => rej(new StudioError('BAD_FILE'));
+  r.readAsDataURL(b);
+});
+
+export async function uploadAsset(file: File, kind: 'IMAGE' | 'LOGO'): Promise<EmailAsset> {
+  const { blob, name } = await prepareImage(file, kind);
+  if (blob.size > ASSET_MAX_BYTES) throw new StudioError('TOO_LARGE');
+  const r = await edge<{ asset: EmailAsset }>('asset_upload', { kind, filename: name, dataBase64: await toBase64(blob) });
+  return r.asset;
+}
+
+export async function deleteAsset(id: string): Promise<void> {
+  await edge('asset_delete', { id });
 }
 
 export interface AudienceEstimate {
   total: number; matched: number; withEmail: number; reachable: number; eligible: number; consentUnknown: number;
-  suppressed: number; duplicates: number; byLanguage: Record<string, number>; bySource: Record<string, number>;
+  suppressed: number; duplicates: number; invalidEmail?: number; byLanguage: Record<string, number>; bySource: Record<string, number>;
 }
 
 export async function estimateAudience(listIds: string[], filter: AudienceFilter | null): Promise<AudienceEstimate> {
@@ -164,10 +284,10 @@ export async function campaignReviews(id: string): Promise<ReviewEntry[]> {
 }
 
 /* ── per-campaign delivery records (provider-confirmed statuses only) ─────────────────────── */
-export interface SendRow { status: string; sent_at: string | null; delivered_at: string | null; created_at: string; language: string | null }
+export interface SendRow { status: string; sent_at: string | null; delivered_at: string | null; created_at: string; language: string | null; error_message?: string | null }
 
 export async function campaignSends(id: string): Promise<SendRow[]> {
-  const { data } = await supabase.from('outreach_sends').select('status, sent_at, delivered_at, created_at, language')
+  const { data } = await supabase.from('outreach_sends').select('status, sent_at, delivered_at, created_at, language, error_message')
     .eq('campaign_id', id).limit(5000);
   return (data ?? []) as SendRow[];
 }

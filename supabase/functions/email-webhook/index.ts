@@ -43,6 +43,7 @@ import {
 } from '../_shared/comm/generated/inboundEmail.ts';
 import { detectsOptOut, detectsHumanRequest } from '../_shared/comm/generated/handoff.ts';
 import { handleStudioUnsubscribe, isStudioUnsubscribe } from '../_shared/emailStudioUnsubscribe.ts';
+import { isAssetRequest, serveAsset } from '../_shared/emailMarketing/assetFiles.ts';
 import { getReceivedEmail, mapDomainStatus, resolveResendKey, routeTokenFrom, senderAuthentication } from '../_shared/resend/client.ts';
 import { loadEmailSettings, resolveReplyRoute } from '../_shared/emailMarketing/core.ts';
 
@@ -72,6 +73,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
    * provider delivery never carries this query parameter.
    */
   const reqUrl = new URL(req.url);
+  /*
+   * EMAIL DESIGN IMAGES (?ema=<asset id>). A mail client loading an image from a campaign: no
+   * session, possibly days after sending. Served here for the same reason as the unsubscribe
+   * link below, and it does not bend rule 1 either: it only READS one registered, ACTIVE image
+   * by its unguessable id and writes nothing (_shared/emailMarketing/assets.ts).
+   */
+  if (isAssetRequest(reqUrl)) return await serveAsset(req, reqUrl, serviceClient());
   if ((req.method === 'GET' || req.method === 'POST') && isStudioUnsubscribe(reqUrl)) {
     return await handleStudioUnsubscribe(reqUrl, serviceClient());
   }

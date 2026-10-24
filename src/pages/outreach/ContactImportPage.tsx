@@ -12,7 +12,7 @@
 // is stored on the list, not in a checkbox that disappears on submit.
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, ArrowRight, Upload, Download, FileSpreadsheet, Loader2,
   CheckCircle2, AlertTriangle, ShieldCheck,
@@ -62,6 +62,13 @@ export default function ContactImportPage() {
   const product = useCommsProduct();
   const navigate = useNavigate();
   const fileInput = useRef<HTMLInputElement>(null);
+  /* Email imports stay inside Email: back to Leads (or to the campaign that sent the user here,
+     ?return=/outreach/email/…), and the finished import offers an email campaign on that list. */
+  const [params] = useSearchParams();
+  const returnTo = /^\/outreach\/email\/[\w/?=&%-]*$/.test(params.get('return') ?? '') ? params.get('return') : null;
+  const isEmail = product === 'email';
+  const backTo = returnTo ?? (isEmail ? '/outreach/email/contacts' : '/outreach/contact-lists');
+  const [doneListId, setDoneListId] = useState<string | null>(null);
 
   const [step, setStep] = useState<Step>('upload');
   const [listName, setListName] = useState('');
@@ -219,6 +226,7 @@ export default function ContactImportPage() {
         .update({ import_status: 'READY' }).eq('id', list.id);
 
       toast.success(t('comm_import_done'));
+      setDoneListId(list.id);
       setStep('done');
     } finally {
       setBusy(false);
@@ -237,8 +245,8 @@ export default function ContactImportPage() {
   return (
     <CommsWorkspace product={product}>
         <div className="space-y-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/contact-lists')}>
-            <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comm_contact_lists')}
+          <Button variant="ghost" size="sm" onClick={() => navigate(backTo)}>
+            <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{returnTo ? t('ems_back_to_campaign') : isEmail ? t('ems_nav_leads') : t('comm_contact_lists')}
           </Button>
 
           <div>
@@ -488,12 +496,21 @@ export default function ContactImportPage() {
                   </p>
                 </div>
               ) : null}
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => navigate('/outreach/campaigns/new')}>{t('comm_new_campaign')}</Button>
-                <Button size="sm" variant="outline" onClick={() => navigate('/outreach/contact-lists')}>
-                  {t('comm_contact_lists')}
-                </Button>
-              </div>
+              {isEmail ? (
+                <div className="flex flex-wrap gap-2">
+                  {returnTo ? <Button size="sm" onClick={() => navigate(returnTo)}>{t('ems_back_to_campaign')}</Button> : (
+                    <Button size="sm" onClick={() => navigate(`/outreach/email/campaigns/new?step=design${doneListId ? `&list=${doneListId}` : ''}`)}>{t('ems_new_campaign')}</Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={() => navigate(`/outreach/email/contacts${doneListId ? `?list=${doneListId}` : ''}`)}>{t('ems_leads_view_imported')}</Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => navigate('/outreach/campaigns/new')}>{t('comm_new_campaign')}</Button>
+                  <Button size="sm" variant="outline" onClick={() => navigate('/outreach/contact-lists')}>
+                    {t('comm_contact_lists')}
+                  </Button>
+                </div>
+              )}
             </CardContent></Card>
           ) : null}
 

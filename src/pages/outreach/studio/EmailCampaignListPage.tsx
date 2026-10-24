@@ -14,7 +14,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { type EmailPhase, emailPhase } from '@/emailMarketing/reviewState';
+import { campaignPath, type EmailPhase, emailPhase } from '@/emailMarketing/reviewState';
 import { cn } from '@/lib/utils';
 import { getCampaign, listCampaigns, type StudioCampaign, saveCampaign, setCampaignStatus } from '@/services/emailCampaignStudio';
 
@@ -64,7 +64,7 @@ export default function EmailCampaignListPage() {
         audience_filter: full.audience_filter, ...(full.design ? { design: full.design } : {}),
       });
       toast.success(t('ems_duplicated'));
-      navigate(`/outreach/email/campaigns/${copy.id}`);
+      navigate(`/outreach/email/campaigns/${copy.id}?step=design`);
     } catch { toast.error(t('ems_err_save_failed')); } finally { setBusy(null); }
   };
   const cancel = async (c: StudioCampaign) => {
@@ -108,7 +108,7 @@ export default function EmailCampaignListPage() {
             const sent = c.sent_count ?? 0;
             return (
               <li key={c.id} className="flex flex-col gap-3 rounded-2xl border bg-card p-4 transition-colors hover:border-foreground/25 lg:flex-row lg:items-center">
-                <button type="button" onClick={() => navigate(`/outreach/email/campaigns/${c.id}`)} className="w-full min-w-0 flex-1 text-start">
+                <button type="button" onClick={() => navigate(campaignPath(c))} className="w-full min-w-0 flex-1 text-start">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="min-w-0 text-[15px] font-semibold leading-snug [overflow-wrap:anywhere]">{c.name || t('ems_untitled')}</span>
                     <PhaseBadge status={c.status} />

@@ -152,10 +152,13 @@ const EmailCampaignWorkspacePage = lazyRoute(withStudioStrings(() => import('./p
 const EmailTemplatesPage = lazyRoute(withStudioStrings(() => import('./pages/outreach/studio/EmailTemplatesPage')));
 const EmailAnalyticsPage = lazyRoute(withStudioStrings(() => import('./pages/outreach/studio/EmailAnalyticsPage')));
 const EmailDeliverabilityPage = lazyRoute(withStudioStrings(() => import('./pages/outreach/studio/EmailDeliverabilityPage')));
+const EmailCampaignDetailsPage = lazyRoute(withStudioStrings(() => import('./pages/outreach/studio/EmailCampaignDetailsPage')));
+const EmailLeadsPage = lazyRoute(withStudioStrings(() => import('./pages/outreach/studio/EmailLeadsPage')));
 const AdminEmailReviewPage = lazyRoute(withStudioStrings(() => import('./pages/admin/AdminEmailReviewPage')));
 const EmailInboxPage = lazyRoute(() => import('./pages/outreach/EmailInboxPage'));
 const EmailPlanPage = lazyRoute(() => import('./pages/outreach/EmailPlanPage'));
-const EmailDomainsPage = lazyRoute(() => import('./pages/outreach/EmailDomainsPage'));
+/* Studio strings: the domains page shows the "back to your campaign" note in the reader's language. */
+const EmailDomainsPage = lazyRoute(withStudioStrings(() => import('./pages/outreach/EmailDomainsPage')));
 const SmsCampaignsPage = lazyRoute(() => import('./pages/outreach/SmsCampaignsPage'));
 const OutreachInsightsPage = lazyRoute(() => import('./pages/outreach/OutreachInsightsPage'));
 // Communications Hub. These EVOLVE the Outreach area rather than replacing it:
@@ -167,6 +170,8 @@ const CampaignsPage = lazyRoute(() => import('./pages/outreach/CampaignsPage'));
 const CampaignBuilderPage = lazyRoute(() => import('./pages/outreach/CampaignBuilderPage'));
 const ContactsPage = lazyRoute(() => import('./pages/outreach/ContactsPage'));
 const ContactImportPage = lazyRoute(() => import('./pages/outreach/ContactImportPage'));
+/* The same import wizard inside Email, with the Email Studio strings it links back with. */
+const EmailContactImportPage = lazyRoute(withStudioStrings(() => import('./pages/outreach/ContactImportPage')));
 const ContactProfilePage = lazyRoute(() => import('./pages/outreach/ContactProfilePage'));
 const WhatsAppPage = lazyRoute(() => import('./pages/outreach/WhatsAppPage'));
 const WhatsAppInboxPage = lazyRoute(() => import('./pages/outreach/WhatsAppInboxPage'));
@@ -602,17 +607,21 @@ const routeTable: RouteConfig[] = [
      audience import; the same wizard with the channel it was opened from. */
   { name: 'Calls Import',      path: '/outreach/calls/contacts/import',    element: <ContactImportPage />, visible: false },
   { name: 'WhatsApp Import',   path: '/outreach/whatsapp/contacts/import', element: <ContactImportPage />, visible: false },
-  { name: 'Email Import',      path: '/outreach/email/contacts/import',    element: <ContactImportPage />, visible: false },
+  { name: 'Email Import',      path: '/outreach/email/contacts/import',    element: <EmailContactImportPage />, visible: false },
 
   { name: 'WhatsApp Numbers',  path: '/outreach/whatsapp/numbers',   element: <ChannelAccountsPage />,  visible: false },
   { name: 'WhatsApp Contacts', path: '/outreach/whatsapp/contacts',  element: <ContactsPage />,         visible: false },
 
-  { name: 'Email Contacts',    path: '/outreach/email/contacts',     element: <ContactsPage />,         visible: false },
-  { name: 'Email Lists',       path: '/outreach/email/lists',        element: <ContactListsPage />,     visible: false },
+  /* Email's own Leads workspace (leads + lists in one place, consent-aware); calls and WhatsApp
+     keep the shared Contacts screen. */
+  { name: 'Email Contacts',    path: '/outreach/email/contacts',     element: <EmailLeadsPage />,       visible: false },
+  { name: 'Email Lists',       path: '/outreach/email/lists',        element: <EmailLeadsPage />,       visible: false },
   { name: 'Email Analytics',   path: '/outreach/email/analytics',    element: <EmailAnalyticsPage />,   visible: false },
   { name: 'Email Campaign List', path: '/outreach/email/campaigns',  element: <EmailCampaignListPage />, visible: false },
-  { name: 'Email New Campaign', path: '/outreach/email/campaigns/new', element: <EmailCampaignWorkspacePage />, visible: false },
+  /* /outreach/email/campaigns/new is this same route (id "new"): ONE route entry, so the first
+     autosave (new → its id) keeps the page mounted instead of remounting it mid-edit. */
   { name: 'Email Campaign Workspace', path: '/outreach/email/campaigns/:id', element: <EmailCampaignWorkspacePage />, visible: false },
+  { name: 'Email Campaign Details', path: '/outreach/email/campaigns/:id/overview', element: <EmailCampaignDetailsPage />, visible: false },
   { name: 'Email Templates',   path: '/outreach/email/templates',    element: <EmailTemplatesPage />,   visible: false },
   { name: 'Email Deliverability', path: '/outreach/email/deliverability', element: <EmailDeliverabilityPage />, visible: false },
   /* Email Marketing: replies (reply-routed CRM inbox), plan & usage (wallet-paid plans), sending domains. */

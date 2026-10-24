@@ -1,42 +1,57 @@
-// EMAIL STUDIO — the visual email designer. Owner brief §5.
+// EMAIL STUDIO — the visual email designer. Owner brief §5 and the UX pass §4.
 //
 // Edits a designer DOCUMENT (src/emailMarketing/designer/document.ts), never HTML. The canvas
 // shows each block through the same renderer the server uses (renderBlockHtml — escaped,
 // inline-styled, no script), so the canvas is the email. Every control writes a document value
 // that normalizeDoc accepts; anything else is impossible to express.
 //
+// Text and headings are edited IN PLACE on the canvas (and in the side panel on small screens)
+// with the rich text editor: select a word, link it, bold it, colour it. Images are uploaded from
+// the computer (ImagePicker → R2); a URL is optional, never required.
+//
 // Interaction: drag from the palette or click to insert after the selection; drag blocks to
 // reorder, or use the move buttons (keyboard-reachable); Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or
-// Ctrl/Cmd+Y redo; Delete removes the selected block; Ctrl/Cmd+D duplicates it.
+// Ctrl/Cmd+Y redo; Delete removes the selected block; Ctrl/Cmd+D duplicates it. Typing is
+// coalesced into one undo step per pause, not one per key.
 
 import {
-  AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, BookmarkPlus, Columns2, Contact, Copy, Eye, Footprints, Heading, Image as ImageIcon,Layers,
-  LayoutTemplate, Link2, Minus, MousePointerClick, MoveVertical, Palette, Redo2, Share2, Trash2, Type, Undo2, UserMinus, X, 
+  AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, BookmarkPlus, ChevronDown, Columns2, Contact, Copy, Eye, Footprints, GalleryHorizontal, Heading, Image as ImageIcon,
+  Info, Layers, LayoutPanelTop, LayoutTemplate, Link2, ListChecks, Minus, MousePointerClick, MoveVertical, Palette, Plus, Redo2, Share2, SquareStack, Trash2, Type, Undo2, UserMinus, X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
-  type Align, type Block, type BlockType, type ColumnsBlock, cloneBlock, createBlock, type EmailDoc, FONT_KEYS, type LeafBlock, normalizeDoc,type Pad, SOCIAL_NETWORKS, type SocialNetwork,
-  type Theme, 
+  type Align, type Block, type BlockType, type ButtonBlock, type ColumnsBlock, cloneBlock, createBlock, type EmailDoc, FONT_KEYS, FONT_STACKS, type LeafBlock, normalizeDoc, type Pad,
+  SOCIAL_NETWORKS, type SocialNetwork, type Theme,
 } from '@/emailMarketing/designer/document';
-import { renderBlockHtml, renderDesignBody } from '@/emailMarketing/designer/render';
+import { inlineMarkup, renderBlockHtml, renderDesignBody } from '@/emailMarketing/designer/render';
+import { textToRich } from '@/emailMarketing/designer/richText';
 import { checkUrl } from '@/emailMarketing/risk/links';
 import { cn } from '@/lib/utils';
+import { ImagePicker } from './ImagePicker';
+import { RichTextEditor } from './RichTextEditor';
 import { EmailPreviewFrame, findingText } from './shared';
 
-const PALETTE: Array<{ type: BlockType; icon: React.ComponentType<{ className?: string }> }> = [
-  { type: 'heading', icon: Heading }, { type: 'text', icon: Type }, { type: 'image', icon: ImageIcon },
-  { type: 'button', icon: MousePointerClick }, { type: 'divider', icon: Minus }, { type: 'spacer', icon: MoveVertical },
-  { type: 'columns', icon: Columns2 }, { type: 'logo', icon: LayoutTemplate }, { type: 'social', icon: Share2 },
-  { type: 'contact', icon: Contact }, { type: 'footer', icon: Footprints }, { type: 'unsubscribe', icon: UserMinus },
+type Icon = React.ComponentType<{ className?: string }>;
+const PALETTE: Array<{ group: 'basics' | 'layout' | 'brand'; type: BlockType; icon: Icon }> = [
+  { group: 'basics', type: 'heading', icon: Heading }, { group: 'basics', type: 'text', icon: Type }, { group: 'basics', type: 'image', icon: ImageIcon },
+  { group: 'basics', type: 'button', icon: MousePointerClick },
+  { group: 'layout', type: 'header', icon: LayoutPanelTop }, { group: 'layout', type: 'banner', icon: GalleryHorizontal }, { group: 'layout', type: 'card', icon: SquareStack },
+  { group: 'layout', type: 'columns', icon: Columns2 }, { group: 'layout', type: 'facts', icon: ListChecks }, { group: 'layout', type: 'divider', icon: Minus },
+  { group: 'layout', type: 'spacer', icon: MoveVertical },
+  { group: 'brand', type: 'logo', icon: LayoutTemplate }, { group: 'brand', type: 'social', icon: Share2 }, { group: 'brand', type: 'contact', icon: Contact },
+  { group: 'brand', type: 'footer', icon: Footprints }, { group: 'brand', type: 'unsubscribe', icon: UserMinus },
 ];
+/* What a column can hold: content, not page furniture. */
+const COLUMN_TYPES: BlockType[] = ['heading', 'text', 'image', 'button', 'card', 'facts', 'divider', 'spacer', 'logo', 'social'];
 
 type Sel = { id: string; col?: 0 | 1; sub?: string } | null;
 
@@ -53,14 +68,30 @@ export interface EmailDesignerProps {
   sections?: DesignerSection[];
   onSaveSection?: (block: Block) => void;
   onSaveTemplate?: () => void;
+  /** Block ids the review checks point at (missing link / alt text): outlined on the canvas. */
+  flagged?: string[];
 }
 
 const MAX_HISTORY = 80;
 
+/* One layout mounted at a time: two canvases would mean two in-place editors fighting for focus. */
+function useWide(): boolean {
+  const query = '(min-width: 1280px)';
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
+  useEffect(() => {
+    const m = window.matchMedia(query);
+    const on = () => setWide(m.matches);
+    m.addEventListener('change', on);
+    return () => m.removeEventListener('change', on);
+  }, []);
+  return wide;
+}
+
 export default function EmailDesigner({
-  value, onChange, rtl = false, subject, previewText, senderName, language, sections = [], onSaveSection, onSaveTemplate,
+  value, onChange, rtl = false, subject, previewText, senderName, language, sections = [], onSaveSection, onSaveTemplate, flagged = [],
 }: EmailDesignerProps) {
   const { t } = useLanguage();
+  const wide = useWide();
   const [sel, setSel] = useState<Sel>(null);
   const [past, setPast] = useState<EmailDoc[]>([]);
   const [future, setFuture] = useState<EmailDoc[]>([]);
@@ -68,11 +99,18 @@ export default function EmailDesigner({
   const [mobilePane, setMobilePane] = useState<'blocks' | 'canvas' | 'props'>('canvas');
   const dragRef = useRef<{ kind: 'new'; type: BlockType } | { kind: 'section'; block: Block } | { kind: 'move'; id: string } | null>(null);
   const [dropAt, setDropAt] = useState<number | null>(null);
+  /* Coalesced history: consecutive edits of the same field within a pause are one undo step. */
+  const lastKey = useRef<{ key: string; at: number } | null>(null);
   const doc = value;
 
-  const commit = useCallback((next: EmailDoc) => {
-    setPast((p) => [...p.slice(-MAX_HISTORY + 1), doc]);
-    setFuture([]);
+  const commit = useCallback((next: EmailDoc, key?: string) => {
+    const now = Date.now();
+    const coalesce = key && lastKey.current && lastKey.current.key === key && now - lastKey.current.at < 1200;
+    if (!coalesce) {
+      setPast((p) => [...p.slice(-MAX_HISTORY + 1), doc]);
+      setFuture([]);
+    }
+    lastKey.current = key ? { key, at: now } : null;
     onChange(normalizeDoc(next));
   }, [doc, onChange]);
 
@@ -81,6 +119,7 @@ export default function EmailDesigner({
     const prev = past[past.length - 1];
     setPast(past.slice(0, -1));
     setFuture([doc, ...future].slice(0, MAX_HISTORY));
+    lastKey.current = null;
     onChange(prev);
   }, [past, future, doc, onChange]);
   const redo = useCallback(() => {
@@ -88,6 +127,7 @@ export default function EmailDesigner({
     const next = future[0];
     setFuture(future.slice(1));
     setPast([...past, doc].slice(-MAX_HISTORY));
+    lastKey.current = null;
     onChange(next);
   }, [past, future, doc, onChange]);
 
@@ -99,18 +139,19 @@ export default function EmailDesigner({
     return top;
   }, [doc, sel]);
 
-  const updateSelected = useCallback((patch: Record<string, unknown>) => {
-    if (!sel) return;
+  const patchBlock = useCallback((target: Sel, patch: Record<string, unknown>, key?: string) => {
+    if (!target) return;
     const blocks = doc.blocks.map((b) => {
-      if (b.id !== sel.id) return b;
-      if (b.type === 'columns' && sel.col != null && sel.sub) {
-        const cols = b.columns.map((col, i) => (i === sel.col ? col.map((x) => (x.id === sel.sub ? { ...x, ...patch } as LeafBlock : x)) : col)) as ColumnsBlock['columns'];
+      if (b.id !== target.id) return b;
+      if (b.type === 'columns' && target.col != null && target.sub) {
+        const cols = b.columns.map((col, i) => (i === target.col ? col.map((x) => (x.id === target.sub ? { ...x, ...patch } as LeafBlock : x)) : col)) as ColumnsBlock['columns'];
         return { ...b, columns: cols };
       }
       return { ...b, ...patch } as Block;
     });
-    commit({ ...doc, blocks });
-  }, [doc, sel, commit]);
+    commit({ ...doc, blocks }, key);
+  }, [doc, commit]);
+  const updateSelected = useCallback((patch: Record<string, unknown>, key?: string) => patchBlock(sel, patch, key), [patchBlock, sel]);
 
   const updateTheme = (patch: Partial<Theme>) => commit({ ...doc, theme: { ...doc.theme, ...patch } });
 
@@ -152,7 +193,7 @@ export default function EmailDesigner({
     setSel(null);
   };
   const addToColumn = (id: string, col: 0 | 1, type: BlockType) => {
-    if (type === 'columns') return;
+    if (!COLUMN_TYPES.includes(type)) return;
     const nb = createBlock(type) as LeafBlock;
     nb.padding = { t: 6, r: 0, b: 6, l: 0 };
     commit({ ...doc, blocks: doc.blocks.map((b) => (b.id === id && b.type === 'columns'
@@ -163,8 +204,8 @@ export default function EmailDesigner({
   /* ── keyboard ──────────────────────────────────────────────────────────────────────────── */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement | null)?.isContentEditable;
+      const el = e.target as HTMLElement | null;
+      const typing = el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || el?.isContentEditable;
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey && !typing) { e.preventDefault(); undo(); }
       else if (mod && ((e.key.toLowerCase() === 'z' && e.shiftKey) || e.key.toLowerCase() === 'y') && !typing) { e.preventDefault(); redo(); }
@@ -195,28 +236,31 @@ export default function EmailDesigner({
     }
   };
 
-  const fullBody = useMemo(() => renderDesignBody(doc, { rtl }), [doc, rtl]);
+  const fullBody = useMemo(() => renderDesignBody(doc, { rtl, draft: true }), [doc, rtl]);
+  const flaggedSet = useMemo(() => new Set(flagged), [flagged]);
 
   /* ── render ────────────────────────────────────────────────────────────────────────────── */
   const palette = (
     <div className="space-y-4">
-      <div>
-        <p className="mb-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('ems_d_blocks')}</p>
-        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 xl:grid-cols-2">
-          {PALETTE.map(({ type, icon: Icon }) => (
-            <button
-              key={type} type="button" draggable
-              onDragStart={() => { dragRef.current = { kind: 'new', type }; }}
-              onDragEnd={() => { dragRef.current = null; setDropAt(null); }}
-              onClick={() => addBlock(type)}
-              className="flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-lg border bg-card px-1.5 py-2 text-center text-2xs leading-tight text-foreground/80 transition-colors hover:border-[hsl(38_70%_60%)] hover:bg-[hsl(38_90%_97%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_80%_55%)]"
-            >
-              <Icon className="h-4 w-4 text-[hsl(32_60%_38%)]" aria-hidden="true" />
-              <span className="[overflow-wrap:anywhere]">{t(`ems_block_${type}`)}</span>
-            </button>
-          ))}
+      {(['basics', 'layout', 'brand'] as const).map((g) => (
+        <div key={g}>
+          <p className="mb-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t(`ems_d_group_${g}`)}</p>
+          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 xl:grid-cols-2">
+            {PALETTE.filter((p) => p.group === g).map(({ type, icon: I }) => (
+              <button
+                key={type} type="button" draggable title={t(`ems_block_${type}_hint`)}
+                onDragStart={() => { dragRef.current = { kind: 'new', type }; }}
+                onDragEnd={() => { dragRef.current = null; setDropAt(null); }}
+                onClick={() => addBlock(type)}
+                className="flex min-h-[60px] flex-col items-center justify-center gap-1 rounded-lg border bg-card px-1.5 py-2 text-center text-2xs leading-tight text-foreground/80 transition-colors hover:border-[hsl(38_70%_60%)] hover:bg-[hsl(38_90%_97%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_80%_55%)]"
+              >
+                <I className="h-4 w-4 text-[hsl(32_60%_38%)]" aria-hidden="true" />
+                <span className="[overflow-wrap:anywhere]">{t(`ems_block_${type}`)}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      ))}
       <div>
         <p className="mb-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('ems_d_sections')}</p>
         {sections.length ? (
@@ -251,6 +295,25 @@ export default function EmailDesigner({
     </div>
   );
 
+  /* The selected text or heading is edited where it is, in the email's own look. */
+  const inlineEditor = (b: Block) => {
+    if (b.type !== 'text' && b.type !== 'heading') return null;
+    const font = FONT_STACKS[b.fontFamily ?? doc.theme.fontFamily];
+    const size = b.type === 'heading' ? b.fontSize ?? (b.level === 1 ? 28 : b.level === 2 ? 22 : 18) : b.fontSize ?? 16;
+    const align = b.align === 'center' ? 'center' : b.align === 'right' ? (rtl ? 'left' : 'right') : (rtl ? 'right' : 'left');
+    return (
+      <div style={{ padding: `${b.padding?.t ?? 8}px ${b.padding?.r ?? 32}px ${b.padding?.b ?? 8}px ${b.padding?.l ?? 32}px`, backgroundColor: b.background ?? undefined }}
+        onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+        <RichTextEditor
+          value={b.rich ?? ''} fallbackHtml={b.rich ? undefined : inlineMarkup(b.text, doc.theme.link)} autoFocus inline={b.type === 'heading'}
+          ariaLabel={t(`ems_block_${b.type}`)} placeholder={t(b.type === 'heading' ? 'ems_d_heading_placeholder' : 'ems_d_text_placeholder')} dir={rtl ? 'rtl' : 'ltr'}
+          onChange={(rich) => updateSelected({ rich }, `rich:${b.id}`)}
+          style={{ fontFamily: font, fontSize: size, lineHeight: b.type === 'heading' ? 1.3 : b.lineHeight ?? 1.65, fontWeight: b.fontWeight ?? (b.type === 'heading' ? 700 : 400), color: b.color ?? doc.theme.text, textAlign: align }}
+        />
+      </div>
+    );
+  };
+
   const canvas = (
     <div className="min-w-0 rounded-2xl border p-3 sm:p-5" style={{ backgroundColor: doc.theme.canvas }} onClick={() => setSel(null)}>
       <div className="mx-auto overflow-hidden shadow-sm" style={{ maxWidth: doc.theme.width, backgroundColor: doc.theme.card, borderRadius: doc.theme.radius }} dir={rtl ? 'rtl' : 'ltr'}>
@@ -267,38 +330,47 @@ export default function EmailDesigner({
         {doc.blocks.map((b, i) => {
           const isSel = sel?.id === b.id && !sel.sub;
           const empty = (b.type === 'image' || b.type === 'logo') && !b.src;
+          const editing = isSel && (b.type === 'text' || b.type === 'heading');
           return (
             <React.Fragment key={b.id}>
               <DropLine index={i} />
               <div
                 role="button" tabIndex={0} aria-label={t(`ems_block_${b.type}`)} aria-pressed={isSel}
-                draggable
+                draggable={!editing}
                 onDragStart={(e) => { dragRef.current = { kind: 'move', id: b.id }; e.dataTransfer.effectAllowed = 'move'; }}
                 onDragEnd={() => { dragRef.current = null; setDropAt(null); }}
                 onClick={(e) => { e.stopPropagation(); setSel({ id: b.id }); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSel({ id: b.id }); setMobilePane('props'); } }}
-                className={cn('group relative cursor-pointer outline-none transition-shadow', isSel ? 'ring-2 ring-inset ring-[hsl(38_85%_52%)]' : 'hover:ring-1 hover:ring-inset hover:ring-[hsl(38_70%_70%)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(38_85%_52%)]')}
+                onKeyDown={(e) => { if (!editing && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSel({ id: b.id }); setMobilePane('props'); } }}
+                className={cn('group relative cursor-pointer outline-none transition-shadow',
+                  isSel ? 'ring-2 ring-inset ring-[hsl(38_85%_52%)]' : 'hover:ring-1 hover:ring-inset hover:ring-[hsl(38_70%_70%)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(38_85%_52%)]',
+                  flaggedSet.has(b.id) && !isSel && 'ring-2 ring-inset ring-red-400')}
               >
-                {b.type === 'columns' ? (
+                {editing ? inlineEditor(b) : b.type === 'columns' ? (
                   <div style={{ padding: `${b.padding?.t ?? 8}px ${b.padding?.r ?? 32}px ${b.padding?.b ?? 8}px ${b.padding?.l ?? 32}px`, backgroundColor: b.background ?? undefined }}
                     className="grid gap-3 sm:grid-cols-2">
                     {b.columns.map((col, ci) => (
                       <div key={ci} className="min-w-0 rounded-md border border-dashed border-foreground/15 p-1.5">
                         {col.map((x) => {
                           const subSel = sel?.id === b.id && sel.sub === x.id;
+                          const subEmpty = (x.type === 'image' || x.type === 'logo') && !x.src;
                           return (
                             <div key={x.id} role="button" tabIndex={0}
                               onClick={(e) => { e.stopPropagation(); setSel({ id: b.id, col: ci as 0 | 1, sub: x.id }); }}
                               onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setSel({ id: b.id, col: ci as 0 | 1, sub: x.id }); } }}
-                              className={cn('rounded outline-none', subSel ? 'ring-2 ring-[hsl(38_85%_52%)]' : 'hover:ring-1 hover:ring-[hsl(38_70%_70%)]')}
-                              // Safe: the email renderer escapes every value; no script can be expressed in a design document.
-                              dangerouslySetInnerHTML={{ __html: renderBlockHtml(x, doc.theme, rtl) }} />
+                              className={cn('rounded outline-none', subSel ? 'ring-2 ring-[hsl(38_85%_52%)]' : 'hover:ring-1 hover:ring-[hsl(38_70%_70%)]', flaggedSet.has(x.id) && 'ring-2 ring-red-400')}>
+                              {subEmpty ? (
+                                <div className="flex h-24 flex-col items-center justify-center gap-1 rounded border border-dashed border-foreground/20 text-2xs text-muted-foreground"><ImageIcon className="h-4 w-4" aria-hidden="true" />{t('ems_d_image_empty')}</div>
+                              ) : (
+                                // Safe: the email renderer escapes every value; no script can be expressed in a design document.
+                                <div dangerouslySetInnerHTML={{ __html: renderBlockHtml(x, doc.theme, rtl) }} />
+                              )}
+                            </div>
                           );
                         })}
                         <Select onValueChange={(v) => addToColumn(b.id, ci as 0 | 1, v as BlockType)}>
                           <SelectTrigger className="mt-1 h-7 text-xs" aria-label={t('ems_d_add_to_column')} onClick={(e) => e.stopPropagation()}><SelectValue placeholder={t('ems_d_add_to_column')} /></SelectTrigger>
                           <SelectContent>
-                            {PALETTE.filter((p) => p.type !== 'columns').map((p) => <SelectItem key={p.type} value={p.type}>{t(`ems_block_${p.type}`)}</SelectItem>)}
+                            {COLUMN_TYPES.map((p) => <SelectItem key={p} value={p}>{t(`ems_block_${p}`)}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </div>
@@ -313,7 +385,7 @@ export default function EmailDesigner({
                   <div dangerouslySetInnerHTML={{ __html: renderBlockHtml(b, doc.theme, rtl) }} />
                 )}
                 {/* Block toolbar: visible on hover, focus and selection. */}
-                <div className={cn('absolute end-1.5 top-1.5 z-10 flex gap-0.5 rounded-md border bg-white/95 p-0.5 shadow-sm transition-opacity', isSel ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100')}>
+                <div className={cn('absolute end-1.5 top-1.5 z-10 flex gap-0.5 rounded-md border bg-white/95 p-0.5 shadow-sm transition-opacity', isSel ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100', editing && '-top-9')}>
                   <ToolBtn label={t('ems_d_move_up')} onClick={() => move(b.id, -1)} disabled={i === 0}><ArrowUp className="h-3.5 w-3.5" /></ToolBtn>
                   <ToolBtn label={t('ems_d_move_down')} onClick={() => move(b.id, 1)} disabled={i === doc.blocks.length - 1}><ArrowDown className="h-3.5 w-3.5" /></ToolBtn>
                   <ToolBtn label={t('ems_d_duplicate')} onClick={() => duplicate(b.id)}><Copy className="h-3.5 w-3.5" /></ToolBtn>
@@ -331,7 +403,7 @@ export default function EmailDesigner({
 
   const props = selected ? (
     <BlockProperties
-      block={selected} onPatch={updateSelected} onClose={() => setSel(null)}
+      block={selected} theme={doc.theme} rtl={rtl} onPatch={updateSelected} onClose={() => setSel(null)} editsOnCanvas={wide && !sel?.sub}
       onRemove={() => sel && remove(sel.id, sel.col != null && sel.sub ? { col: sel.col, sub: sel.sub } : undefined)}
     />
   ) : <ThemeProperties theme={doc.theme} onPatch={updateTheme} />;
@@ -373,7 +445,7 @@ export default function EmailDesigner({
       ) : (
         <>
           {/* Mobile and tablet: one pane at a time. */}
-          <div className="xl:hidden">
+          {!wide ? <div>
             <Tabs value={mobilePane} onValueChange={(v) => setMobilePane(v as typeof mobilePane)}>
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="blocks">{t('ems_d_pane_blocks')}</TabsTrigger>
@@ -384,13 +456,13 @@ export default function EmailDesigner({
               <TabsContent value="canvas" className="mt-3">{canvas}</TabsContent>
               <TabsContent value="props" className="mt-3 rounded-xl border bg-card p-3">{props}</TabsContent>
             </Tabs>
-          </div>
-          {/* Desktop: palette · canvas · properties. */}
-          <div className="hidden min-w-0 gap-4 xl:grid xl:grid-cols-[12.5rem_minmax(0,1fr)_18rem] 2xl:grid-cols-[14rem_minmax(0,1fr)_20rem]">
+          </div> : (
+          /* Desktop: palette · canvas · properties. */
+          <div className="grid min-w-0 grid-cols-[12.5rem_minmax(0,1fr)_19rem] gap-4 2xl:grid-cols-[14rem_minmax(0,1fr)_21rem]">
             <aside className="min-w-0"><div className="sticky top-20 max-h-[calc(100dvh-7rem)] overflow-y-auto pe-1">{palette}</div></aside>
-            <div className="min-w-0">{canvas}</div>
+            <div className="min-w-0 pt-9">{canvas}</div>
             <aside className="min-w-0"><div className="sticky top-20 max-h-[calc(100dvh-7rem)] overflow-y-auto rounded-xl border bg-card p-3">{props}</div></aside>
-          </div>
+          </div>)}
         </>
       )}
     </div>
@@ -417,6 +489,10 @@ function Field({ label, children, hint }: { label: string; children: React.React
       {hint}
     </div>
   );
+}
+
+function Hint({ text }: { text: string }) {
+  return <p className="flex items-start gap-1 text-2xs leading-snug text-muted-foreground"><Info className="mt-px h-3 w-3 shrink-0" aria-hidden="true" />{text}</p>;
 }
 
 function ColorField({ label, value, onChange, allowEmpty = false }: { label: string; value: string | null | undefined; onChange: (v: string | null) => void; allowEmpty?: boolean }) {
@@ -449,16 +525,24 @@ function NumberField({ label, value, min, max, onChange, suffix }: { label: stri
   );
 }
 
+function SliderField({ label, value, min, max, step = 1, onChange, suffix }: { label: string; value: number; min: number; max: number; step?: number; onChange: (n: number) => void; suffix?: string }) {
+  return (
+    <Field label={`${label} · ${value}${suffix ?? ''}`}>
+      <Slider value={[value]} min={min} max={max} step={step} onValueChange={([n]) => onChange(n)} aria-label={label} />
+    </Field>
+  );
+}
+
 function AlignField({ value, onChange }: { value: Align; onChange: (a: Align) => void }) {
   const { t } = useLanguage();
-  const opts: Array<[Align, React.ComponentType<{ className?: string }>]> = [['left', AlignLeft], ['center', AlignCenter], ['right', AlignRight]];
+  const opts: Array<[Align, Icon]> = [['left', AlignLeft], ['center', AlignCenter], ['right', AlignRight]];
   return (
     <Field label={t('ems_d_align')}>
       <div className="inline-flex rounded-lg border p-0.5" role="group" aria-label={t('ems_d_align')}>
-        {opts.map(([a, Icon]) => (
+        {opts.map(([a, I]) => (
           <button key={a} type="button" aria-pressed={value === a} aria-label={t(`ems_d_align_${a}`)} onClick={() => onChange(a)}
             className={cn('inline-flex h-7 w-8 items-center justify-center rounded-md', value === a ? 'bg-[#0C1119] text-white' : 'text-muted-foreground hover:text-foreground')}>
-            <Icon className="h-3.5 w-3.5" />
+            <I className="h-3.5 w-3.5" />
           </button>
         ))}
       </div>
@@ -466,7 +550,22 @@ function AlignField({ value, onChange }: { value: Align; onChange: (a: Align) =>
   );
 }
 
-function UrlField({ label, value, onChange, kind = 'a', text }: { label: string; value: string | null | undefined; onChange: (v: string) => void; kind?: 'a' | 'img'; text?: string }) {
+function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: Array<{ v: T; l: string }>; onChange: (v: T) => void }) {
+  return (
+    <Field label={label}>
+      <div className="inline-flex flex-wrap rounded-lg border p-0.5" role="group" aria-label={label}>
+        {options.map((o) => (
+          <button key={o.v} type="button" aria-pressed={value === o.v} onClick={() => onChange(o.v)}
+            className={cn('inline-flex h-7 items-center rounded-md px-2.5 text-xs', value === o.v ? 'bg-[#0C1119] text-white' : 'text-muted-foreground hover:text-foreground')}>
+            {o.l}
+          </button>
+        ))}
+      </div>
+    </Field>
+  );
+}
+
+function UrlField({ label, value, onChange, kind = 'a', text, hint }: { label: string; value: string | null | undefined; onChange: (v: string) => void; kind?: 'a' | 'img'; text?: string; hint?: string }) {
   const { t } = useLanguage();
   const [draft, setDraft] = useState(value ?? '');
   useEffect(() => setDraft(value ?? ''), [value]);
@@ -475,6 +574,7 @@ function UrlField({ label, value, onChange, kind = 'a', text }: { label: string;
   return (
     <Field label={label} hint={
       <div className="space-y-0.5">
+        {hint ? <Hint text={hint} /> : null}
         {draft.trim() && !accepted ? <p className="text-2xs text-red-700">{t(kind === 'img' ? 'ems_d_url_https_image' : 'ems_d_url_https')}</p> : null}
         {findings.map((f) => (
           <p key={f.code} className={cn('flex items-start gap-1 text-2xs', f.severity === 'BLOCK' ? 'text-red-700' : 'text-amber-800')}>
@@ -491,7 +591,7 @@ function UrlField({ label, value, onChange, kind = 'a', text }: { label: string;
 
 const MERGE_FIELDS = ['{{first_name|}}', '{{name|}}'];
 
-function TextField({ label, value, onChange, rows = 5, max }: { label: string; value: string; onChange: (v: string) => void; rows?: number; max: number }) {
+function TextField({ label, value, onChange, rows = 4, max }: { label: string; value: string; onChange: (v: string) => void; rows?: number; max: number }) {
   const { t } = useLanguage();
   const [draft, setDraft] = useState(value);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -515,6 +615,10 @@ function TextField({ label, value, onChange, rows = 5, max }: { label: string; v
         onChange={(e) => setDraft(e.target.value)} onBlur={() => { if (draft !== value) onChange(draft); }} />
     </Field>
   );
+}
+
+function ShortText({ label, value, max, onChange, placeholder }: { label: string; value: string; max: number; onChange: (v: string) => void; placeholder?: string }) {
+  return <Field label={label}><Input value={value} maxLength={max} placeholder={placeholder} className="h-8 text-sm" onChange={(e) => onChange(e.target.value)} /></Field>;
 }
 
 function PaddingField({ value, onChange }: { value: Pad | undefined; onChange: (p: Pad) => void }) {
@@ -561,77 +665,203 @@ function WeightField({ value, onChange }: { value: number | undefined; onChange:
   );
 }
 
-function BlockProperties({ block, onPatch, onClose, onRemove }: { block: Block | LeafBlock; onPatch: (p: Record<string, unknown>) => void; onClose: () => void; onRemove: () => void }) {
+/* CTA presets: one click to a recognisable style; every value stays editable below. */
+const BUTTON_PRESETS: Array<{ key: string; patch: (accent: string) => Partial<ButtonBlock> }> = [
+  { key: 'solid', patch: (a) => ({ buttonColor: a, textColor: '#0C1119', radius: 10, strokeWidth: 0, strokeColor: null, fullWidth: false }) },
+  { key: 'dark', patch: () => ({ buttonColor: '#0C1119', textColor: '#FFFFFF', radius: 8, strokeWidth: 0, strokeColor: null, fullWidth: false }) },
+  { key: 'outline', patch: (a) => ({ buttonColor: '#FFFFFF', textColor: '#0C1119', radius: 8, strokeWidth: 2, strokeColor: a, fullWidth: false }) },
+  { key: 'pill', patch: (a) => ({ buttonColor: a, textColor: '#FFFFFF', radius: 40, strokeWidth: 0, strokeColor: null, size: 'lg', fullWidth: false }) },
+  { key: 'square', patch: () => ({ buttonColor: '#1B1B1B', textColor: '#FFFFFF', radius: 0, strokeWidth: 0, strokeColor: null, size: 'lg', fullWidth: false }) },
+  { key: 'wide', patch: (a) => ({ buttonColor: a, textColor: '#0C1119', radius: 10, strokeWidth: 0, strokeColor: null, fullWidth: true }) },
+];
+
+function ButtonBuilder({ b, theme, rtl, onPatch }: { b: ButtonBlock; theme: Theme; rtl: boolean; onPatch: (p: Record<string, unknown>, key?: string) => void }) {
+  const { t } = useLanguage();
+  const [advanced, setAdvanced] = useState(false);
+  const preview = useMemo(() => renderBlockHtml({ ...b, label: b.label || t('ems_d_button_sample'), padding: { t: 10, r: 10, b: 10, l: 10 } }, theme, rtl), [b, theme, rtl, t]);
+  return (
+    <>
+      <ShortText label={t('ems_d_label')} value={b.label} max={80} onChange={(v) => onPatch({ label: v }, `label:${b.id}`)} placeholder={t('ems_d_button_sample')} />
+      <UrlField label={t('ems_d_link')} value={b.href} text={b.label} onChange={(v) => onPatch({ href: v })} hint={t('ems_d_button_link_hint')} />
+      <Field label={t('ems_d_button_style')}>
+        <div className="grid grid-cols-3 gap-1.5">
+          {BUTTON_PRESETS.map((p) => (
+            <button key={p.key} type="button" onClick={() => onPatch(p.patch(theme.accent))}
+              className="rounded-md border px-1.5 py-1.5 text-2xs hover:border-[hsl(38_70%_55%)] hover:bg-[hsl(38_90%_97%)]">{t(`ems_d_btn_${p.key}`)}</button>
+          ))}
+        </div>
+      </Field>
+      <div className="rounded-lg border bg-[repeating-conic-gradient(#f4f4f4_0_25%,#fff_0_50%)] bg-[length:14px_14px]" aria-hidden="true"
+        // Safe: renderer output (escaped, no script).
+        dangerouslySetInnerHTML={{ __html: preview }} />
+      <Segmented label={t('ems_d_size')} value={b.size ?? 'md'} options={(['sm', 'md', 'lg'] as const).map((s) => ({ v: s, l: t(`ems_d_size_${s}`) }))}
+        onChange={(v) => onPatch({ size: v, paddingX: undefined, paddingY: undefined, fontSize: undefined })} />
+      <AlignField value={b.align} onChange={(a) => onPatch({ align: a })} />
+      <label className="flex items-center justify-between gap-2 text-xs"><span>{t('ems_d_full_width')}</span><Switch checked={Boolean(b.fullWidth)} onCheckedChange={(v) => onPatch({ fullWidth: v })} /></label>
+      <div className="grid grid-cols-2 gap-2">
+        <ColorField label={t('ems_d_button_color')} value={b.buttonColor} onChange={(v) => v && onPatch({ buttonColor: v })} />
+        <ColorField label={t('ems_d_text_color')} value={b.textColor} onChange={(v) => v && onPatch({ textColor: v })} />
+      </div>
+      <SliderField label={t('ems_d_radius')} value={b.radius} min={0} max={40} suffix="px" onChange={(n) => onPatch({ radius: n }, `radius:${b.id}`)} />
+      <button type="button" className="flex w-full items-center justify-between text-xs font-medium text-foreground/80" onClick={() => setAdvanced((o) => !o)} aria-expanded={advanced}>
+        {t('ems_d_more_options')}<ChevronDown className={cn('h-3.5 w-3.5 transition-transform', advanced && 'rotate-180')} />
+      </button>
+      {advanced ? (
+        <div className="space-y-3">
+          <ColorField label={t('ems_d_hover_color')} value={b.hoverColor} allowEmpty onChange={(v) => onPatch({ hoverColor: v })} />
+          <Hint text={t('ems_d_hover_hint')} />
+          <div className="grid grid-cols-2 gap-2">
+            <NumberField label={t('ems_d_outline')} value={b.strokeWidth ?? 0} min={0} max={4} suffix="px" onChange={(n) => onPatch({ strokeWidth: n })} />
+            <ColorField label={t('ems_d_outline_color')} value={b.strokeColor} allowEmpty onChange={(v) => onPatch({ strokeColor: v })} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <NumberField label={t('ems_d_pad_x')} value={b.paddingX} min={8} max={64} suffix="px" onChange={(n) => onPatch({ paddingX: n })} />
+            <NumberField label={t('ems_d_pad_y')} value={b.paddingY} min={6} max={28} suffix="px" onChange={(n) => onPatch({ paddingY: n })} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <NumberField label={t('ems_d_size')} value={b.fontSize} min={12} max={22} suffix="px" onChange={(n) => onPatch({ fontSize: n })} />
+            <WeightField value={b.fontWeight} onChange={(n) => onPatch({ fontWeight: n })} />
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function BlockProperties({ block, theme, rtl, onPatch, onClose, onRemove, editsOnCanvas = false }: {
+  block: Block | LeafBlock; theme: Theme; rtl: boolean; onPatch: (p: Record<string, unknown>, key?: string) => void; onClose: () => void; onRemove: () => void;
+  /** Wide screens edit text in place on the canvas; the panel then only explains how. */
+  editsOnCanvas?: boolean;
+}) {
   const { t } = useLanguage();
   const b = block as Block;
+  const [advanced, setAdvanced] = useState(false);
   return (
     <div className="space-y-3.5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold">{t(`ems_block_${b.type}`)}</p>
-        <div className="flex gap-1">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">{t(`ems_block_${b.type}`)}</p>
+          <p className="text-2xs leading-snug text-muted-foreground">{t(`ems_block_${b.type}_hint`)}</p>
+        </div>
+        <div className="flex shrink-0 gap-1">
           <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={t('ems_d_delete')} onClick={onRemove}><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>
           <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={t('ems_d_close')} onClick={onClose}><X className="h-3.5 w-3.5" /></Button>
         </div>
       </div>
 
-      {b.type === 'heading' ? (<>
-        <TextField label={t('ems_d_text')} value={b.text} max={300} rows={2} onChange={(v) => onPatch({ text: v })} />
-        <Field label={t('ems_d_level')}>
-          <Select value={String(b.level)} onValueChange={(v) => onPatch({ level: Number(v) })}>
-            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>{[1, 2, 3].map((l) => <SelectItem key={l} value={String(l)}>{t(`ems_d_level_${l}`)}</SelectItem>)}</SelectContent>
-          </Select>
-        </Field>
+      {b.type === 'heading' || b.type === 'text' ? (<>
+        {editsOnCanvas ? <Hint text={t('ems_d_rich_hint')} /> : (
+          <Field label={t('ems_d_text')} hint={<Hint text={t('ems_d_rich_hint')} />}>
+            <RichTextEditor value={b.rich ?? ''} fallbackHtml={b.rich ? undefined : inlineMarkup(b.text, theme.link)} inline={b.type === 'heading'}
+              ariaLabel={t('ems_d_text')} dir={rtl ? 'rtl' : 'ltr'} onChange={(rich) => onPatch({ rich }, `rich:${b.id}`)} className="text-sm" />
+          </Field>
+        )}
+        <div className="flex flex-wrap gap-1">
+          {MERGE_FIELDS.map((m) => (
+            <button key={m} type="button" className="rounded border bg-muted/50 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground hover:text-foreground" dir="ltr"
+              onClick={() => onPatch({ rich: `${b.rich ?? textToRich(b.text)} ${m}`.trim() })}>{m}</button>
+          ))}
+        </div>
+        {b.type === 'heading' ? (
+          <Segmented label={t('ems_d_level')} value={String(b.level) as '1' | '2' | '3'} options={(['1', '2', '3'] as const).map((l) => ({ v: l, l: t(`ems_d_level_${l}`) }))}
+            onChange={(v) => onPatch({ level: Number(v), fontSize: undefined })} />
+        ) : null}
         <AlignField value={b.align} onChange={(a) => onPatch({ align: a })} />
         <div className="grid grid-cols-2 gap-2">
-          <NumberField label={t('ems_d_size')} value={b.fontSize} min={14} max={48} suffix="px" onChange={(n) => onPatch({ fontSize: n })} />
+          <NumberField label={t('ems_d_size')} value={b.fontSize} min={b.type === 'heading' ? 14 : 11} max={b.type === 'heading' ? 48 : 28} suffix="px" onChange={(n) => onPatch({ fontSize: n })} />
           <WeightField value={b.fontWeight} onChange={(n) => onPatch({ fontWeight: n })} />
         </div>
-        <FontField value={b.fontFamily} onChange={(v) => onPatch({ fontFamily: v })} />
-        <ColorField label={t('ems_d_text_color')} value={b.color} allowEmpty onChange={(v) => onPatch({ color: v })} />
-      </>) : null}
-
-      {b.type === 'text' ? (<>
-        <TextField label={t('ems_d_text')} value={b.text} max={5000} rows={7} onChange={(v) => onPatch({ text: v })} />
-        <AlignField value={b.align} onChange={(a) => onPatch({ align: a })} />
-        <div className="grid grid-cols-2 gap-2">
-          <NumberField label={t('ems_d_size')} value={b.fontSize} min={11} max={28} suffix="px" onChange={(n) => onPatch({ fontSize: n })} />
-          <WeightField value={b.fontWeight} onChange={(n) => onPatch({ fontWeight: n })} />
-        </div>
+        {b.type === 'text' ? <SliderField label={t('ems_d_line_height')} value={b.lineHeight ?? 1.65} min={1} max={2.2} step={0.05} onChange={(n) => onPatch({ lineHeight: Math.round(n * 100) / 100 }, `lh:${b.id}`)} /> : null}
+        {b.type === 'heading' ? <SliderField label={t('ems_d_letter_spacing')} value={b.letterSpacing ?? 0} min={0} max={8} onChange={(n) => onPatch({ letterSpacing: n }, `ls:${b.id}`)} /> : null}
         <FontField value={b.fontFamily} onChange={(v) => onPatch({ fontFamily: v })} />
         <ColorField label={t('ems_d_text_color')} value={b.color} allowEmpty onChange={(v) => onPatch({ color: v })} />
       </>) : null}
 
       {b.type === 'image' || b.type === 'logo' ? (<>
-        <UrlField label={t('ems_d_image_url')} value={b.src} kind="img" onChange={(v) => onPatch({ src: v })} />
-        <Field label={t('ems_d_alt')}><Input value={b.alt} maxLength={200} className="h-8 text-xs" onChange={(e) => onPatch({ alt: e.target.value })} /></Field>
+        <ImagePicker label={t(b.type === 'logo' ? 'ems_d_logo_file' : 'ems_d_image_file')} kind={b.type === 'logo' ? 'LOGO' : 'IMAGE'} value={b.src}
+          onChange={(src, meta) => onPatch({ src, ...(meta?.name && !b.alt ? { alt: meta.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').slice(0, 120) } : {}) })} />
+        <Field label={t('ems_d_alt')} hint={<Hint text={t('ems_d_alt_hint')} />}><Input value={b.alt} maxLength={200} className="h-8 text-xs" onChange={(e) => onPatch({ alt: e.target.value }, `alt:${b.id}`)} /></Field>
         <UrlField label={t('ems_d_link_optional')} value={b.href ?? ''} onChange={(v) => onPatch({ href: v || null })} />
-        <NumberField label={t('ems_d_width')} value={b.width} min={40} max={b.type === 'logo' ? 300 : 600} suffix="px" onChange={(n) => onPatch({ width: n })} />
+        <SliderField label={t('ems_d_width')} value={b.width} min={40} max={b.type === 'logo' ? 300 : 600} suffix="px" onChange={(n) => onPatch({ width: n }, `w:${b.id}`)} />
         <AlignField value={b.align} onChange={(a) => onPatch({ align: a })} />
-        {b.type === 'image' ? <NumberField label={t('ems_d_radius')} value={b.radius} min={0} max={40} suffix="px" onChange={(n) => onPatch({ radius: n })} /> : null}
+        {b.type === 'image' ? <SliderField label={t('ems_d_radius')} value={b.radius ?? 0} min={0} max={40} suffix="px" onChange={(n) => onPatch({ radius: n }, `r:${b.id}`)} /> : null}
       </>) : null}
 
-      {b.type === 'button' ? (<>
-        <Field label={t('ems_d_label')}><Input value={b.label} maxLength={80} className="h-8 text-sm" onChange={(e) => onPatch({ label: e.target.value })} /></Field>
-        <UrlField label={t('ems_d_link')} value={b.href} text={b.label} onChange={(v) => onPatch({ href: v })} />
+      {b.type === 'button' ? <ButtonBuilder b={b} theme={theme} rtl={rtl} onPatch={onPatch} /> : null}
+
+      {b.type === 'banner' ? (<>
+        <ShortText label={t('ems_d_eyebrow')} value={b.eyebrow} max={80} onChange={(v) => onPatch({ eyebrow: v }, `e:${b.id}`)} />
+        <ShortText label={t('ems_d_title')} value={b.title} max={300} onChange={(v) => onPatch({ title: v }, `t:${b.id}`)} />
+        <TextField label={t('ems_d_subtitle')} value={b.subtitle} max={600} rows={3} onChange={(v) => onPatch({ subtitle: v })} />
+        <ImagePicker label={t('ems_d_image_optional')} value={b.imageSrc} onChange={(src) => onPatch({ imageSrc: src })} />
+        {b.imageSrc ? <Field label={t('ems_d_alt')}><Input value={b.imageAlt} maxLength={200} className="h-8 text-xs" onChange={(e) => onPatch({ imageAlt: e.target.value }, `alt:${b.id}`)} /></Field> : null}
+        <ShortText label={t('ems_d_button_label')} value={b.buttonLabel} max={80} onChange={(v) => onPatch({ buttonLabel: v }, `bl:${b.id}`)} />
+        <UrlField label={t('ems_d_link')} value={b.buttonHref} text={b.buttonLabel} onChange={(v) => onPatch({ buttonHref: v })} />
         <AlignField value={b.align} onChange={(a) => onPatch({ align: a })} />
         <div className="grid grid-cols-2 gap-2">
-          <ColorField label={t('ems_d_button_color')} value={b.buttonColor} onChange={(v) => v && onPatch({ buttonColor: v })} />
+          <ColorField label={t('ems_d_background')} value={b.background} onChange={(v) => onPatch({ background: v })} />
           <ColorField label={t('ems_d_text_color')} value={b.textColor} onChange={(v) => v && onPatch({ textColor: v })} />
+          <ColorField label={t('ems_d_button_color')} value={b.buttonColor} onChange={(v) => v && onPatch({ buttonColor: v })} />
+          <ColorField label={t('ems_d_button_text')} value={b.buttonTextColor} onChange={(v) => v && onPatch({ buttonTextColor: v })} />
         </div>
+      </>) : null}
+
+      {b.type === 'card' ? (<>
+        <ImagePicker label={t('ems_d_image_optional')} value={b.imageSrc} onChange={(src) => onPatch({ imageSrc: src })} />
+        {b.imageSrc ? <Field label={t('ems_d_alt')}><Input value={b.imageAlt} maxLength={200} className="h-8 text-xs" onChange={(e) => onPatch({ imageAlt: e.target.value }, `alt:${b.id}`)} /></Field> : null}
+        <ShortText label={t('ems_d_title')} value={b.title} max={300} onChange={(v) => onPatch({ title: v }, `t:${b.id}`)} />
+        <TextField label={t('ems_d_text')} value={b.text} max={1500} rows={3} onChange={(v) => onPatch({ text: v })} />
+        <ShortText label={t('ems_d_button_label')} value={b.buttonLabel} max={80} onChange={(v) => onPatch({ buttonLabel: v }, `bl:${b.id}`)} />
+        <UrlField label={t('ems_d_link')} value={b.buttonHref} text={b.buttonLabel} onChange={(v) => onPatch({ buttonHref: v })} />
+        <Segmented label={t('ems_d_layout')} value={b.layout} options={[{ v: 'stack', l: t('ems_d_layout_stack') }, { v: 'side', l: t('ems_d_layout_side') }]} onChange={(v) => onPatch({ layout: v })} />
+        <AlignField value={b.align} onChange={(a) => onPatch({ align: a })} />
         <div className="grid grid-cols-2 gap-2">
-          <NumberField label={t('ems_d_radius')} value={b.radius} min={0} max={40} suffix="px" onChange={(n) => onPatch({ radius: n })} />
-          <NumberField label={t('ems_d_size')} value={b.fontSize ?? 15} min={12} max={22} suffix="px" onChange={(n) => onPatch({ fontSize: n })} />
+          <ColorField label={t('ems_d_card_color')} value={b.cardColor} onChange={(v) => v && onPatch({ cardColor: v })} />
+          <ColorField label={t('ems_d_border_color')} value={b.borderColor} allowEmpty onChange={(v) => onPatch({ borderColor: v, borderWidth: v ? b.borderWidth || 1 : 0 })} />
+          <ColorField label={t('ems_d_button_color')} value={b.buttonColor} onChange={(v) => v && onPatch({ buttonColor: v })} />
+          <ColorField label={t('ems_d_button_text')} value={b.buttonTextColor} onChange={(v) => v && onPatch({ buttonTextColor: v })} />
         </div>
-        <label className="flex items-center justify-between gap-2 text-xs"><span>{t('ems_d_full_width')}</span><Switch checked={Boolean(b.fullWidth)} onCheckedChange={(v) => onPatch({ fullWidth: v })} /></label>
+        <SliderField label={t('ems_d_radius')} value={b.radius} min={0} max={32} suffix="px" onChange={(n) => onPatch({ radius: n }, `r:${b.id}`)} />
+      </>) : null}
+
+      {b.type === 'header' ? (<>
+        <ImagePicker label={t('ems_d_logo_file')} kind="LOGO" value={b.logoSrc} onChange={(src) => onPatch({ logoSrc: src })} />
+        {b.logoSrc ? <SliderField label={t('ems_d_width')} value={b.logoWidth} min={40} max={260} suffix="px" onChange={(n) => onPatch({ logoWidth: n }, `w:${b.id}`)} /> : null}
+        <ShortText label={t('ems_d_brand')} value={b.brand} max={80} onChange={(v) => onPatch({ brand: v }, `br:${b.id}`)} />
+        <ShortText label={t('ems_d_tagline')} value={b.tagline} max={160} onChange={(v) => onPatch({ tagline: v }, `tg:${b.id}`)} />
+        <UrlField label={t('ems_d_link_optional')} value={b.href ?? ''} onChange={(v) => onPatch({ href: v || null })} />
+        <AlignField value={b.align} onChange={(a) => onPatch({ align: a })} />
+        <div className="grid grid-cols-2 gap-2">
+          <ColorField label={t('ems_d_text_color')} value={b.textColor} onChange={(v) => v && onPatch({ textColor: v })} />
+          <ColorField label={t('ems_d_background')} value={b.background} allowEmpty onChange={(v) => onPatch({ background: v })} />
+        </div>
+      </>) : null}
+
+      {b.type === 'facts' ? (<>
+        <div className="space-y-1.5">
+          {b.items.map((it, i) => (
+            <div key={i} className="flex items-end gap-1.5">
+              <Field label={t('ems_d_fact_value')}><Input value={it.value} maxLength={80} className="h-8 text-xs" onChange={(e) => onPatch({ items: b.items.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)) }, `fv:${b.id}:${i}`)} /></Field>
+              <Field label={t('ems_d_fact_label')}><Input value={it.label} maxLength={60} className="h-8 text-xs" onChange={(e) => onPatch({ items: b.items.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) }, `fl:${b.id}:${i}`)} /></Field>
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={t('ems_d_delete')} onClick={() => onPatch({ items: b.items.filter((_, j) => j !== i) })}><Trash2 className="h-3.5 w-3.5" /></Button>
+            </div>
+          ))}
+          {b.items.length < 8 ? <Button type="button" variant="outline" size="sm" className="h-8 w-full gap-1.5" onClick={() => onPatch({ items: [...b.items, { label: t('ems_d_fact_label'), value: '—' }] })}><Plus className="h-3.5 w-3.5" />{t('ems_d_add_fact')}</Button> : null}
+        </div>
+        <Segmented label={t('ems_d_columns')} value={String(b.columns) as '2' | '3' | '4'} options={(['2', '3', '4'] as const).map((n) => ({ v: n, l: n }))} onChange={(v) => onPatch({ columns: Number(v) })} />
+        <div className="grid grid-cols-2 gap-2">
+          <ColorField label={t('ems_d_value_color')} value={b.valueColor} allowEmpty onChange={(v) => onPatch({ valueColor: v })} />
+          <ColorField label={t('ems_d_tile_color')} value={b.tileColor} allowEmpty onChange={(v) => onPatch({ tileColor: v })} />
+        </div>
       </>) : null}
 
       {b.type === 'divider' ? (<>
         <ColorField label={t('ems_d_color')} value={b.color} onChange={(v) => v && onPatch({ color: v })} />
-        <NumberField label={t('ems_d_thickness')} value={b.thickness} min={1} max={6} suffix="px" onChange={(n) => onPatch({ thickness: n })} />
+        <SliderField label={t('ems_d_thickness')} value={b.thickness} min={1} max={6} suffix="px" onChange={(n) => onPatch({ thickness: n }, `th:${b.id}`)} />
+        <SliderField label={t('ems_d_rule_width')} value={b.widthPct ?? 100} min={5} max={100} suffix="%" onChange={(n) => onPatch({ widthPct: n }, `wp:${b.id}`)} />
       </>) : null}
 
-      {b.type === 'spacer' ? <NumberField label={t('ems_d_height')} value={b.height} min={4} max={120} suffix="px" onChange={(n) => onPatch({ height: n })} /> : null}
+      {b.type === 'spacer' ? <SliderField label={t('ems_d_height')} value={b.height} min={4} max={120} suffix="px" onChange={(n) => onPatch({ height: n }, `h:${b.id}`)} /> : null}
 
       {b.type === 'social' ? <SocialEditor links={b.links} onChange={(links) => onPatch({ links })} /> : null}
 
@@ -645,40 +875,43 @@ function BlockProperties({ block, onPatch, onClose, onRemove }: { block: Block |
         {(['name', 'email', 'phone', 'address'] as const).map((k) => (
           <Field key={k} label={t(`ems_d_contact_${k}`)}>
             <Input value={b[k]} dir={k === 'email' || k === 'phone' ? 'ltr' : undefined} className="h-8 text-xs" maxLength={k === 'address' ? 300 : 254}
-              onChange={(e) => onPatch({ [k]: e.target.value })} />
+              onChange={(e) => onPatch({ [k]: e.target.value }, `${k}:${b.id}`)} />
           </Field>
         ))}
         <AlignField value={b.align} onChange={(a) => onPatch({ align: a })} />
       </>) : null}
 
       {b.type === 'unsubscribe' ? (<>
-        <Field label={t('ems_d_label')} hint={<p className="text-2xs text-muted-foreground">{t('ems_d_unsubscribe_hint')}</p>}>
-          <Input value={b.text} maxLength={200} placeholder={t('ems_d_unsubscribe_default')} className="h-8 text-xs" onChange={(e) => onPatch({ text: e.target.value })} />
+        <Field label={t('ems_d_label')} hint={<Hint text={t('ems_d_unsubscribe_hint')} />}>
+          <Input value={b.text} maxLength={200} placeholder={t('ems_d_unsubscribe_default')} className="h-8 text-xs" onChange={(e) => onPatch({ text: e.target.value }, `u:${b.id}`)} />
         </Field>
         <AlignField value={b.align} onChange={(a) => onPatch({ align: a })} />
       </>) : null}
 
       {b.type === 'columns' ? (<>
-        <Field label={t('ems_d_ratio')}>
-          <Select value={b.ratio} onValueChange={(v) => onPatch({ ratio: v })}>
-            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>{['50-50', '40-60', '60-40'].map((r) => <SelectItem key={r} value={r}>{r.replace('-', ' / ')}</SelectItem>)}</SelectContent>
-          </Select>
-        </Field>
-        <NumberField label={t('ems_d_gap')} value={b.gap} min={0} max={40} suffix="px" onChange={(n) => onPatch({ gap: n })} />
+        <Segmented label={t('ems_d_ratio')} value={b.ratio} options={(['50-50', '40-60', '60-40'] as const).map((r) => ({ v: r, l: r.replace('-', ' / ') }))} onChange={(v) => onPatch({ ratio: v })} />
+        <SliderField label={t('ems_d_gap')} value={b.gap} min={0} max={40} suffix="px" onChange={(n) => onPatch({ gap: n }, `g:${b.id}`)} />
         <label className="flex items-center justify-between gap-2 text-xs"><span>{t('ems_d_stack_mobile')}</span><Switch checked={b.stackOnMobile} onCheckedChange={(v) => onPatch({ stackOnMobile: v })} /></label>
       </>) : null}
 
-      <div className="space-y-3 border-t pt-3">
-        <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('ems_d_section_style')}</p>
-        <ColorField label={t('ems_d_background')} value={b.background} allowEmpty onChange={(v) => onPatch({ background: v })} />
-        <PaddingField value={b.padding} onChange={(p) => onPatch({ padding: p })} />
-        <div className="grid grid-cols-2 gap-2">
-          <NumberField label={t('ems_d_border')} value={b.borderWidth ?? 0} min={0} max={8} suffix="px" onChange={(n) => onPatch({ borderWidth: n })} />
-          <ColorField label={t('ems_d_border_color')} value={b.borderColor} allowEmpty onChange={(v) => onPatch({ borderColor: v })} />
-        </div>
-        <label className="flex items-center justify-between gap-2 text-xs"><span>{t('ems_d_hide_mobile')}</span><Switch checked={Boolean(b.hideOnMobile)} onCheckedChange={(v) => onPatch({ hideOnMobile: v, hideOnDesktop: v ? false : b.hideOnDesktop })} /></label>
-        <label className="flex items-center justify-between gap-2 text-xs"><span>{t('ems_d_hide_desktop')}</span><Switch checked={Boolean(b.hideOnDesktop)} onCheckedChange={(v) => onPatch({ hideOnDesktop: v, hideOnMobile: v ? false : b.hideOnMobile })} /></label>
+      <div className="border-t pt-3">
+        <button type="button" className="flex w-full items-center justify-between text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground" onClick={() => setAdvanced((o) => !o)} aria-expanded={advanced}>
+          {t('ems_d_section_style')}<ChevronDown className={cn('h-3.5 w-3.5 transition-transform', advanced && 'rotate-180')} />
+        </button>
+        {advanced ? (
+          <div className="mt-3 space-y-3">
+            {b.type !== 'banner' ? <ColorField label={t('ems_d_background')} value={b.background} allowEmpty onChange={(v) => onPatch({ background: v })} /> : null}
+            <PaddingField value={b.padding} onChange={(p) => onPatch({ padding: p }, `pad:${b.id}`)} />
+            {b.type !== 'card' ? (
+              <div className="grid grid-cols-2 gap-2">
+                <NumberField label={t('ems_d_border')} value={b.borderWidth ?? 0} min={0} max={8} suffix="px" onChange={(n) => onPatch({ borderWidth: n })} />
+                <ColorField label={t('ems_d_border_color')} value={b.borderColor} allowEmpty onChange={(v) => onPatch({ borderColor: v })} />
+              </div>
+            ) : null}
+            <label className="flex items-center justify-between gap-2 text-xs"><span>{t('ems_d_hide_mobile')}</span><Switch checked={Boolean(b.hideOnMobile)} onCheckedChange={(v) => onPatch({ hideOnMobile: v, hideOnDesktop: v ? false : b.hideOnDesktop })} /></label>
+            <label className="flex items-center justify-between gap-2 text-xs"><span>{t('ems_d_hide_desktop')}</span><Switch checked={Boolean(b.hideOnDesktop)} onCheckedChange={(v) => onPatch({ hideOnDesktop: v, hideOnMobile: v ? false : b.hideOnMobile })} /></label>
+          </div>
+        ) : null}
       </div>
     </div>
   );

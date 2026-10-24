@@ -10,9 +10,14 @@ export function isMortgageOrigin(lead: Pick<LeadItem, 'origin' | 'segment'>): bo
   return lead.origin === 'MORTGAGE' || lead.segment === 'MORTGAGE';
 }
 
+/* Some browsers ship without Georgian calendar data; the month names never depend on that. */
+const KA_MONTHS = ['იანვარი', 'თებერვალი', 'მარტი', 'აპრილი', 'მაისი', 'ივნისი', 'ივლისი', 'აგვისტო', 'სექტემბერი', 'ოქტომბერი', 'ნოემბერი', 'დეკემბერი'];
+
 function monthLabel(month: string | null | undefined, locale: string): string | null {
   if (!month || !/^\d{4}-\d{2}$/.test(month)) return null;
   const [y, m] = month.split('-').map(Number);
+  if (m < 1 || m > 12) return null;
+  if (locale.toLowerCase().startsWith('ka')) return `${KA_MONTHS[m - 1]} ${y}`;
   try {
     return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, 1)));
   } catch {

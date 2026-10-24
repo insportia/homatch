@@ -133,6 +133,37 @@ Deno.serve(async (req: Request) => {
         if (error) throw error;
         return json(data);
       }
+      case 'sem_acquire': {
+        // A limit shared by every worker replica (20261201093000).
+        const key = str(body.key, 120), holder = str(body.holder, 120);
+        if (!key || !holder) return json({ error: 'BAD_REQUEST' }, 400);
+        const max = Number(body.max);
+        const { data, error } = await db.rpc('worker_semaphore_acquire', {
+          p_key: key, p_holder: holder,
+          p_max: Number.isFinite(max) && max >= 1 ? Math.min(Math.trunc(max), 2147483647) : 1,
+          p_ttl_seconds: int(body.ttlSeconds, 5, 3600, 120),
+        });
+        if (error) throw error;
+        return json({ acquired: data === true });
+      }
+      case 'sem_release': {
+        const key = str(body.key, 120), holder = str(body.holder, 120);
+        if (!key || !holder) return json({ error: 'BAD_REQUEST' }, 400);
+        const { data, error } = await db.rpc('worker_semaphore_release', { p_key: key, p_holder: holder });
+        if (error) throw error;
+        return json({ released: data === true });
+      }
+      case 'market_put': {
+        // A worker's /verify/market run, readable by research-agent from any replica (20261201092000).
+        const runId = str(body.runId, 40);
+        const status = str(body.status, 20);
+        if (!UUID.test(runId) || !['RUNNING', 'COMPLETE'].includes(status)) return json({ error: 'BAD_REQUEST' }, 400);
+        const payload = body.payload && typeof body.payload === 'object' ? body.payload : {};
+        if (JSON.stringify(payload).length > MAX_RESULT_BYTES) return json({ error: 'RESULT_TOO_LARGE' }, 413);
+        const { error } = await db.from('verify_market_runs').upsert({ id: runId, status, payload, updated_at: new Date().toISOString() });
+        if (error) throw error;
+        return json({ ok: true });
+      }
       case 'release': {
         if (!needTask()) return json({ error: 'BAD_REQUEST' }, 400);
         const { data, error } = await db.rpc('verify_task_release', { p_task_id: id, p_token: token });

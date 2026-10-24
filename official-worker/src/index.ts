@@ -18,7 +18,26 @@ import { probeSsgePublicPage } from './marketplace/ssge/probe.mjs';
 import { acquireSsge } from './marketplace/ssge/acquire.mjs';
 import { startPortalRuntime } from './marketplace/portals/runtime.mjs';
 import { PORTAL_ADAPTERS } from './marketplace/portals/adapters.mjs';
-import { VerifyMarketRuntime, parseVerifyMarketProfile, type SourceKey } from './verify/VerifyMarketRuntime.js';
+import { VerifyMarketRuntime, parseVerifyMarketProfile, type SourceKey, type VerifyMarketJob } from './verify/VerifyMarketRuntime.js';
+import { QueueGateway } from './queue/gateway.js';
+import { GlobalSemaphore, semaphoreGateway } from './queue/globalSemaphore.js';
+
+/** The shared-slot coordinator, when the queue gateway is configured; null keeps the per-process limits (one replica). */
+function workerSemaphore(env: Record<string, string | undefined> = process.env): GlobalSemaphore | null {
+  const url = env.VERIFY_QUEUE_URL || (env.SUPABASE_URL ? `${env.SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/verify-queue` : '');
+  if (!url || !env.WORKER_TOKEN || env.WORKER_GLOBAL_LIMITS === 'off') return null;
+  return new GlobalSemaphore(semaphoreGateway(new QueueGateway({ url, token: env.WORKER_TOKEN, retries: 1 })), `${env.RAILWAY_REPLICA_ID || 'local'}-${process.pid}`);
+}
+
+/** verify-queue's market_put, when the queue gateway is configured; otherwise in-memory only (one replica). */
+function marketRunStore(env: Record<string, string | undefined> = process.env): ((job: VerifyMarketJob) => Promise<void>) | undefined {
+  const url = env.VERIFY_QUEUE_URL || (env.SUPABASE_URL ? `${env.SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/verify-queue` : '');
+  if (!url || !env.WORKER_TOKEN) return undefined;
+  const gateway = new QueueGateway({ url, token: env.WORKER_TOKEN, retries: 1 });
+  return async (job) => {
+    await gateway.marketPut(job.id, job.status === 'COMPLETE' ? 'COMPLETE' : 'RUNNING', job.status === 'COMPLETE' ? job : { ...job, comparables: [] });
+  };
+}
 import { korterStatusCache } from './verify/korter/index.js';
 import { chromium } from 'playwright';
 import { randomUUID } from 'node:crypto';
@@ -88,7 +107,9 @@ mountDiscoveryRoutes(app, { token: TOKEN });
 // Verify secure document viewer: ONE TAS attachment by attachedFileId, token-only
 // (research-agent `document_file` caches it privately and signs it). See verify/TasFileRoute.ts.
 mountTasFileRoutes(app, { token: TOKEN });
-const myhome = startMyHomeRuntime();
+// Replicas share MyHome's one-run-at-a-time through the database (globalSemaphore.ts).
+const sharedSemaphore = workerSemaphore();
+const myhome = startMyHomeRuntime(process.env, fetch, sharedSemaphore);
 const ssge = startSsgeRuntime();
 process.once('SIGTERM', () => ssge.shutdown());
 /* One public-page check at start: whether SS.ge answers this worker (status and server only). */
@@ -247,6 +268,8 @@ const verifyMarket = new VerifyMarketRuntime({
   acquireSsge: (request, options) => acquireSsge(request, options as any),
   maxPerSource: Number(process.env.VERIFY_MARKET_MAX_PER_SOURCE) || 300,
   sourceBudgetMs: Number(process.env.VERIFY_MARKET_SOURCE_BUDGET_MS) || 300000,
+  /* Replicas: the run is written to the database (verify_market_runs) so any replica answers its poll. */
+  persist: marketRunStore(),
 });
 app.post('/verify/market', auth, (req: any, res: any) => {
   if (process.env.VERIFY_MARKET_ENABLED === 'false') return res.status(503).json({ error: 'verify market disabled' });

@@ -2564,12 +2564,28 @@ function marketSubjectNow(j: any, p: any, started: any): { project: string | nul
   }
 }
 
+/*
+ * A market run from whichever replica holds it (Verify at scale). The worker
+ * we reached may not be the one that started the run: it answers 404, and
+ * the run's own row (verify_market_runs, written by the worker) is read.
+ */
+async function marketRun(id: string): Promise<{ code: number; data: any }> {
+  const r = await wf(`/verify/market/${id}`);
+  if (r.code !== 404) return r;
+  try {
+    const db = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
+    const { data: row } = await db.from('verify_market_runs').select('status,payload').eq('id', id).maybeSingle();
+    if (row) return { code: 200, data: row.status === 'COMPLETE' ? row.payload : { ...(row.payload || {}), status: 'RUNNING' } };
+  } catch { /* the 404 stands */ }
+  return r;
+}
+
 /** Poll once; fold when finished. Returns true while still waiting. */
 async function pollVerifyMarketplace(p: any, j: any = null): Promise<boolean> {
   const m = p?._verifyMarket;
   if (!m || m.done || !m.jobId) return false;
   try {
-    const r = await wf(`/verify/market/${m.jobId}`);
+    const r = await marketRun(m.jobId);
     if (r.code === 200 && r.data?.status === 'COMPLETE') {
       const lane = Array.isArray(p._marketComparables) ? p._marketComparables : [];
       const folded = foldMarketplaceIntoLane(lane, r.data, marketSubjectNow(j, p, m.subject), now());
@@ -2737,7 +2753,7 @@ async function pollMarketRefreshes(sb: any): Promise<void> {
       const m = rj._marketRefresh ?? {};
       let next: any = null;
       try {
-        const r = await wf(`/verify/market/${m.workerJobId}`);
+        const r = await marketRun(m.workerJobId);
         if (r.code === 200 && r.data?.status === 'COMPLETE') {
           next = foldMarketRefresh(rj, r.data, marketSubjectNow(j, rj, null), now(), { subject: marketProfileNow(j, rj), fx: fxOfGate(rj._marketEligibility) ?? (await nbgUsdRate()) });
         } else if (r.code === 404) next = { ...rj, _marketRefresh: failedMarker(m, 'LOST', now()) };

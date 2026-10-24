@@ -5,8 +5,16 @@ import { publicPage, publicSearchUrl } from './myhome/public-page.js';
 import { createPublicBrowserReader } from './myhome/browser-page.js';
 import { myHomeEngine } from './myhome/engine.js';
 import { createCrawleeBrowserReader } from './myhome/crawlee-page.js';
+import type { GlobalSemaphore, GlobalSlot } from '../queue/globalSemaphore.js';
 
-export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fetch) {
+/*
+ * ONE MYHOME RUN AT A TIME — ACROSS ALL REPLICAS (Verify at scale). MAX_ACTIVE
+ * below is per process; with several worker replicas the shared slot
+ * ('myhome', MYHOME_GLOBAL_MAX, default 1) keeps MyHome's total load what it
+ * was. Without a semaphore (one replica) the process limit alone applies.
+ */
+export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fetch, semaphore: GlobalSemaphore | null = null) {
+  const globalMax = Math.max(1, Math.trunc(Number(env.MYHOME_GLOBAL_MAX)) || 1);
   const token = env.MYHOME_WORKER_TOKEN ?? '', baseUrl = env.SUPABASE_URL ?? '';
   const enabled = env.MYHOME_MARKETPLACE_ENABLED === 'true';
   const enrichDetails = env.MYHOME_DETAIL_ENRICHMENT_ENABLED === 'true';
@@ -16,6 +24,7 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
   const pageIntervalMs = Math.max(0, Math.trunc(Number(env.MYHOME_PAGE_INTERVAL_MS ?? 5000)) || 0);
   // One MyHome run at a time: further searches wait in the durable queue.
   const MAX_ACTIVE = 1;
+  const heldSlots: GlobalSlot[] = [];
   const crawleePages = env.MYHOME_PUBLIC_PAGE_TRANSPORT === 'crawlee';
   const browserPages = env.MYHOME_PUBLIC_PAGE_TRANSPORT === 'browser' || crawleePages;
   const createReader = () => crawleePages ? createCrawleeBrowserReader() : browserPages ? createPublicBrowserReader() : null;
@@ -52,7 +61,7 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
       log('run_error', { runId: job.runId, message: lastError });
       // No empty-success conversion; the existing lease reaper closes partial
       // results or retries an unstarted run when ingress is unavailable.
-    } finally { clearInterval(heartbeat); await reader?.close(); active--; }
+    } finally { clearInterval(heartbeat); await reader?.close(); active--; await heldSlots.shift()?.release(); }
   }
   async function loop() {
     if (!configured) return;
@@ -96,8 +105,11 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
     finally { await reader?.close(); }
     while (!controller.signal.aborted) {
       try {
-        if (active < MAX_ACTIVE) {
+        const slot = active < MAX_ACTIVE ? await semaphore?.acquire('myhome', globalMax, { deadlineAt: Date.now() + 1000, pollMs: 500, signal: controller.signal }) : null;
+        if (active < MAX_ACTIVE && (slot || !semaphore)) {
           const result = await ingest({ action: 'claim', limit: MAX_ACTIVE - active, leaseSeconds: 120 });
+          if (!(result.runs ?? []).length) await slot?.release();
+          else if (slot) heldSlots.push(slot);
           lastClaimAt = new Date().toISOString(); lastError = null;
           for (const job of result.runs ?? []) void run(job);
         }
@@ -123,6 +135,8 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
       if (options.signal?.aborted || Date.now() > deadline - 30000) throw new Error('MYHOME_BUSY');
       await delay(2000);
     }
+    const verifySlot = semaphore ? await semaphore.acquire('myhome', globalMax, { deadlineAt: deadline - 30000, signal: options.signal }) : null;
+    if (semaphore && !verifySlot) throw new Error('MYHOME_BUSY');
     active++;
     const reader = createReader();
     try {
@@ -133,7 +147,7 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
       return await acquireMyHome(request, { fetcher, engine: myHomeEngine, enrichDetails, maxPages: verifyPages, pageIntervalMs,
         pageFetcher: reader?.fetcher, pageTransport: crawleePages ? 'PUBLIC_NEXT_DATA_CRAWLEE' : 'PUBLIC_NEXT_DATA_BROWSER', browserMs: reader?.browserMs,
         deadlineAt: options.deadlineAt, signal: options.signal, report: options.report });
-    } finally { await reader?.close(); active--; }
+    } finally { await reader?.close(); active--; await verifySlot?.release(); }
   }
   void loop().catch(error => { lastError = error.message; log('runtime_error', { message: lastError }); });
   return { acquireForVerify, status: () => ({ enabled, configured, pageTransport: crawleePages ? 'CRAWLEE' : browserPages ? 'BROWSER' : 'HTTP', active, lastClaimAt, lastError, connectivity: smoke, engine: myHomeEngine.status() }), shutdown: () => controller.abort() };

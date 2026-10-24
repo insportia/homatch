@@ -136,6 +136,8 @@ export interface VerifyMarketDeps {
   now?: () => number;
   /** Parcel centre → names (tests inject it). */
   placeNames?: (lat: number, lon: number) => Promise<PlaceNames | null>;
+  /** Writes the run where every replica can read it (verify-queue market_put); never fails the run. */
+  persist?: (job: VerifyMarketJob) => Promise<void>;
 }
 
 const hash = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 24);
@@ -341,6 +343,7 @@ export class VerifyMarketRuntime {
     const mk = (s: SourceKey): SourceRun => ({ source: s, status: sources.includes(s) ? 'QUEUED' : 'DISABLED', attempts: [], listings: 0, error: null });
     const job: VerifyMarketJob = { id, status: 'RUNNING', profile, createdAt: new Date().toISOString(), completedAt: null, sources: { MYHOME: mk('MYHOME'), SSGE: mk('SSGE') }, comparables: [] };
     this.jobs.set(id, job);
+    void this.persist(job);
     void this.execute(job, sources);
     return job;
   }
@@ -363,6 +366,15 @@ export class VerifyMarketRuntime {
     job.comparables = results.flat();
     job.status = 'COMPLETE';
     job.completedAt = new Date().toISOString();
+    await this.persist(job);
+  }
+
+  private async persist(job: VerifyMarketJob): Promise<void> {
+    try {
+      await this.deps.persist?.(job);
+    } catch (e) {
+      console.error(JSON.stringify({ level: 'warn', scope: 'verify_market', event: 'persist_failed', id: job.id, error: String((e as Error)?.message ?? e).slice(0, 160) }));
+    }
   }
 
   get(id: string): VerifyMarketJob | null {

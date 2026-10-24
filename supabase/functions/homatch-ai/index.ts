@@ -38,7 +38,7 @@ import { serviceBackendEnabled, serviceDisabledBody, serviceState, type ServiceK
 import { routeHomiTurn, type HomiRoute } from '../../../src/lib/homi/router.ts';
 import { HOMI_CARDS_INSTRUCTION, parseHomiCards } from '../../../src/lib/homi/cards.ts';
 import {
-  deterministicPayload, readOpenAIStream, SSE_HEADERS, sseFrame, trimConversation,
+  deterministicPayload, readOpenAIStream, SSE_HEADERS, sseFrame, stripAiDashes, trimConversation,
 } from './homi.ts';
 
 /* One OpenAI call per chat turn; see the fetch below. */
@@ -766,7 +766,8 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
 
   // ── 3. Strip + parse the trailing intent-extraction JSON block ──────────
   const { displayText, lead } = splitLeadBlock(rawText);
-  const text = displayText || rawText;
+  /* No em or en dashes in what HOMI says (owner, 2026-10-24). */
+  const text = stripAiDashes(displayText || rawText);
 
   /* WHAT THE PERSON MIGHT SAY NEXT.
    *

@@ -338,9 +338,9 @@ export function HomiRoiCard() {
             <p className="text-xs text-white/70">{t('homi_card_net_monthly')}</p>
             <p className="text-2xl font-semibold text-[hsl(38_92%_62%)]">{money(result.noi / 12)}</p>
             <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
-              <div><dt className="text-white/60">{t('homi_card_gross_yield')}</dt><dd>{result.gross !== null ? formatPercent(result.gross, lang, 1) : '—'}</dd></div>
-              <div><dt className="text-white/60">{t('homi_card_net_yield')}</dt><dd>{result.net !== null ? formatPercent(result.net, lang, 1) : '—'}</dd></div>
-              <div><dt className="text-white/60">{t('homi_card_payback')}</dt><dd>{result.payback !== null ? t('homi_card_years', { n: Math.round(result.payback * 10) / 10 }) : '—'}</dd></div>
+              <div><dt className="text-white/60">{t('homi_card_gross_yield')}</dt><dd>{result.gross !== null ? formatPercent(result.gross, lang, 1) : ''}</dd></div>
+              <div><dt className="text-white/60">{t('homi_card_net_yield')}</dt><dd>{result.net !== null ? formatPercent(result.net, lang, 1) : ''}</dd></div>
+              <div><dt className="text-white/60">{t('homi_card_payback')}</dt><dd>{result.payback !== null ? t('homi_card_years', { n: Math.round(result.payback * 10) / 10 }) : ''}</dd></div>
             </dl>
             <p className="mt-2 text-[13px] text-white/60">{t('homi_card_roi_note')}</p>
           </>

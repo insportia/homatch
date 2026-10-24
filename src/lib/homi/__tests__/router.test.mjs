@@ -77,3 +77,16 @@ test('cards from a model are validated against the catalogue', () => {
   assert.deepEqual(parseHomiCards([{ type: 'CHECKLIST', id: 'evil' }, { type: 'HTML' }]), []);
   assert.deepEqual(parseHomiCards('ROI_QUICK'), []);
 });
+
+test('HOMI never shows an em or en dash, and keeps grammatical hyphens', async () => {
+  const { stripAiDashes } = await import('../style.ts');
+  assert.equal(stripAiDashes('ეს ზოგადი სიაა — ბანკი თავად ადგენს.'), 'ეს ზოგადი სიაა, ბანკი თავად ადგენს.');
+  assert.equal(stripAiDashes('usually 6–12 months'), 'usually 6-12 months');
+  assert.equal(stripAiDashes('HOMATCH-ის ასისტენტი, ნაბიჯ-ნაბიჯ'), 'HOMATCH-ის ასისტენტი, ნაბიჯ-ნაბიჯ');
+  assert.equal(stripAiDashes('— first\n— second'), 'first\nsecond');
+  assert.equal(stripAiDashes('end —.'), 'end.');
+  for (const intent of HOMI_DETERMINISTIC_INTENTS) {
+    for (const loc of HOMI_LOCALES) assert.doesNotMatch(HOMI_TEMPLATES[intent].text[loc], /[–—]/, `${intent}.${loc}`);
+  }
+  for (const list of Object.values(HOMI_CHECKLISTS)) for (const item of list.items) for (const loc of HOMI_LOCALES) assert.doesNotMatch(item[loc], /[–—]/);
+});

@@ -28,6 +28,6 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-const added = splice(FILE, HOMI_STRINGS, { banner: 'HOMI ASSISTANT', overwrite: false });
+const added = splice(FILE, HOMI_STRINGS, { banner: 'HOMI ASSISTANT', overwrite: true }); // all keys are this workstream's own
 const renamed = splice(FILE, HOMI_REBRAND_STRINGS, { banner: 'HOMI ASSISTANT (rename)', overwrite: true });
 console.log(`[${TAG}] new: ${added.added} added, ${added.unchanged} unchanged; rename: ${renamed.replaced} replaced, ${renamed.added} added, ${renamed.unchanged} unchanged.`);

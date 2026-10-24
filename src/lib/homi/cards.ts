@@ -29,11 +29,11 @@ const COMMON: L6[] = [
 const SPECIFIC: Record<string, L6[]> = {
   salaried: [
     { ka: 'ცნობა სამსახურიდან: თანამდებობა, სტაჟი და ხელფასი', en: 'Employer letter: position, length of service and salary', ru: 'Справка с работы: должность, стаж и зарплата', tr: 'İşveren yazısı: pozisyon, çalışma süresi ve maaş', ar: 'خطاب من جهة العمل: المسمى الوظيفي ومدة الخدمة والراتب', he: 'אישור מהמעסיק: תפקיד, ותק ומשכורת' },
-    { ka: 'საბანკო ამონაწერი, სადაც ხელფასის ჩარიცხვა ჩანს (ჩვეულებრივ 6-დან 12 თვემდე)', en: 'Bank statement showing salary payments (usually 6 to 12 months)', ru: 'Банковская выписка с зачислением зарплаты (обычно за 6–12 месяцев)', tr: 'Maaş yatışlarını gösteren banka dökümü (genellikle 6–12 ay)', ar: 'كشف حساب بنكي يُظهر تحويل الراتب (عادة من 6 إلى 12 شهرًا)', he: 'דף חשבון בנק שמראה הפקדות משכורת (בדרך כלל 6 עד 12 חודשים)' },
+    { ka: 'საბანკო ამონაწერი, სადაც ხელფასის ჩარიცხვა ჩანს (ჩვეულებრივ 6-დან 12 თვემდე)', en: 'Bank statement showing salary payments (usually 6 to 12 months)', ru: 'Банковская выписка с зачислением зарплаты (обычно за 6-12 месяцев)', tr: 'Maaş yatışlarını gösteren banka dökümü (genellikle 6-12 ay)', ar: 'كشف حساب بنكي يُظهر تحويل الراتب (عادة من 6 إلى 12 شهرًا)', he: 'דף חשבון בנק שמראה הפקדות משכורת (בדרך כלל 6 עד 12 חודשים)' },
   ],
   self_employed: [
     { ka: 'ინდივიდუალურ მეწარმედ რეგისტრაციის ამონაწერი', en: 'Individual entrepreneur registration extract', ru: 'Выписка о регистрации индивидуальным предпринимателем', tr: 'Şahıs işletmesi kayıt belgesi', ar: 'مستخرج تسجيل كرائد أعمال فردي', he: 'אישור רישום כעוסק עצמאי' },
-    { ka: 'საგადასახადო დეკლარაციები rs.ge-დან, ჩვეულებრივ ბოლო 1-2 წლის', en: 'Tax declarations from rs.ge, usually for the last 1–2 years', ru: 'Налоговые декларации с rs.ge, обычно за последние 1–2 года', tr: 'rs.ge’den vergi beyannameleri, genellikle son 1–2 yıl', ar: 'الإقرارات الضريبية من rs.ge، عادة لآخر سنة أو سنتين', he: 'הצהרות מס מ-rs.ge, בדרך כלל לשנה-שנתיים האחרונות' },
+    { ka: 'საგადასახადო დეკლარაციები rs.ge-დან, ჩვეულებრივ ბოლო 1-2 წლის', en: 'Tax declarations from rs.ge, usually for the last 1-2 years', ru: 'Налоговые декларации с rs.ge, обычно за последние 1-2 года', tr: 'rs.ge’den vergi beyannameleri, genellikle son 1-2 yıl', ar: 'الإقرارات الضريبية من rs.ge، عادة لآخر سنة أو سنتين', he: 'הצהרות מס מ-rs.ge, בדרך כלל לשנה-שנתיים האחרונות' },
     { ka: 'საბანკო ამონაწერები, სადაც შემოსავლის მიღება ჩანს', en: 'Bank statements showing your income coming in', ru: 'Банковские выписки, где видны поступления дохода', tr: 'Gelir girişlerini gösteren banka dökümleri', ar: 'كشوف حساب تُظهر دخول الإيرادات', he: 'דפי חשבון שמראים את כניסת ההכנסות' },
     { ka: 'ხელშეკრულებები ან ინვოისები კლიენტებთან', en: 'Contracts or invoices with clients', ru: 'Договоры или счета с клиентами', tr: 'Müşterilerle sözleşmeler veya faturalar', ar: 'عقود أو فواتير مع العملاء', he: 'חוזים או חשבוניות מול לקוחות' },
   ],
@@ -105,5 +105,5 @@ export const HOMI_CARDS_INSTRUCTION = [
   '"MORTGAGE_QUICK" (a monthly-payment calculator with sliders), "ROI_QUICK" (a rental return calculator),',
   `{"type":"CHECKLIST","id":one of ${Object.keys(HOMI_CHECKLISTS).map((k) => `"${k}"`).join(', ')}} (mortgage documents by income type),`,
   '"EMPLOYMENT_PICKER" (lets them choose their income type), "START" (the main menu).',
-  'The card computes its own numbers from HOMATCH engines — never repeat or invent figures for it. Usually return [].',
+  'The card computes its own numbers from HOMATCH engines; never repeat or invent figures for it. Usually return [].',
 ].join('\n');

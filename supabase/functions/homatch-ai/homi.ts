@@ -5,6 +5,8 @@
 import { HOMI_TEMPLATES, pick, type HomiDeterministicIntent } from '../../../src/lib/homi/content.ts';
 import type { HomiCardRef } from '../../../src/lib/homi/cards.ts';
 import { parseServiceActions, type ServiceAction } from '../../../src/lib/ai/serviceActions.ts';
+import { stripAiDashes } from '../../../src/lib/homi/style.ts';
+export { stripAiDashes };
 
 export interface HomiReplyChip { id: string; label: string; value: string; intent?: string }
 
@@ -109,7 +111,7 @@ export async function readOpenAIStream(
         const v = visibleLength(raw);
         if (v > shown) {
           if (firstDeltaMs === null) firstDeltaMs = Date.now() - startedAt;
-          onDelta(raw.slice(shown, v));
+          onDelta(stripAiDashes(raw.slice(shown, v)));
           shown = v;
         }
       } else if (evt?.type === 'response.completed') {

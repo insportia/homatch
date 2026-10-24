@@ -12,6 +12,7 @@
 // subset rebuilt by sanitizeRich (richText.ts) — links on a selected word, bold, italic,
 // underline, colour, lists — never arbitrary markup.
 
+import { HTML_BLOCK_MAX, sanitizeEmailHtml } from './emailHtml.ts';
 import { RICH_MAX, sanitizeRich } from './richText.ts';
 
 export const DOC_VERSION = 1 as const;
@@ -27,6 +28,12 @@ interface BaseBlock {
   borderColor?: string | null;
   hideOnMobile?: boolean;
   hideOnDesktop?: boolean;
+  /** Editor-only: the layer's name, a lock against edits, and "left out of the email" (never rendered). */
+  name?: string | null;
+  locked?: boolean;
+  hidden?: boolean;
+  /** Outer space above/below the block (email-safe: padding on the outer row). */
+  margin?: { t: number; b: number };
 }
 
 export interface HeadingBlock extends BaseBlock { type: 'heading'; text: string; rich?: string | null; level: 1 | 2 | 3; align: Align; color?: string | null; fontSize?: number; fontWeight?: number; fontFamily?: FontKey; letterSpacing?: number }
@@ -63,10 +70,28 @@ export interface SocialBlock extends BaseBlock { type: 'social'; links: Array<{ 
 export interface FooterBlock extends BaseBlock { type: 'footer'; text: string; align: Align; color?: string | null }
 export interface ContactBlock extends BaseBlock { type: 'contact'; name: string; email: string; phone: string; address: string; align: Align }
 export interface UnsubscribeBlock extends BaseBlock { type: 'unsubscribe'; text: string; align: Align }
+/** A small label ("NEW", "SOLD", "VIP"). */
+export interface BadgeBlock extends BaseBlock { type: 'badge'; text: string; align: Align; color: string; textColor: string; radius: number }
+/** A glyph with a short label (contact rows, feature lists). Text glyphs only: no icon font, no image. */
+export type IconGlyph = 'check' | 'star' | 'phone' | 'mail' | 'home' | 'pin' | 'key' | 'arrow';
+export interface IconBlock extends BaseBlock { type: 'icon'; glyph: IconGlyph; label: string; align: Align; color: string; size: number }
+/** Two or three images in a row (stacked on phones). */
+export interface GalleryBlock extends BaseBlock { type: 'gallery'; images: Array<{ src: string; alt: string; href: string | null }>; gap: number; radius: number }
+/** Email has no reliable inline video: a thumbnail with a play mark, linking to the video page. */
+export interface VideoBlock extends BaseBlock { type: 'video'; thumbSrc: string; alt: string; href: string; caption: string; width: number; align: Align; radius: number }
+/** Advanced, sanitized HTML (emailHtml.ts allowlist). */
+export interface HtmlBlock extends BaseBlock { type: 'html'; html: string }
 export type LeafBlock = HeadingBlock | TextBlock | ImageBlock | ButtonBlock | DividerBlock | SpacerBlock | LogoBlock | SocialBlock | FooterBlock | ContactBlock | UnsubscribeBlock
-  | BannerBlock | CardBlock | HeaderBlock | FactsBlock;
-export interface ColumnsBlock extends BaseBlock { type: 'columns'; columns: [LeafBlock[], LeafBlock[]]; ratio: '50-50' | '40-60' | '60-40'; stackOnMobile: boolean; gap: number }
-export type Block = LeafBlock | ColumnsBlock;
+  | BannerBlock | CardBlock | HeaderBlock | FactsBlock | BadgeBlock | IconBlock | GalleryBlock | VideoBlock | HtmlBlock;
+export type ColumnRatio = '50-50' | '40-60' | '60-40' | '33-67' | '67-33';
+export const COLUMN_RATIOS: ColumnRatio[] = ['33-67', '40-60', '50-50', '60-40', '67-33'];
+export interface ColumnsBlock extends BaseBlock { type: 'columns'; columns: [LeafBlock[], LeafBlock[]]; ratio: ColumnRatio; stackOnMobile: boolean; gap: number }
+/** A container: background colour (and optional image over that colour), padding, border, and its
+    own blocks. How elements are GROUPED in an email-safe way: one nested table. */
+export interface SectionBlock extends BaseBlock {
+  type: 'section'; children: Array<LeafBlock | ColumnsBlock>; bgImage: string; radius: number;
+}
+export type Block = LeafBlock | ColumnsBlock | SectionBlock;
 export type BlockType = Block['type'];
 
 export type FontKey = 'system' | 'serif' | 'georgia' | 'helvetica' | 'mono';
@@ -103,7 +128,8 @@ export const DEFAULT_THEME: Theme = {
   fontFamily: 'system', width: 600, radius: 14,
 };
 
-export const LIMITS = { blocks: 60, textChars: 5000, headingChars: 300, labelChars: 80, urlChars: 2000, altChars: 200, socialLinks: 9 } as const;
+export const LIMITS = { blocks: 60, textChars: 5000, headingChars: 300, labelChars: 80, urlChars: 2000, altChars: 200, socialLinks: 9, sectionChildren: 16, galleryImages: 3 } as const;
+export const ICON_GLYPHS: IconGlyph[] = ['check', 'star', 'phone', 'mail', 'home', 'pin', 'key', 'arrow'];
 
 /* ── normalization: the server's only way in ─────────────────────────────────────────────── */
 
@@ -135,6 +161,7 @@ export const newId = () => `b${Date.now().toString(36)}${(seq++).toString(36)}${
 const id = (v: unknown) => (typeof v === 'string' && /^[a-z0-9_-]{1,40}$/i.test(v) ? v : newId());
 
 function base(o: Record<string, unknown>): BaseBlock {
+  const m = (o.margin && typeof o.margin === 'object' ? o.margin : null) as Record<string, unknown> | null;
   return {
     id: id(o.id),
     background: color(o.background, null),
@@ -143,6 +170,10 @@ function base(o: Record<string, unknown>): BaseBlock {
     borderColor: color(o.borderColor, null),
     hideOnMobile: o.hideOnMobile === true,
     hideOnDesktop: o.hideOnDesktop === true,
+    ...(typeof o.name === 'string' && o.name.trim() ? { name: str(o.name, 60).trim() } : {}),
+    ...(o.locked === true ? { locked: true } : {}),
+    ...(o.hidden === true ? { hidden: true } : {}),
+    ...(m ? { margin: { t: num(m.t, 0, 80, 0), b: num(m.b, 0, 80, 0) } } : {}),
   };
 }
 
@@ -176,6 +207,18 @@ function leaf(raw: unknown): LeafBlock | null {
       ...b, type: 'header', logoSrc: safeImageUrl(o.logoSrc), logoAlt: str(o.logoAlt, LIMITS.altChars), logoWidth: num(o.logoWidth, 40, 260, 120),
       brand: str(o.brand, 80), tagline: str(o.tagline, 160), align: align(o.align), textColor: color(o.textColor, '#1F2430') as string, href: safeLinkUrl(o.href) || null,
     };
+    case 'badge': return { ...b, type: 'badge', text: str(o.text, 40), align: align(o.align), color: color(o.color, DEFAULT_THEME.accent) as string, textColor: color(o.textColor, '#0C1119') as string, radius: num(o.radius, 0, 40, 40) };
+    case 'icon': return { ...b, type: 'icon', glyph: (ICON_GLYPHS.includes(o.glyph as IconGlyph) ? o.glyph : 'check') as IconGlyph, label: str(o.label, 200), align: align(o.align), color: color(o.color, DEFAULT_THEME.accent) as string, size: num(o.size, 12, 40, 18) };
+    case 'gallery': {
+      const images = (Array.isArray(o.images) ? o.images : []).slice(0, LIMITS.galleryImages).map((x) => {
+        const r = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+        return { src: safeImageUrl(r.src), alt: str(r.alt, LIMITS.altChars), href: safeLinkUrl(r.href) || null };
+      });
+      while (images.length < 2) images.push({ src: '', alt: '', href: null });
+      return { ...b, type: 'gallery', images, gap: num(o.gap, 0, 24, 8), radius: num(o.radius, 0, 24, 6) };
+    }
+    case 'video': return { ...b, type: 'video', thumbSrc: safeImageUrl(o.thumbSrc), alt: str(o.alt, LIMITS.altChars), href: safeLinkUrl(o.href), caption: str(o.caption, 200), width: num(o.width, 120, 600, 536), align: align(o.align, 'center'), radius: num(o.radius, 0, 32, 8) };
+    case 'html': return { ...b, type: 'html', html: sanitizeEmailHtml(o.html).slice(0, HTML_BLOCK_MAX) };
     case 'facts': {
       const items = (Array.isArray(o.items) ? o.items : []).slice(0, 8).map((x) => {
         const r = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
@@ -200,18 +243,40 @@ function leaf(raw: unknown): LeafBlock | null {
   }
 }
 
+function columns(o: Record<string, unknown>): ColumnsBlock {
+  const cols = Array.isArray(o.columns) ? o.columns : [];
+  const col = (c: unknown) => (Array.isArray(c) ? c.map(leaf).filter((x): x is LeafBlock => x != null).slice(0, 8) : []);
+  return {
+    ...base(o), type: 'columns', columns: [col(cols[0]), col(cols[1])],
+    ratio: (COLUMN_RATIOS.includes(o.ratio as ColumnRatio) ? o.ratio : '50-50') as ColumnRatio,
+    stackOnMobile: o.stackOnMobile !== false, gap: num(o.gap, 0, 40, 16),
+  };
+}
+
 function block(raw: unknown): Block | null {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  if (o.type === 'columns') {
-    const cols = Array.isArray(o.columns) ? o.columns : [];
-    const col = (c: unknown) => (Array.isArray(c) ? c.map(leaf).filter((x): x is LeafBlock => x != null).slice(0, 8) : []);
-    return {
-      ...base(o), type: 'columns', columns: [col(cols[0]), col(cols[1])],
-      ratio: (['50-50', '40-60', '60-40'].includes(o.ratio as string) ? o.ratio : '50-50') as ColumnsBlock['ratio'],
-      stackOnMobile: o.stackOnMobile !== false, gap: num(o.gap, 0, 40, 16),
-    };
+  if (o.type === 'section') {
+    /* One level deep: a section holds blocks and columns, never another section. */
+    const children = (Array.isArray(o.children) ? o.children : []).map((c) => {
+      const x = (c && typeof c === 'object' ? c : {}) as Record<string, unknown>;
+      return x.type === 'columns' ? columns(x) : leaf(x);
+    }).filter((x): x is LeafBlock | ColumnsBlock => x != null).slice(0, LIMITS.sectionChildren);
+    return { ...base(o), type: 'section', children, bgImage: safeImageUrl(o.bgImage), radius: num(o.radius, 0, 32, 0) };
   }
+  if (o.type === 'columns') return columns(o);
   return leaf(raw);
+}
+
+/** Every block in document order, nested ones included (counts, checks, find-by-id). */
+export function walkBlocks(blocks: Block[]): Block[] {
+  const out: Block[] = [];
+  const visit = (b: Block) => {
+    out.push(b);
+    if (b.type === 'columns') for (const c of b.columns) for (const x of c) visit(x);
+    if (b.type === 'section') for (const x of b.children) visit(x);
+  };
+  for (const b of blocks) visit(b);
+  return out;
 }
 
 export function normalizeTheme(raw: unknown): Theme {
@@ -254,6 +319,12 @@ export function createBlock(type: BlockType): Block {
     case 'header': return { ...b, type, logoSrc: '', logoAlt: '', logoWidth: 120, brand: '', tagline: '', align: 'left', textColor: '#1F2430', padding: { t: 20, r: 32, b: 20, l: 32 } };
     case 'facts': return { ...b, type, items: [{ label: '', value: '' }, { label: '', value: '' }, { label: '', value: '' }], columns: 3 };
     case 'columns': return { ...b, type, columns: [[createBlock('text') as LeafBlock], [createBlock('text') as LeafBlock]], ratio: '50-50', stackOnMobile: true, gap: 16 };
+    case 'badge': return { ...b, type, text: '', align: 'left', color: DEFAULT_THEME.accent, textColor: '#0C1119', radius: 40 };
+    case 'icon': return { ...b, type, glyph: 'check', label: '', align: 'left', color: DEFAULT_THEME.accent, size: 18 };
+    case 'gallery': return { ...b, type, images: [{ src: '', alt: '', href: null }, { src: '', alt: '', href: null }, { src: '', alt: '', href: null }], gap: 8, radius: 6 };
+    case 'video': return { ...b, type, thumbSrc: '', alt: '', href: '', caption: '', width: 536, align: 'center', radius: 8 };
+    case 'html': return { ...b, type, html: '' };
+    case 'section': return { ...b, type, children: [createBlock('heading') as LeafBlock, createBlock('text') as LeafBlock], bgImage: '', radius: 12, background: '#F6F3EE', padding: { t: 24, r: 24, b: 24, l: 24 } };
   }
 }
 
@@ -262,6 +333,7 @@ export function cloneBlock<T extends Block>(b: T): T {
   const c = JSON.parse(JSON.stringify(b)) as T;
   c.id = newId();
   if (c.type === 'columns') (c as ColumnsBlock).columns = (c as ColumnsBlock).columns.map((col) => col.map((x) => ({ ...x, id: newId() }))) as ColumnsBlock['columns'];
+  if (c.type === 'section') (c as SectionBlock).children = (c as SectionBlock).children.map((x) => cloneBlock(x));
   return c;
 }
 

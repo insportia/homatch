@@ -143,10 +143,34 @@ async function save({ sb, callerSb, owner, body }: Ctx): Promise<Response> {
     logEvent('email-studio', 'campaign_created', {});
     return json({ ok: true, campaign: data });
   }
-  const { data, error } = await callerSb.from('outreach_campaigns').update(patch).eq('id', id).eq('campaign_type', 'EMAIL').select(cols).maybeSingle();
+  /* A stale save never overwrites newer content: the browser names the version it edited
+     (baseUpdatedAt); if the row changed since (another tab, another device), nothing is written
+     and the current campaign comes back for the browser to reconcile. */
+  const base = typeof body.baseUpdatedAt === 'string' && !Number.isNaN(Date.parse(body.baseUpdatedAt)) ? body.baseUpdatedAt : null;
+  let q = callerSb.from('outreach_campaigns').update(patch).eq('id', id).eq('campaign_type', 'EMAIL');
+  if (base) q = q.lte('updated_at', new Date(Date.parse(base) + 1).toISOString());
+  const { data, error } = await q.select(cols).maybeSingle();
   if (error) return dbError(error);
-  if (!data) return json({ ok: false, error: 'CAMPAIGN_NOT_FOUND' }, 404);
+  if (!data) {
+    if (base) {
+      const { data: current } = await callerSb.from('outreach_campaigns').select(cols).eq('id', id).eq('campaign_type', 'EMAIL').maybeSingle();
+      if (current) return json({ ok: false, error: 'STALE', campaign: current }, 409);
+    }
+    return json({ ok: false, error: 'CAMPAIGN_NOT_FOUND' }, 404);
+  }
+  if (has('design')) await snapshotDesign(sb, owner, data as { id: string; design: unknown; subject: string | null }, body.version === 'MANUAL' ? 'MANUAL' : body.version === 'RESTORE' ? 'RESTORE' : 'AUTOSAVE');
   return json({ ok: true, campaign: data });
+}
+
+/** A design version at most every two minutes per campaign (and whenever the owner asks). */
+async function snapshotDesign(sb: Sb, owner: Owner, c: { id: string; design: unknown; subject: string | null }, reason: 'AUTOSAVE' | 'MANUAL' | 'RESTORE'): Promise<void> {
+  if (!c.design) return;
+  if (reason === 'AUTOSAVE') {
+    const { data: last } = await sb.from('email_design_versions').select('created_at').eq('campaign_id', c.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (last && Date.now() - Date.parse((last as { created_at: string }).created_at) < 120_000) return;
+  }
+  const { error } = await sb.from('email_design_versions').insert({ campaign_id: c.id, owner_id: owner.authId, design: c.design, subject: c.subject, reason });
+  if (error) logEvent('email-studio', 'design_version_failed', { error: String(error.message ?? '').slice(0, 120) });
 }
 
 function dbError(error: { message?: string; code?: string }): Response {

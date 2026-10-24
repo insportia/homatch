@@ -15,8 +15,10 @@
 // every marketing email.
 
 import {
-  type Block, type ButtonBlock, type ColumnsBlock, type EmailDoc, FONT_STACKS, type LeafBlock, normalizeDoc, type Pad, type Theme,
+  type Block, type ButtonBlock, type ColumnsBlock, type EmailDoc, FONT_STACKS, type IconGlyph, type LeafBlock, normalizeDoc, type Pad,
+  type SectionBlock, type Theme, walkBlocks,
 } from './document.ts';
+import { emailHtmlToText } from './emailHtml.ts';
 import { richToEmailHtml, richToText } from './richText.ts';
 
 export const DESIGN_MARKER = '<!--homatch-designer:v1';
@@ -50,6 +52,9 @@ const SOCIAL_LABEL: Record<string, string> = {
   facebook: 'Facebook', instagram: 'Instagram', linkedin: 'LinkedIn', x: 'X', youtube: 'YouTube', tiktok: 'TikTok',
   telegram: 'Telegram', whatsapp: 'WhatsApp', website: 'Website',
 };
+
+/* Text glyphs that every mail client's system fonts carry (no icon font, no image to block). */
+const GLYPH: Record<IconGlyph, string> = { check: '✓', star: '★', phone: '☎', mail: '✉', home: '⌂', pin: '●', key: '◆', arrow: '→' };
 
 /* Button size presets: [paddingY, paddingX, fontSize]. */
 const BUTTON_SIZE = { sm: [10, 20, 14], md: [14, 28, 15], lg: [18, 36, 17] } as const;
@@ -190,14 +195,58 @@ function leafHtml(b: LeafBlock, theme: Theme, width: number, dirAlign: 'left' | 
     }
     case 'unsubscribe':
       return `<div style="font-family:${font};font-size:12px;line-height:1.6;color:${theme.muted};text-align:${al(b.align)};"><a href="{{unsubscribe_url}}" target="_blank" style="color:${theme.muted};text-decoration:underline;">${esc(b.text.trim() || 'Unsubscribe')}</a></div>`;
+    case 'badge': {
+      if (!b.text.trim()) return draft ? `<div style="text-align:${al(b.align)};"><span style="display:inline-block;padding:4px 12px;border:1px dashed ${b.color};border-radius:${b.radius}px;font-family:${font};font-size:11px;color:${theme.muted};">&nbsp;&nbsp;&nbsp;&nbsp;</span></div>` : '';
+      const a = al(b.align);
+      return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="${a}" style="border-collapse:separate;${a === 'center' ? 'margin:0 auto;' : ''}"><tr><td bgcolor="${b.color}" style="background-color:${b.color};border-radius:${b.radius}px;padding:4px 12px;font-family:${font};font-size:11px;line-height:1.4;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:${b.textColor};">${esc(b.text)}</td></tr></table>`;
+    }
+    case 'icon': {
+      if (!b.label.trim() && !draft) return '';
+      const a = al(b.align);
+      return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="${a}" style="${a === 'center' ? 'margin:0 auto;' : ''}"><tr><td valign="middle" style="vertical-align:middle;padding:0 ${dirAlign === 'left' ? '10px 0 0' : '0 0 10px'};font-family:${font};font-size:${b.size}px;line-height:1;color:${b.color};">${GLYPH[b.glyph]}</td><td valign="middle" style="vertical-align:middle;font-family:${font};font-size:15px;line-height:1.5;color:${theme.text};">${inlineMarkup(b.label, theme.link)}</td></tr></table>`;
+    }
+    case 'gallery': {
+      const imgs = b.images.filter((x) => x.src || draft);
+      if (!imgs.length) return '';
+      const n = imgs.length;
+      const w = Math.floor((width - b.gap * (n - 1)) / n);
+      const cells = imgs.map((x, i) => {
+        const img = x.src
+          ? `<img src="${attrUrl(x.src)}" alt="${esc(x.alt)}" width="${w}" style="display:block;width:100%;max-width:${w}px;height:auto;border:0;border-radius:${b.radius}px;" />`
+          : imageSlot(w, Math.round(w * 0.75), b.radius);
+        const linked = x.href && x.src ? `<a href="${attrUrl(x.href)}" target="_blank" style="text-decoration:none;">${img}</a>` : img;
+        const gap = i < n - 1 ? `<td class="hm-gap" width="${b.gap}" style="width:${b.gap}px;font-size:0;line-height:0;">&nbsp;</td>` : '';
+        return `<td class="hm-col hm-col-gap" width="${w}" valign="top" style="width:${w}px;vertical-align:top;">${linked}</td>${gap}`;
+      });
+      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${cells.join('')}</tr></table>`;
+    }
+    case 'video': {
+      /* No inline video in email: the thumbnail (whose play mark the designer composes into the
+         image itself, so it survives every client) links to the video page; the caption is a link too. */
+      const w = Math.min(b.width, width);
+      if (!b.thumbSrc) return draft ? imageSlot(w, Math.round(w * 0.56), b.radius) : '';
+      const img = `<img src="${attrUrl(b.thumbSrc)}" alt="${esc(b.alt)}" width="${w}" style="display:block;width:100%;max-width:${w}px;height:auto;border:0;border-radius:${b.radius}px;${b.align === 'center' ? 'margin:0 auto;' : ''}" />`;
+      const cap = b.caption.trim() ? `<div style="font-family:${font};font-size:14px;line-height:1.5;margin-top:8px;text-align:${al(b.align)};">${b.href ? `<a href="${attrUrl(b.href)}" target="_blank" style="color:${theme.link};text-decoration:underline;">▶ ${esc(b.caption)}</a>` : `▶ ${esc(b.caption)}`}</div>` : '';
+      return `<div style="text-align:${al(b.align)};">${b.href ? `<a href="${attrUrl(b.href)}" target="_blank" style="text-decoration:none;">${img}</a>` : img}${cap}</div>`;
+    }
+    case 'html':
+      /* Already reduced to the email-safe allowlist by normalizeDoc (emailHtml.ts). */
+      return b.html ? `<div style="font-family:${font};color:${theme.text};">${b.html}</div>` : '';
   }
 }
 
+const ratioOf = (r: ColumnsBlock['ratio']): [number, number] => {
+  const [a, b] = r.split('-').map(Number);
+  return [a, b];
+};
+const spacerDiv = (h: number) => (h > 0 ? `<div style="height:${h}px;line-height:${h}px;font-size:0;">&nbsp;</div>` : '');
+const innerWidth = (b: Block, width: number) => width - (b.padding ? b.padding.l + b.padding.r : 64) - 2 * (b.type !== 'card' ? b.borderWidth ?? 0 : 0);
+
 function columnsHtml(b: ColumnsBlock, theme: Theme, width: number, dirAlign: 'left' | 'right', draft = false): string {
-  const [l, r] = b.ratio === '40-60' ? [40, 60] : b.ratio === '60-40' ? [60, 40] : [50, 50];
-  const inner = width - (b.padding ? b.padding.l + b.padding.r : 64);
+  const [l, r] = ratioOf(b.ratio);
+  const inner = innerWidth(b, width);
   const w1 = Math.floor((inner - b.gap) * l / 100), w2 = Math.floor((inner - b.gap) * r / 100);
-  const col = (blocks: LeafBlock[], w: number) => blocks.map((x) => `<div style="padding:${padCss({ ...(x.padding ?? { t: 6, r: 0, b: 6, l: 0 }), l: 0, r: 0 })};${x.background ? `background-color:${x.background};` : ''}">${leafHtml(x, theme, w, dirAlign, draft)}</div>`).join('');
+  const col = (blocks: LeafBlock[], w: number) => blocks.filter((x) => draft || !x.hidden).map((x) => `${spacerDiv(x.margin?.t ?? 0)}<div${x.hideOnMobile ? ' class="hm-hide-mobile"' : ''} style="padding:${padCss({ ...(x.padding ?? { t: 6, r: 0, b: 6, l: 0 }), l: 0, r: 0 })};${x.background ? `background-color:${x.background};` : ''}">${leafHtml(x, theme, w, dirAlign, draft)}</div>${spacerDiv(x.margin?.b ?? 0)}`).join('');
   const stack = b.stackOnMobile ? ' class="hm-col"' : '';
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
 <td${stack} width="${w1}" valign="top" style="width:${w1}px;vertical-align:top;">${col(b.columns[0], w1)}</td>
@@ -207,14 +256,38 @@ function columnsHtml(b: ColumnsBlock, theme: Theme, width: number, dirAlign: 'le
 }
 
 /**
+ * A container: one nested table whose cell carries the background colour (bgcolor and style, so
+ * Outlook paints it), an optional background image over that colour (clients that drop
+ * background images show the colour, which is why the colour is required for readable text), the
+ * radius and border; its children are rows of the same renderer.
+ */
+function sectionHtml(b: SectionBlock, theme: Theme, width: number, dirAlign: 'left' | 'right', draft = false): string {
+  const inner = innerWidth(b, width);
+  const kids = b.children.filter((x) => draft || !x.hidden).map((x) => {
+    const content = x.type === 'columns' ? columnsHtml(x, theme, inner, dirAlign, draft) : leafHtml(x, theme, innerWidth(x, inner), dirAlign, draft);
+    if (!content) return '';
+    return `${x.margin?.t ? `<tr><td style="font-size:0;line-height:0;height:${x.margin.t}px;">&nbsp;</td></tr>` : ''}<tr><td${cellAttrs(x, theme)}>${content}</td></tr>${x.margin?.b ? `<tr><td style="font-size:0;line-height:0;height:${x.margin.b}px;">&nbsp;</td></tr>` : ''}`;
+  }).filter(Boolean);
+  if (!kids.length && !draft) return '';
+  const bg = b.background ?? theme.card;
+  const img = b.bgImage ? ` background="${attrUrl(b.bgImage)}"` : '';
+  const imgCss = b.bgImage ? `background-image:url('${attrUrl(b.bgImage)}');background-size:cover;background-position:center;` : '';
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;"><tr><td bgcolor="${bg}"${img} style="background-color:${bg};${imgCss}border-radius:${b.radius}px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${kids.join('')}</table></td></tr></table>`;
+}
+
+function blockContent(b: Block, theme: Theme, width: number, dirAlign: 'left' | 'right', draft = false): string {
+  if (b.type === 'columns') return columnsHtml(b, theme, width, dirAlign, draft);
+  if (b.type === 'section') return sectionHtml(b, theme, width, dirAlign, draft);
+  return leafHtml(b, theme, innerWidth(b, width), dirAlign, draft);
+}
+
+/**
  * One block as the designer canvas shows it: the SAME renderer output (escaped, inline-styled,
  * no <style>, no script) inside its padded cell, so what the canvas shows is what is sent.
  */
 export function renderBlockHtml(b: Block, theme: Theme, rtl = false, draft = true): string {
   const dirAlign = rtl ? 'right' : 'left';
-  const inner = b.type === 'columns'
-    ? columnsHtml(b, theme, theme.width, dirAlign, draft)
-    : leafHtml(b, theme, theme.width - (b.padding ? b.padding.l + b.padding.r : 64), dirAlign, draft);
+  const inner = blockContent(b, theme, theme.width, dirAlign, draft);
   const bg = b.background ? `background-color:${b.background};` : '';
   const border = b.borderWidth && b.borderColor ? `border:${b.borderWidth}px solid ${b.borderColor};` : '';
   return `<div style="padding:${padCss(b.padding)};${bg}${border}">${inner}</div>`;
@@ -227,12 +300,14 @@ export function renderDesignBody(input: unknown, opts: { rtl?: boolean; draft?: 
   const doc: EmailDoc = normalizeDoc(input);
   const t = doc.theme;
   const dirAlign = opts.rtl ? 'right' : 'left';
-  const rows = doc.blocks.map((b) => {
-    const content = b.type === 'columns' ? columnsHtml(b, t, t.width, dirAlign, opts.draft) : leafHtml(b, t, t.width - (b.padding ? b.padding.l + b.padding.r : 64), dirAlign, opts.draft);
+  /* A hidden layer is the author's "leave it out": never in a stored or sent email. */
+  const rows = doc.blocks.filter((b) => opts.draft || !b.hidden).map((b) => {
+    const content = blockContent(b, t, t.width, dirAlign, opts.draft);
     if (!content) return '';
-    return `<tr><td${cellAttrs(b, t)}>${content}</td></tr>`;
+    const gap = (h?: number) => (h ? `<tr><td style="font-size:0;line-height:0;height:${h}px;">&nbsp;</td></tr>` : '');
+    return `${gap(b.margin?.t)}<tr><td${cellAttrs(b, t)}>${content}</td></tr>${gap(b.margin?.b)}`;
   }).filter(Boolean);
-  const hovers = doc.blocks.flatMap((b) => (b.type === 'columns' ? [...b.columns[0], ...b.columns[1]] : [b]))
+  const hovers = walkBlocks(doc.blocks)
     .filter((b): b is ButtonBlock => b.type === 'button' && Boolean(b.hoverColor))
     .map((b) => `td.hm-btn-${b.id}:hover,a.hm-btn-${b.id}:hover{background-color:${b.hoverColor}!important;}`).join('');
   const style = `<style type="text/css">${hovers}@media only screen and (max-width:620px){.hm-col{display:block!important;width:100%!important;max-width:100%!important;padding-left:0!important;padding-right:0!important;}.hm-gap{display:none!important;}.hm-hide-mobile{display:none!important;max-height:0!important;overflow:hidden!important;}.hm-hide-desktop{display:table-cell!important;max-height:none!important;}.hm-body{width:100%!important;}}</style>`;
@@ -260,10 +335,21 @@ export function designToText(doc: EmailDoc): string {
       case 'social': return b.links.map((l) => `${SOCIAL_LABEL[l.network]}: ${l.url}`).join('\n');
       case 'contact': return [b.name, b.email, b.phone, b.address].filter(Boolean).join('\n');
       case 'unsubscribe': return `${b.text.trim() || 'Unsubscribe'}: {{unsubscribe_url}}`;
+      case 'badge': return b.text;
+      case 'icon': return strip(b.label);
+      case 'gallery': return b.images.filter((x) => x.src && x.href).map((x) => `${x.alt || 'Image'}: ${x.href}`).join('\n');
+      case 'video': return b.href ? `${b.caption || b.alt || 'Video'}: ${b.href}` : '';
+      case 'html': return emailHtmlToText(b.html);
       default: return '';
     }
   };
-  return doc.blocks.map((b) => (b.type === 'columns' ? [...b.columns[0], ...b.columns[1]].map(leaf).filter(Boolean).join('\n\n') : leaf(b)))
+  const one = (b: Block): string => {
+    if (b.hidden) return '';
+    if (b.type === 'columns') return [...b.columns[0], ...b.columns[1]].map(one).filter(Boolean).join('\n\n');
+    if (b.type === 'section') return b.children.map(one).filter(Boolean).join('\n\n');
+    return leaf(b);
+  };
+  return doc.blocks.map(one)
     .filter((s) => s.trim()).join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 

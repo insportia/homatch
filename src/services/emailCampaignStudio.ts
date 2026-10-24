@@ -162,8 +162,9 @@ export function dispatchMinutes(n: number): number {
 /* ── design images (R2 via email-marketing asset_upload; delivered by email-webhook ?ema=) ── */
 export interface EmailAsset { id: string; url: string; content_type: string; byte_size: number; width: number | null; height: number | null; kind: 'IMAGE' | 'LOGO'; original_filename: string | null; created_at: string }
 
-const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '');
-export const assetUrl = (id: string) => `${SUPABASE_URL}/functions/v1/email-webhook?ema=${id}`;
+/* The brand-domain image link the server issues (www.homatch.live/m/a/<id>, vercel.json rewrite). */
+export const EMAIL_LINK_BASE = 'https://www.homatch.live';
+export const assetUrl = (id: string) => `${EMAIL_LINK_BASE}/m/a/${id}`;
 export const ASSET_MAX_BYTES = 5 * 1024 * 1024;
 
 export async function listAssets(): Promise<EmailAsset[]> {

@@ -61,7 +61,7 @@ import { ProgramsView } from '@/components/mortgage/views/ProgramsView';
 import { BeforeYouSignView } from '@/components/mortgage/views/GuidanceViews';
 import { GlossaryPanel, GlossaryScenarioProvider } from '@/components/mortgage/TermInfo';
 import { MortgageWorkspace } from '@/components/mortgage/MortgageWorkspace';
-import { MortgageLeadOptIn } from '@/components/mortgage/MortgageLeadOptIn';
+import { recordMortgageInterest } from '@/services/mortgageInterest';
 
 interface MortgagePrefillState extends FinancingPrefill {
   propertyId?: string;
@@ -154,6 +154,16 @@ export default function MortgagePage() {
       logActivity(homatchUser.id, 'PROPERTY_MORTGAGE_OPENED', prefill.propertyId).catch(() => {});
     }
   }, [homatchUser, prefill?.propertyId]);
+
+  /* Mortgage interest in a listing: recorded once the calculation for it is on screen and has
+     settled, with no extra step. Only the listing and the price are sent; the server ignores a
+     listing that is the person's own, and repeats within a day count once. */
+  const interestPrice = showResult && input ? input.propertyPrice : null;
+  useEffect(() => {
+    if (!homatchUser || !prefill?.propertyId || interestPrice === null) return undefined;
+    const timer = window.setTimeout(() => { void recordMortgageInterest(prefill.propertyId as string, interestPrice, draft.currency); }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [homatchUser, prefill?.propertyId, interestPrice, draft.currency]);
 
   const currency = draft.currency;
   /* The person's own numbers for the glossary examples, once there is a scenario. */
@@ -296,9 +306,6 @@ export default function MortgagePage() {
 
             {showResult && result ? (
               <>
-
-                {/* ── C1b. Optional: let matching sellers reach me ── */}
-                {input ? <MortgageLeadOptIn input={input} currency={currency} propertyId={prefill?.propertyId ?? null} /> : null}
 
                 {/* ── D. The consultant ── */}
                 {/* ── C2. Readiness, optional and collapsed ── */}

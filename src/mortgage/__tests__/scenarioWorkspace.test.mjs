@@ -72,12 +72,15 @@ test('saved rows are never updated in place: the service only inserts and delete
   assert.ok(api.includes(".delete().in('id', ids)"), 'one statement deletes the chain');
 });
 
-test('the lead opt-in is never pre-ticked and never sends mortgage figures', () => {
-  const src = fs.readFileSync('src/components/mortgage/MortgageLeadOptIn.tsx', 'utf8');
-  assert.ok(/sharePhone: false, shareEmail: false/.test(src), 'channels start unticked');
-  for (const banned of ['monthlyNetIncome', 'existingMonthlyDebt', 'nominalAnnualRatePercent', 'monthlyPayment', 'readiness']) {
-    assert.ok(!src.includes(banned), `opt-in must not touch ${banned}`);
+test('mortgage interest is recorded with no extra step and never carries mortgage figures', () => {
+  assert.ok(!fs.existsSync('src/components/mortgage/MortgageLeadOptIn.tsx'), 'no opt-in panel');
+  assert.ok(!fs.existsSync('src/services/mortgageLeads.ts'), 'no consent service');
+  const svc = fs.readFileSync('src/services/mortgageInterest.ts', 'utf8');
+  assert.match(svc, /record_my_mortgage_interest', \{ p_property_id: propertyId, p_budget: price, p_currency: currency \}/, 'only the listing, the price and its currency');
+  for (const banned of ['monthlyNetIncome', 'existingMonthlyDebt', 'nominalAnnualRatePercent', 'monthlyPayment', 'readiness', 'mortgage_scenarios']) {
+    assert.ok(!svc.includes(banned), `the interest call must not touch ${banned}`);
   }
-  const svc = fs.readFileSync('src/services/mortgageLeads.ts', 'utf8');
-  assert.ok(!svc.includes(".from('mortgage_scenarios')"), 'the lead service never reads saved scenarios');
+  const page = fs.readFileSync('src/pages/MortgagePage.tsx', 'utf8');
+  assert.match(page, /recordMortgageInterest\(prefill\.propertyId as string, interestPrice, draft\.currency\)/);
+  assert.ok(!/sharePhone|shareEmail|consent/i.test(page), 'no consent questions on the page');
 });

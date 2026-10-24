@@ -2,7 +2,7 @@
 //
 // Only what the member agreed to share and the engine can vouch for: that they used the mortgage
 // calculator (once or repeatedly, and the month of the latest use), whether it was for this very
-// listing, and when they plan to buy. Never the calculation itself.
+// listing. Never the calculation itself.
 
 import type { LeadItem } from '../services/homatchLeads';
 
@@ -42,6 +42,5 @@ export function mortgageSignalLines(
   if (m.thisListing) out.push(t('hl_mortgage_this_listing'));
   const month = monthLabel(m.lastUseMonth, locale);
   if (month) out.push(t(m.calculatorUse === 'REPEATED' ? 'hl_mortgage_used_repeated' : 'hl_mortgage_used_once', { month }));
-  if (m.timeframe) out.push(t(`hl_mortgage_tf_${m.timeframe.toLowerCase()}`));
   return out;
 }

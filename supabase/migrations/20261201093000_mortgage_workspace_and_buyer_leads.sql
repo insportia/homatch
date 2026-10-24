@@ -3,32 +3,25 @@
 -- 1 · mortgage_scenarios.engine_version: which payment engine produced a
 --     saved result, so an old snapshot is never silently re-read as new.
 --
--- 2 · BUYER INTENT FROM HOME FINANCING, BY EXPLICIT CONSENT ONLY.
---     Home Financing is not a lead marketplace and sells nothing. A mortgage
---     calculation is not permission to share anybody. A person who ticks nothing
---     shares nothing. A person who opts in to receive property offers shares
---     exactly the fields on the opt-in form (area, property type, a budget they
---     confirmed, rooms, timeframe, which contact channels) and nothing from
---     mortgage_scenarios: no income, debts, credit history, employer, bank,
---     guarantor, residency or co-borrower data. The opt-in is a statement the
---     person made, not an inference from their finances.
+-- 2 · MORTGAGE INTEREST IN HOMATCH MATCHING (owner rule 2026-10-25: no separate opt-in).
+--     Home Financing is not a lead marketplace and sells nothing. A signed-in person
+--     calculating a mortgage for a listing records mortgage interest: area and type from
+--     the listing, the budget they calculated with (rounded). Nothing from
+--     mortgage_scenarios or the calculation is read: no income, debts, credit history,
+--     employer, bank, guarantor, residency or co-borrower data.
 --
 --     One row per HOMATCH account (users.id, the canonical member identity the
---     Matching engine already uses). While active, the consent is represented by
---     ONE ordinary member search in the existing Matching engine (intent_profiles +
---     active_search_subscriptions, demand_source MORTGAGE): supply-matching scores
---     it against listings like every other search, and it appears in the existing
---     Matching feed alongside the other buyer leads, deduplicated per member by the
---     feed's existing one-row-per-person rule.
+--     Matching engine already uses), represented by ONE ordinary member search in the
+--     existing Matching engine (intent_profiles + active_search_subscriptions,
+--     demand_source MORTGAGE): supply-matching scores it like every other search, and it
+--     appears in the existing Matching feed alongside the other buyer leads,
+--     deduplicated per member by the feed's one-row-per-person rule, under Matching's
+--     existing safeguards (property-offers setting, blocks, contact preferences).
 --
--- 3 · PRICE IN MATCHING: a member whose matched search came from Home Financing is
---     the MORTGAGE segment of HOMATCH Leads, product INTERNAL_LEAD_MORTGAGE, 30 US
---     cents = 3 credits at 1 credit = 10 cents. It is charged only when a Matching
---     user unlocks the contact, through the existing internal_leads_unlock (same
---     wallet reserve + settle, same idempotency, same per-account advisory lock,
---     same internal_lead_unlocks entitlement whose unique (account, member) means an
---     account never pays twice for the same person by any route). STANDARD, EXACT
---     and PREMIUM keep their products, prices and rules exactly.
+-- 3 · PRICE IN MATCHING, by evidence (section 3 below): mortgage interest only 3 credits,
+--     with the person's own matching property search 5 credits, PREMIUM stays 10, everyone
+--     else unchanged; charged only by the existing internal_leads_unlock, once per account
+--     and person.
 --
 -- The Matching functions redefined here are the production definitions with the one
 -- segment added. Idempotent: create or replace, if not exists, on conflict do nothing.
@@ -41,36 +34,40 @@ alter table public.mortgage_scenarios
   add column if not exists engine_version text not null default 'mortgage-engine-1';
 
 /* ════════════════════════════════════════════════════════════════════════
- * 2 · consented buyer intent
+ * 2 · mortgage interest, as a Matching search
+ *
+ * When a signed-in person calculates a mortgage for a listing on HOMATCH, that is mortgage
+ * interest in that kind of home. It is recorded here and nothing else: no form, no extra
+ * step. The area and property type come from the listing; the budget is the price they
+ * calculated with, rounded. Nothing from the calculation itself (income, debts, rate, payment,
+ * readiness answers, guarantor, residency, saved scenarios) is read or stored.
+ *
+ * The record is represented in the existing Matching engine by ONE ordinary member search
+ * (intent_profiles + active_search_subscriptions, side SUPPLY like Find Property, demand_source
+ * MORTGAGE). Matching's own safeguards apply unchanged: the person appears only while their
+ * account accepts property offers (lead_contact_preferences, described in the Privacy Policy),
+ * never to themselves, never across a block, and a contact channel is shown after an unlock only
+ * if their own contact preferences share it (off by default). Deleting the account removes it.
  * ════════════════════════════════════════════════════════════════════════ */
 
 create table if not exists public.mortgage_buyer_intents (
-  user_id          uuid primary key references public.users(id) on delete cascade,
-  status           text not null check (status in ('ACTIVE', 'WITHDRAWN')),
-  consent_version  text not null,
-  consented_at     timestamptz not null,
-  withdrawn_at     timestamptz,
-  city             text check (city is null or length(city) <= 80),
-  district         text check (district is null or length(district) <= 80),
-  property_types   text[] not null default '{}',
-  rooms_min        integer check (rooms_min is null or rooms_min between 1 and 20),
-  budget_min       numeric(14,2) check (budget_min is null or budget_min >= 0),
-  budget_max       numeric(14,2) check (budget_max is null or budget_max >= 0),
-  currency         text check (currency is null or currency ~ '^[A-Z]{3}$'),
-  timeframe        text check (timeframe is null or timeframe in ('NOW', 'MONTHS_3', 'MONTHS_6', 'LATER')),
-  property_id      uuid references public.properties(id) on delete set null,
-  -- Every listing the person calculated a mortgage for while opted in (latest last, at most 20).
-  property_ids     uuid[] not null default '{}' check (cardinality(property_ids) <= 20),
-  share_phone      boolean not null default false,
-  share_email      boolean not null default false,
-  signal_count     integer not null default 1 check (signal_count >= 1),
-  first_signal_at  timestamptz not null default now(),
-  last_signal_at   timestamptz not null default now(),
-  -- The ordinary Matching search this consent is represented by, while it is active.
+  user_id           uuid primary key references public.users(id) on delete cascade,
+  status            text not null default 'ACTIVE' check (status in ('ACTIVE', 'SUPPRESSED')),
+  city              text check (city is null or length(city) <= 80),
+  district          text check (district is null or length(district) <= 80),
+  property_types    text[] not null default '{}',
+  budget_max        numeric(14,2) check (budget_max is null or budget_max >= 0),
+  currency          text check (currency is null or currency ~ '^[A-Z]{3}$'),
+  -- The latest listing, and every listing they calculated for (latest last, at most 20).
+  property_id       uuid references public.properties(id) on delete set null,
+  property_ids      uuid[] not null default '{}' check (cardinality(property_ids) <= 20),
+  signal_count      integer not null default 1 check (signal_count >= 1),
+  first_signal_at   timestamptz not null default now(),
+  last_signal_at    timestamptz not null default now(),
+  -- The ordinary Matching search this interest is represented by.
   intent_profile_id uuid references public.intent_profiles(id) on delete set null,
   subscription_id   uuid references public.active_search_subscriptions(id) on delete set null,
-  updated_at       timestamptz not null default now(),
-  check (budget_min is null or budget_max is null or budget_min <= budget_max)
+  updated_at        timestamptz not null default now()
 );
 create unique index if not exists mortgage_buyer_intents_profile
   on public.mortgage_buyer_intents (intent_profile_id) where intent_profile_id is not null;
@@ -81,41 +78,11 @@ create policy mortgage_buyer_intents_own_read on public.mortgage_buyer_intents
   for select using (user_id = public.current_homatch_user_id());
 grant select on public.mortgage_buyer_intents to authenticated;
 
--- Every grant, change and withdrawal, for the record a data-protection request needs.
-create table if not exists public.mortgage_buyer_consent_events (
-  id               uuid primary key default gen_random_uuid(),
-  user_id          uuid not null references public.users(id) on delete cascade,
-  action           text not null check (action in ('GRANTED', 'UPDATED', 'WITHDRAWN')),
-  consent_version  text not null,
-  shared           jsonb not null default '{}'::jsonb,
-  created_at       timestamptz not null default now()
-);
-create index if not exists mortgage_buyer_consent_events_user on public.mortgage_buyer_consent_events (user_id, created_at desc);
-alter table public.mortgage_buyer_consent_events enable row level security;
-revoke all on public.mortgage_buyer_consent_events from anon, authenticated;
-
-/*
- * THE CONSENT, AS A MATCHING SEARCH.
- *
- * An active opt-in is represented by one ordinary member search: an intent_profiles row
- * (requirement only, no person) and an active_search_subscriptions row (the person, side
- * SUPPLY like every Find Property search, demand_source MORTGAGE). The supply-matching
- * worker scores it against listings exactly as it scores any other member's search, and
- * the Matching feed shows it with the other buyer leads. The area comes from the form, or
- * from the listing the person calculated for when the form left it empty; without an area
- * there is nothing to match on, and no search is written.
- *
- * Withdrawal deletes the search outright: its match rows go with it (ON DELETE CASCADE),
- * so the person leaves every seller's Matching list at once and none of the stated
- * preferences survive anywhere but the consent record.
- */
+/* The one Matching search that represents a person's mortgage interest: created, refreshed or removed. */
 create or replace function public.mortgage_intent_sync_matching(p_user_id uuid)
 returns uuid language plpgsql security definer set search_path = public as $$
 declare
   v_i public.mortgage_buyer_intents;
-  v_city text;
-  v_district text;
-  v_types text[];
   v_profile uuid;
   v_sub uuid;
   v_lang text;
@@ -123,23 +90,7 @@ begin
   select * into v_i from public.mortgage_buyer_intents where user_id = p_user_id for update;
   if not found then return null; end if;
 
-  if v_i.status <> 'ACTIVE' then
-    if v_i.subscription_id is not null then delete from public.active_search_subscriptions where id = v_i.subscription_id; end if;
-    if v_i.intent_profile_id is not null then delete from public.intent_profiles where id = v_i.intent_profile_id; end if;
-    update public.mortgage_buyer_intents set intent_profile_id = null, subscription_id = null where user_id = p_user_id;
-    return null;
-  end if;
-
-  select coalesce(v_i.city, f.city), coalesce(v_i.district, case when v_i.city is null then f.district end),
-         case when cardinality(v_i.property_types) > 0 then v_i.property_types
-              when pr.property_type is not null then array[pr.property_type::text] end
-    into v_city, v_district, v_types
-    from (select 1) one
-    left join public.properties pr on pr.id = v_i.property_id
-    left join public.property_facts f on f.property_id = pr.id;
-
-  if v_city is null then
-    -- Nothing to match on yet: no search, and none left over from an earlier answer.
+  if v_i.status <> 'ACTIVE' or v_i.city is null then
     if v_i.subscription_id is not null then delete from public.active_search_subscriptions where id = v_i.subscription_id; end if;
     if v_i.intent_profile_id is not null then delete from public.intent_profiles where id = v_i.intent_profile_id; end if;
     update public.mortgage_buyer_intents set intent_profile_id = null, subscription_id = null where user_id = p_user_id;
@@ -150,16 +101,15 @@ begin
   v_profile := v_i.intent_profile_id;
   if v_profile is not null and exists (select 1 from public.intent_profiles where id = v_profile) then
     update public.intent_profiles set
-      city = v_city, district = v_district, property_types = v_types,
-      rooms_min = v_i.rooms_min, budget_min = v_i.budget_min, budget_max = v_i.budget_max, currency = v_i.currency,
-      timeline = v_i.timeframe, language = v_lang, last_active_at = now()
+      city = v_i.city, district = v_i.district, property_types = nullif(v_i.property_types, '{}'),
+      budget_max = v_i.budget_max, currency = v_i.currency, language = v_lang, last_active_at = now()
      where id = v_profile;
   else
     insert into public.intent_profiles
-      (intent_type, country, city, district, transaction_type, property_types, rooms_min,
-       budget_min, budget_max, currency, timeline, language, intent_confidence, classifier_version, last_active_at)
-    values ('BUY', 'GE', v_city, v_district, 'SALE', v_types, v_i.rooms_min,
-            v_i.budget_min, v_i.budget_max, v_i.currency, v_i.timeframe, v_lang, 1, 'mortgage-optin-1', now())
+      (intent_type, country, city, district, transaction_type, property_types,
+       budget_max, currency, language, intent_confidence, classifier_version, last_active_at)
+    values ('BUY', 'GE', v_i.city, v_i.district, 'SALE', nullif(v_i.property_types, '{}'),
+            v_i.budget_max, v_i.currency, v_lang, 1, 'mortgage-interest-1', now())
     returning id into v_profile;
   end if;
 
@@ -170,8 +120,8 @@ begin
            search_criteria = jsonb_build_object('origin', 'MORTGAGE')
      where id = v_sub;
   else
-    insert into public.active_search_subscriptions (user_id, intent_id, side, is_active, demand_source, search_criteria, last_active_at)
-    values (p_user_id, v_profile, 'SUPPLY', true, 'MORTGAGE', jsonb_build_object('origin', 'MORTGAGE'), now())
+    insert into public.active_search_subscriptions (user_id, intent_id, side, is_active, demand_source, search_criteria, last_active_at, notify_in_app)
+    values (p_user_id, v_profile, 'SUPPLY', true, 'MORTGAGE', jsonb_build_object('origin', 'MORTGAGE'), now(), false)
     returning id into v_sub;
   end if;
 
@@ -180,114 +130,54 @@ begin
 end $$;
 revoke all on function public.mortgage_intent_sync_matching(uuid) from public, anon, authenticated;
 
-create or replace function public.my_mortgage_buyer_intent()
-returns jsonb language sql stable security definer set search_path = public as $$
-  select case when i.user_id is null then null else jsonb_build_object(
-    'status', i.status, 'consentedAt', i.consented_at, 'withdrawnAt', i.withdrawn_at,
-    'city', i.city, 'district', i.district, 'propertyTypes', to_jsonb(i.property_types),
-    'roomsMin', i.rooms_min, 'budgetMin', i.budget_min, 'budgetMax', i.budget_max, 'currency', i.currency,
-    'timeframe', i.timeframe, 'propertyId', i.property_id, 'propertyIds', to_jsonb(i.property_ids),
-    'sharePhone', i.share_phone, 'shareEmail', i.share_email, 'lastSignalAt', i.last_signal_at,
-    -- Whether sellers can find this person in Matching right now, and why not when they cannot.
-    'inMatching', i.status = 'ACTIVE' and i.intent_profile_id is not null,
-    'acceptsOffers', (select p.accept_property_offers from public.lead_contact_prefs_of(i.user_id) p)) end
-    from (select 1) one
-    left join public.mortgage_buyer_intents i on i.user_id = public.current_homatch_user_id()
-$$;
-revoke all on function public.my_mortgage_buyer_intent() from public, anon;
-grant execute on function public.my_mortgage_buyer_intent() to authenticated;
-
-/* Opt in, or refresh the stated preferences. Only the listed keys are read. */
-create or replace function public.set_my_mortgage_buyer_intent(p jsonb, p_consent_version text)
-returns jsonb language plpgsql security definer set search_path = public as $$
+/*
+ * Called by Home Financing when a signed-in person's calculation for a listing is on screen.
+ * Only a live listing that is not their own counts; the area and type come from it, the budget
+ * is the price they calculated with (rounded to a thousand). Repeated calls for the same listing
+ * and budget within a day count once.
+ */
+create or replace function public.record_my_mortgage_interest(p_property_id uuid, p_budget numeric, p_currency text)
+returns boolean language plpgsql security definer set search_path = public as $$
 declare
   v_me uuid := public.current_homatch_user_id();
+  v_prop record;
   v_prev public.mortgage_buyer_intents;
-  v_types text[];
-  v_shared jsonb;
-  v_property uuid;
+  v_budget numeric := case when p_budget > 0 and p_budget < 100000000 then round(p_budget, -3) end;
+  v_currency text := case when upper(coalesce(p_currency, '')) ~ '^[A-Z]{3}$' then upper(p_currency) end;
 begin
-  if v_me is null then raise exception 'not signed in' using errcode = '42501'; end if;
-  if p_consent_version is null or length(p_consent_version) not between 3 and 40 then raise exception 'CONSENT_VERSION_REQUIRED'; end if;
-  if not coalesce((p->>'sharePhone')::boolean, false) and not coalesce((p->>'shareEmail')::boolean, false) then
-    raise exception 'CHANNEL_REQUIRED';
-  end if;
-  v_types := coalesce((select array_agg(distinct upper(btrim(x))) from jsonb_array_elements_text(
-               case when jsonb_typeof(p->'propertyTypes') = 'array' then p->'propertyTypes' else '[]'::jsonb end) x
-             where upper(btrim(x)) in ('APARTMENT','HOUSE','VILLA','COMMERCIAL','LAND','OFFICE','PENTHOUSE','STUDIO','TOWNHOUSE','OTHER')), '{}');
-  -- A property reference is kept only if it is a live listing: never a way to probe ids.
-  select pr.id into v_property from public.properties pr
-   where pr.id = nullif(p->>'propertyId', '')::uuid and not pr.is_deleted;
+  if v_me is null then return false; end if;
+  select pr.id, pr.user_id, pr.property_type::text as ptype, f.city, f.district into v_prop
+    from public.properties pr left join public.property_facts f on f.property_id = pr.id
+   where pr.id = p_property_id and not pr.is_deleted;
+  if v_prop.id is null or v_prop.user_id = v_me or v_prop.city is null then return false; end if;
+
   select * into v_prev from public.mortgage_buyer_intents where user_id = v_me for update;
+  if v_prev.user_id is not null and v_prev.property_id = v_prop.id and v_prev.last_signal_at > now() - interval '1 day'
+     and v_prev.budget_max is not distinct from v_budget then
+    return true;
+  end if;
 
   insert into public.mortgage_buyer_intents as i
-    (user_id, status, consent_version, consented_at, withdrawn_at, city, district, property_types, rooms_min,
-     budget_min, budget_max, currency, timeframe, property_id, property_ids, share_phone, share_email,
+    (user_id, status, city, district, property_types, budget_max, currency, property_id, property_ids,
      signal_count, first_signal_at, last_signal_at, updated_at)
   values
-    (v_me, 'ACTIVE', p_consent_version, now(), null,
-     nullif(left(btrim(coalesce(p->>'city', '')), 80), ''), nullif(left(btrim(coalesce(p->>'district', '')), 80), ''),
-     v_types, nullif(p->>'roomsMin', '')::integer,
-     round(nullif(p->>'budgetMin', '')::numeric, -3), round(nullif(p->>'budgetMax', '')::numeric, -3),
-     nullif(upper(p->>'currency'), ''), nullif(p->>'timeframe', ''), v_property,
-     case when v_property is null then '{}'::uuid[] else array[v_property] end,
-     coalesce((p->>'sharePhone')::boolean, false), coalesce((p->>'shareEmail')::boolean, false),
-     1, now(), now(), now())
+    (v_me, 'ACTIVE', left(v_prop.city, 80), left(v_prop.district, 80),
+     case when v_prop.ptype is null then '{}'::text[] else array[v_prop.ptype] end,
+     v_budget, v_currency, v_prop.id, array[v_prop.id], 1, now(), now(), now())
   on conflict (user_id) do update set
-    status = 'ACTIVE',
-    consent_version = excluded.consent_version,
-    consented_at = case when i.status = 'ACTIVE' then i.consented_at else now() end,
-    withdrawn_at = null,
     city = excluded.city, district = excluded.district, property_types = excluded.property_types,
-    rooms_min = excluded.rooms_min, budget_min = excluded.budget_min, budget_max = excluded.budget_max,
-    currency = excluded.currency, timeframe = excluded.timeframe,
-    property_id = coalesce(excluded.property_id, i.property_id),
+    budget_max = excluded.budget_max, currency = excluded.currency, property_id = excluded.property_id,
     -- A new listing joins the list (moved to the end if already there); the oldest drop off past 20.
-    property_ids = case when excluded.property_id is null then i.property_ids else
-      (select coalesce(array_agg(x order by o), '{}') from (
+    property_ids = (select coalesce(array_agg(x order by o), '{}') from (
          select x, o from unnest(array_remove(i.property_ids, excluded.property_id) || excluded.property_id) with ordinality as t(x, o)
-         order by o desc limit 20) last20) end,
-    share_phone = excluded.share_phone, share_email = excluded.share_email,
+         order by o desc limit 20) last20),
     signal_count = i.signal_count + 1, last_signal_at = now(), updated_at = now();
 
   perform public.mortgage_intent_sync_matching(v_me);
-
-  select jsonb_build_object('city', city, 'district', district, 'propertyTypes', to_jsonb(property_types),
-           'roomsMin', rooms_min, 'budgetMin', budget_min, 'budgetMax', budget_max, 'currency', currency,
-           'timeframe', timeframe, 'propertyId', property_id, 'propertyIds', to_jsonb(property_ids),
-           'sharePhone', share_phone, 'shareEmail', share_email, 'inMatching', intent_profile_id is not null)
-    into v_shared from public.mortgage_buyer_intents where user_id = v_me;
-  insert into public.mortgage_buyer_consent_events (user_id, action, consent_version, shared)
-  values (v_me, case when v_prev.user_id is null or v_prev.status = 'WITHDRAWN' then 'GRANTED' else 'UPDATED' end,
-          p_consent_version, v_shared);
-  return public.my_mortgage_buyer_intent();
+  return true;
 end $$;
-revoke all on function public.set_my_mortgage_buyer_intent(jsonb, text) from public, anon;
-grant execute on function public.set_my_mortgage_buyer_intent(jsonb, text) to authenticated;
-
-/* Withdraw: out of Matching at once, no new unlocks, contact reads stop, and the stated
-   preferences are erased (the consent events keep the record of what was shared and when). */
-create or replace function public.withdraw_my_mortgage_buyer_intent()
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_me uuid := public.current_homatch_user_id(); v_version text;
-begin
-  if v_me is null then raise exception 'not signed in' using errcode = '42501'; end if;
-  update public.mortgage_buyer_intents
-     set status = 'WITHDRAWN', withdrawn_at = now(),
-         share_phone = false, share_email = false,
-         city = null, district = null, property_types = '{}', rooms_min = null,
-         budget_min = null, budget_max = null, currency = null, timeframe = null,
-         property_id = null, property_ids = '{}', updated_at = now()
-   where user_id = v_me and status = 'ACTIVE'
-  returning consent_version into v_version;
-  if found then
-    perform public.mortgage_intent_sync_matching(v_me);
-    insert into public.mortgage_buyer_consent_events (user_id, action, consent_version) values (v_me, 'WITHDRAWN', v_version);
-  end if;
-  return public.my_mortgage_buyer_intent();
-end $$;
-revoke all on function public.withdraw_my_mortgage_buyer_intent() from public, anon;
-grant execute on function public.withdraw_my_mortgage_buyer_intent() to authenticated;
+revoke all on function public.record_my_mortgage_interest(uuid, numeric, text) from public, anon;
+grant execute on function public.record_my_mortgage_interest(uuid, numeric, text) to authenticated;
 
 /* ════════════════════════════════════════════════════════════════════════
  * 3 · value-based price for Home Financing buyer intent in HOMATCH Leads
@@ -370,8 +260,9 @@ grant execute on function public.mortgage_lead_price() to authenticated, service
  * THE PRICE OF ONE PERSON FOR ONE LISTING, AND WHY.
  *
  * Evidence is the engine's own match rows for this owner, listing and person that Matching
- * would show (active search, visible under the owner's preferences): a row from the person's
- * Home Financing consent is mortgage interest; the best other row is their property search.
+ * would show (active search, visible under the owner's preferences): a row from the search that
+ * represents their mortgage interest counts as mortgage interest; the best other row is their
+ * property search.
  * Reasons: MORTGAGE_INTEREST, SEARCH_MATCH or EXACT_SEARCH_MATCH, HIGH_BUDGET.
  */
 create or replace function public.internal_lead_member_price(p_owner uuid, p_property_id uuid, p_member uuid)
@@ -584,63 +475,15 @@ end $$;
 revoke all on function public.internal_leads_unlock(uuid, uuid[], text, numeric) from public, anon, authenticated;
 grant execute on function public.internal_leads_unlock(uuid, uuid[], text, numeric) to service_role;
 
-/* Contact after an unlock: the member's general preferences, plus the channels they ticked
-   in their Home Financing consent while it is active. Every read that shows a channel is recorded. */
-create or replace function public.internal_lead_contact(p_match_id uuid)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare
-  v_me uuid := public.current_homatch_user_id();
-  v_ent record;
-  v_user record;
-  v_prefs record;
-  v_mi public.mortgage_buyer_intents;
-  v_blocked boolean;
-  v_phone text;
-  v_email text;
-begin
-  if v_me is null then raise exception 'not signed in' using errcode = '42501'; end if;
-  select * into v_ent from public.internal_lead_entitled(v_me, p_match_id);
-  if v_ent.lead_user_id is null then raise exception 'not unlocked' using errcode = '42501'; end if;
-  select * into v_user from public.users where id = v_ent.lead_user_id;
-  if not found or v_user.suspended_at is not null then
-    return jsonb_build_object('restricted', true, 'reason', 'UNAVAILABLE');
-  end if;
-  select * into v_prefs from public.lead_contact_prefs_of(v_ent.lead_user_id);
-  select * into v_mi from public.mortgage_buyer_intents where user_id = v_ent.lead_user_id and status = 'ACTIVE';
-  select exists (select 1 from public.conversation_blocks b
-                  where (b.blocker_id = v_ent.lead_user_id and b.blocked_id = v_me)
-                     or (b.blocker_id = v_me and b.blocked_id = v_ent.lead_user_id)) into v_blocked;
-  if v_blocked then return jsonb_build_object('restricted', true, 'reason', 'BLOCKED'); end if;
-  if not v_prefs.accept_property_offers then
-    return jsonb_build_object('restricted', true, 'reason', 'NOT_ACCEPTING_OFFERS');
-  end if;
-  if (v_prefs.share_phone_on_unlock or coalesce(v_mi.share_phone, false)) and v_user.phone is not null and length(v_user.phone) > 4 then
-    v_phone := v_user.phone;
-  end if;
-  if v_prefs.share_email_on_unlock or coalesce(v_mi.share_email, false) then v_email := v_user.email; end if;
-  if v_phone is not null or (v_email is not null and coalesce(v_mi.share_email, false)) then
-    insert into public.contact_disclosures (viewer_user_id, subject_user_id, property_id, relationship_kind, relationship_id)
-    values (v_me, v_ent.lead_user_id, v_ent.property_id, 'INTERNAL_LEAD_UNLOCK', v_ent.unlock_id);
-  end if;
-  return jsonb_build_object(
-    'restricted', false,
-    'displayName', coalesce(nullif(v_user.nickname, ''), nullif(split_part(coalesce(v_user.full_name, ''), ' ', 1), '')),
-    'language', v_user.preferred_language::text,
-    'canMessage', true,
-    'phone', v_phone,
-    'email', v_email,
-    'marketingEmail', v_prefs.accept_marketing_email and v_email is not null);
-end $$;
-
 /* ════════════════════════════════════════════════════════════════════════
  * 4 · the Matching feeds: mortgage-origin members among the other buyer leads
  *
  * Production definitions, with: the price, its key and its reasons from
  * internal_lead_member_price (one person, one listing); 'origin' (SEARCH, MORTGAGE or
  * MORTGAGE_AND_SEARCH); a MORTGAGE filter and count (anyone with mortgage interest here); and,
- * with mortgage interest, the indicators the person agreed to share: that they used the
- * mortgage calculator (once or repeatedly, and the month of the latest use), whether it was
- * for THIS listing, and their timeframe.
+ * with mortgage interest, what the platform itself observed: that they used the mortgage
+ * calculator for a listing (once or repeatedly, and the month of the latest use) and whether it
+ * was THIS listing. Contact channels follow the person's own contact preferences only.
  * Budget, area and property type are the search itself and are shown like any other.
  * Nothing from the mortgage calculation (income, debts, rate, payment, readiness answers,
  * guarantor, residency) exists in these tables, so nothing of it can be shown.
@@ -677,12 +520,11 @@ begin
            exists (select 1 from public.internal_lead_saved sv where sv.account_user_id = v_me and sv.match_id = r.match_id) as saved,
            (c.status is not null and c.status <> 'UNLOCKED') as contacted,
            ((v_seen is null and r.matched_at > now() - interval '7 days') or (v_seen is not null and r.matched_at > v_seen)) as fresh,
-           prefs.share_phone_on_unlock or coalesce(mi.share_phone, false) as share_phone_on_unlock,
-           prefs.share_email_on_unlock or coalesce(mi.share_email, false) as share_email_on_unlock,
+           prefs.share_phone_on_unlock, prefs.share_email_on_unlock,
            usr.phone is not null and length(usr.phone) > 4 as has_phone,
            usr.nickname, usr.full_name, usr.preferred_language,
            mp.price_key as member_key, mp.reasons as price_reasons, mp.mortgage as has_mortgage, mp.search_match as has_search,
-           mi.signal_count as mi_signals, mi.last_signal_at as mi_last, mi.timeframe as mi_timeframe,
+           mi.signal_count as mi_signals, mi.last_signal_at as mi_last,
            (p_property_id = any (coalesce(mi.property_ids, '{}'::uuid[]))) as mi_listing
       from public.internal_lead_rows(v_me, p_property_id) r
       join public.intent_profiles ip on ip.id = r.intent_profile_id
@@ -750,8 +592,7 @@ begin
         'mortgage', case when p.has_mortgage then jsonb_build_object(
             'calculatorUse', case when p.mi_signals > 1 then 'REPEATED' else 'ONCE' end,
             'lastUseMonth', to_char(p.mi_last, 'YYYY-MM'),
-            'thisListing', p.mi_listing,
-            'timeframe', p.mi_timeframe) end,
+            'thisListing', p.mi_listing) end,
         -- The price that is charged (the older feed used to show the segment's price for EXACT rows).
         'priceCredits', (public.internal_lead_prices() ->> p.member_key)::numeric,
         'unlocked', p.unlocked,
@@ -852,13 +693,12 @@ begin
            exists (select 1 from public.internal_lead_saved sv where sv.account_user_id = v_me and sv.match_id = r.match_id) as saved,
            (cr.status is not null and cr.status <> 'UNLOCKED') as contacted,
            ((v_seen is null and r.matched_at > now() - interval '7 days') or (v_seen is not null and r.matched_at > v_seen)) as fresh,
-           prefs.share_phone_on_unlock or coalesce(mi.share_phone, false) as share_phone_on_unlock,
-           prefs.share_email_on_unlock or coalesce(mi.share_email, false) as share_email_on_unlock,
+           prefs.share_phone_on_unlock, prefs.share_email_on_unlock,
            usr.phone is not null and length(usr.phone) > 4 as has_phone,
            usr.email is not null and position('@' in usr.email) > 1 as has_email,
            usr.nickname, usr.full_name, usr.preferred_language,
            mp.price_key as member_key, mp.reasons as price_reasons, mp.mortgage as has_mortgage, mp.search_match as has_search,
-           mi.signal_count as mi_signals, mi.last_signal_at as mi_last, mi.timeframe as mi_timeframe,
+           mi.signal_count as mi_signals, mi.last_signal_at as mi_last,
            (p_property_id = any (coalesce(mi.property_ids, '{}'::uuid[]))) as mi_listing
       from public.internal_lead_rows(v_me, p_property_id) r
       join public.internal_match_candidates c on c.id = r.match_id
@@ -964,8 +804,7 @@ begin
         'mortgage', case when pg.has_mortgage then jsonb_build_object(
             'calculatorUse', case when pg.mi_signals > 1 then 'REPEATED' else 'ONCE' end,
             'lastUseMonth', to_char(pg.mi_last, 'YYYY-MM'),
-            'thisListing', pg.mi_listing,
-            'timeframe', pg.mi_timeframe) end,
+            'thisListing', pg.mi_listing) end,
         'category', pg.display_category,
         'matchCategory', pg.category,
         'kind', pg.kind,
@@ -1027,9 +866,8 @@ begin
   return jsonb_build_object(
     'savedScenarios', (select count(*) from public.mortgage_scenarios),
     'scenarioOwners', (select count(distinct user_id) from public.mortgage_scenarios),
-    'consentedActive', (select count(*) from public.mortgage_buyer_intents where status = 'ACTIVE'),
+    'peopleWithInterest', (select count(*) from public.mortgage_buyer_intents where status = 'ACTIVE'),
     'inMatching', (select count(*) from public.mortgage_buyer_intents where status = 'ACTIVE' and intent_profile_id is not null),
-    'withdrawn', (select count(*) from public.mortgage_buyer_intents where status = 'WITHDRAWN'),
     'matchedListings', (select count(*) from public.internal_match_candidates c
                           join public.mortgage_buyer_intents i on i.intent_profile_id = c.intent_profile_id and i.status = 'ACTIVE'),
     'uniqueUnlocks', (select count(*) from public.internal_lead_unlocks where segment in ('MORTGAGE', 'MORTGAGE_MATCH')),

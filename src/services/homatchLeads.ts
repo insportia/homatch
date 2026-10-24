@@ -43,7 +43,6 @@ export interface MortgageSignals {
   lastUseMonth: string | null;
   /** They calculated a mortgage for this very listing. */
   thisListing: boolean;
-  timeframe: 'NOW' | 'MONTHS_3' | 'MONTHS_6' | 'LATER' | null;
 }
 
 /** Why HOMATCH matched this person with the listing — measured and stated evidence only. */

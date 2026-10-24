@@ -109,7 +109,7 @@ export function mortgageItem() {
   const [base] = internalItems();
   return {
     ...base, matchId: uuid('aaaaaaaa', 4), score: 90, category: 'EXACT', segment: 'MORTGAGE', priceKey: 'MORTGAGE', priceCredits: 3,
-    origin: 'MORTGAGE', priceReasons: ['MORTGAGE_INTEREST'], mortgage: { calculatorUse: 'REPEATED', lastUseMonth: '2026-10', thisListing: true, timeframe: 'MONTHS_3' },
+    origin: 'MORTGAGE', priceReasons: ['MORTGAGE_INTEREST'], mortgage: { calculatorUse: 'REPEATED', lastUseMonth: '2026-10', thisListing: true },
     budget: { min: null, max: 130000, currency: 'GEL' }, contactOptions: { message: true, phone: true, email: false },
   };
 }

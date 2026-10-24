@@ -271,7 +271,7 @@ function MortgageLeadsSection() {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <Tile label={t('admin_hs_ml_saved')} value={num(data.savedScenarios)} hint={t('admin_hs_ml_saved_hint', { n: data.scenarioOwners ?? 0 })} />
-      <Tile label={t('admin_hs_ml_consented')} value={num(data.consentedActive)} hint={t('admin_hs_ml_withdrawn', { n: data.withdrawn ?? 0 })} />
+      <Tile label={t('admin_hs_ml_consented')} value={num(data.peopleWithInterest)} />
       <Tile label={t('admin_hs_ml_unlocks')} value={num(data.uniqueUnlocks)} />
       {/* Credits charged, at 10 credits = $1. */}
       <Tile label={t('admin_hs_ml_revenue')} value={usd(creditsToUsd(data.unlockCredits ?? 0))} hint={credits(data.unlockCredits ?? 0)} />

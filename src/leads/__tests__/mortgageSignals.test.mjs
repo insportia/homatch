@@ -30,14 +30,14 @@ test('the reasons for a price are the server\'s, in its order, one sentence each
   assert.deepEqual(priceReasonLines({}, (k) => k), []);
 });
 
-test('signals say only what the member did: this listing, calculator use, timeframe', () => {
-  const lines = mortgageSignalLines({ mortgage: { calculatorUse: 'REPEATED', lastUseMonth: '2026-10', thisListing: true, timeframe: 'MONTHS_3' } }, t, 'en');
+test('signals say only what the platform observed: this listing, calculator use', () => {
+  const lines = mortgageSignalLines({ mortgage: { calculatorUse: 'REPEATED', lastUseMonth: '2026-10', thisListing: true } }, t, 'en');
   assert.equal(lines[0], 'hl_mortgage_this_listing');
   assert.match(lines[1], /^hl_mortgage_used_repeated\(October 2026\)$/);
-  assert.equal(lines[2], 'hl_mortgage_tf_months_3');
-  assert.deepEqual(mortgageSignalLines({ mortgage: { calculatorUse: 'ONCE', lastUseMonth: null, thisListing: false, timeframe: null } }, t, 'en'), []);
+  assert.equal(lines.length, 2);
+  assert.deepEqual(mortgageSignalLines({ mortgage: { calculatorUse: 'ONCE', lastUseMonth: null, thisListing: false } }, t, 'en'), []);
   assert.deepEqual(mortgageSignalLines({ mortgage: null }, t, 'en'), []);
   // Georgian month names never depend on the browser having Georgian calendar data.
-  assert.equal(mortgageSignalLines({ mortgage: { calculatorUse: 'ONCE', lastUseMonth: '2026-10', thisListing: false, timeframe: null } }, t, 'ka-GE')[0], 'hl_mortgage_used_once(ოქტომბერი 2026)');
+  assert.equal(mortgageSignalLines({ mortgage: { calculatorUse: 'ONCE', lastUseMonth: '2026-10', thisListing: false } }, t, 'ka-GE')[0], 'hl_mortgage_used_once(ოქტომბერი 2026)');
   assert.deepEqual(mortgageSignalLines({}, t, 'en'), []);
 });

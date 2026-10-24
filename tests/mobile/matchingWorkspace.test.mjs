@@ -248,7 +248,7 @@ test('Home Financing opt-ins in Matching: beside the others, origin and signals,
   const row = page.locator('[data-testid="mw-row"]').filter({ has: page.locator('[data-testid="lead-origin-mortgage"]') });
   assert.equal(await row.count(), 1, 'one member, marked by origin');
   assert.match(await row.textContent(), /Mortgage interest/);
-  assert.match(await row.locator('[data-testid="lead-mortgage-signals"]').textContent(), /Calculated a mortgage for this listing[\s\S]*several times[\s\S]*within 3 months/);
+  assert.match(await row.locator('[data-testid="lead-mortgage-signals"]').textContent(), /Calculated a mortgage for this listing[\s\S]*several times/);
   assert.equal((await row.locator('[data-testid="mw-row-price"]').textContent()).trim(), '3 credits');
   assert.doesNotMatch(await row.textContent(), /income|salary|debt|\+995/i, 'no finances, no identity before unlock');
   assert.match(await text(page, '[data-testid="mw-internal-prices"]'), /Mortgage interest[\s\S]*3 credits/);
@@ -269,7 +269,7 @@ test('value-based price: mortgage + matching search is 5 with both reasons; a pr
   await waitRows(page, 5);
   const row = page.locator('[data-testid="mw-row"][data-id="' + mortgageMatchItem().matchId + '"]');
   assert.equal((await row.locator('[data-testid="mw-row-price"]').textContent()).trim(), '5 credits');
-  assert.match(await row.locator('[data-testid="lead-price-reasons"]').textContent(), /Why 5 credits:[\s\S]*asked for property offers in Home Financing[\s\S]*matches this listing exactly/);
+  assert.match(await row.locator('[data-testid="lead-price-reasons"]').textContent(), /Why 5 credits:[\s\S]*calculated a mortgage for a listing on HOMATCH[\s\S]*matches this listing exactly/);
   assert.match(await text(page, '[data-testid="mw-internal-prices"]'), /Mortgage and search[\s\S]*5 credits/);
   await row.locator('[data-testid="mw-row-check"]').check();
   await page.waitForFunction(() => /1 new · 5 credits/.test(document.querySelector('[data-testid="mw-quote"]')?.textContent ?? ''));

@@ -1,7 +1,8 @@
 // Home Financing buyer intent lives in HOMATCH Matching, not in a marketplace of its own.
 //
 // Source-level guards for the architecture and value-based pricing the owner set on 2026-10-25:
-// an opt-in becomes one ordinary member search the Matching engine scores; Matching shows the
+// mortgage interest (a signed-in calculation for a listing, no opt-in step) becomes one ordinary
+// member search the Matching engine scores; Matching shows the
 // person beside the other leads, priced for this listing by the evidence (mortgage interest only
 // 3; with their own matching search 5; existing prices otherwise), with the reasons; the existing
 // unlock charges once per account and person; nothing is sold or unlocked from Home Financing. The
@@ -60,22 +61,29 @@ test('no marketplace of its own: no mortgage feed, unlock or contact functions, 
   }
   assert.ok(!read('supabase/functions/atomic-unlock/index.ts').includes('mortgage_leads'));
   assert.ok(!fs.existsSync('src/components/matching/workspace/MortgageBuyersSection.tsx'));
-  for (const f of ['src/pages/MortgagePage.tsx', 'src/components/mortgage/MortgageLeadOptIn.tsx', 'src/services/mortgageLeads.ts']) {
+  for (const f of ['src/pages/MortgagePage.tsx', 'src/services/mortgageInterest.ts']) {
     const src = read(f);
     assert.ok(!/atomic-unlock|internal_leads_unlock|unlockLeads|unlockInternal/.test(src), `${f} never unlocks or charges`);
   }
 });
 
-test('an opt-in is one ordinary member search the engine scores, and withdrawal deletes it', () => {
+test('mortgage interest is one ordinary member search the engine scores, from a listing only', () => {
   const sync = body('mortgage_intent_sync_matching');
   assert.match(sync, /insert into public\.intent_profiles/);
-  assert.match(sync, /'BUY', 'GE', v_city, v_district, 'SALE'/);
-  assert.match(sync, /'mortgage-optin-1'/);
-  assert.match(sync, /\(p_user_id, v_profile, 'SUPPLY', true, 'MORTGAGE'/, 'side SUPPLY like Find Property, demand_source MORTGAGE');
-  assert.match(sync, /delete from public\.intent_profiles where id = v_i\.intent_profile_id/, 'withdrawal removes the search and, by cascade, its matches');
-  assert.match(body('withdraw_my_mortgage_buyer_intent'), /perform public\.mortgage_intent_sync_matching\(v_me\)/);
-  assert.match(body('set_my_mortgage_buyer_intent'), /perform public\.mortgage_intent_sync_matching\(v_me\)/);
-  assert.ok(read('supabase/functions/supply-matching/index.ts').includes("'mortgage-optin-1'"), 'the worker names the origin to the buyer');
+  assert.match(sync, /'BUY', 'GE', v_i\.city, v_i\.district, 'SALE'/);
+  assert.match(sync, /'mortgage-interest-1'/);
+  assert.match(sync, /'SUPPLY', true, 'MORTGAGE'/, 'side SUPPLY like Find Property, demand_source MORTGAGE');
+  assert.match(sync, /delete from public\.intent_profiles where id = v_i\.intent_profile_id/, 'a suppressed or area-less record keeps no search');
+  const rec = body('record_my_mortgage_interest');
+  assert.match(rec, /v_prop\.user_id = v_me/, 'never for the person\'s own listing');
+  assert.match(rec, /not pr\.is_deleted/, 'only a live listing');
+  assert.match(rec, /round\(p_budget, -3\)/, 'the budget is rounded');
+  assert.match(rec, /perform public\.mortgage_intent_sync_matching\(v_me\)/);
+  for (const gone of ['set_my_mortgage_buyer_intent', 'withdraw_my_mortgage_buyer_intent', 'my_mortgage_buyer_intent()', 'mortgage_buyer_consent_events', 'share_phone boolean', 'consent_version']) {
+    assert.ok(!MIG.includes(gone), `no consent workflow: ${gone}`);
+  }
+  assert.ok(!/function public\.internal_lead_contact\(/.test(MIG), 'contact stays production\'s: the person\'s own contact preferences only');
+  assert.ok(read('supabase/functions/supply-matching/index.ts').includes("'mortgage-interest-1'"), 'the worker names the origin to the buyer');
 });
 
 test('the Matching feeds price, label and describe it, and never read the mortgage calculation', () => {
@@ -90,10 +98,9 @@ test('the Matching feeds price, label and describe it, and never read the mortga
   }
 });
 
-test('the opt-in tells the person where they now are, and the consent version changed with the wording', () => {
-  const ui = read('src/components/mortgage/MortgageLeadOptIn.tsx');
-  assert.ok(ui.includes('/privacy#matching'), 'the consent links to how the data is used');
-  assert.ok(ui.includes('needsArea'), 'the area is asked only when nothing gives it');
-  assert.ok(ui.includes("t('mortgage_lead_in_matching')") && ui.includes("t('mortgage_lead_need_area')") && ui.includes("t('mortgage_lead_offers_off')"));
-  assert.match(read('src/services/mortgageLeads.ts'), /MORTGAGE_LEAD_CONSENT_VERSION = 'mbl-2026-10-25-matching'/);
+test('no separate opt-in anywhere; the Privacy Policy still describes Matching', () => {
+  assert.ok(!fs.existsSync('src/components/mortgage/MortgageLeadOptIn.tsx'));
+  const tr = read('src/i18n/translations.ts');
+  assert.ok(!/\bmortgage_lead_[a-z_]+:/.test(tr), 'no opt-in strings left');
+  assert.ok(read('src/pages/PrivacyPage.tsx').includes('id="matching"'));
 });

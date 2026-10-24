@@ -51,7 +51,7 @@ test('the COGS row names the model that actually wrote the report', () => {
   assert.match(src, /const consumption = reportConsumption\(usage, usage\?\.model \|\| MODEL\);/);
   // One call helper: the model it is called with is the model its usage names.
   assert.match(src, /callReport = async \(model: string\) => \{/);
-  assert.match(src, /body: JSON\.stringify\(\{\n\s+model,\n\s+input: \[/);
+  assert.match(src, /const body = JSON\.stringify\(\{\n\s+model,\n\s+input: \[/);
   assert.match(src, /usage: \{\n\s+model,\n/);
   const ra = code('supabase', 'functions', 'research-agent', 'index.ts');
   assert.doesNotMatch(ra, /OPENAI_SYNTHESIS_MODEL/, 'research-agent prices no stage at the report model');
@@ -63,6 +63,11 @@ test('SILENT_FALLBACK = NO: an unavailable model is still reported, not absorbed
   assert.match(src, /MODEL_UNAVAILABLE_STATUSES = new Set\(\[400, 401, 403, 404\]\)/);
   assert.match(src, /SYNTHESIS_MODEL_UNAVAILABLE/);
   assert.match(src, /synthesis_model_unavailable/);
-  // A transient blip still degrades the prose rather than losing the report.
+  // Only an unparseable answer degrades the prose; a model that stays busy
+  // through the retries fails the build so the driver retries it (Verify at
+  // scale): an incomplete report is never marked complete.
   assert.match(src, /console\.error\('synthesis model call failed'/);
+  assert.match(src, /throw new Error\(`SYNTHESIS_TRANSIENT_UNAVAILABLE: \$\{model\} HTTP/);
+  assert.match(src, /retryAfterMs\(res\.headers\) \?\? backoffMs\(attempt\)/);
+  assert.match(src, /'synthesis_model_busy', retryable: true \}, 503/);
 });

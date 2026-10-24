@@ -21,6 +21,7 @@ import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/offi
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 import { rsTaxpayerLegalStatus, withoutRsRaw } from '../../../src/verify/rsTaxpayer.ts';
 import { driveSettings, shouldFanOut, runPool } from '../../../src/verify/driveScale.ts';
+import { awaitOpenAIBudget, backoffMs, estimateTokens, limitsFor, retryAfterMs, RETRYABLE_STATUSES } from '../../../src/verify/openaiLimit.ts';
 import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, officialCodeNotFound, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
 import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
@@ -1857,15 +1858,31 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
 // persisted async research_jobs/status-poll architecture remains non-
 // blocking") and getOpenAIResponse polls it by id. Auth is a Bearer header
 // (OpenAI), not Gemini's x-goog-api-key header.
+/*
+ * OpenAI under load (src/verify/openaiLimit.ts): a POST that creates a model
+ * response first takes room in the shared per-model budget (when
+ * admin_settings.openai_limits sets one); 429/5xx honour Retry-After, else
+ * backoff with jitter. Exhaustion is an error the stage handles, never a
+ * silent success.
+ */
+let openaiLimitsCache: { at: number; value: unknown } | null = null;
 async function openaiFetch(url: string, init: any): Promise<any> {
+  if (init?.method === 'POST' && typeof init?.body === 'string') {
+    try {
+      const db = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
+      if (!openaiLimitsCache || Date.now() - openaiLimitsCache.at > 60_000) openaiLimitsCache = { at: Date.now(), value: await adminSettingJson(db, 'openai_limits') };
+      const model = String(JSON.parse(init.body)?.model ?? '');
+      await awaitOpenAIBudget(db, model, estimateTokens(init.body) + 8000, limitsFor(openaiLimitsCache.value, model), 60_000);
+    } catch { /* the budget is advisory; the provider's own limits still apply */ }
+  }
   let last = '';
   for (let i = 0; i < 4; i++) {
     const r = await fetch(url, { ...init, signal: AbortSignal.timeout(25000) });
     const t = await r.text();
     if (r.ok) return JSON.parse(t);
     last = `${r.status}: ${t.slice(0, 400)}`;
-    if (![429, 500, 502, 503, 504].includes(r.status)) throw new Error(last);
-    await new Promise((x) => setTimeout(x, 700 * 2 ** i));
+    if (!RETRYABLE_STATUSES.has(r.status)) throw new Error(last);
+    if (i < 3) await new Promise((x) => setTimeout(x, retryAfterMs(r.headers) ?? backoffMs(i)));
   }
   throw new Error(`OpenAI retry exhausted ${last}`);
 }

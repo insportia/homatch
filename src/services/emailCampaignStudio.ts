@@ -97,9 +97,23 @@ export async function getCampaign(id: string): Promise<StudioCampaign | null> {
 }
 
 /** `draftKey` (first save only) makes a retried create return the same draft, never a second. */
-export async function saveCampaign(id: string | null, campaign: CampaignPatch, draftKey?: string | null): Promise<StudioCampaign> {
-  const r = await edge<{ campaign: StudioCampaign }>('campaign_save', { id, campaign, draftKey: id ? null : draftKey ?? null });
+/* `baseUpdatedAt`: the version the browser edited; a newer row → StudioError('STALE') with body.campaign.
+   `version`: ask for a MANUAL/RESTORE design snapshot on top of the automatic two-minute one. */
+export async function saveCampaign(id: string | null, campaign: CampaignPatch, draftKey?: string | null,
+  opts: { baseUpdatedAt?: string | null; version?: 'MANUAL' | 'RESTORE' } = {}): Promise<StudioCampaign> {
+  const r = await edge<{ campaign: StudioCampaign }>('campaign_save', {
+    id, campaign, draftKey: id ? null : draftKey ?? null,
+    ...(id && opts.baseUpdatedAt ? { baseUpdatedAt: opts.baseUpdatedAt } : {}), ...(opts.version ? { version: opts.version } : {}),
+  });
   return r.campaign;
+}
+
+export interface DesignVersion { id: string; design: EmailDoc; subject: string | null; reason: 'AUTOSAVE' | 'MANUAL' | 'RESTORE' | 'TEMPLATE'; created_at: string }
+export async function listDesignVersions(campaignId: string): Promise<DesignVersion[]> {
+  const { data, error } = await supabase.from('email_design_versions').select('id, design, subject, reason, created_at')
+    .eq('campaign_id', campaignId).order('created_at', { ascending: false }).limit(50);
+  if (error) throw new StudioError('VERSIONS_FAILED');
+  return (data ?? []) as DesignVersion[];
 }
 
 /** A new draft with the same content (never a copy of the approval, the schedule or the results). */

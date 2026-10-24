@@ -22780,6 +22780,18 @@ const en = {
   homi_reach_email_d: 'Campaigns to your own contacts',
   homi_reach_dev_d: 'Tools for developers and sales teams',
   homi_reach_hint: 'Pick one and HOMI takes you there',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_reach_find_s: 'Find a home',
+  homi_reach_verify_s: 'Property check',
+  homi_reach_mortgage_s: 'Mortgage',
+  homi_reach_investment_s: 'Investment',
+  homi_reach_contract_s: 'Contract',
+  homi_reach_expats_s: 'Expats',
+  homi_reach_match_s: 'Buyers',
+  homi_reach_email_s: 'Email',
+  homi_reach_dev_s: 'Developers',
+  homi_reach_open: 'Open',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -45474,6 +45486,18 @@ const ka: Partial<Record<TranslationKey, string>> = {
   homi_reach_email_d: 'კამპანიები შენი კონტაქტებისთვის',
   homi_reach_dev_d: 'ინსტრუმენტები დეველოპერებისა და გაყიდვების გუნდებისთვის',
   homi_reach_hint: 'აირჩიე და HOMI იქ მიგიყვანს',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_reach_find_s: 'ბინის მოძებნა',
+  homi_reach_verify_s: 'ქონების შემოწმება',
+  homi_reach_mortgage_s: 'იპოთეკა',
+  homi_reach_investment_s: 'ინვესტიცია',
+  homi_reach_contract_s: 'ხელშეკრულება',
+  homi_reach_expats_s: 'ექსპატები',
+  homi_reach_match_s: 'მყიდველები',
+  homi_reach_email_s: 'Email',
+  homi_reach_dev_s: 'დეველოპერები',
+  homi_reach_open: 'გახსნა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -68159,6 +68183,18 @@ const ru: Partial<Record<TranslationKey, string>> = {
   homi_reach_email_d: 'Кампании для твоих контактов',
   homi_reach_dev_d: 'Инструменты для застройщиков и отделов продаж',
   homi_reach_hint: 'Выбери, и HOMI отведёт тебя туда',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_reach_find_s: 'Найти жильё',
+  homi_reach_verify_s: 'Проверка объекта',
+  homi_reach_mortgage_s: 'Ипотека',
+  homi_reach_investment_s: 'Инвестиции',
+  homi_reach_contract_s: 'Договор',
+  homi_reach_expats_s: 'Экспатам',
+  homi_reach_match_s: 'Покупатели',
+  homi_reach_email_s: 'Email',
+  homi_reach_dev_s: 'Застройщикам',
+  homi_reach_open: 'Открыть',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -90842,6 +90878,18 @@ const tr: Partial<Record<TranslationKey, string>> = {
   homi_reach_email_d: 'Kendi kişilerine kampanyalar',
   homi_reach_dev_d: 'Geliştiriciler ve satış ekipleri için araçlar',
   homi_reach_hint: 'Birini seç, HOMI seni oraya götürsün',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_reach_find_s: 'Ev bul',
+  homi_reach_verify_s: 'Mülk kontrolü',
+  homi_reach_mortgage_s: 'Konut kredisi',
+  homi_reach_investment_s: 'Yatırım',
+  homi_reach_contract_s: 'Sözleşme',
+  homi_reach_expats_s: 'Yabancılar',
+  homi_reach_match_s: 'Alıcılar',
+  homi_reach_email_s: 'E-posta',
+  homi_reach_dev_s: 'Geliştiriciler',
+  homi_reach_open: 'Aç',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -113525,6 +113573,18 @@ const ar: Partial<Record<TranslationKey, string>> = {
   homi_reach_email_d: 'حملات لجهات اتصالك',
   homi_reach_dev_d: 'أدوات للمطورين وفرق المبيعات',
   homi_reach_hint: 'اختر واحدة وسيأخذك HOMI إليها',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_reach_find_s: 'ابحث عن منزل',
+  homi_reach_verify_s: 'فحص العقار',
+  homi_reach_mortgage_s: 'الرهن العقاري',
+  homi_reach_investment_s: 'الاستثمار',
+  homi_reach_contract_s: 'العقود',
+  homi_reach_expats_s: 'المغتربون',
+  homi_reach_match_s: 'المشترون',
+  homi_reach_email_s: 'البريد',
+  homi_reach_dev_s: 'المطورون',
+  homi_reach_open: 'افتح',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -136208,6 +136268,18 @@ const he: Partial<Record<TranslationKey, string>> = {
   homi_reach_email_d: 'קמפיינים לאנשי הקשר שלך',
   homi_reach_dev_d: 'כלים ליזמים ולצוותי מכירות',
   homi_reach_hint: 'בחר אחד ו-HOMI ייקח אותך לשם',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_reach_find_s: 'חיפוש דירה',
+  homi_reach_verify_s: 'בדיקת נכס',
+  homi_reach_mortgage_s: 'משכנתא',
+  homi_reach_investment_s: 'השקעה',
+  homi_reach_contract_s: 'חוזה',
+  homi_reach_expats_s: 'עולים וזרים',
+  homi_reach_match_s: 'קונים',
+  homi_reach_email_s: 'אימייל',
+  homi_reach_dev_s: 'יזמים',
+  homi_reach_open: 'פתח',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

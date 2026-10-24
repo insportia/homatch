@@ -76,8 +76,26 @@ export function AISection() {
   ];
   const [active, setActive] = useState<string | null>(null);
   const activeItem = reach.find((r) => r.key === active) ?? null;
+  const tileRefs = useRef<Record<string, HTMLAnchorElement | null>>({});
+  /* Desktop: hover and keyboard focus select. Touch: the first tap selects
+     (HOMI points and explains), the second opens. */
+  const pinned = useRef(false);
   const focusTile = (key: string) => () => { setActive(key); setGesture('pointing'); setPointTo(1); };
-  const leaveTile = () => { setActive(null); setGesture('idle'); };
+  const leaveTile = () => { if (pinned.current) return; setActive(null); setGesture('idle'); };
+  /* Read at pointer-down: a touch fires a synthetic hover just before its
+     click, so by click time every tapped tile already looks selected. */
+  const down = useRef<{ key: string; wasActive: boolean; touch: boolean } | null>(null);
+  const pressTile = (key: string) => (e: React.PointerEvent) => {
+    down.current = { key, wasActive: active === key, touch: e.pointerType !== 'mouse' };
+  };
+  const tapTile = (key: string) => (e: React.MouseEvent) => {
+    const d = down.current;
+    down.current = null;
+    if (!d || d.key !== key || !d.touch || d.wasActive) return; // a mouse click, or the second tap, opens it
+    e.preventDefault();
+    pinned.current = true;
+    setActive(key); setGesture('pointing'); setPointTo(1);
+  };
 
   return (
     <section ref={sectionRef} id="how" className={`${PAGE} scroll-mt-20 border-t border-border ${SECTION_Y}`}>
@@ -144,30 +162,41 @@ export function AISection() {
         */}
       <div
         id="homi-reach"
-        className="relative mt-10 scroll-mt-24 overflow-hidden rounded-[1.5rem] border border-[hsl(38_92%_56%)]/25 bg-[#0C1119] p-5 text-white shadow-[0_30px_80px_-40px_rgba(0,0,0,0.6)] sm:mt-12 sm:p-8"
+        className="relative mt-10 scroll-mt-24 overflow-clip rounded-[1.5rem] border border-[hsl(38_92%_56%)]/25 bg-[#0C1119] px-3.5 py-5 text-white shadow-[0_30px_80px_-40px_rgba(0,0,0,0.6)] sm:mt-12 sm:p-8"
       >
         <div aria-hidden="true" className="pointer-events-none absolute -start-24 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(245,166,35,0.22),transparent_65%)]" />
         <div aria-hidden="true" className="pointer-events-none absolute -bottom-32 end-0 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(79,178,255,0.14),transparent_65%)]" />
-        <div className="relative grid gap-6 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] lg:gap-10">
-          <div className="flex flex-col items-center lg:items-start">
-            <p className="self-stretch text-[14px] font-semibold uppercase tracking-[0.16em] text-[hsl(38_92%_62%)]" {...fp('reach_label')}>
-              {sf('reach_label', 'mp_ai_reach_label')}
-            </p>
+        <p className="relative text-[14px] font-semibold uppercase tracking-[0.16em] text-[hsl(38_92%_62%)]" {...fp('reach_label')}>
+          {sf('reach_label', 'mp_ai_reach_label')}
+        </p>
+        {/* Phones: HOMI and its bubble side by side on top, the services as a
+            compact 3 × 3 grid under them — the whole panel on one screen.
+            From sm up: HOMI beside the list, bubble under HOMI. */}
+        <div className="relative mt-4 grid gap-4 sm:grid-cols-[13rem_minmax(0,1fr)] sm:gap-6 lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-10">
+          <div className="flex items-center gap-3 self-start sm:flex-col sm:items-center lg:items-start">
             <HomiHomeStage
               gesture={gesture}
               pointTo={pointTo}
-              className="mt-3 h-[220px] w-[180px] sm:h-[280px] sm:w-[230px]"
+              target={active ? tileRefs.current[active] ?? null : null}
+              className="h-[148px] w-[92px] shrink-0 sm:h-[280px] sm:w-[200px] lg:w-[230px]"
             />
-            {/* HOMI's bubble: what the hovered service does, or how to use the panel. */}
+            {/* HOMI's bubble: what the service in focus does, or how to use the panel. */}
             <div
               aria-live="polite"
-              className="relative mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] leading-snug text-white/90"
+              className="relative min-w-0 flex-1 rounded-2xl border border-white/10 bg-white/[0.06] px-3.5 py-3 text-[14px] leading-snug text-white/90 sm:mt-2 sm:w-full sm:flex-none sm:px-4 sm:text-[15px]"
             >
-              <span aria-hidden="true" className="absolute -top-1.5 start-10 h-3 w-3 rotate-45 border-s border-t border-white/10 bg-[#161d29]" />
+              <span aria-hidden="true" className="absolute -start-1.5 top-8 h-3 w-3 rotate-45 border-b border-s border-white/10 bg-[#161d29] sm:-top-1.5 sm:start-10 sm:border-b-0 sm:border-t" />
               {activeItem ? (
                 <>
                   <span className="block font-semibold text-white">{activeItem.label}</span>
                   <span className="mt-0.5 block text-white/75">{t(`homi_reach_${activeItem.key}_d`)}</span>
+                  <Link
+                    to={activeItem.to}
+                    className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-full bg-[hsl(38_92%_54%)] px-3.5 text-[13px] font-semibold text-[#161309] sm:hidden"
+                  >
+                    {t('homi_reach_open')}
+                    <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5 rtl:-scale-x-100" />
+                  </Link>
                 </>
               ) : (
                 <span>{t('homi_reach_hint')}</span>
@@ -175,29 +204,38 @@ export function AISection() {
             </div>
           </div>
 
-          <ul className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 xl:grid-cols-3">
+          <ul className="grid grid-cols-3 gap-2 sm:grid-cols-1 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">
             {reach.map(item => {
               const on = active === item.key;
               return (
                 <li key={item.key} className="min-w-0">
                   <Link
                     to={item.to}
+                    ref={(el) => { tileRefs.current[item.key] = el; }}
+                    data-reach={item.key}
+                    aria-label={item.label}
+                    onPointerDown={pressTile(item.key)}
+                    onClick={tapTile(item.key)}
                     onMouseEnter={focusTile(item.key)} onMouseLeave={leaveTile}
                     onFocus={focusTile(item.key)} onBlur={leaveTile}
-                    className={`group relative flex h-full min-h-[5.5rem] flex-col justify-between gap-3 overflow-hidden rounded-2xl border p-4 transition-[transform,border-color,background-color,box-shadow] duration-300 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] ${
+                    className={`group relative flex h-full min-h-[5.25rem] flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border px-0.5 py-2 text-center transition-[transform,border-color,background-color,box-shadow] duration-300 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] sm:min-h-[5.5rem] sm:items-stretch sm:justify-between sm:gap-3 sm:rounded-2xl sm:p-4 sm:text-start ${
                       on
                         ? 'border-[hsl(38_92%_56%)]/70 bg-white/[0.08] shadow-[0_18px_40px_-24px_rgba(245,166,35,0.55)] motion-safe:-translate-y-0.5'
                         : 'border-white/10 bg-white/[0.03] hover:border-white/25'
                     }`}
                   >
                     <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 -start-1/2 w-1/2 -skew-x-12 bg-gradient-to-r from-transparent via-[rgba(245,166,35,0.14)] to-transparent opacity-0 transition-[inset-inline-start,opacity] duration-700 group-hover:start-full group-hover:opacity-100 motion-reduce:hidden" />
-                    <span className="flex items-start justify-between gap-3">
-                      <span aria-hidden="true" className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border transition-colors ${on ? 'border-[hsl(38_92%_56%)]/60 bg-[hsl(38_92%_56%)]/15 text-[hsl(38_92%_66%)]' : 'border-white/15 bg-white/[0.05] text-white/85'}`}>
-                        <item.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
+                    <span className="flex items-start justify-center gap-3 sm:justify-between">
+                      <span aria-hidden="true" className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border transition-colors sm:h-10 sm:w-10 ${on ? 'border-[hsl(38_92%_56%)]/60 bg-[hsl(38_92%_56%)]/15 text-[hsl(38_92%_66%)]' : 'border-white/15 bg-white/[0.05] text-white/85'}`}>
+                        <item.icon className="h-[17px] w-[17px] sm:h-[18px] sm:w-[18px]" strokeWidth={1.9} />
                       </span>
-                      <ArrowUpRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-[transform,color] duration-300 rtl:-scale-x-100 ${on ? 'text-[hsl(38_92%_66%)] motion-safe:-translate-y-0.5' : 'text-white/40'}`} />
+                      <ArrowUpRight aria-hidden="true" className={`hidden h-4 w-4 shrink-0 transition-[transform,color] duration-300 rtl:-scale-x-100 sm:block ${on ? 'text-[hsl(38_92%_66%)] motion-safe:-translate-y-0.5' : 'text-white/40'}`} />
                     </span>
-                    <span className="min-w-0">
+                    {/* Phones: the short name. sm+: full name and what it does. */}
+                    {(() => { const short = t(`homi_reach_${item.key}_s`); return (
+                      <span aria-hidden="true" className={`block max-w-full font-semibold leading-tight text-white sm:hidden ${[...short].length >= 11 && !short.includes(" ") ? "text-[10.5px] tracking-[-0.015em]" : "text-[11.5px]"}`}>{short}</span>
+                    ); })()}
+                    <span className="hidden min-w-0 sm:block">
                       <span className="block text-[15px] font-semibold leading-snug text-white" {...fp(`reach_${item.key}`)}>{item.label}</span>
                       <span className="mt-1 block text-[13px] leading-snug text-white/60">{t(`homi_reach_${item.key}_d`)}</span>
                     </span>

@@ -23,6 +23,8 @@ export interface HomiStage3DProps {
   gesture: HomiGesture;
   /** Where to point, in the stage's own horizontal space: -1 left … 1 right. */
   pointTo?: number;
+  /** An element HOMI should look and point at (the tile in focus). Followed live, also while scrolling. */
+  target?: HTMLElement | null;
   onFail: () => void;
   onReady?: () => void;
   className?: string;
@@ -36,10 +38,13 @@ function reducedMotion(): boolean {
 
 const damp = (a: number, b: number, k: number, dt: number) => a + (b - a) * (1 - Math.exp(-k * dt));
 
-export default function HomiStage3D({ gesture, pointTo = 1, onFail, onReady, className }: HomiStage3DProps) {
+export default function HomiStage3D({ gesture, pointTo = 1, target = null, onFail, onReady, className }: HomiStage3DProps) {
   const host = useRef<HTMLDivElement>(null);
   const gestureRef = useRef<{ g: HomiGesture; at: number; point: number }>({ g: gesture, at: 0, point: pointTo });
+  const targetRef = useRef<HTMLElement | null>(target);
   const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => { targetRef.current = target; }, [target]);
 
   useEffect(() => {
     gestureRef.current = { g: gesture, at: performance.now(), point: pointTo };
@@ -124,14 +129,43 @@ export default function HomiStage3D({ gesture, pointTo = 1, onFail, onReady, cla
       renderOnce();
     }).catch(() => { if (!disposed) onFail(); });
 
-    const pointer = { x: 0, y: 0, active: false };
-    const onPointer = (e: PointerEvent) => {
-      const r = el.getBoundingClientRect();
-      pointer.x = Math.max(-1, Math.min(1, ((e.clientX - (r.left + r.width / 2)) / (window.innerWidth / 2))));
-      pointer.y = Math.max(-1, Math.min(1, ((e.clientY - (r.top + r.height * 0.3)) / (window.innerHeight / 2))));
-      pointer.active = true;
+    /*
+     * WHAT HOMI LOOKS AT, in screen coordinates. A finger on a phone wins for
+     * a moment after it moves (HOMI follows the touch), then the tile in
+     * focus (followed while it scrolls), then the mouse. Head, eyes and the
+     * pointing arm all aim at the same point.
+     */
+    const mouse = { cx: 0, cy: 0, active: false };
+    const touch = { cx: 0, cy: 0, at: 0 };
+    const onMouse = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return;
+      mouse.cx = e.clientX; mouse.cy = e.clientY; mouse.active = true;
     };
-    if (!coarse && !still) window.addEventListener('pointermove', onPointer, { passive: true });
+    const onTouch = (e: TouchEvent) => {
+      const p = e.touches[0];
+      if (!p) return;
+      touch.cx = p.clientX; touch.cy = p.clientY; touch.at = performance.now();
+    };
+    if (!still) {
+      window.addEventListener('pointermove', onMouse, { passive: true });
+      window.addEventListener('touchstart', onTouch, { passive: true });
+      window.addEventListener('touchmove', onTouch, { passive: true });
+    }
+    const pointer = { x: 0, y: 0, active: false, dx: 0, dyUp: 0, hasAim: false };
+    const aim = () => {
+      const r = el.getBoundingClientRect();
+      let cx: number | null = null, cy: number | null = null;
+      const tgt = targetRef.current;
+      if (performance.now() - touch.at < 1800) { cx = touch.cx; cy = touch.cy; }
+      else if (tgt && tgt.isConnected) { const b = tgt.getBoundingClientRect(); cx = b.left + b.width / 2; cy = b.top + b.height / 2; }
+      else if (mouse.active) { cx = mouse.cx; cy = mouse.cy; }
+      if (cx === null || cy === null) { pointer.active = false; pointer.hasAim = false; return; }
+      const ox = r.left + r.width / 2, oy = r.top + r.height * 0.3;
+      pointer.x = Math.max(-1, Math.min(1, (cx - ox) / (window.innerWidth / 2)));
+      pointer.y = Math.max(-1, Math.min(1, (cy - oy) / (window.innerHeight / 2)));
+      pointer.dx = cx - ox; pointer.dyUp = oy + r.height * 0.12 - cy; // from the shoulder line
+      pointer.active = true; pointer.hasAim = true;
+    };
 
     /* Current values, eased toward targets every frame. */
     const cur = { headY: 0, headX: 0, eyeX: 0, eyeY: 0, armR: 0, foreR: 0, armL: 0, foreL: 0, bob: 0 };
@@ -143,6 +177,7 @@ export default function HomiStage3D({ gesture, pointTo = 1, onFail, onReady, cla
     const pose = (t: number, dt: number) => {
       const { g, at, point } = gestureRef.current;
       const since = (performance.now() - at) / 1000;
+      aim();
       const k = still ? 1000 : 6;
       const breath = still ? 0 : Math.sin(t * 1.7);
       let headY = pointer.active ? pointer.x * 0.35 : Math.sin(t * 0.37) * 0.12 * (still ? 0 : 1);
@@ -154,9 +189,14 @@ export default function HomiStage3D({ gesture, pointTo = 1, onFail, onReady, cla
       if (g === 'greeting' && since < 3.2) {
         armR = -2.5; foreR = -0.35 + wave * 0.35; headY = 0.1; headX = -0.05;
       } else if (g === 'pointing') {
-        /* The arm on the side of the target rises toward it. */
-        if (point >= 0) { armL = 1.35; foreL = 0.15; headY = 0.35; eyeX = 1; }
-        else { armR = -1.35; foreR = -0.15; headY = -0.35; eyeX = -1; }
+        /* The arm on the side of the target rises toward it — at its height
+           when HOMI knows where it is, level otherwise. Angle 0 hangs down,
+           ±π/2 is level, beyond that it points upward. */
+        const right = pointer.hasAim ? pointer.dx >= 0 : point >= 0;
+        const angle = pointer.hasAim ? Math.atan2(Math.abs(pointer.dx), -pointer.dyUp) : Math.PI * 0.43;
+        const a = Math.max(0.35, Math.min(2.5, angle));
+        if (right) { armL = a; foreL = 0.12; if (!pointer.hasAim) { headY = 0.35; eyeX = 1; } }
+        else { armR = -a; foreR = -0.12; if (!pointer.hasAim) { headY = -0.35; eyeX = -1; } }
       } else if (g === 'explaining') {
         armL = 0.55 + (still ? 0 : Math.sin(t * 2.2) * 0.08); foreL = 0.9;
       } else if (g === 'happy') {
@@ -205,7 +245,9 @@ export default function HomiStage3D({ gesture, pointTo = 1, onFail, onReady, cla
       if (stillTimer) window.clearInterval(stillTimer);
       io?.disconnect();
       ro?.disconnect();
-      window.removeEventListener('pointermove', onPointer);
+      window.removeEventListener('pointermove', onMouse);
+      window.removeEventListener('touchstart', onTouch);
+      window.removeEventListener('touchmove', onTouch);
       scene.traverse((o) => {
         const m = o as THREE.Mesh;
         if (m.isMesh) {

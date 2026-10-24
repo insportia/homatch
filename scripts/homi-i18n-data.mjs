@@ -160,11 +160,11 @@ export const HOMI_REBRAND_STRINGS = {
   dash_empty_open_ai: ['Open HOMI', 'გახსენი HOMI', 'Открыть HOMI', "HOMI'yi aç", 'افتح HOMI', 'פתח את HOMI'],
   dash_continue_ai: ['Continue with HOMI', 'გააგრძელე HOMI-სთან', 'Продолжить с HOMI', 'HOMI ile devam et', 'تابع مع HOMI', 'המשך עם HOMI'],
   ai_disclaimer: [
-    'HOMI can make mistakes. Check important information independently.',
-    'HOMI შეიძლება შეცდეს. მნიშვნელოვანი ინფორმაცია დამოუკიდებლად გადაამოწმე.',
-    'HOMI может ошибаться. Важную информацию проверяй самостоятельно.',
-    'HOMI hata yapabilir. Önemli bilgileri bağımsız olarak doğrula.',
-    'قد يخطئ HOMI. تحقّق من المعلومات المهمة بنفسك.',
-    'HOMI עלול לטעות. כדאי לבדוק מידע חשוב באופן עצמאי.',
+    'HOMI does its best to give you the information you need and to help. It is a good idea to double-check important information yourself as well.',
+    'HOMI მაქსიმალურად მოგაწვდის სასურველ ინფორმაციას და დაგეხმარება. მნიშვნელოვანი ინფორმაცია სასურველია დამოუკიდებლადაც გადაამოწმო.',
+    'HOMI сделает всё, чтобы дать нужную информацию и помочь. Важную информацию лучше дополнительно проверить самостоятельно.',
+    'HOMI ihtiyacın olan bilgiyi sunmak ve yardımcı olmak için elinden geleni yapar. Önemli bilgileri ayrıca kendin de doğrulaman iyi olur.',
+    'يبذل HOMI قصارى جهده لتزويدك بالمعلومات التي تحتاجها ومساعدتك. يُستحسن أن تتحقق من المعلومات المهمة بنفسك أيضًا.',
+    'HOMI עושה הכול כדי לתת לך את המידע שאתה צריך ולעזור. כדאי לבדוק בעצמך גם מידע חשוב.',
   ],
 };

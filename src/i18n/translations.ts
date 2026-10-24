@@ -2455,7 +2455,7 @@ const en = {
   ai_confidence: 'Confidence',
   ai_entity_default: 'Entity',
   ai_beta_badge: 'Beta',
-  ai_disclaimer: 'HOMI can make mistakes. Check important information independently.',
+  ai_disclaimer: 'HOMI does its best to give you the information you need and to help. It is a good idea to double-check important information yourself as well.',
 
   // ── MatchingJobProgress ──────────────────────────────────────────────
   mjp_status_queued: 'Queued',
@@ -25181,7 +25181,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ai_confidence: 'სანდოობა',
   ai_entity_default: 'სუბიექტი',
   ai_beta_badge: 'ბეტა',
-  ai_disclaimer: 'HOMI შეიძლება შეცდეს. მნიშვნელოვანი ინფორმაცია დამოუკიდებლად გადაამოწმე.',
+  ai_disclaimer: 'HOMI მაქსიმალურად მოგაწვდის სასურველ ინფორმაციას და დაგეხმარება. მნიშვნელოვანი ინფორმაცია სასურველია დამოუკიდებლადაც გადაამოწმო.',
 
   // ── MatchingJobProgress ──────────────────────────────────────────────
   mjp_status_queued: 'რიგშია',
@@ -47877,7 +47877,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ai_confidence: 'Уверенность',
   ai_entity_default: 'Объект',
   ai_beta_badge: 'Бета',
-  ai_disclaimer: 'HOMI может ошибаться. Важную информацию проверяй самостоятельно.',
+  ai_disclaimer: 'HOMI сделает всё, чтобы дать нужную информацию и помочь. Важную информацию лучше дополнительно проверить самостоятельно.',
 
   // ── MatchingJobProgress ──────────────────────────────────────────────
   mjp_status_queued: 'В очереди',
@@ -70572,7 +70572,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ai_confidence: 'Güven',
   ai_entity_default: 'Varlık',
   ai_beta_badge: 'Beta',
-  ai_disclaimer: 'HOMI hata yapabilir. Önemli bilgileri bağımsız olarak doğrula.',
+  ai_disclaimer: 'HOMI ihtiyacın olan bilgiyi sunmak ve yardımcı olmak için elinden geleni yapar. Önemli bilgileri ayrıca kendin de doğrulaman iyi olur.',
 
   // ── MatchingJobProgress ──────────────────────────────────────────────
   mjp_status_queued: 'Sırada',
@@ -93267,7 +93267,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ai_confidence: 'مستوى الثقة',
   ai_entity_default: 'الكيان',
   ai_beta_badge: 'تجريبي',
-  ai_disclaimer: 'قد يخطئ HOMI. تحقّق من المعلومات المهمة بنفسك.',
+  ai_disclaimer: 'يبذل HOMI قصارى جهده لتزويدك بالمعلومات التي تحتاجها ومساعدتك. يُستحسن أن تتحقق من المعلومات المهمة بنفسك أيضًا.',
 
   // ── MatchingJobProgress ──────────────────────────────────────────────
   mjp_status_queued: 'في الانتظار',
@@ -115962,7 +115962,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   ai_confidence: 'רמת ביטחון',
   ai_entity_default: 'ישות',
   ai_beta_badge: 'בטא',
-  ai_disclaimer: 'HOMI עלול לטעות. כדאי לבדוק מידע חשוב באופן עצמאי.',
+  ai_disclaimer: 'HOMI עושה הכול כדי לתת לך את המידע שאתה צריך ולעזור. כדאי לבדוק בעצמך גם מידע חשוב.',
 
   // ── MatchingJobProgress ──────────────────────────────────────────────
   mjp_status_queued: 'בתור',

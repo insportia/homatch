@@ -586,7 +586,7 @@ function AIPageInner() {
               <HomiHomeStage
                 gesture={homiState}
                 framing="upper"
-                className="-mt-14 h-[104px] w-[84px] shrink-0 self-end sm:-mt-16 sm:h-[120px] sm:w-[96px]"
+                className="h-[4.5rem] w-[3.75rem] shrink-0 self-center overflow-hidden rounded-2xl bg-white/[0.04] ring-1 ring-inset ring-[hsl(38_92%_56%)]/25 sm:h-[2.75rem] sm:w-[2.75rem] sm:self-end"
               />
             )}
             <textarea

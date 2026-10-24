@@ -14,14 +14,36 @@ import { fileURLToPath } from 'node:url';
 import { HOMI_STRINGS as HOMI_CORE_STRINGS, HOMI_REBRAND_STRINGS as HOMI_CORE_REBRAND } from './homi-i18n-data.mjs';
 import { HOMI_MORTGAGE_STRINGS } from './homi-mortgage-i18n-data.mjs';
 import { HOMI_INVESTMENT_STRINGS, HOMI_INVESTMENT_REWRITES } from './homi-investment-i18n-data.mjs';
-
-const HOMI_REBRAND_STRINGS = { ...HOMI_CORE_REBRAND, ...HOMI_INVESTMENT_REWRITES };
-const HOMI_STRINGS = { ...HOMI_CORE_STRINGS, ...HOMI_MORTGAGE_STRINGS, ...HOMI_INVESTMENT_STRINGS };
+import { HOMI_EXPAT_STRINGS, HOMI_EXPAT_KA_FIXES } from './homi-expat-i18n-data.mjs';
+import fs from 'node:fs';
 import { splice, validate } from './lib/i18nSplice.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FILE = path.join(here, '..', 'src', 'i18n', 'translations.ts');
 const TAG = 'homi-i18n';
+
+/* A Georgian-only fix keeps the other five languages exactly as they are in the bundle. */
+function kaOnly(fixes) {
+  const src = fs.readFileSync(FILE, 'utf8');
+  const openers = ['const en = {', ...['ka', 'ru', 'tr', 'ar', 'he'].map((l) => `const ${l}: Partial<Record<TranslationKey, string>> = {`)];
+  const bodies = openers.map((o) => {
+    const a = src.indexOf(o);
+    if (a < 0) throw new Error(`bundle opener not found: ${o}`);
+    return src.slice(a, src.indexOf('\n};', a));
+  });
+  const unquote = (s) => s.replace(/\\(.)/g, (_, c) => (c === 'n' ? '\n' : c));
+  const out = {};
+  for (const [key, ka] of Object.entries(fixes)) {
+    const re = new RegExp(`^\\s*${key}: '((?:[^'\\\\]|\\\\.)*)',?\\s*$`, 'm');
+    const vals = bodies.map((b) => { const m = b.match(re); return m ? unquote(m[1]) : null; });
+    if (vals.some((v) => v === null)) throw new Error(`${key}: not present in every bundle`);
+    vals[1] = ka;
+    out[key] = vals;
+  }
+  return out;
+}
+const HOMI_REBRAND_STRINGS = { ...HOMI_CORE_REBRAND, ...HOMI_INVESTMENT_REWRITES, ...kaOnly(HOMI_EXPAT_KA_FIXES) };
+const HOMI_STRINGS = { ...HOMI_CORE_STRINGS, ...HOMI_MORTGAGE_STRINGS, ...HOMI_INVESTMENT_STRINGS, ...HOMI_EXPAT_STRINGS };
 
 const problems = [...validate(HOMI_STRINGS, TAG), ...validate(HOMI_REBRAND_STRINGS, `${TAG}-rebrand`)];
 for (const key of Object.keys(HOMI_REBRAND_STRINGS)) {

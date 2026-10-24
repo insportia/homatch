@@ -132,6 +132,7 @@ export const NAV: NavGroup[] = [
        * and it is unmistakable against the search lens one line below at 18px.
        */
       { key: 'nav_owner_workspace', path: '/property', glyph: 'properties' },
+      { key: 'publishing_portals_title', path: '/property/publish', glyph: 'properties' },
       /*
        * UNLOCKED LEADS (Find Buyers 2.0, owner 2026-10-18): the CRM of every contact the
        * owner unlocked — profile, pipeline stage, notes, follow-ups, AI drafts — right under

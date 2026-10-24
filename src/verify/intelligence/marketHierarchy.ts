@@ -232,7 +232,8 @@ export function propertyKindOfText(text: unknown): PropertyKind | null {
 
 /** The comparable's kind: the source's stated type first, then its URL/title. */
 export function comparableKindOf(c: RawComparable): PropertyKind | null {
-  const stated = txt(c.propertyType).toUpperCase();
+  // The source's own type first (PARKING/STORAGE ride on a portal's COMMERCIAL class; live test f51a2908).
+  const stated = (txt((c as { sourcePropertyType?: unknown }).sourcePropertyType) || txt(c.propertyType)).toUpperCase();
   if (/PARKING|GARAGE/.test(stated)) return 'PARKING';
   if (/STORAGE/.test(stated)) return 'STORAGE';
   if (/COMMERCIAL|OFFICE|RETAIL/.test(stated)) return 'COMMERCIAL';

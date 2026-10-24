@@ -1993,10 +1993,14 @@ async function jobTasks(sb: any, jobId: string): Promise<QueueTaskRow[]> {
 
 /** Stop this job's queued work (shared producers other jobs wait on keep running). */
 async function cancelJobTasks(sb: any, jobId: string, taskId: string | null = null): Promise<void> {
+  /* supabase-js returns an RPC failure, it does not throw it: an unread error
+     left eacaf5a0's MyGov and TAS-map tasks running (and solving CAPTCHAs)
+     after the report was written. The error is now read and logged. */
   try {
-    await sb.rpc('verify_job_cancel_tasks', { p_job_id: jobId, p_task_id: taskId });
-  } catch {
-    /* best effort: the tasks' results are simply not read */
+    const { error } = await sb.rpc('verify_job_cancel_tasks', { p_job_id: jobId, p_task_id: taskId });
+    if (error) console.error(JSON.stringify({ scope: 'verify_queue', event: 'cancel_tasks_failed', jobId, taskId, error: String(error.message ?? error).slice(0, 200) }));
+  } catch (e) {
+    console.error(JSON.stringify({ scope: 'verify_queue', event: 'cancel_tasks_failed', jobId, taskId, error: String((e as Error)?.message ?? e).slice(0, 200) }));
   }
 }
 
@@ -4951,6 +4955,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string, code = false
   // The report starts NOW, in parallel with the bookkeeping below, instead of
   // on the driver's next sweep (see startSynthesisNow).
   if (!finished?.error) await startSynthesisNow(sb, j.id);
+  await cancelJobTasks(sb, j.id); // no task outlives its job (eacaf5a0)
   // The job is already saved. Bookkeeping runs after it and separately, so a
   // failure here can cost us a number but never a customer's report.
   await recordVerificationCost(sb, { id: j.id, result_json: result });

@@ -14,6 +14,7 @@
 // or a CAPTCHA provider never holds a browser slot.
 
 import type { Lane, QueueGateway, QueueTask, EvidenceRef } from './gateway.js';
+import { handoffMinimum } from './evidence.js';
 
 export type TaskOutcome =
   | { type: 'complete'; result: unknown; evidenceRefs?: EvidenceRef[]; contentHash?: string | null; cacheScope?: string | null }
@@ -205,7 +206,15 @@ export class QueueRunner {
     if (entry.lost) return;
     try {
       if (outcome.type === 'complete') {
-        const r = await this.o.gateway.complete(task, withExecStamp(outcome, task, execStartedAt));
+        const full = withExecStamp(outcome, task, execStartedAt);
+        let r: { ok: boolean; reason?: string } | null;
+        try {
+          r = await this.o.gateway.complete(task, full);
+        } catch (e) {
+          // Refused (413) or unanswered: the minimal result, which the queue always accepts.
+          this.log('queue_complete_retry_minimal', { task: task.id, error: String((e as Error)?.message ?? e).slice(0, 200) });
+          r = await this.o.gateway.complete(task, { ...full, result: handoffMinimum(full.result) });
+        }
         if (r?.ok) this.counters.completed++;
         else this.log('queue_complete_rejected', { task: task.id, reason: r?.reason });
       } else if (outcome.type === 'fail') {

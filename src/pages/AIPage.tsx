@@ -12,13 +12,16 @@ import { supabase } from '@/db/supabase';
 import { Streamdown } from 'streamdown';
 import {
   Bot, Send, StopCircle, PlusCircle, MessageSquare, Trash2,
-  Loader2, Sparkles, ChevronRight, Home, Building2, Shield, Search,
+  ChevronRight,
   ExternalLink, Star, AlertTriangle,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { SuggestedReplies } from '@/components/ai/SuggestedReplies';
 import { ServiceActions, WebContextLine } from '@/components/ai/ServiceActions';
+import { HomiAvatar } from '@/components/homi/HomiAvatar';
+import { HomiCards, HomiStartCard, type HomiChipHandler } from '@/components/homi/HomiCards';
+import { HOMI_INTRO, pick } from '@/lib/homi/content';
 
 /*
  * The composer sits at the bottom of the window, which on a modern phone
@@ -127,15 +130,16 @@ function ResearchCard({
   );
 }
 
-const QUICK_PROMPTS = [
-  { icon: Search,    labelKey: 'ai_prompt_find_apartment' as const },
-  { icon: Building2, labelKey: 'ai_prompt_find_buyers' as const },
-  { icon: Shield,    labelKey: 'ai_prompt_verify_dev' as const },
-  { icon: Home,      labelKey: 'ai_prompt_cheaper' as const },
-];
-
-function EmptyState({ onPrompt }: { onPrompt: (p: string) => void }) {
-  const { t } = useLanguage();
+/*
+ * THE FIRST SCREEN IS HOMI SAYING HELLO.
+ *
+ * The greeting is HOMATCH's own approved wording and the menu under it is
+ * the start card: seven clickable directions, each answered from HOMATCH's
+ * written knowledge instantly and at no AI cost. Typing works exactly as
+ * before for anybody who would rather just ask.
+ */
+function EmptyState({ onChip }: { onChip: HomiChipHandler }) {
+  const { lang } = useLanguage();
   return (
     /*
      * Centred with `my-auto`, not `justify-center`.
@@ -148,32 +152,14 @@ function EmptyState({ onPrompt }: { onPrompt: (p: string) => void }) {
      */
     <div className="flex min-h-full flex-col items-center px-5 py-8 text-center sm:px-8">
       <div className="my-auto flex w-full max-w-2xl flex-col items-center">
-      <div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-[#0C1119] ring-1 ring-inset ring-[hsl(38_92%_56%)]/45 shadow-card">
-        <Sparkles className="h-7 w-7 text-[hsl(38_92%_60%)]" />
+      <div className="mb-3 rounded-[1.75rem] bg-[#0C1119] p-2 ring-1 ring-inset ring-[hsl(38_92%_56%)]/35 shadow-card">
+        <HomiAvatar state="greeting" crop="bust" size={128} label="HOMI" />
       </div>
-      <h2 className="text-lg font-semibold text-foreground mb-1">{t('ai_title')}</h2>
-      <p className="text-sm text-muted-foreground mb-6 max-w-xs">
-        {t('ai_subtitle')}
-      </p>
-      <div className="grid grid-cols-1 gap-2 w-full max-w-sm">
-        {QUICK_PROMPTS.map(({ icon: Icon, labelKey }) => {
-          const label = t(labelKey);
-          return (
-            <button
-              key={labelKey}
-              type="button"
-              onClick={() => onPrompt(label)}
-              className="group flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-start shadow-card transition-colors hover:border-[hsl(var(--gold-border))] hover:shadow-hover"
-            >
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[hsl(var(--gold-soft))] ring-1 ring-inset ring-[hsl(var(--gold-border))]/50">
-                <Icon className="h-4 w-4 text-[hsl(var(--gold-ink))]" />
-              </span>
-              <span className="text-base font-medium text-foreground">{label}</span>
-              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors ms-auto rtl:rotate-180 group-hover:text-[hsl(var(--gold-ink))]" />
-            </button>
-          );
-        })}
-        </div>
+      <h2 className="mb-1 text-lg font-semibold text-foreground">HOMI</h2>
+      <p className="mb-5 max-w-md text-base leading-relaxed text-foreground">{pick(HOMI_INTRO, lang)}</p>
+      <div className="w-full max-w-xl text-start">
+        <HomiStartCard onChip={onChip} />
+      </div>
       </div>
     </div>
   );
@@ -213,8 +199,8 @@ function MessageBubble({
      */
     <div className={`flex gap-3 ${isUser ? 'justify-end' : ''}`}>
       {!isUser && (
-        <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-[#0C1119] ring-1 ring-inset ring-[hsl(38_92%_56%)]/45">
-          <Bot className="h-4 w-4 text-[hsl(38_92%_60%)]" />
+        <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-lg bg-[#0C1119] ring-1 ring-inset ring-[hsl(38_92%_56%)]/45">
+          <HomiAvatar state={streaming ? 'explaining' : 'idle'} size={30} animate={Boolean(streaming)} />
         </div>
       )}
       <div className={`max-w-[80%] ${isUser ? '' : 'flex-1 min-w-0'}`}>
@@ -257,7 +243,12 @@ function AIPageInner() {
     sendMessage, cancelStream, resetChat, loadConversations,
     loadConversation, newConversation, pageContext, setPageContext,
     anonLimitReached, suggestedReplies, suggestedActions, lastWebChecked, lastSources, insufficientCredits,
+    lastCards, homiState,
   } = useAIChat();
+
+  /* A HOMI chip sends its label as the person's turn and, when it has one,
+     the intent of the written answer it stands for. */
+  const onChip: HomiChipHandler = (label, intent) => { void sendMessage(label, intent ? { intent } : {}); };
 
   // Inject page context and auto-send prompt when navigated with state
   useEffect(() => {
@@ -448,7 +439,7 @@ function AIPageInner() {
             <MessageSquare className="h-4 w-4" />
           </Button>
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <Sparkles className="h-5 w-5 shrink-0 text-[hsl(38_92%_60%)]" />
+            <HomiAvatar state={homiState} size={34} label="HOMI" />
             {/* The Beta badge is gone by explicit instruction (2026-09-29):
                 the product name stands on its own. */}
             <h1 className="truncate text-sm font-semibold text-white">{t('ai_title')}</h1>
@@ -470,7 +461,7 @@ function AIPageInner() {
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4"
         >
           {messages.length === 0 && !streaming ? (
-            <EmptyState onPrompt={p => sendMessage(p)} />
+            <EmptyState onChip={onChip} />
           ) : (
             <div className="max-w-2xl mx-auto space-y-4">
               {messages.map(m => (
@@ -480,16 +471,21 @@ function AIPageInner() {
                 <MessageBubble role="assistant" content={streamContent} streaming onNavigate={navigate} />
               )}
               {streaming && !streamContent && (
-                <div className="flex gap-3">
-                  <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-[#0C1119] ring-1 ring-inset ring-[hsl(38_92%_56%)]/45">
-                    <Loader2 className="h-4 w-4 animate-spin text-[hsl(38_92%_60%)]" />
+                /* A friendly "one moment", nothing more. It is not, and must
+                   never be labelled as, the model's reasoning. */
+                <div className="flex gap-3" role="status" aria-live="polite">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-[#0C1119] ring-1 ring-inset ring-[hsl(38_92%_56%)]/45">
+                    <HomiAvatar state={homiState === 'searching' ? 'searching' : 'thinking'} size={46} />
                   </div>
                   <div className="rounded-2xl rounded-ss-sm border border-border bg-card px-4 py-3">
-                    <div className="flex gap-1.5 items-center">
-                      {[0,1,2].map(i => (
-                        <div key={i} className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce"
-                          style={{ animationDelay: `${i * 0.15}s` }} />
-                      ))}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">{t('homi_waiting')}</span>
+                      <span className="flex gap-1.5" aria-hidden="true">
+                        {[0,1,2].map(i => (
+                          <span key={i} className="h-1.5 w-1.5 rounded-full bg-primary/60 motion-safe:animate-bounce"
+                            style={{ animationDelay: `${i * 0.15}s` }} />
+                        ))}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -503,10 +499,15 @@ function AIPageInner() {
               {!streaming && (
                 <WebContextLine webChecked={lastWebChecked} sources={lastSources} className="ps-10" />
               )}
+              {/* HOMI's interactive cards: computed in the browser from
+                  HOMATCH's own engines, never written by the model. */}
+              {!streaming && lastCards.length > 0 && (
+                <div className="ps-10"><HomiCards cards={lastCards} onChip={onChip} /></div>
+              )}
               {!streaming && suggestedReplies.length > 0 && (
                 <SuggestedReplies
                   replies={suggestedReplies}
-                  onSelect={(text) => { void sendMessage(text); }}
+                  onSelect={(text, reply) => { void sendMessage(text, reply.intent ? { intent: reply.intent } : {}); }}
                   className="ps-10"
                 />
               )}

@@ -264,11 +264,32 @@ export interface FinancingSession {
   workspaceState: WorkspaceState;
 }
 
-export function useFinancingSession(prefill?: { price?: number; currency?: string }): FinancingSession {
+/** What another surface may hand over. A complete scenario comes from HOMI's in-chat calculator. */
+export interface FinancingPrefill {
+  price?: number;
+  currency?: string;
+  downPayment?: number;
+  termMonths?: number;
+  rate?: number;
+}
+
+export function useFinancingSession(prefill?: FinancingPrefill): FinancingSession {
   const { homatchUser } = useAuth();
 
   const [draft, setDraft] = useState<FinancingDraft>(() => {
     const loaded = loadDraft();
+    /* A complete scenario the person just built with HOMI is what they chose
+       a moment ago, so it replaces the saved one rather than waiting behind it. */
+    if (prefill?.price && typeof prefill.downPayment === 'number' && prefill.termMonths && typeof prefill.rate === 'number') {
+      return {
+        ...loaded,
+        propertyPrice: prefill.price,
+        currency: prefill.currency ?? loaded.currency,
+        downPayment: prefill.downPayment,
+        termMonths: prefill.termMonths,
+        nominalAnnualRatePercent: prefill.rate,
+      };
+    }
     if (prefill?.price && loaded.propertyPrice === null) {
       return { ...loaded, propertyPrice: prefill.price, currency: prefill.currency ?? loaded.currency };
     }

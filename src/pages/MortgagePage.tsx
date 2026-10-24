@@ -41,7 +41,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { logActivity } from '@/services/api';
 import { buildConsultantBrief } from '@/mortgage/consultantBrief';
-import { useFinancingSession } from '@/components/mortgage/useFinancingSession';
+import { useFinancingSession, type FinancingPrefill } from '@/components/mortgage/useFinancingSession';
 import { SimpleCalculator } from '@/components/mortgage/SimpleCalculator';
 import { ResultHeadline } from '@/components/mortgage/ResultHeadline';
 import { ConsultantPanel } from '@/components/mortgage/ConsultantPanel';
@@ -57,7 +57,7 @@ import { OffersView } from '@/components/mortgage/views/OffersView';
 import { ProgramsView } from '@/components/mortgage/views/ProgramsView';
 import { BeforeYouSignView } from '@/components/mortgage/views/GuidanceViews';
 
-interface MortgagePrefillState {
+interface MortgagePrefillState extends FinancingPrefill {
   propertyId?: string;
   price?: number;
   currency?: string;
@@ -70,7 +70,7 @@ export default function MortgagePage() {
   const location = useLocation();
   const prefill = (location.state as { context?: MortgagePrefillState } | null)?.context;
 
-  const session = useFinancingSession({ price: prefill?.price, currency: prefill?.currency });
+  const session = useFinancingSession(prefill);
   const {
     draft,
     set,

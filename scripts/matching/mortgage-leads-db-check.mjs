@@ -1,4 +1,4 @@
-// PGlite behaviour test for 20261130093000_mortgage_workspace_and_buyer_leads.sql on production-shaped stubs:
+// PGlite behaviour test for 20261201093000_mortgage_workspace_and_buyer_leads.sql on production-shaped stubs:
 // no consent means no lead, one buyer per person however often they recalculate, a preview without
 // identity or finances, exactly-once unlock (retry, new key, other listing, mixed selection, an earlier
 // internal unlock), price refusal, cross-account isolation, rollback on insufficient credits, contact
@@ -14,7 +14,7 @@ const { PGlite } = process.argv[3]
   : require('@electric-sql/pglite');
 import assert from 'node:assert/strict';
 const root = process.argv[2];
-const sql = readFileSync(`${root}/supabase/migrations/20261130093000_mortgage_workspace_and_buyer_leads.sql`, 'utf8');
+const sql = readFileSync(`${root}/supabase/migrations/20261201093000_mortgage_workspace_and_buyer_leads.sql`, 'utf8');
 const db = new PGlite();
 const one = async (s, p) => (await db.query(s, p)).rows[0];
 

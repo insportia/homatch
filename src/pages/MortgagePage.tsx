@@ -264,7 +264,6 @@ export default function MortgagePage() {
             </header>
 
             {/* ── B. The calculator ── */}
-            <div id="calculator" className="scroll-mt-20">
             <SimpleCalculator
               draft={draft}
               set={set}
@@ -276,7 +275,6 @@ export default function MortgagePage() {
                 });
               }}
             />
-            </div>
 
             {showResult && result ? (
               <>

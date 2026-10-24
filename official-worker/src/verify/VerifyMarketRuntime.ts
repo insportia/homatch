@@ -15,10 +15,17 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import type { ExternalListingCandidate, MarketplaceSearchRequest, MarketplacePropertyType, MarketplaceTransaction } from '../marketplace/contract.js';
+import { inGeorgia, placeNamesAt, type PlaceNames } from './placeNames.js';
 
 export interface VerifyMarketProfile {
+  /** Empty when only the parcel centre is known: the worker names it (placeNames.ts). */
   city: string;
   district: string | null;
+  /** More names of the same place, tried after `district` (never the whole city). */
+  districtAlternates?: string[];
+  /** The parcel centre, when known: names the city and district when the caller could not. */
+  latitude?: number | null;
+  longitude?: number | null;
   transactionType: MarketplaceTransaction;
   propertyType: MarketplacePropertyType;
   areaSqm: number | null;
@@ -76,6 +83,8 @@ export interface VerifyMarketJob {
   completedAt: string | null;
   sources: Record<SourceKey, SourceRun>;
   comparables: VerifyComparable[];
+  /** How the place was named when the caller sent only the parcel centre. */
+  place?: PlaceNames | null;
 }
 
 export type Acquirer = (request: MarketplaceSearchRequest, options: { deadlineAt: string; signal?: AbortSignal; report: (result: any) => Promise<void>; pageCap: number }) => Promise<unknown>;
@@ -105,6 +114,8 @@ export interface VerifyMarketDeps {
   /** Unused since F6 (no city widening); accepted so older callers still type-check. */
   minLocalSample?: number;
   now?: () => number;
+  /** Parcel centre → names (tests inject it). */
+  placeNames?: (lat: number, lon: number) => Promise<PlaceNames | null>;
 }
 
 const hash = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 24);
@@ -226,8 +237,10 @@ async function runSource(source: SourceKey, acquire: Acquirer, profile: VerifyMa
    * "comparables". Only the subject's own locality names are searched; a
    * profile without a district is not searched at all.
    */
+  const names: string[] = [];
+  for (const d of [profile.district, ...(profile.districtAlternates ?? [])]) for (const n of districtCandidates(d ?? null)) if (!names.includes(n)) names.push(n);
   const scopes: Array<{ scope: 'DISTRICT' | 'CITY'; district: string | null }> =
-    districtCandidates(profile.district).map((district) => ({ scope: 'DISTRICT' as const, district }));
+    (profile.city ? names : []).map((district) => ({ scope: 'DISTRICT' as const, district }));
   run.status = 'RUNNING';
   if (!scopes.length) run.attempts.push({ scope: 'DISTRICT', district: null, discovered: 0, returned: 0, status: 'SKIPPED', error: 'NO_DISTRICT', durationMs: 0 });
   const runStarted = now();
@@ -302,6 +315,16 @@ export class VerifyMarketRuntime {
   }
 
   async execute(job: VerifyMarketJob, sources: SourceKey[]): Promise<void> {
+    /* No district name from the caller: the parcel centre names the city and its localities. */
+    const p = job.profile;
+    if ((!p.district || !p.city) && inGeorgia(p.latitude, p.longitude)) {
+      const place = await (this.deps.placeNames ?? placeNamesAt)(p.latitude as number, p.longitude as number).catch(() => null);
+      job.place = place;
+      if (place) {
+        const localities = [...(p.district ? [p.district] : []), ...place.localities];
+        job.profile = { ...p, city: p.city || place.city || '', district: localities[0] ?? null, districtAlternates: [...(p.districtAlternates ?? []), ...localities.slice(1)] };
+      }
+    }
     const tasks: Promise<VerifyComparable[]>[] = [];
     if (sources.includes('MYHOME')) tasks.push(runSource('MYHOME', this.deps.acquireMyHome, job.profile, job.sources.MYHOME, this.deps).catch(() => []));
     if (sources.includes('SSGE')) tasks.push(runSource('SSGE', this.deps.acquireSsge, job.profile, job.sources.SSGE, this.deps).catch(() => []));
@@ -322,8 +345,14 @@ const PT: MarketplacePropertyType[] = ['APARTMENT', 'HOUSE', 'PENTHOUSE', 'LAND'
 /** Validate an untrusted HTTP body into a profile, or null. */
 export function parseVerifyMarketProfile(body: any): VerifyMarketProfile | null {
   const city = typeof body?.city === 'string' ? body.city.trim().slice(0, 80) : '';
-  if (!city) return null;
   const num = (v: any) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+  const latitude = num(body?.latitude);
+  const longitude = num(body?.longitude);
+  // A city, or a parcel centre in Georgia that names one.
+  if (!city && !inGeorgia(latitude, longitude)) return null;
+  const alternates = Array.isArray(body?.districtAlternates)
+    ? body.districtAlternates.filter((d: unknown) => typeof d === 'string' && d.trim()).map((d: string) => d.trim().slice(0, 80)).slice(0, 6)
+    : [];
   const tx = TX.includes(body?.transactionType) ? body.transactionType : 'BUY';
   const raw = PT.includes(body?.propertyType) ? body.propertyType : 'APARTMENT';
   // Both adapters support APARTMENT/HOUSE/LAND/COMMERCIAL; map the rest honestly.
@@ -336,5 +365,7 @@ export function parseVerifyMarketProfile(body: any): VerifyMarketProfile | null 
     areaSqm: num(body?.areaSqm),
     rooms: num(body?.rooms),
     priceUsd: num(body?.priceUsd),
+    ...(alternates.length ? { districtAlternates: alternates } : {}),
+    ...(inGeorgia(latitude, longitude) ? { latitude, longitude } : {}),
   };
 }

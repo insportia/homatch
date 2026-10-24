@@ -364,12 +364,17 @@ export function marketplaceSearchPlan(p: SubjectMarketProfile, opts: { requireRe
   if (opts.requireRegistry && p.assetClassBasis !== 'REGISTRY') return { request: null, reason: 'AWAITING_REGISTRY' };
   if (p.assetClass === 'UNKNOWN') return { request: null, reason: 'PROPERTY_TYPE_UNKNOWN' };
   if (!SEARCHABLE.includes(p.assetClass)) return { request: null, reason: 'PROPERTY_TYPE_NOT_SEARCHABLE' };
-  if (!p.city || !p.district) return { request: null, reason: 'LOCATION_UNKNOWN' };
+  /* ANY CITY IN GEORGIA (owner 2026-10-24): with no district name read, the
+     parcel centre is sent and the worker names the city and its localities.
+     Still never a city-wide search: no centre and no district, no search. */
+  const centre = p.latitude != null && p.longitude != null && p.latitude > 41 && p.latitude < 43.6 && p.longitude > 39.9 && p.longitude < 46.8;
+  if (!(p.city && p.district) && !centre) return { request: null, reason: 'LOCATION_UNKNOWN' };
   if (!p.areaSqm) return { request: null, reason: 'AREA_UNKNOWN' };
   return {
     request: {
-      city: p.city,
+      city: p.city ?? '',
       district: p.district,
+      ...(centre ? { latitude: p.latitude, longitude: p.longitude } : {}),
       transactionType: p.transactionType,
       propertyType: p.assetClass as SearchableKind,
       areaSqm: p.areaSqm,

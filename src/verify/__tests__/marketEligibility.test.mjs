@@ -323,3 +323,16 @@ test('a7177a89: no district name read → the parcel centre names it; a parcel c
   const named = subjectMarketProfile({ result, seed: { ...seed, location: { city: { value: 'თბილისი' }, district: { value: 'ვაკე' }, latitude: { value: 41.7194168 }, longitude: { value: 44.7239822 } } }, registerLatest: null });
   assert.equal(named.district, 'ვაკე', 'a district that was read always wins over the point');
 });
+
+test('any Georgian city: no district name but a parcel centre → the search is sent with the centre, never city-wide', () => {
+  const base = { assetClass: 'APARTMENT', assetClassBasis: 'REGISTRY', areaSqm: 62, rooms: 2, transactionType: 'BUY', areaKey: null, locality: null };
+  const batumi = marketplaceSearchPlan({ ...base, city: 'ბათუმი', district: null, latitude: 41.6413, longitude: 41.6339 });
+  assert.equal(batumi.reason, null);
+  assert.deepEqual([batumi.request.city, batumi.request.district, batumi.request.latitude, batumi.request.longitude], ['ბათუმი', null, 41.6413, 41.6339]);
+  const unnamed = marketplaceSearchPlan({ ...base, city: null, district: null, latitude: 42.2679, longitude: 42.6946 });
+  assert.equal(unnamed.request.city, '', 'the worker names the city from the centre');
+  assert.equal(marketplaceSearchPlan({ ...base, city: 'ბათუმი', district: null, latitude: null, longitude: null }).reason, 'LOCATION_UNKNOWN', 'no centre, no district: no search');
+  assert.equal(marketplaceSearchPlan({ ...base, city: 'x', district: null, latitude: 55.75, longitude: 37.6 }).reason, 'LOCATION_UNKNOWN', 'outside Georgia');
+  const named = marketplaceSearchPlan({ ...base, city: 'თბილისი', district: 'ვაკე', latitude: null, longitude: null });
+  assert.equal(named.request.latitude, undefined, 'a named district sends no centre');
+});

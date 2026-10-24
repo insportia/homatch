@@ -51,8 +51,12 @@ export interface WorkerComparable {
 }
 
 export interface MarketProfileRequest {
+  /** Empty when only the parcel centre is known: the worker names the place (placeNames.ts). */
   city: string;
   district: string | null;
+  /** The parcel centre, sent when no district name was read, so any Georgian city is searched by its own localities. */
+  latitude?: number | null;
+  longitude?: number | null;
   transactionType: 'BUY' | 'MONTHLY_RENT';
   propertyType: 'APARTMENT' | 'HOUSE' | 'COMMERCIAL' | 'LAND';
   areaSqm: number | null;

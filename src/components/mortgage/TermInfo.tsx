@@ -47,7 +47,7 @@ export function TermInfo({ term, className, chip }: { term: GlossaryTerm; classN
           type="button"
           aria-label={t('mortgage_term_info_aria', { term: t(termTitleKey(term)) })}
           data-term={term}
-          className={cn('-m-2 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full p-2 text-muted-foreground transition-colors hover:text-[hsl(var(--gold-ink))] focus-visible:text-[hsl(var(--gold-ink))]', className)}
+          className={cn('-m-3 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full p-3 text-muted-foreground transition-colors hover:text-[hsl(var(--gold-ink))] focus-visible:text-[hsl(var(--gold-ink))]', className)}
         >
           <Info className="h-4 w-4" aria-hidden="true" />
         </button>

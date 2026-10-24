@@ -25,11 +25,7 @@ function canUse3D(): boolean {
   } catch { return false; }
 }
 
-const AVATAR_STATE: Record<HomiGesture, HomiState> = {
-  idle: 'idle', greeting: 'greeting', pointing: 'pointing', explaining: 'explaining', happy: 'happy',
-};
-
-export function HomiHomeStage({ gesture, pointTo = 1, target = null, className }: { gesture: HomiGesture; pointTo?: number; target?: HTMLElement | null; className?: string }) {
+export function HomiHomeStage({ gesture, pointTo = 1, target = null, framing = 'full', className }: { gesture: HomiGesture | HomiState; pointTo?: number; target?: HTMLElement | null; framing?: 'full' | 'upper'; className?: string }) {
   const box = useRef<HTMLDivElement>(null);
   const [near, setNear] = useState(false);
   const [ready, setReady] = useState(false);
@@ -49,7 +45,7 @@ export function HomiHomeStage({ gesture, pointTo = 1, target = null, className }
   return (
     <div ref={box} className={`relative ${className ?? ''}`} data-homi-stage={failed ? '2d' : ready ? '3d' : 'pending'}>
       <div className={`absolute inset-0 transition-opacity duration-500 motion-reduce:transition-none ${ready && !failed ? 'opacity-0' : 'opacity-100'}`}>
-        <HomiAvatar state={AVATAR_STATE[gesture]} crop="bust" size="100%" label="HOMI" animate={false} />
+        <HomiAvatar state={gesture} crop={framing === 'upper' ? 'upper' : 'bust'} size="100%" label="HOMI" animate={false} />
       </div>
       {near && !failed && (
         <Suspense fallback={null}>
@@ -57,6 +53,7 @@ export function HomiHomeStage({ gesture, pointTo = 1, target = null, className }
             gesture={gesture}
             pointTo={pointTo}
             target={target}
+            framing={framing}
             onFail={() => setFailed(true)}
             onReady={() => setReady(true)}
             className={`absolute inset-0 transition-opacity duration-500 motion-reduce:transition-none ${ready ? 'opacity-100' : 'opacity-0'}`}

@@ -14,18 +14,18 @@
 
 export const HOMI_STATES = [
   'idle', 'greeting', 'listening', 'thinking', 'searching', 'explaining',
-  'happy', 'surprised', 'encouraging', 'success', 'error', 'goodbye', 'pointing',
+  'happy', 'surprised', 'encouraging', 'success', 'error', 'goodbye', 'pointing', 'writing',
 ] as const;
 export type HomiState = typeof HOMI_STATES[number];
 
 /** States that share a render. */
-const RENDER_OF: Partial<Record<HomiState, HomiState>> = { goodbye: 'greeting', surprised: 'happy' };
+const RENDER_OF: Partial<Record<HomiState, HomiState>> = { goodbye: 'greeting' };
 
-export type HomiCrop = 'head' | 'bust' | 'full';
+export type HomiCrop = 'head' | 'upper' | 'bust' | 'full';
 
 export function homiStillUrl(state: HomiState, crop: HomiCrop): string {
   const pose = RENDER_OF[state] ?? state;
-  return `/images/homi/homi-${crop === 'head' ? 'head' : 'bust'}-${pose}.webp`;
+  return `/images/homi/homi-${crop === 'full' ? 'bust' : crop}-${pose}.webp`;
 }
 
 /** A light idle motion per state (Web Animations keyframes), never required to understand the state. */
@@ -39,6 +39,11 @@ export function homiMotion(state: HomiState): { frames: Keyframe[]; duration: nu
     case 'happy':
     case 'success':
       return { frames: [{ transform: 'translateY(0)' }, { transform: 'translateY(-4%)' }, { transform: 'translateY(0)' }], duration: 1400 };
+    case 'writing':
+      /* A light, quick keystroke rhythm. */
+      return { frames: [{ transform: 'translateY(0)' }, { transform: 'translateY(-1.2%)' }, { transform: 'translateY(0)' }, { transform: 'translateY(-0.6%)' }, { transform: 'translateY(0)' }], duration: 700 };
+    case 'surprised':
+      return { frames: [{ transform: 'scale(1)' }, { transform: 'scale(1.04) translateY(-3%)' }, { transform: 'scale(1)' }], duration: 900 };
     case 'error':
       return null;
     default:

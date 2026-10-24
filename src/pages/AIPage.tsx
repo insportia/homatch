@@ -20,6 +20,7 @@ import { RouteGuard } from '@/components/common/RouteGuard';
 import { SuggestedReplies } from '@/components/ai/SuggestedReplies';
 import { ServiceActions, WebContextLine } from '@/components/ai/ServiceActions';
 import { HomiAvatar } from '@/components/homi/HomiAvatar';
+import type { HomiState } from '@/components/homi/homiStates';
 import { HomiHomeStage } from '@/components/homi/HomiHomeStage';
 import { HomiCards, HomiStartCard, type HomiChipHandler } from '@/components/homi/HomiCards';
 import { HOMI_INTRO, pick } from '@/lib/homi/content';
@@ -167,12 +168,14 @@ function EmptyState({ onChip }: { onChip: HomiChipHandler }) {
 }
 
 function MessageBubble({
-  role, content, streaming, onNavigate,
+  role, content, streaming, onNavigate, homiState,
 }: {
   role: string;
   content: string;
   streaming?: boolean;
   onNavigate?: (p: string) => void;
+  /** While this answer is being written, HOMI's live state. */
+  homiState?: HomiState;
 }) {
   const isUser = role === 'user';
 
@@ -201,7 +204,7 @@ function MessageBubble({
     <div className={`flex gap-3 ${isUser ? 'justify-end' : ''}`}>
       {!isUser && (
         <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-lg bg-[#0C1119] ring-1 ring-inset ring-[hsl(38_92%_56%)]/45">
-          <HomiAvatar state={streaming ? 'explaining' : 'idle'} size={30} animate={Boolean(streaming)} />
+          <HomiAvatar state={streaming ? (homiState ?? 'writing') : 'idle'} size={30} animate={false} />
         </div>
       )}
       <div className={`max-w-[80%] ${isUser ? '' : 'flex-1 min-w-0'}`}>
@@ -244,7 +247,7 @@ function AIPageInner() {
     sendMessage, cancelStream, resetChat, loadConversations,
     loadConversation, newConversation, pageContext, setPageContext,
     anonLimitReached, suggestedReplies, suggestedActions, lastWebChecked, lastSources, insufficientCredits,
-    lastCards, homiState,
+    lastCards, homiState, noteTyping,
   } = useAIChat();
 
   /* A HOMI chip sends its label as the person's turn and, when it has one,
@@ -469,14 +472,14 @@ function AIPageInner() {
                 <MessageBubble key={m.id} role={m.role} content={m.content} onNavigate={navigate} />
               ))}
               {streaming && streamContent && (
-                <MessageBubble role="assistant" content={streamContent} streaming onNavigate={navigate} />
+                <MessageBubble role="assistant" content={streamContent} streaming onNavigate={navigate} homiState={homiState} />
               )}
               {streaming && !streamContent && (
                 /* A friendly "one moment", nothing more. It is not, and must
                    never be labelled as, the model's reasoning. */
                 <div className="flex gap-3" role="status" aria-live="polite">
-                  <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-[#0C1119] ring-1 ring-inset ring-[hsl(38_92%_56%)]/45">
-                    <HomiAvatar state={homiState === 'searching' ? 'searching' : 'thinking'} size={46} />
+                  <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-lg bg-[#0C1119] ring-1 ring-inset ring-[hsl(38_92%_56%)]/45" data-homi-waiting={homiState}>
+                    <HomiAvatar state={homiState === 'idle' ? 'listening' : homiState} size={30} animate={false} />
                   </div>
                   <div className="rounded-2xl rounded-ss-sm border border-border bg-card px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -576,11 +579,21 @@ function AIPageInner() {
             the crisp white field is unmissable inside it. */}
         <div className={`shrink-0 bg-[#0C1119] px-5 pt-3 sm:px-4 ${session ? NAV_CLEARANCE : BOTTOM_INSET}`}>
           <div className="mx-auto flex max-w-2xl items-end gap-2">
+            {/* HOMI in the corner, standing on the edge of the conversation:
+                one live 3D HOMI that reacts to the whole exchange (listening,
+                the mood of what was written, writing, the answer's mood). */}
+            {(messages.length > 0 || streaming) && (
+              <HomiHomeStage
+                gesture={homiState}
+                framing="upper"
+                className="-mt-14 h-[104px] w-[84px] shrink-0 self-end sm:-mt-16 sm:h-[120px] sm:w-[96px]"
+              />
+            )}
             <textarea
               ref={inputRef}
               rows={1}
               value={input}
-              onChange={e => setInput(e.target.value)}
+              onChange={e => { setInput(e.target.value); if (!streaming) noteTyping(); }}
               onKeyDown={handleKeyDown}
               placeholder={t('ai_input_placeholder')}
               disabled={streaming}

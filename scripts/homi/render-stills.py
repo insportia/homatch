@@ -53,12 +53,13 @@ root = objs.get('HOMI_ROOT')
 if root: root.hide_render = True
 
 # Blender: character faces -Y; arms rotate about Y (frontal plane). L arm = +X side.
-def pose(head=(0, 0, 0), armL=0.0, armR=0.0, foreL=0.0, foreR=0.0, eye=(0, 0)):
+def pose(head=(0, 0, 0), armL=0.0, armR=0.0, foreL=0.0, foreR=0.0, eye=(0, 0), fwd=0.0, foreFwd=0.0):
     empties['HEAD'].rotation_euler = Euler((math.radians(head[0]), math.radians(head[1]), math.radians(head[2])))
-    empties['ARM_L'].rotation_euler = Euler((0, math.radians(-armL), 0))
-    empties['ARM_R'].rotation_euler = Euler((0, math.radians(armR), 0))
-    empties['FOREARM_L'].rotation_euler = Euler((0, math.radians(-foreL), 0))
-    empties['FOREARM_R'].rotation_euler = Euler((0, math.radians(foreR), 0))
+    # fwd / foreFwd swing the arms toward the viewer (about X), e.g. typing.
+    empties['ARM_L'].rotation_euler = Euler((math.radians(-fwd), math.radians(-armL), 0))
+    empties['ARM_R'].rotation_euler = Euler((math.radians(-fwd), math.radians(armR), 0))
+    empties['FOREARM_L'].rotation_euler = Euler((math.radians(-foreFwd), math.radians(-foreL), 0))
+    empties['FOREARM_R'].rotation_euler = Euler((math.radians(-foreFwd), math.radians(foreR), 0))
     for s in ('EYE_L', 'EYE_R'):
         e = empties[s]; e.location = e.location  # eyes follow head; offsets small and optional
 
@@ -74,6 +75,8 @@ POSES = {
     'success':     dict(armL=150, armR=150, foreL=20, foreR=20),
     'listening':   dict(head=(0, 7, 0)),
     'encouraging': dict(armR=70, foreR=95, head=(0, 5, 0)),
+    'writing':     dict(armL=6, armR=6, foreL=-62, foreR=-62, fwd=30, foreFwd=55, head=(-14, 0, 0)),
+    'surprised':   dict(armL=45, foreL=120, armR=45, foreR=120, head=(10, 0, 0)),
 }
 
 scene = bpy.context.scene
@@ -106,6 +109,7 @@ CROPS = {
     # name: (target z, distance, size)
     'head': ((0, 0, 1.47), 2.1, 256),
     'bust': ((0, 0, 1.05), 4.6, 512),
+    'upper': ((0, 0, 1.22), 3.0, 320),
 }
 for crop, (tz, dist, size) in CROPS.items():
     scene.render.resolution_x = size; scene.render.resolution_y = size

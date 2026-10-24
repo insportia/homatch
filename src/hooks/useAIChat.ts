@@ -5,6 +5,7 @@ import { supabase } from '@/db/supabase';
 import { parseServiceActions, type ServiceAction } from '@/lib/ai/serviceActions';
 import { parseSuggestedReplies, type SuggestedReply } from '@/lib/ai/suggestedReplies';
 import { parseHomiCards, type HomiCardRef } from '@/lib/homi/cards';
+import { waitingMoodFor } from '@/lib/homi/mood';
 import type { HomiState } from '@/components/homi/homiStates';
 import { sendStreamRequest } from '@/lib/sse';
 import { ensureAnonymousSession } from '@/services/anonymousSession';
@@ -83,6 +84,41 @@ export function useAIChat() {
      about what the model is "thinking". */
   const [homiState, setHomiState] = useState<HomiState>('idle');
   const abortRef = useRef<AbortController | null>(null);
+  /*
+   * HOMI WHILE YOU WAIT. Listening first, then a face that fits what was
+   * written (surprised, searching, encouraging, thinking...), and if the
+   * answer takes a while it keeps visibly busy. The first streamed word
+   * switches it to writing; the finished answer sets its mood. Presentation
+   * only: none of this claims to show what the model is doing.
+   */
+  const moodTimers = useRef<number[]>([]);
+  const clearMoodTimers = useCallback(() => {
+    moodTimers.current.forEach((id) => { window.clearTimeout(id); window.clearInterval(id); });
+    moodTimers.current = [];
+  }, []);
+  const startWaitingMood = useCallback((text: string, chip: boolean) => {
+    clearMoodTimers();
+    setHomiState('listening');
+    const first: HomiState = chip ? 'searching' : waitingMoodFor(text);
+    moodTimers.current.push(window.setTimeout(() => setHomiState(first), 650));
+    moodTimers.current.push(window.setTimeout(() => {
+      /* A long wait alternates the two busy faces, starting with whichever
+         HOMI is not already showing. */
+      let busy: HomiState = first === 'searching' ? 'searching' : 'thinking';
+      const swap = () => { busy = busy === 'searching' ? 'thinking' : 'searching'; setHomiState(busy); };
+      swap();
+      moodTimers.current.push(window.setInterval(swap, 2600));
+    }, 5200));
+  }, [clearMoodTimers]);
+  useEffect(() => clearMoodTimers, [clearMoodTimers]);
+  /* While the person types, HOMI turns to listen; a pause lets it relax. */
+  const typingTimer = useRef<number>(0);
+  const noteTyping = useCallback(() => {
+    clearMoodTimers(); // the page only calls this when no answer is in flight
+    setHomiState('listening');
+    window.clearTimeout(typingTimer.current);
+    typingTimer.current = window.setTimeout(() => setHomiState('idle'), 2500);
+  }, [clearMoodTimers]);
 
   const loadConversations = useCallback(async () => {
     const { data } = await supabase.from('ai_conversations').select('id, title, updated_at').order('updated_at', { ascending: false }).limit(30);
@@ -177,7 +213,8 @@ export function useAIChat() {
     setLastSources([]);
     setLastCards([]);
     setInsufficientCredits(false);
-    setHomiState(opts.intent ? 'searching' : 'thinking');
+    window.clearTimeout(typingTimer.current);
+    startWaitingMood(userText, Boolean(opts.intent));
     abortRef.current = new AbortController();
 
     const allMessages = [...messages, userMsg];
@@ -284,11 +321,13 @@ export function useAIChat() {
           if (chunk) {
             accumulated += chunk;
             setStreamContent(accumulated);
-            setHomiState('explaining');
+            if (moodTimers.current.length) clearMoodTimers();
+            setHomiState('writing');
           }
         } catch { /* skip incomplete frames */ }
       },
       onComplete: async () => {
+        clearMoodTimers();
         if (streamError || !(finalText ?? accumulated).trim()) {
           /* The stream ended without an answer. Nothing was charged (the
              server released any hold); the question goes back to the box. */
@@ -315,6 +354,8 @@ export function useAIChat() {
         setLastSources(pendingWebChecked ? pendingSources : []);
         setLastCards(pendingCards);
         setHomiState(pendingMood);
+        /* The answer's mood for a moment, then back to a relaxed idle. */
+        moodTimers.current.push(window.setTimeout(() => setHomiState('idle'), 4500));
         if (pendingBilling) setLastBilling(pendingBilling);
         if (convId && convId !== 'guest' && allMessages.length === 1) {
           await supabase.from('ai_conversations').update({ title: userText.slice(0, 60) }).eq('id', convId);
@@ -323,6 +364,7 @@ export function useAIChat() {
       },
       onError: async (err) => {
         console.error('AI stream error:', err);
+        clearMoodTimers();
         setStreaming(false);
         setStreamContent('');
         setHomiState('error');
@@ -377,9 +419,9 @@ export function useAIChat() {
       },
       signal: abortRef.current.signal,
     });
-  }, [streaming, activeConvId, messages, pageContext, newConversation, loadConversations, loadConversation, lang, t]);
+  }, [streaming, activeConvId, messages, pageContext, newConversation, loadConversations, loadConversation, lang, t, startWaitingMood, clearMoodTimers]);
 
-  const cancelStream = useCallback(() => { abortRef.current?.abort(); setStreaming(false); setStreamContent(''); setHomiState('idle'); }, []);
+  const cancelStream = useCallback(() => { abortRef.current?.abort(); clearMoodTimers(); setStreaming(false); setStreamContent(''); setHomiState('idle'); }, [clearMoodTimers]);
   /* SIGNING IN MID-CONVERSATION.
    *
    * AuthContext hands the anonymous work to the new account and announces it.
@@ -403,7 +445,7 @@ export function useAIChat() {
     messages, streaming, streamContent, conversations, activeConvId, pageContext, setPageContext,
     sendMessage, cancelStream, resetChat, loadConversations, loadConversation, newConversation,
     anonLimitReached, suggestedReplies, suggestedActions, lastWebChecked, lastSources, lastBilling, insufficientCredits,
-    lastCards, homiState,
+    lastCards, homiState, noteTyping,
     pendingPropertyQuestion: propertyRetry.current?.scope === `${pageContext.data?.searchId}:${pageContext.data?.propertyKey}:${activeConvId}`
       ? propertyRetry.current.text : null,
   };

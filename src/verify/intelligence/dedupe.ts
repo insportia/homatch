@@ -73,9 +73,16 @@ export function sentences(text: string): string[] {
   if (typeof text !== 'string' || !text.trim()) return [];
   const out: string[] = [];
   let buf = '';
-  for (const ch of text) {
+  const chars = [...text];
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
     buf += ch;
-    if (ch === '.' || ch === '!' || ch === '?' || ch === '\n') {
+    /* A terminator ends a sentence only before whitespace or the end: "19.7 მ²",
+       "01.18.06" and "2.5%" are numbers, not sentences (live test 307a60b1
+       rejoined "19.7" as "19. 7"). */
+    const next = chars[i + 1];
+    const ends = ch === '\n' || ((ch === '.' || ch === '!' || ch === '?') && (next === undefined || /\s/.test(next)));
+    if (ends) {
       if (buf.trim()) out.push(buf.trim());
       buf = '';
     }

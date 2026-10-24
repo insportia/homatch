@@ -22489,8 +22489,8 @@ const en = {
   mw_product_label: 'Product',
   mw_product_internal: 'HOMATCH Internal',
   mw_product_external: 'External Leads Database',
-  mw_internal_title: 'Real matches with HOMATCH members’ searches',
-  mw_internal_body: 'HOMATCH members whose stated search fits this property. Browsing is free and anonymous; unlock only the contacts you want to approach.',
+  mw_internal_title: 'Matches for this property among HOMATCH members',
+  mw_internal_body: 'Only members whose stated search fits this property — its location, price, size and type. Browsing is free and anonymous; unlock only the contacts you want to approach.',
   mw_internal_prices_note: 'One price per person, set by category — never stacked.',
   mw_internal_privacy_note: 'After unlocking you see only the contact details each member chose to share.',
   mw_external_title: 'An international database of potentially interested people',
@@ -22724,6 +22724,9 @@ const en = {
 
   /* ── VERIFY CODE CHECK ── */
   verify_err_code_not_found: 'No cadastral code like this exists: the Public Registry has no record of it, nor of its parent parcel. Nothing was charged. Please check the code and try again.',
+
+  /* ── MATCHING WORKSPACE (HOMATCH Internal + External Leads Database) ── */
+  mw_internal_live: 'Always up to date: while your listing is active, HOMATCH keeps matching it — new members whose search fits are added here automatically.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -45127,8 +45130,8 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mw_product_label: 'პროდუქტი',
   mw_product_internal: 'HOMATCH შიდა',
   mw_product_external: 'გარე ლიდების ბაზა',
-  mw_internal_title: 'რეალური დამთხვევები HOMATCH-ის წევრების მოთხოვნებთან',
-  mw_internal_body: 'HOMATCH-ის წევრები, რომელთა მოთხოვნაც ამ ქონებას ემთხვევა. დათვალიერება უფასო და ანონიმურია; გახსენით მხოლოდ ის კონტაქტები, ვისთანაც დაკავშირება გსურთ.',
+  mw_internal_title: 'ამ ქონების დამთხვევები HOMATCH-ის მძებნელებთან',
+  mw_internal_body: 'მხოლოდ ის წევრები, რომელთა ძიებაც სწორედ ამ ქონებას ერგება — მდებარეობით, ფასით, ფართით და ტიპით. დათვალიერება უფასო და ანონიმურია; გახსენით მხოლოდ ის კონტაქტები, ვისთანაც დაკავშირება გსურთ.',
   mw_internal_prices_note: 'ერთი ფასი ერთ ადამიანზე, კატეგორიის მიხედვით — არასდროს ჯამდება.',
   mw_internal_privacy_note: 'გახსნის შემდეგ ხედავთ მხოლოდ იმ საკონტაქტო მონაცემებს, რომელთა გაზიარებაც თითოეულმა წევრმა აირჩია.',
   mw_external_title: 'პოტენციურად დაინტერესებული ადამიანების საერთაშორისო ბაზა',
@@ -45362,6 +45365,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY CODE CHECK ── */
   verify_err_code_not_found: 'ასეთი საკადასტრო კოდი არ არსებობს: საჯარო რეესტრში არ არის ჩანაწერი არც ამ კოდზე და არც მის დედა ნაკვეთზე. თანხა არ ჩამოგეჭრათ. გთხოვთ, გადაამოწმოთ კოდი და სცადოთ თავიდან.',
+
+  /* ── MATCHING WORKSPACE (HOMATCH Internal + External Leads Database) ── */
+  mw_internal_live: 'მუდმივად ახლდება: სანამ თქვენი განცხადება აქტიურია, HOMATCH განაგრძობს დამთხვევების ძიებას — ახალი შესაბამისი მძებნელები აქ ავტომატურად დაემატება.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -67756,8 +67762,8 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mw_product_label: 'Продукт',
   mw_product_internal: 'HOMATCH Внутренние',
   mw_product_external: 'Внешняя база контактов',
-  mw_internal_title: 'Реальные совпадения с запросами участников HOMATCH',
-  mw_internal_body: 'Участники HOMATCH, чей запрос подходит этому объекту. Просмотр бесплатный и анонимный; открывайте только те контакты, с которыми хотите связаться.',
+  mw_internal_title: 'Совпадения для этого объекта среди участников HOMATCH',
+  mw_internal_body: 'Только участники, чей запрос подходит именно этому объекту — по расположению, цене, площади и типу. Просмотр бесплатный и анонимный; открывайте только те контакты, с которыми хотите связаться.',
   mw_internal_prices_note: 'Одна цена за человека, по категории — никогда не суммируется.',
   mw_internal_privacy_note: 'После открытия вы видите только те контакты, которыми участник решил поделиться.',
   mw_external_title: 'Международная база потенциально заинтересованных людей',
@@ -67991,6 +67997,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY CODE CHECK ── */
   verify_err_code_not_found: 'Такого кадастрового кода не существует: в Публичном реестре нет записи ни о нём, ни о родительском участке. Средства не списаны. Проверьте код и попробуйте снова.',
+
+  /* ── MATCHING WORKSPACE (HOMATCH Internal + External Leads Database) ── */
+  mw_internal_live: 'Всегда актуально: пока ваше объявление активно, HOMATCH продолжает подбор — новые участники с подходящим запросом появляются здесь автоматически.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -90383,8 +90392,8 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mw_product_label: 'Ürün',
   mw_product_internal: 'HOMATCH Dahili',
   mw_product_external: 'Harici Kişi Veritabanı',
-  mw_internal_title: 'HOMATCH üyelerinin aramalarıyla gerçek eşleşmeler',
-  mw_internal_body: 'Belirttikleri arama bu mülke uyan HOMATCH üyeleri. Göz atmak ücretsiz ve anonimdir; yalnızca iletişime geçmek istediğiniz kişileri açın.',
+  mw_internal_title: 'Bu mülk için HOMATCH üyeleri arasındaki eşleşmeler',
+  mw_internal_body: 'Yalnızca belirttikleri arama tam olarak bu mülke — konumuna, fiyatına, büyüklüğüne ve türüne — uyan üyeler. Göz atmak ücretsiz ve anonimdir; yalnızca iletişime geçmek istediğiniz kişileri açın.',
   mw_internal_prices_note: 'Kişi başına tek fiyat, kategoriye göre — asla toplanmaz.',
   mw_internal_privacy_note: 'Açtıktan sonra yalnızca her üyenin paylaşmayı seçtiği iletişim bilgilerini görürsünüz.',
   mw_external_title: 'Potansiyel olarak ilgilenen kişilerin uluslararası veritabanı',
@@ -90618,6 +90627,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY CODE CHECK ── */
   verify_err_code_not_found: 'Böyle bir kadastro kodu yok: Tapu Sicilinde ne bu koda ne de ana parsele ait bir kayıt var. Ücret alınmadı. Lütfen kodu kontrol edip tekrar deneyin.',
+
+  /* ── MATCHING WORKSPACE (HOMATCH Internal + External Leads Database) ── */
+  mw_internal_live: 'Her zaman güncel: ilanınız aktif olduğu sürece HOMATCH eşleştirmeye devam eder — araması uyan yeni üyeler buraya otomatik olarak eklenir.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -113010,8 +113022,8 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mw_product_label: 'المنتج',
   mw_product_internal: 'HOMATCH الداخلية',
   mw_product_external: 'قاعدة الجهات الخارجية',
-  mw_internal_title: 'مطابقات حقيقية مع طلبات أعضاء HOMATCH',
-  mw_internal_body: 'أعضاء HOMATCH الذين يتوافق بحثهم المعلن مع هذا العقار. التصفح مجاني ومجهول الهوية؛ افتح فقط جهات الاتصال التي تريد التواصل معها.',
+  mw_internal_title: 'مطابقات هذا العقار بين أعضاء HOMATCH',
+  mw_internal_body: 'فقط الأعضاء الذين يتوافق بحثهم المعلن مع هذا العقار تحديدًا — موقعه وسعره ومساحته ونوعه. التصفح مجاني ومجهول الهوية؛ افتح فقط جهات الاتصال التي تريد التواصل معها.',
   mw_internal_prices_note: 'سعر واحد لكل شخص حسب الفئة — لا تُجمع الأسعار أبدًا.',
   mw_internal_privacy_note: 'بعد الفتح ترى فقط بيانات الاتصال التي اختار كل عضو مشاركتها.',
   mw_external_title: 'قاعدة دولية للأشخاص المحتمل اهتمامهم',
@@ -113245,6 +113257,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY CODE CHECK ── */
   verify_err_code_not_found: 'لا يوجد رمز مساحي كهذا: لا يحتوي السجل العام على أي قيد له ولا لقطعة الأرض الأم. لم يتم خصم أي مبلغ. يرجى التحقق من الرمز والمحاولة مرة أخرى.',
+
+  /* ── MATCHING WORKSPACE (HOMATCH Internal + External Leads Database) ── */
+  mw_internal_live: 'محدَّث دائمًا: ما دام إعلانك نشطًا، يواصل HOMATCH البحث عن مطابقات — ويُضاف هنا تلقائيًا الأعضاء الجدد الذين يتوافق بحثهم.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -135637,8 +135652,8 @@ const he: Partial<Record<TranslationKey, string>> = {
   mw_product_label: 'מוצר',
   mw_product_internal: 'HOMATCH פנימי',
   mw_product_external: 'מאגר לידים חיצוני',
-  mw_internal_title: 'התאמות אמיתיות לחיפושים של חברי HOMATCH',
-  mw_internal_body: 'חברי HOMATCH שהחיפוש שהצהירו עליו מתאים לנכס הזה. הגלישה חינמית ואנונימית; פתחו רק את אנשי הקשר שאיתם תרצו ליצור קשר.',
+  mw_internal_title: 'התאמות לנכס הזה בקרב חברי HOMATCH',
+  mw_internal_body: 'רק חברים שהחיפוש שהצהירו עליו מתאים לנכס הזה בדיוק — למיקום, למחיר, לגודל ולסוג. הגלישה חינמית ואנונימית; פתחו רק את אנשי הקשר שאיתם תרצו ליצור קשר.',
   mw_internal_prices_note: 'מחיר אחד לאדם, לפי קטגוריה — לעולם לא מצטבר.',
   mw_internal_privacy_note: 'לאחר הפתיחה תראו רק את פרטי הקשר שכל חבר בחר לשתף.',
   mw_external_title: 'מאגר בינלאומי של אנשים שעשויים להתעניין',
@@ -135872,6 +135887,9 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY CODE CHECK ── */
   verify_err_code_not_found: 'קוד קדסטרי כזה אינו קיים: במרשם הציבורי אין רישום שלו וגם לא של חלקת האם. לא חויבת. אנא בדוק את הקוד ונסה שוב.',
+
+  /* ── MATCHING WORKSPACE (HOMATCH Internal + External Leads Database) ── */
+  mw_internal_live: 'תמיד מעודכן: כל עוד המודעה שלך פעילה, HOMATCH ממשיך לחפש התאמות — חברים חדשים שהחיפוש שלהם מתאים יתווספו כאן אוטומטית.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

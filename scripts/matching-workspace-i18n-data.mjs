@@ -15,16 +15,24 @@ export const MATCHING_WORKSPACE_STRINGS = {
   mw_product_external: ['External Leads Database', 'გარე ლიდების ბაზა', 'Внешняя база контактов', 'Harici Kişi Veritabanı', 'قاعدة الجهات الخارجية', 'מאגר לידים חיצוני'],
 
   /* ── product intros ── */
-  mw_internal_title: ['Real matches with HOMATCH members’ searches', 'რეალური დამთხვევები HOMATCH-ის წევრების მოთხოვნებთან', 'Реальные совпадения с запросами участников HOMATCH', 'HOMATCH üyelerinin aramalarıyla gerçek eşleşmeler', 'مطابقات حقيقية مع طلبات أعضاء HOMATCH', 'התאמות אמיתיות לחיפושים של חברי HOMATCH'],
+  mw_internal_title: ['Matches for this property among HOMATCH members', 'ამ ქონების დამთხვევები HOMATCH-ის მძებნელებთან', 'Совпадения для этого объекта среди участников HOMATCH', 'Bu mülk için HOMATCH üyeleri arasındaki eşleşmeler', 'مطابقات هذا العقار بين أعضاء HOMATCH', 'התאמות לנכס הזה בקרב חברי HOMATCH'],
   mw_internal_body: [
-    'HOMATCH members whose stated search fits this property. Browsing is free and anonymous; unlock only the contacts you want to approach.',
-    'HOMATCH-ის წევრები, რომელთა მოთხოვნაც ამ ქონებას ემთხვევა. დათვალიერება უფასო და ანონიმურია; გახსენით მხოლოდ ის კონტაქტები, ვისთანაც დაკავშირება გსურთ.',
-    'Участники HOMATCH, чей запрос подходит этому объекту. Просмотр бесплатный и анонимный; открывайте только те контакты, с которыми хотите связаться.',
-    'Belirttikleri arama bu mülke uyan HOMATCH üyeleri. Göz atmak ücretsiz ve anonimdir; yalnızca iletişime geçmek istediğiniz kişileri açın.',
-    'أعضاء HOMATCH الذين يتوافق بحثهم المعلن مع هذا العقار. التصفح مجاني ومجهول الهوية؛ افتح فقط جهات الاتصال التي تريد التواصل معها.',
-    'חברי HOMATCH שהחיפוש שהצהירו עליו מתאים לנכס הזה. הגלישה חינמית ואנונימית; פתחו רק את אנשי הקשר שאיתם תרצו ליצור קשר.',
+    'Only members whose stated search fits this property — its location, price, size and type. Browsing is free and anonymous; unlock only the contacts you want to approach.',
+    'მხოლოდ ის წევრები, რომელთა ძიებაც სწორედ ამ ქონებას ერგება — მდებარეობით, ფასით, ფართით და ტიპით. დათვალიერება უფასო და ანონიმურია; გახსენით მხოლოდ ის კონტაქტები, ვისთანაც დაკავშირება გსურთ.',
+    'Только участники, чей запрос подходит именно этому объекту — по расположению, цене, площади и типу. Просмотр бесплатный и анонимный; открывайте только те контакты, с которыми хотите связаться.',
+    'Yalnızca belirttikleri arama tam olarak bu mülke — konumuna, fiyatına, büyüklüğüne ve türüne — uyan üyeler. Göz atmak ücretsiz ve anonimdir; yalnızca iletişime geçmek istediğiniz kişileri açın.',
+    'فقط الأعضاء الذين يتوافق بحثهم المعلن مع هذا العقار تحديدًا — موقعه وسعره ومساحته ونوعه. التصفح مجاني ومجهول الهوية؛ افتح فقط جهات الاتصال التي تريد التواصل معها.',
+    'רק חברים שהחיפוש שהצהירו עליו מתאים לנכס הזה בדיוק — למיקום, למחיר, לגודל ולסוג. הגלישה חינמית ואנונימית; פתחו רק את אנשי הקשר שאיתם תרצו ליצור קשר.',
   ],
   mw_internal_prices_note: ['One price per person, set by category — never stacked.', 'ერთი ფასი ერთ ადამიანზე, კატეგორიის მიხედვით — არასდროს ჯამდება.', 'Одна цена за человека, по категории — никогда не суммируется.', 'Kişi başına tek fiyat, kategoriye göre — asla toplanmaz.', 'سعر واحد لكل شخص حسب الفئة — لا تُجمع الأسعار أبدًا.', 'מחיר אחד לאדם, לפי קטגוריה — לעולם לא מצטבר.'],
+  mw_internal_live: [
+    'Always up to date: while your listing is active, HOMATCH keeps matching it — new members whose search fits are added here automatically.',
+    'მუდმივად ახლდება: სანამ თქვენი განცხადება აქტიურია, HOMATCH განაგრძობს დამთხვევების ძიებას — ახალი შესაბამისი მძებნელები აქ ავტომატურად დაემატება.',
+    'Всегда актуально: пока ваше объявление активно, HOMATCH продолжает подбор — новые участники с подходящим запросом появляются здесь автоматически.',
+    'Her zaman güncel: ilanınız aktif olduğu sürece HOMATCH eşleştirmeye devam eder — araması uyan yeni üyeler buraya otomatik olarak eklenir.',
+    'محدَّث دائمًا: ما دام إعلانك نشطًا، يواصل HOMATCH البحث عن مطابقات — ويُضاف هنا تلقائيًا الأعضاء الجدد الذين يتوافق بحثهم.',
+    'תמיד מעודכן: כל עוד המודעה שלך פעילה, HOMATCH ממשיך לחפש התאמות — חברים חדשים שהחיפוש שלהם מתאים יתווספו כאן אוטומטית.',
+  ],
   mw_internal_privacy_note: [
     'After unlocking you see only the contact details each member chose to share.',
     'გახსნის შემდეგ ხედავთ მხოლოდ იმ საკონტაქტო მონაცემებს, რომელთა გაზიარებაც თითოეულმა წევრმა აირჩია.',

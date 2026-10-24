@@ -1,4 +1,4 @@
-// ADMIN — External Leads Database manager (migration 20261128090000_curated_leads_marketplace.sql).
+// ADMIN — External Leads Database manager (migration 20261129090000_curated_leads_marketplace.sql).
 // Every call is is_admin()-checked on the server; writes and exports are audited there.
 import { supabase } from '@/db/supabase';
 import type { CuratedPrice, MatchingFilters, WorkspaceState } from './matchingWorkspace';

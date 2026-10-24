@@ -279,7 +279,7 @@ export const DB_OBJECT_OWNERS = [
   // Find Buyers 2.0 smart match expansion: classified candidates, measured area geography,
   // the owner's reach controls and the expansion settings reader.
   [/^public\.internal_match_(candidates|place_geo|preferences|upsert$|retire$|refresh_place_geo$|visible$|expansion_config$)/, 'DISCOVERY'],
-  // Matching workspace (20261128090000): the curated External Leads Database, its entitlements,
+  // Matching workspace (20261129090000): the curated External Leads Database, its entitlements,
   // admin import/publication RPCs, the matching switches and the save-to-list / audience helpers.
   [/^public\.(curated_|admin_curated_|matching_|admin_matching_|admin_outreach_list|outreach_source_list$|outreach_list_)/, 'DISCOVERY'],
   // The price catalogue every paid product reads.

@@ -1,4 +1,4 @@
-// PGlite behaviour test for 20261128090000_curated_leads_marketplace.sql on production-shaped stubs:
+// PGlite behaviour test for 20261129090000_curated_leads_marketplace.sql on production-shaped stubs:
 // import (stage → fix → commit), publication rules, masked catalog, filters, quote, idempotent
 // all-or-nothing unlock, the shared-catalog rule (A's purchase never removes a lead for B), the
 // CRM handoff and its consent rule, the four independent switches, internal feed filters.
@@ -15,7 +15,7 @@ const { PGlite } = process.argv[3]
   ? require(process.argv[3] + '/node_modules/@electric-sql/pglite/dist/index.cjs')
   : require('@electric-sql/pglite');
 const PREV = readFileSync(ROOT + '/supabase/migrations/20261126090000_find_buyers_leads_crm.sql', 'utf8');
-const MIGRATION = readFileSync(ROOT + '/supabase/migrations/20261128090000_curated_leads_marketplace.sql', 'utf8');
+const MIGRATION = readFileSync(ROOT + '/supabase/migrations/20261129090000_curated_leads_marketplace.sql', 'utf8');
 const db = new PGlite();
 const A = '00000000-0000-0000-0000-0000000000a1', B = '00000000-0000-0000-0000-0000000000b1', ADM = '00000000-0000-0000-0000-0000000000ad';
 const UA = '10000000-0000-0000-0000-0000000000a1', UB = '10000000-0000-0000-0000-0000000000b1', UADM = '10000000-0000-0000-0000-0000000000ad';

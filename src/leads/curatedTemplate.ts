@@ -4,7 +4,7 @@
 //
 // The "Leads" sheet is FIRST on purpose: the importer reads a workbook's first sheet, so a filled
 // copy of this template uploads as it is. Its headers are the canonical field codes the server
-// normalises (curated_normalise_row, migration 20261128090000). The five example rows use
+// normalises (curated_normalise_row, migration 20261129090000). The five example rows use
 // @example.com addresses; the importer warns while any of them are still present.
 //
 // Column descriptions are a technical reference keyed by field code and stay in English; the

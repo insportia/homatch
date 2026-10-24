@@ -2,7 +2,7 @@
 //
 // Harness build; the list audience, the language split, the campaign create edge function
 // and the contacts query answered by fixtures shaped like the SQL / edge functions
-// (20261128090000_curated_leads_marketplace.sql §12, outreach-campaign-preview):
+// (20261129090000_curated_leads_marketplace.sql §12, outreach-campaign-preview):
 //
 //   * /outreach/email?new=1&list=<id> — the link the matching workspace hands over after an
 //     unlock — opens a NEW Email Studio campaign on that list (Email Studio #309 replaced the old

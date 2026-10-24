@@ -1,5 +1,5 @@
 // MATCHING WORKSPACE — the client for the two matching products and their switches
-// (migration 20261128090000_curated_leads_marketplace.sql).
+// (migration 20261129090000_curated_leads_marketplace.sql).
 //
 //   HOMATCH Internal Matches   → internal_leads_feed_v2 (existing feed, new filters) + the existing
 //                                internal unlock (atomic-unlock kind internal_leads) — reused from

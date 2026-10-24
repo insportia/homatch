@@ -6,7 +6,7 @@
 // publish / hide, edit, audited export), Batches (provenance + rights), User lists (oversight).
 //
 // ACCESS CONTROL IS NOT THIS FILE'S JOB: every RPC re-checks is_admin() and writes the audit
-// row (migration 20261128090000_curated_leads_marketplace.sql).
+// row (migration 20261129090000_curated_leads_marketplace.sql).
 import React from 'react';
 import { PageHeader, useQueryState } from '@/components/admin/control/AdminKit';
 import { BatchesTab } from '@/components/admin/leads/BatchesTab';

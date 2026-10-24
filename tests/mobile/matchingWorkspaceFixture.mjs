@@ -1,7 +1,7 @@
 // The matching workspace in a real browser — shared harness and server fixtures.
 //
 // Harness build (npm run build:harness) + vite preview; every Supabase call is answered here,
-// shaped exactly like the SQL in 20261128090000_curated_leads_marketplace.sql:
+// shaped exactly like the SQL in 20261129090000_curated_leads_marketplace.sql:
 //   rpc/matching_workspace_state, curated_leads_catalog, curated_leads_quote,
 //   internal_leads_feed_v2, internal_leads_unlock_quote, internal_lead_contact,
 //   curated_leads_save_to_list, internal_leads_save_to_list, functions/v1/atomic-unlock.

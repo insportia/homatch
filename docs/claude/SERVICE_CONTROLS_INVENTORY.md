@@ -69,7 +69,7 @@ Each service below is listed as `key`, product.
 - **Keeps running:** pause, resume, stop, settlement, and `executeSocialJob` for a campaign already reserved and paid. Property CRUD under `/property` is platform and is never gated.
 - **Own settings (unchanged):** `find_buyers_social_enabled`, `campaign_source_discovery_enabled`, the APIFY switch.
 
-**Matching workspace keys (owner, 2026-10-24; migration `20261128090000`)** — `/property/:id/matches` is one workspace; every older matching route redirects to it.
+**Matching workspace keys (owner, 2026-10-24; migration `20261129090000`)** — `/property/:id/matches` is one workspace; every older matching route redirects to it.
 - **`internal_matching`: HOMATCH Internal Matches** (live, fail-open). Off → the internal feed refuses discovery (`SERVICE_DISABLED`) and `atomic-unlock` refuses new internal unlocks; the feed's UNLOCKED view stays readable.
 - **`curated_leads`: External Leads Database** (live, fail-open). Off → `curated_leads_catalog` (AVAILABLE), `curated_leads_quote` and `curated_leads_unlock` refuse; purchased leads (UNLOCKED view, save-to-list) stay readable.
 - **`find_buyers_external`: legacy paid external discovery** (Apify / Actor campaigns; **PAID_CLOSED, seeded OFF**). Off → `match-campaign` refuses every NEW search and `extend_budget`; `external-discovery-orchestrator` refuses non-admins. History, pause, stop, settlement unchanged.

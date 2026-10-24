@@ -94,6 +94,10 @@ test('filters are server-side and in the URL: country (Georgian or English name)
   await page.locator('[data-testid="mw-language"]').click();
   await page.locator('[data-testid="mw-language-panel"] [data-option="unknown"]').click();
   await page.keyboard.press('Escape');
+  /* Each filter is its own request: wait for the language one before the next click, or the
+     last call read below can be the one sent before the language reached the server (CI flake). */
+  await page.waitForFunction(() => /lang=unknown/.test(location.search));
+  await until(() => JSON.stringify(state.catalogCalls.at(-1)?.filters?.languages) === '["unknown"]', 'language sent to the server');
   await page.locator('[data-interest="RENT"]').click();
   await page.waitForFunction(() => /interest=RENT/.test(location.search));
   await until(() => JSON.stringify(state.catalogCalls.at(-1)?.filters?.interests) === '["RENT"]', 'interest sent to the server');

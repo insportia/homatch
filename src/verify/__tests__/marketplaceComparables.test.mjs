@@ -109,7 +109,15 @@ test('folded comparables drive the market headline only when they are measurably
   const far = near.map((c) => ({ ...c, latitude: null, longitude: null, address: 'Abashidze St 20' }));
   const d = foldMarketplaceIntoLane([], { comparables: far, sources: {} }, { project: null, latitude: null, longitude: null, district: 'Vake' }, '2026-10-08T00:00:00Z');
   const md = buildMarketIntelligence({ address: 'Chavchavadze Ave, Vake', area: 80, rooms: 3 }, d.comparables);
-  assert.equal(md.basis, 'EVIDENCE_LIMITED');
-  assert.equal(md.min, null);
-  assert.equal(md.tiers.find((t) => t.tier === 'SAME_DISTRICT').contextOnly, true);
+  // Premise (owner 2026-10-24, live test dd42a656): five or more same-district
+  // adverts of the subject's size are the district's asking range, labelled so.
+  assert.equal(md.basis, 'SAME_DISTRICT');
+  assert.equal(md.count, 6);
+  assert.equal(md.median, 1525);
+  // Fewer than MIN_DISTRICT_SAMPLE stays context only: no range.
+  const thin = foldMarketplaceIntoLane([], { comparables: far.slice(0, 4), sources: {} }, { project: null, latitude: null, longitude: null, district: 'Vake' }, '2026-10-08T00:00:00Z');
+  const mt = buildMarketIntelligence({ address: 'Chavchavadze Ave, Vake', area: 80, rooms: 3 }, thin.comparables);
+  assert.equal(mt.basis, 'EVIDENCE_LIMITED');
+  assert.equal(mt.min, null);
+  assert.equal(mt.tiers.find((t) => t.tier === 'SAME_DISTRICT').contextOnly, true);
 });

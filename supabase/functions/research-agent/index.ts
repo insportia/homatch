@@ -1993,10 +1993,14 @@ async function jobTasks(sb: any, jobId: string): Promise<QueueTaskRow[]> {
 
 /** Stop this job's queued work (shared producers other jobs wait on keep running). */
 async function cancelJobTasks(sb: any, jobId: string, taskId: string | null = null): Promise<void> {
+  /* supabase-js returns an RPC failure, it does not throw it: an unread error
+     left eacaf5a0's MyGov and TAS-map tasks running (and solving CAPTCHAs)
+     after the report was written. The error is now read and logged. */
   try {
-    await sb.rpc('verify_job_cancel_tasks', { p_job_id: jobId, p_task_id: taskId });
-  } catch {
-    /* best effort: the tasks' results are simply not read */
+    const { error } = await sb.rpc('verify_job_cancel_tasks', { p_job_id: jobId, p_task_id: taskId });
+    if (error) console.error(JSON.stringify({ scope: 'verify_queue', event: 'cancel_tasks_failed', jobId, taskId, error: String(error.message ?? error).slice(0, 200) }));
+  } catch (e) {
+    console.error(JSON.stringify({ scope: 'verify_queue', event: 'cancel_tasks_failed', jobId, taskId, error: String((e as Error)?.message ?? e).slice(0, 200) }));
   }
 }
 
@@ -4941,6 +4945,8 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string, code = false
   };
   result = applyEvidenceGate(result, i, o, reconciledIdentity);
   const finished = await sb.from('research_jobs').update({ status: 'COMPLETE', stage: 'COMPLETE', response_id: null, result_json: result, evidence_bundle: ev, progress: { phase: 'complete', percent: 100 }, completed_at: now(), updated_at: now(), error: null }).eq('id', j.id);
+  // No official task outlives its job: whatever is still queued or running for it stops here (eacaf5a0).
+  if (!finished.error) await cancelJobTasks(sb, j.id);
   // A refused write leaves the job where it was and the next tick runs this
   // again: say so, and do none of the bookkeeping below for a job that is
   // not complete (prod 12272abd repeated it every tick).

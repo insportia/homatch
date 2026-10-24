@@ -87,3 +87,12 @@ test('code-not-found ends the run before any AI stage, uncharged, with its own c
   assert.match(code('src/pages/VerifyPage.tsx'), /data\?\.terminalReason==='CODE_NOT_FOUND'\?'verify_err_code_not_found'/);
   assert.equal((code('src/i18n/translations.ts').match(/verify_err_code_not_found:/g) || []).length, 6);
 });
+
+test('eacaf5a0: no official task outlives its job, and a failed cancel is seen', () => {
+  const ra = code('supabase/functions/research-agent/index.ts');
+  assert.match(ra, /const \{ error \} = await sb\.rpc\('verify_job_cancel_tasks'/);
+  assert.match(ra, /event: 'cancel_tasks_failed'/);
+  const at = ra.indexOf("const finished = await sb.from('research_jobs').update({ status: 'COMPLETE', stage: 'COMPLETE'");
+  assert.ok(at > 0);
+  assert.match(ra.slice(at, at + 600), /if \(!finished\.error\) await cancelJobTasks\(sb, j\.id\);/);
+});

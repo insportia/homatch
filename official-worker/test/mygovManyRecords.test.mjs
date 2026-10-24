@@ -78,3 +78,22 @@ test('lanes follow the CAPTCHA policy: one without CAPTCHA, maxAttemptsPerProvid
   const src = (await import('node:fs')).readFileSync(new URL('../src/workflows/mygov/MyGovApiWorkflow.ts', import.meta.url), 'utf8');
   assert.match(src, /options\.recordConcurrency\?\?\(options\.captcha\?\.policy\.enabled\?options\.captcha\.policy\.maxAttemptsPerProvider:1\)/);
 });
+
+test('only the first result page is read and only its first three records are opened (owner 2026-10-24)', async () => {
+  const many = ['a1', 'a2', 'a3', 'a4', 'a5'];
+  const calls = [];
+  const fetch = async (url) => {
+    const u = String(url); calls.push(u);
+    if (u.endsWith('/api/search')) return json({ applist: many.map((id) => ({ appID: id, regNumber: 'reg-' + id })), page: 1, lastpage: 4, total: 40 });
+    const id = many.find((x) => u.endsWith('/' + x));
+    if (u.includes('/api/appstatus/')) return json({ status: 20 });
+    if (u.includes('/api/app/')) return json({ appinfo: { r_info: [{ APP_ID: id, CADCODE: code, REG_NUMBER: 'reg-' + id }] }, edocuments: [{ DOC_NAME: 'd', ICON: 'signed-pdf', BLOB_URI: 'https://bs.napr.gov.ge/GetBlob?pid=' + id + '&bid=b' }], statuses: [], letters: [] });
+    return new Response('%PDF-1.7 fixture', { headers: { 'Content-Type': 'application/pdf' } });
+  };
+  const result = await runMyGovApiWorkflow(code, undefined, { fetch, parsePdf: async () => ({ text: 'Official extract text that is long enough to read.', numpages: 1 }) });
+  assert.equal(calls.filter((u) => u.endsWith('/api/search')).length, 1, 'one result page only');
+  assert.equal(calls.filter((u) => u.includes('/api/app/')).length, 3);
+  assert.deepEqual(result.recordsNotOpened, ['a4', 'a5']);
+  assert.equal(result.status, 'SEARCH_CONFIRMED');
+  assert.equal(result.documents.filter((d) => d.complete).length, 3);
+});

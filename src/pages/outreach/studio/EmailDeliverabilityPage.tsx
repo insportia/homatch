@@ -4,22 +4,24 @@
 // (SPF / DKIM / DMARC from the provider's own record status), bounce and complaint rates against
 // the thresholds providers act on, the plan allowance, opted-out and suppressed contacts, and the
 // rules every campaign passes before it can send. Nothing here is a setting the customer can use
-// to weaken those rules; the controls live with the server and the admin.
+// to weaken those rules; the controls live with the server and the admin. Sender authentication
+// is the LIVE check (DeliverabilityHealth: public DNS + provider records), never an assumed "OK".
 
-import { AlertTriangle, CheckCircle2, ExternalLink, Globe, Mail, ShieldCheck, UserX } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ExternalLink, Globe, Mail, UserX } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CommsWorkspace, Section } from '@/components/communications/CommsWorkspace';
 import { Kpi, KpiRow, PageHeader } from '@/components/communications/primitives';
+import { DeliverabilityHealth } from '@/components/emailStudio/DeliverabilityHealth';
 import { EmailSettingsTabs } from '@/components/emailStudio/EmailSettingsTabs';
-import { domainAuth, pct } from '@/components/emailStudio/shared';
+import { pct } from '@/components/emailStudio/shared';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import { cn } from '@/lib/utils';
 import { rate, type SendTotals, sendFacts, totalsOf } from '@/services/emailCampaignStudio';
-import { type EmailPlanView, getEmailPlan, listDomains, type SendingDomain } from '@/services/emailMarketing';
+import { type EmailPlanView, getEmailPlan } from '@/services/emailMarketing';
 
 /* Thresholds mailbox providers act on (Google/Yahoo bulk-sender rules: complaints < 0.3%,
    aim for < 0.1%; bounces above ~2% damage reputation). */
@@ -30,15 +32,13 @@ const COMPLAINT_LIMIT = 0.003;
 export default function EmailDeliverabilityPage() {
   const { t, lang } = useLanguage();
   const navigate = useNavigate();
-  const [domains, setDomains] = useState<SendingDomain[] | null>(null);
   const [plan, setPlan] = useState<EmailPlanView | null>(null);
   const [totals, setTotals] = useState<SendTotals | null>(null);
   const [optOuts, setOptOuts] = useState<{ unsubscribed: number; suppressed: number; recent: Array<{ email: string | null; unsubscribed_at: string | null; suppressed_reason: string | null }> } | null>(null);
 
   useEffect(() => {
-    void listDomains().then(setDomains).catch(() => setDomains([]));
     void getEmailPlan().then(setPlan).catch(() => setPlan(null));
-    void sendFacts(new Date(Date.now() - 30 * 86_400_000).toISOString()).then((f) => setTotals(totalsOf(f))).catch(() => setTotals(null));
+    void sendFacts(new Date(Date.now() - 30 * 86_400_000).toISOString(), { realOnly: true }).then((f) => setTotals(totalsOf(f))).catch(() => setTotals(null));
     void (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -79,23 +79,7 @@ export default function EmailDeliverabilityPage() {
         <Kpi labelKey="ems_dl_allowance" value={plan ? plan.period.remaining.toLocaleString(lang) : null} sub={plan ? t('ems_dl_allowance_sub', { plan: plan.effectivePlan }) : null} loading={!plan} icon={Mail} />
       </KpiRow>
 
-      <Section titleKey="ems_dl_auth_title" sub={t('ems_dl_auth_sub')}>
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3.5">
-            <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600" />
-            <div className="min-w-0 flex-1"><p className="text-sm font-medium">{t('ems_sender_homatch')}</p><p className="text-2xs text-muted-foreground">{t('ems_dl_homatch_auth')}</p></div>
-            <AuthPills auth={{ spf: 'OK', dkim: 'OK', dmarc: 'OK' }} />
-          </div>
-          {domains === null ? <Skeleton className="h-16 w-full rounded-xl" /> : domains.filter((d) => d.status !== 'DISCONNECTED').map((d) => (
-            <div key={d.id} className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3.5">
-              <Globe className="h-5 w-5 shrink-0 text-muted-foreground" />
-              <div className="min-w-0 flex-1"><p className="text-sm font-medium" dir="ltr">{d.domain}</p><p className="text-2xs text-muted-foreground">{t(`emd_status_${d.status.toLowerCase()}`)}</p></div>
-              <AuthPills auth={domainAuth(d)} />
-            </div>
-          ))}
-          <p className="text-2xs text-muted-foreground">{t('ems_auth_dmarc_note')}</p>
-        </div>
-      </Section>
+      <DeliverabilityHealth totals={totals} />
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Section titleKey="ems_dl_rules_title" sub={t('ems_dl_rules_sub')}>
@@ -124,19 +108,5 @@ export default function EmailDeliverabilityPage() {
 
       <Button variant="outline" className="gap-1.5" onClick={() => navigate('/outreach/email/plan')}><ExternalLink className="h-4 w-4" />{t('ems_dl_plan_link')}</Button>
     </CommsWorkspace>
-  );
-}
-
-function AuthPills({ auth }: { auth: Record<'spf' | 'dkim' | 'dmarc', 'OK' | 'PENDING' | 'MISSING'> }) {
-  const { t } = useLanguage();
-  return (
-    <div className="flex gap-1.5">
-      {(['spf', 'dkim', 'dmarc'] as const).map((k) => (
-        <span key={k} className={cn('rounded-full px-2 py-0.5 text-2xs font-semibold uppercase', auth[k] === 'OK' ? 'bg-emerald-100 text-emerald-800' : auth[k] === 'PENDING' ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-600')}
-          title={t(`ems_auth_${auth[k] === 'OK' ? 'ok' : auth[k] === 'PENDING' ? 'pending' : 'missing'}`)}>
-          {k}
-        </span>
-      ))}
-    </div>
   );
 }

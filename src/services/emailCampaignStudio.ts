@@ -8,6 +8,7 @@
 
 import { supabase } from '@/db/supabase';
 import type { CopilotProposal, CopilotTask } from '@/emailMarketing/copilot';
+import type { DomainAuthReport } from '@/emailMarketing/deliverability/dnsCheck';
 import type { EmailDoc } from '@/emailMarketing/designer/document';
 import type { RiskResult } from '@/emailMarketing/risk/engine';
 
@@ -97,9 +98,66 @@ export async function getCampaign(id: string): Promise<StudioCampaign | null> {
 }
 
 /** `draftKey` (first save only) makes a retried create return the same draft, never a second. */
-export async function saveCampaign(id: string | null, campaign: CampaignPatch, draftKey?: string | null): Promise<StudioCampaign> {
-  const r = await edge<{ campaign: StudioCampaign }>('campaign_save', { id, campaign, draftKey: id ? null : draftKey ?? null });
+/* `baseUpdatedAt`: the version the browser edited; a newer row → StudioError('STALE') with body.campaign.
+   `version`: ask for a MANUAL/RESTORE design snapshot on top of the automatic two-minute one. */
+export async function saveCampaign(id: string | null, campaign: CampaignPatch, draftKey?: string | null,
+  opts: { baseUpdatedAt?: string | null; version?: 'MANUAL' | 'RESTORE' } = {}): Promise<StudioCampaign> {
+  const r = await edge<{ campaign: StudioCampaign }>('campaign_save', {
+    id, campaign, draftKey: id ? null : draftKey ?? null,
+    ...(id && opts.baseUpdatedAt ? { baseUpdatedAt: opts.baseUpdatedAt } : {}), ...(opts.version ? { version: opts.version } : {}),
+  });
   return r.campaign;
+}
+
+export interface DesignVersion { id: string; design: EmailDoc; subject: string | null; reason: 'AUTOSAVE' | 'MANUAL' | 'RESTORE' | 'TEMPLATE'; created_at: string }
+export async function listDesignVersions(campaignId: string): Promise<DesignVersion[]> {
+  const { data, error } = await supabase.from('email_design_versions').select('id, design, subject, reason, created_at')
+    .eq('campaign_id', campaignId).order('created_at', { ascending: false }).limit(50);
+  if (error) throw new StudioError('VERSIONS_FAILED');
+  return (data ?? []) as DesignVersion[];
+}
+
+/* ── deliverability (email-marketing deliverability_check; owner-only tables) ──────────────── */
+export type CheckState = 'OK' | 'WARN' | 'BAD' | 'UNKNOWN';
+export interface DeliverabilityDomain {
+  domain: string; shared: boolean; providerStatus: string | null;
+  records: Array<{ record: string; name: string; type: string; status?: string }>;
+  tracking: { open: boolean | null; click: boolean | null };
+  dns: DomainAuthReport;
+}
+export interface DeliverabilityResult { checkedAt: string; domains: DeliverabilityDomain[]; providerKey: boolean }
+/** The live check: provider records + public DNS as receivers read it. Rate-limited server-side. */
+export async function runDeliverabilityCheck(): Promise<DeliverabilityResult> {
+  return edge<DeliverabilityResult>('deliverability_check', {});
+}
+/** The last stored check, or null if none was run yet. */
+export async function lastDeliverabilityCheck(): Promise<DeliverabilityResult | null> {
+  const { data, error } = await supabase.from('email_deliverability_checks').select('result, checked_at').order('checked_at', { ascending: false }).limit(1).maybeSingle();
+  if (error || !data) return null;
+  const r = data as { result: { domains?: DeliverabilityDomain[] }; checked_at: string };
+  return { checkedAt: r.checked_at, domains: r.result.domains ?? [], providerKey: true };
+}
+
+export type Mailbox = 'GMAIL' | 'OUTLOOK' | 'YAHOO' | 'APPLE' | 'OTHER';
+export type Placement = 'INBOX' | 'SPAM' | 'PROMOTIONS' | 'OTHER_TAB' | 'NOT_RECEIVED';
+/** What the owner saw in a real mailbox for a controlled test: the only source of an Inbox/Spam placement. */
+export interface PlacementTest { id: string; campaign_id: string | null; mailbox: Mailbox; placement: Placement; auth: Record<string, unknown> | null; note: string | null; observed_at: string }
+const PT_COLS = 'id, campaign_id, mailbox, placement, auth, note, observed_at';
+export async function listPlacementTests(): Promise<PlacementTest[]> {
+  const { data, error } = await supabase.from('email_placement_tests').select(PT_COLS).order('observed_at', { ascending: false }).limit(50);
+  if (error) throw new StudioError('PLACEMENT_FAILED');
+  return (data ?? []) as PlacementTest[];
+}
+export async function recordPlacementTest(p: { campaign_id?: string | null; mailbox: Mailbox; placement: Placement; auth?: Record<string, unknown> | null; note?: string | null }): Promise<PlacementTest> {
+  const { data, error } = await supabase.from('email_placement_tests')
+    .insert({ campaign_id: p.campaign_id ?? null, mailbox: p.mailbox, placement: p.placement, auth: p.auth ?? null, note: p.note?.slice(0, 500) || null })
+    .select(PT_COLS).single();
+  if (error) throw new StudioError('PLACEMENT_FAILED');
+  return data as PlacementTest;
+}
+export async function deletePlacementTest(id: string): Promise<void> {
+  const { error } = await supabase.from('email_placement_tests').delete().eq('id', id);
+  if (error) throw new StudioError('PLACEMENT_FAILED');
 }
 
 /** A new draft with the same content (never a copy of the approval, the schedule or the results). */
@@ -162,8 +220,9 @@ export function dispatchMinutes(n: number): number {
 /* ── design images (R2 via email-marketing asset_upload; delivered by email-webhook ?ema=) ── */
 export interface EmailAsset { id: string; url: string; content_type: string; byte_size: number; width: number | null; height: number | null; kind: 'IMAGE' | 'LOGO'; original_filename: string | null; created_at: string }
 
-const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '');
-export const assetUrl = (id: string) => `${SUPABASE_URL}/functions/v1/email-webhook?ema=${id}`;
+/* The brand-domain image link the server issues (www.homatch.live/m/a/<id>, vercel.json rewrite). */
+export const EMAIL_LINK_BASE = 'https://www.homatch.live';
+export const assetUrl = (id: string) => `${EMAIL_LINK_BASE}/m/a/${id}`;
 export const ASSET_MAX_BYTES = 5 * 1024 * 1024;
 
 export async function listAssets(): Promise<EmailAsset[]> {
@@ -355,12 +414,17 @@ export async function askHomi(input: {
    Opens and clicks are not tracked for campaign email, and are reported as such — never zero. */
 export interface SendFact { campaign_id: string; status: string; created_at: string; sent_at: string | null; delivered_at: string | null; provider_message_id: string | null }
 
-export async function sendFacts(sinceIso: string | null): Promise<SendFact[]> {
+/** The provider's simulator domain (Resend test addresses): test traffic, never real reputation. */
+export const SIMULATOR_DOMAIN = 'resend.dev';
+/** `realOnly` leaves out simulator sends: reputation rates are about real recipients. */
+export async function sendFacts(sinceIso: string | null, opts: { realOnly?: boolean } = {}): Promise<SendFact[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
   let q = supabase.from('outreach_sends').select('campaign_id, status, created_at, sent_at, delivered_at, provider_message_id')
     .eq('owner_id', user.id).eq('channel', 'EMAIL').order('created_at', { ascending: false }).limit(20000);
   if (sinceIso) q = q.gte('created_at', sinceIso);
+  /* Null-safe: NOT (NULL ILIKE …) is NULL and would silently drop a row with no address. */
+  if (opts.realOnly) q = q.or(`recipient_email.is.null,recipient_email.not.ilike.*@${SIMULATOR_DOMAIN}`);
   const { data, error } = await q;
   if (error) throw new StudioError('LOAD_FAILED');
   return (data ?? []) as SendFact[];

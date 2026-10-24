@@ -15,7 +15,7 @@
 import { json, checkRateLimit, logEvent } from '../comm/auth.ts';
 import type { EmailSettings, Owner } from './core.ts';
 import { inspectLinks } from './linkInspector.ts';
-import { normalizeDoc } from '../../../../src/emailMarketing/designer/document.ts';
+import { normalizeDoc, walkBlocks } from '../../../../src/emailMarketing/designer/document.ts';
 import { renderDesignBody } from '../../../../src/emailMarketing/designer/render.ts';
 import { unfilledPlaceholders } from '../../../../src/emailMarketing/designer/templates.ts';
 import { buttonsMissingLink } from '../../../../src/emailMarketing/designer/checks.ts';
@@ -60,6 +60,12 @@ export async function handleStudioCampaignAction(action: string, ctx: Ctx): Prom
     case 'campaign_submit': return await submit(ctx);
     default: return json({ ok: false, error: 'UNKNOWN_ACTION' }, 400);
   }
+}
+
+/** Asked of the database with the caller's own token (is_admin()), never read from the request. */
+async function isAdminCaller(callerSb: Sb): Promise<boolean> {
+  const { data, error } = await callerSb.rpc('is_admin');
+  return !error && data === true;
 }
 
 /* ── save ─────────────────────────────────────────────────────────────────────────────────── */
@@ -116,6 +122,18 @@ async function save({ sb, callerSb, owner, body }: Ctx): Promise<Response> {
   if (has('audience_filter')) patch.audience_filter = sanitizeAudienceFilter(p.audience_filter);
   if (has('design')) {
     const doc = normalizeDoc(p.design);
+    /* The advanced HTML block is authorized use only (owner brief 2026-10-24): an admin may add or
+       change one; anyone may keep or remove one already in the design (e.g. from an admin template). */
+    const htmlOf = (d: unknown) => walkBlocks(normalizeDoc(d).blocks).flatMap((b) => (b.type === 'html' && b.html ? [b.html] : []));
+    const incoming = htmlOf(doc);
+    if (incoming.length && !(await isAdminCaller(callerSb))) {
+      let stored: string[] = [];
+      if (id) {
+        const { data: cur } = await callerSb.from('outreach_campaigns').select('design').eq('id', id).eq('campaign_type', 'EMAIL').maybeSingle();
+        stored = htmlOf((cur as { design?: unknown } | null)?.design);
+      }
+      if (incoming.some((h) => !stored.includes(h))) return json({ ok: false, error: 'HTML_BLOCK_NOT_ALLOWED' }, 403);
+    }
     const lang = String(patch.language ?? p.language ?? 'en');
     const rendered = renderDesignBody(doc, { rtl: lang === 'ar' || lang === 'he' });
     patch.design = doc;
@@ -143,10 +161,34 @@ async function save({ sb, callerSb, owner, body }: Ctx): Promise<Response> {
     logEvent('email-studio', 'campaign_created', {});
     return json({ ok: true, campaign: data });
   }
-  const { data, error } = await callerSb.from('outreach_campaigns').update(patch).eq('id', id).eq('campaign_type', 'EMAIL').select(cols).maybeSingle();
+  /* A stale save never overwrites newer content: the browser names the version it edited
+     (baseUpdatedAt); if the row changed since (another tab, another device), nothing is written
+     and the current campaign comes back for the browser to reconcile. */
+  const base = typeof body.baseUpdatedAt === 'string' && !Number.isNaN(Date.parse(body.baseUpdatedAt)) ? body.baseUpdatedAt : null;
+  let q = callerSb.from('outreach_campaigns').update(patch).eq('id', id).eq('campaign_type', 'EMAIL');
+  if (base) q = q.lte('updated_at', new Date(Date.parse(base) + 1).toISOString());
+  const { data, error } = await q.select(cols).maybeSingle();
   if (error) return dbError(error);
-  if (!data) return json({ ok: false, error: 'CAMPAIGN_NOT_FOUND' }, 404);
+  if (!data) {
+    if (base) {
+      const { data: current } = await callerSb.from('outreach_campaigns').select(cols).eq('id', id).eq('campaign_type', 'EMAIL').maybeSingle();
+      if (current) return json({ ok: false, error: 'STALE', campaign: current }, 409);
+    }
+    return json({ ok: false, error: 'CAMPAIGN_NOT_FOUND' }, 404);
+  }
+  if (has('design')) await snapshotDesign(sb, owner, data as { id: string; design: unknown; subject: string | null }, body.version === 'MANUAL' ? 'MANUAL' : body.version === 'RESTORE' ? 'RESTORE' : 'AUTOSAVE');
   return json({ ok: true, campaign: data });
+}
+
+/** A design version at most every two minutes per campaign (and whenever the owner asks). */
+async function snapshotDesign(sb: Sb, owner: Owner, c: { id: string; design: unknown; subject: string | null }, reason: 'AUTOSAVE' | 'MANUAL' | 'RESTORE'): Promise<void> {
+  if (!c.design) return;
+  if (reason === 'AUTOSAVE') {
+    const { data: last } = await sb.from('email_design_versions').select('created_at').eq('campaign_id', c.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (last && Date.now() - Date.parse((last as { created_at: string }).created_at) < 120_000) return;
+  }
+  const { error } = await sb.from('email_design_versions').insert({ campaign_id: c.id, owner_id: owner.authId, design: c.design, subject: c.subject, reason });
+  if (error) logEvent('email-studio', 'design_version_failed', { error: String(error.message ?? '').slice(0, 120) });
 }
 
 function dbError(error: { message?: string; code?: string }): Response {

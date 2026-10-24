@@ -19,7 +19,7 @@ const keys = Object.keys(en);
    and the Email Studio components only those screens mount. EmailDomainsPage and the email
    import wizard are Email routes wrapped the same way (pinned below); the import wizard names a
    studio key only on its email route. */
-const STUDIO_SCREENS = /^src\/pages\/outreach\/studio\/|^src\/components\/emailStudio\/(EmailDesigner|HomiPanel|shared|AllowancePanel|LeadDialog|ImagePicker|RichTextEditor|TemplatePicker)\.tsx$|^src\/pages\/outreach\/(EmailDomainsPage|ContactImportPage)\.tsx$|^src\/pages\/admin\/AdminEmailReviewPage\.tsx$|^src\/i18n\//;
+const STUDIO_SCREENS = /^src\/pages\/outreach\/studio\/|^src\/components\/emailStudio\/(EmailDesigner|HomiPanel|shared|AllowancePanel|LeadDialog|ImagePicker|RichTextEditor|TemplatePicker|DeliverabilityHealth)\.tsx$|^src\/components\/emailStudio\/designer\/(Canvas|CropDialog|Inspector|LayersPanel|PreviewPanel|VersionHistory)\.tsx$|^src\/pages\/outreach\/(EmailDomainsPage|ContactImportPage)\.tsx$|^src\/pages\/admin\/AdminEmailReviewPage\.tsx$|^src\/i18n\//;
 
 function sources(dir, out = []) {
   for (const entry of readdirSync(dir)) {

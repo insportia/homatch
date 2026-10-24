@@ -11,6 +11,13 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // Email deliverability: mailbox providers are brand names in every language.
+  'ems_dq_mailbox_gmail',
+  'ems_dq_mailbox_yahoo',
+  'ems_dq_mailbox_outlook',
+  'ems_dq_mailbox_apple',
+  'ems_block_video', // tr: "Video" is the Turkish word
+  'ems_dq_place_spam', // tr: "Spam" is the Turkish word
   // Email Marketing plan names are product names (Pro, Scale) in every language; 'Net' is also the Turkish word.
   'emp_plan_pro',
   'emp_plan_scale',

@@ -21,6 +21,46 @@ import { PORTAL_ADAPTERS } from './marketplace/portals/adapters.mjs';
 import { VerifyMarketRuntime, parseVerifyMarketProfile, type SourceKey, type VerifyMarketJob } from './verify/VerifyMarketRuntime.js';
 import { QueueGateway } from './queue/gateway.js';
 import { GlobalSemaphore, semaphoreGateway } from './queue/globalSemaphore.js';
+import { parseProxyConfig, browserProxyFor, routeFor, withTraffic, type UsageRow } from './net/proxyGateway.js';
+import { installNetworkLayer } from './net/routingDispatcher.js';
+import type { BrowserNetOptions } from './browser/LocalBrowserRuntime.js';
+import type { QueueTask } from './queue/gateway.js';
+
+/*
+ * THE SHARED NETWORK LAYER (net/proxyGateway.ts). Off unless PROXY_METERING=1 (measure only) or a
+ * proxy is configured (PROXY_ENABLED + credentials + PROXY_ROUTES). Usage is flushed every 30 s to
+ * verify-queue (proxy_usage → proxy_usage_events), so traffic per Verify is measured, not assumed.
+ */
+const proxyConfig = parseProxyConfig();
+const network = installNetworkLayer(proxyConfig);
+/** Where each official browser source starts: its proxy route and its metering domain. */
+const SOURCE_START: Record<string, string> = {
+  TAS_MAP: 'https://ms.gov.ge/', tas_legacy: 'https://tas.ge/', enreg: 'https://my.gov.ge/', debtor: 'https://my.gov.ge/', rstax: 'https://www.rs.ge/',
+};
+function browserNetFor(task: QueueTask): BrowserNetOptions | undefined {
+  if (!network) return undefined;
+  const start = SOURCE_START[task.source] ?? '';
+  const proxy = start ? browserProxyFor(proxyConfig, start, task.jobId ?? task.id) : undefined;
+  let host = '';
+  try { host = new URL(start).hostname; } catch { /* none */ }
+  const route = host ? routeFor(host, proxyConfig) : null;
+  return {
+    proxy,
+    blockAssets: !!proxy && route?.route.blockAssets !== false,
+    meter: (h, up, down) => network.meter.record({ jobId: task.jobId ?? null, worker: 'verify' }, h.split('.').slice(-2).join('.') || h, proxy ? 'proxy' : 'direct', proxy ? 'sticky' : null, up, down),
+  };
+}
+function startUsageFlush(gateway: QueueGateway | null): void {
+  if (!network || !gateway) return;
+  const flush = async () => {
+    const rows: UsageRow[] = network.meter.drain();
+    if (!rows.length) return;
+    try { await gateway.call('proxy_usage', { rows: rows.slice(0, 500), worker: process.env.RAILWAY_REPLICA_ID || 'local' }); }
+    catch (e) { console.error(JSON.stringify({ level: 'warn', scope: 'net', event: 'usage_flush_failed', rows: rows.length, error: String((e as Error)?.message ?? e).slice(0, 160) })); }
+  };
+  setInterval(() => { void flush(); }, 30_000).unref?.();
+  beforeShutdown(flush);
+}
 
 /** The shared-slot coordinator, when the queue gateway is configured; null keeps the per-process limits (one replica). */
 function workerSemaphore(env: Record<string, string | undefined> = process.env): GlobalSemaphore | null {
@@ -895,7 +935,11 @@ app.get('/health/speech-selftest', async (_q: any, r: any) => {
 
 // Durable Verify queue (off unless VERIFY_QUEUE_ENABLED=1): claims tasks
 // from verify-queue alongside the legacy HTTP job API, which keeps working.
-const verifyQueue = startVerifyQueue({ orchestrator, launchJobBrowser, closeJobBrowser, beforeShutdown });
+const verifyQueue = startVerifyQueue({ orchestrator, launchJobBrowser, closeJobBrowser, beforeShutdown, browserNet: browserNetFor });
+startUsageFlush((() => {
+  const url = process.env.VERIFY_QUEUE_URL || (process.env.SUPABASE_URL ? `${process.env.SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/verify-queue` : '');
+  return url && process.env.WORKER_TOKEN ? new QueueGateway({ url, token: process.env.WORKER_TOKEN, retries: 1 }) : null;
+})());
 app.get('/health/queue', (_q: any, r: any) => r.json(verifyQueue ? verifyQueue.snapshot() : { enabled: false }));
 
 // Publishing browser automation (off unless PUBLISHING_AUTOMATION_ENABLED=1):

@@ -1,4 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
+import { withTraffic } from '../net/proxyGateway.js';
 import { acquireMyHome } from './myhome/adapter.js';
 import { endpoints, publicJson } from './myhome/api.js';
 import { publicPage, publicSearchUrl } from './myhome/public-page.js';
@@ -111,7 +112,7 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
           if (!(result.runs ?? []).length) await slot?.release();
           else if (slot) heldSlots.push(slot);
           lastClaimAt = new Date().toISOString(); lastError = null;
-          for (const job of result.runs ?? []) void run(job);
+          for (const job of result.runs ?? []) void withTraffic({ jobId: job?.id ?? null, worker: 'property_search' }, () => run(job));
         }
       } catch (error) { if (!controller.signal.aborted) { lastError = (error as Error).message; log('claim_error', { message: lastError }); } }
       await delay(5000, undefined, { signal: controller.signal }).catch(() => {});

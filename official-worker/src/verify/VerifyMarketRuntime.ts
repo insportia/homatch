@@ -16,6 +16,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { ExternalListingCandidate, MarketplaceSearchRequest, MarketplacePropertyType, MarketplaceTransaction } from '../marketplace/contract.js';
 import { inGeorgia, placeNamesAt, type PlaceNames } from './placeNames.js';
+import { withTraffic } from '../net/proxyGateway.js';
 
 export interface VerifyMarketProfile {
   /** Empty when only the parcel centre is known: the worker names it (placeNames.ts). */
@@ -344,7 +345,7 @@ export class VerifyMarketRuntime {
     const job: VerifyMarketJob = { id, status: 'RUNNING', profile, createdAt: new Date().toISOString(), completedAt: null, sources: { MYHOME: mk('MYHOME'), SSGE: mk('SSGE') }, comparables: [] };
     this.jobs.set(id, job);
     void this.persist(job);
-    void this.execute(job, sources);
+    void withTraffic({ jobId: null, worker: 'verify_market' }, () => this.execute(job, sources));
     return job;
   }
 

@@ -153,6 +153,27 @@ Deno.serve(async (req: Request) => {
         if (error) throw error;
         return json({ released: data === true });
       }
+      case 'proxy_usage': {
+        // The worker network layer's traffic ledger (20261201094000): aggregates only, never URLs or content.
+        const rows = (Array.isArray(body.rows) ? body.rows : []).slice(0, 500);
+        const n = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.trunc(Number(v)) : 0);
+        const insert = rows.map((r: any) => ({
+          replica: str(body.worker, 120) || null,
+          job_id: UUID.test(str(r?.jobId, 40)) ? r.jobId : null,
+          worker: str(r?.worker, 40) || 'other',
+          domain: str(r?.domain, 120) || 'unknown',
+          via: r?.via === 'proxy' ? 'proxy' : 'direct',
+          provider: str(r?.provider, 40) || null,
+          session: r?.session === 'sticky' || r?.session === 'rotating' ? r.session : null,
+          requests: n(r?.requests), retries: n(r?.retries), bytes_up: n(r?.bytesUp), bytes_down: n(r?.bytesDown), blocked: n(r?.blocked),
+          est_cost_usd: r?.estCostUsd != null && Number.isFinite(Number(r.estCostUsd)) && Number(r.estCostUsd) >= 0 ? Number(r.estCostUsd) : null,
+        }));
+        if (insert.length) {
+          const { error } = await db.from('proxy_usage_events').insert(insert);
+          if (error) throw error;
+        }
+        return json({ recorded: insert.length });
+      }
       case 'market_put': {
         // A worker's /verify/market run, readable by research-agent from any replica (20261201092000).
         const runId = str(body.runId, 40);

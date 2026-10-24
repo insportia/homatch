@@ -101,7 +101,7 @@ test('every control is wired to the table or an audited RPC and reports failure'
 });
 
 test('migration 092: admin-only writes, audited rule moves', () => {
-  const sql = read('supabase/migrations/20261201092000_mortgage_readiness_and_bank_products.sql');
+  const sql = read('supabase/migrations/20261202092000_mortgage_readiness_and_bank_products.sql');
   assert.match(sql, /revoke all on public\.mortgage_bank_products from anon, authenticated;/);
   assert.match(sql, /grant insert, update on public\.mortgage_bank_products to authenticated;/);
   assert.ok(!/grant[^;]*delete[^;]*mortgage_bank_products/i.test(sql));

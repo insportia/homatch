@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const read = (p) => fs.readFileSync(p, 'utf8');
-const MIG = read('supabase/migrations/20261201093000_mortgage_workspace_and_buyer_leads.sql');
+const MIG = read('supabase/migrations/20261202093000_mortgage_workspace_and_buyer_leads.sql');
 const body = (name) => {
   const a = MIG.indexOf(`function public.${name}(`);
   assert.ok(a >= 0, `${name} is defined`);

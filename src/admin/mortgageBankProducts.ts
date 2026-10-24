@@ -1,5 +1,5 @@
 // HOMATCH Admin — bank mortgage products (public.mortgage_bank_products,
-// migration 20261201092000), the rules an admin edit has to obey.
+// migration 20261202092000), the rules an admin edit has to obey.
 //
 // Pure and framework-free so src/admin/__tests__/mortgageBankProducts.test.mjs
 // can hold them. The screen is src/components/admin/MortgageBankProductsAdmin.tsx.

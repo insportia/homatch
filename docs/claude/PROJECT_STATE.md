@@ -15,10 +15,10 @@ MATTERS right now, verify against the live systems, not this file)
   intent in HOMATCH Matching (see Money), Contract clause review with accept/edit/reject, DOCX (clean and tracked)
   and print-to-PDF, revision history, truthful progress stages and optional Snake, transactional email,
   admin insight pages. Georgian voice and terms: docs/claude/HOMI_GLOSSARY.md.
-- Migrations (append-only, all applied twice on PGlite): 20261201090000 HOMI telemetry,
-  20261201091000 homepage section order (data), 20261201092000 mortgage readiness/bank products,
-  20261201093000 mortgage workspace + buyer leads, 20261201094000 contract revisions,
-  20261201095000 notification types + admin insight RPCs. Release order: merge -> apply -> deploy.
+- Migrations (append-only, all applied twice on PGlite): 20261202090000 HOMI telemetry,
+  20261202091000 homepage section order (data), 20261202092000 mortgage readiness/bank products,
+  20261202093000 mortgage workspace + buyer leads, 20261202094000 contract revisions,
+  20261202095000 notification types + admin insight RPCs. Release order: merge -> apply -> deploy.
 - Money (owner correction 2026-10-25): Home Financing is NOT a lead marketplace and sells nothing. An
   opt-in to receive property offers becomes ONE ordinary member search in the existing Matching engine
   (intent_profiles + active_search_subscriptions, demand_source MORTGAGE, classifier mortgage-optin-1);
@@ -50,7 +50,7 @@ MATTERS right now, verify against the live systems, not this file)
   jobs-worker, payment-webhook, and every producer that imports _shared/notify.ts (deploy-scope computes it).
   No new edge function.
 - Final audit round (owner prompt "PR #325 FINAL COMPLETE AUDIT", 2026-10-24): migration
-  20261201096000 investment saved results added (owner-only, no update). 093 now keeps property_ids,
+  20261202096000 investment saved results added (owner-only, no update). 093 now keeps property_ids,
   erases stated preferences on withdrawal, re-reads accept_property_offers at contact and logs email
   disclosures; 094 keys revisions by analysis identity and purges them with extracted_text; payment-webhook
   emits a PAYG top-up failure (checkout.session.async_payment_failed); notify email is claim-before-send
@@ -67,6 +67,15 @@ MATTERS right now, verify against the live systems, not this file)
 - Local-only environment notes: tsgo's 7 errors (Array.at, Intl.ListFormat, @huggingface/transformers,
   pdfjs-dist) come from a drifted local node_modules (@types/node 26.5.0 vs lockfile 26.4.0, two optional
   packages absent); CI's frozen-lockfile type-check is clean.
+
+## Email Studio drag & drop builder + deliverability panel (PR #327, branch claude/email-builder-deliverability, 2026-10-24) — PR OPEN, AWAITING OWNER RELEASE APPROVAL
+
+- Release order: apply `20261201090000_email_builder_deliverability.sql` (exact text, ledger-hash check) → merge → edge PROVEN_EXACT for email-marketing, email-webhook, jobs-worker, outreach-send → Vercel (www.homatch.live/m/* rewrites).
+- New: designer/tree.ts (structural edits), compat.ts, readySections.ts, emailHtml.ts (HTML block allowlist; admins only, enforced in campaign_save), deliverability/headers.ts + dnsCheck.ts; tables email_design_versions / email_deliverability_checks / email_placement_tests.
+- Email links/images move to the brand domain (`EMAIL_LINK_BASE`, default https://www.homatch.live). Old `?ema=` links keep working.
+- Inbox/Spam exist only as owner-recorded controlled tests; never derive placement from provider `delivered`.
+- #322 (Email Studio UX pass) is fully live: edge PROVEN_EXACT at 68c1aba5 after applying the held Publishing migration `publishing_central_accounts` (owner-approved 2026-10-24).
+- Spam investigation: DNS SPF/DKIM/alignment pass; DMARC `p=none` with no rua (owner DNS approval needed to add rua); test sends carry `[TEST]` and no List-Unsubscribe; raw headers of the spam-delivered message still needed from the owner.
 
 ## Verify fixed price + 30-day validity + Snake/ads fixes (branch claude/verify-fixed-price-validity, 2026-10-23) — PR OPEN, NOT DEPLOYED
 

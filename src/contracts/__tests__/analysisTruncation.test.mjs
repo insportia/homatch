@@ -55,7 +55,7 @@ test('the edge function stores textTruncated and an analysis identity with every
 });
 
 test('revisions carry their analysis identity and are purged with the contract text', () => {
-  const sql = readFileSync(new URL('../../../supabase/migrations/20261201094000_contract_revisions.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../../../supabase/migrations/20261202094000_contract_revisions.sql', import.meta.url), 'utf8');
   assert.match(sql, /analysis_sha text not null/);
   assert.match(sql, /after update of extracted_text on public\.deal_room_documents/);
   assert.match(sql, /when \(old\.extracted_text is not null and new\.extracted_text is null\)/);

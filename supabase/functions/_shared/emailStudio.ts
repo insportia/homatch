@@ -34,7 +34,7 @@
 import { authenticate, serviceClient, json, logEvent, redact } from './comm/auth.ts';
 import { listUnsubscribeHeaders, sendEmail } from './resend/client.ts';
 import {
-  createReplyRoute, loadEmailSettings, loadTestMode, marketingKey, reserveQuota, resolveSender, settleQuota, testModeAllows,
+  createReplyRoute, emailLinkBase, loadEmailSettings, loadTestMode, marketingKey, reserveQuota, resolveSender, settleQuota, testModeAllows,
   type EmailSettings, type Owner as MarketingOwner,
 } from './emailMarketing/core.ts';
 import { callLlm, llmAvailable } from './comm/llm.ts';
@@ -234,7 +234,8 @@ function toMarketingOwner(owner: Owner): MarketingOwner {
 
 async function unsubscribeUrl(recipientId: string): Promise<string> {
   const token = await signUnsubscribeToken(`email-studio:${recipientId}`, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-  return `${Deno.env.get('SUPABASE_URL')}/functions/v1/email-webhook?esu=${encodeURIComponent(recipientId)}&t=${token}`;
+  /* www.homatch.live/m/s → email-webhook (the ?esu one-click handler): the link is on the brand domain. */
+  return `${emailLinkBase()}/m/s?esu=${encodeURIComponent(recipientId)}&t=${token}`;
 }
 
 async function recordCost(sb: Sb, row: Record<string, unknown>): Promise<void> {

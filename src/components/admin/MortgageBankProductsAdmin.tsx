@@ -1,7 +1,7 @@
 // HOMATCH Admin — bank mortgage products: create, edit, verify, retire.
 //
 // Writes go straight to public.mortgage_bank_products under its admin-only
-// RLS policies (migration 20261201092000); the table's trigger stamps
+// RLS policies (migration 20261202092000); the table's trigger stamps
 // created_by / updated_by and writes every insert and update to
 // admin_audit_log, so nothing here writes the audit row itself. Each write
 // asks for the stored row back: a write that matched nothing (not an admin,

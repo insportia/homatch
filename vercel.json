@@ -14,6 +14,18 @@
       "destination": "/share.html"
     },
     {
+      "source": "/m/a/:id",
+      "destination": "https://ptxajsjhobhvsfhmutjn.supabase.co/functions/v1/email-webhook?ema=:id"
+    },
+    {
+      "source": "/m/u",
+      "destination": "https://ptxajsjhobhvsfhmutjn.supabase.co/functions/v1/outreach-unsubscribe"
+    },
+    {
+      "source": "/m/s",
+      "destination": "https://ptxajsjhobhvsfhmutjn.supabase.co/functions/v1/email-webhook"
+    },
+    {
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
     }
@@ -25,6 +37,28 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/m/(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
+      "source": "/m/(u|s)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/html; charset=utf-8"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         }
       ]
     },

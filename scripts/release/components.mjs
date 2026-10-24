@@ -289,6 +289,8 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(lead_crm_|crm_)/, 'PRODUCT'],
   // Property conversations (media, translation cache, seen/mute/block RPCs) and Email Studio.
   [/^public\.(message_translations$|messages_reply_same_conversation$|mark_conversation_seen$|set_conversation_muted$|block_conversation_counterpart$|unblock_conversation_counterpart$|my_conversation_context$|my_message_translations$|conversation_for_participant$|dm_media_object_allowed$|email_studio_)/, 'PRODUCT'],
+  // Email Studio builder history and deliverability evidence (20261201090000).
+  [/^public\.(email_design_versions|email_deliverability_checks$|email_placement_tests$)/, 'PRODUCT'],
 ];
 
 /* Translation keys by prefix: a translation change reaches the component

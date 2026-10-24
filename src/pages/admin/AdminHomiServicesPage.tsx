@@ -189,7 +189,7 @@ function MortgageRulesSection() {
   }, []);
   useEffect(() => { void load(); }, [load]);
   const stale = (d: string | null, days = 45) => !d || (Date.now() - Date.parse(d)) / 86_400_000 > days;
-  /* Audited, transition-checked status change (mortgage_rule_admin_set_status, migration 20261201092000). */
+  /* Audited, transition-checked status change (mortgage_rule_admin_set_status, migration 20261202092000). */
   const move = async () => {
     if (!confirm) return;
     const source = confirm.source.trim();

@@ -106,7 +106,8 @@ test('workflow: Design → Sender → Recipients → Review; old links still lan
   assert.match(ws, /LEGACY_STEP: Record<string, Step> = \{ 1: 'design', 2: 'recipients', 3: 'sender', 4: 'design', 5: 'design', 6: 'review' \}/);
   assert.match(ws, /if \(!campaignId \|\| !sendAck\) return;/, 'send requires the acknowledgement checkbox');
   assert.match(ws, /<AlertDialogAction disabled=\{!sendAck\}/);
-  assert.match(ws, /saveCampaign\(idRef\.current, toPatch\(working, fallbackName\), draftKey\.current\)/, 'every first save carries the draft key');
+  assert.match(ws, /saveCampaign\(idRef\.current, toPatch\(working, fallbackName\), draftKey\.current, \{ baseUpdatedAt: baseRef\.current, version \}\)/,
+    'every first save carries the draft key, and every save the version it edited (stale-save protection)');
   assert.match(ws, /if \(dirtyRef\.current\) void saveCampaign\(/, 'leaving the page saves pending work');
   const studio = read('supabase/functions/_shared/emailMarketing/studioCampaigns.ts');
   assert.match(studio, /String\(error\.code \?\? ''\) === '23505'/, 'a duplicate first save returns the existing draft');

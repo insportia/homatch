@@ -1,7 +1,7 @@
 // Mortgage interest for a listing, recorded when a signed-in person's calculation for it is on
 // screen. No form and no consent step: the server takes the area and type from the listing and
 // keeps only the price they calculated with (rounded). Nothing from the calculation is sent.
-// Matching shows the person under its own safeguards (see migration 20261201093000).
+// Matching shows the person under its own safeguards (see migration 20261202093000).
 
 import { supabase } from '@/db/supabase';
 

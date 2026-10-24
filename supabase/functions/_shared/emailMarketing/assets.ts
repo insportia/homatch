@@ -22,7 +22,7 @@
 import { json, checkRateLimit, logEvent, redact } from '../comm/auth.ts';
 import { deleteObject, envReport, headObject, putObject } from '../objectStore.ts';
 import { ASSET_MAX_ACTIVE, ASSET_MAX_BYTES, ASSET_MAX_SIDE, decodeBase64, sniffImage } from './assetFiles.ts';
-import type { Owner } from './core.ts';
+import { emailLinkBase, type Owner } from './core.ts';
 
 declare const Deno: { env: { get(k: string): string | undefined } };
 // deno-lint-ignore no-explicit-any
@@ -30,8 +30,8 @@ type Sb = any;
 
 /** The stable public link a mail client loads the image from. */
 export function assetPublicUrl(id: string): string {
-  const base = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '');
-  return `${base}/functions/v1/email-webhook?ema=${id}`;
+  /* On the brand domain: www.homatch.live/m/a/<id> is rewritten to email-webhook ?ema=<id>. */
+  return `${emailLinkBase()}/m/a/${id}`;
 }
 
 const sha256Hex = async (bytes: Uint8Array) =>
@@ -101,7 +101,7 @@ export async function deleteAsset(sb: Sb, owner: Owner, body: Record<string, unk
   if (!a) return json({ ok: false, error: 'ASSET_NOT_FOUND' }, 404);
   /* Still in a design (any status: a draft would show a broken image, a sent email would lose it). */
   const { data: used } = await sb.from('outreach_campaigns').select('id, name').eq('owner_id', owner.authId).eq('campaign_type', 'EMAIL')
-    .like('html_body', `%ema=${id}%`).limit(3);
+    .or(`html_body.like.%ema=${id}%,html_body.like.%/m/a/${id}%`).limit(3);
   if ((used ?? []).length) return json({ ok: false, error: 'ASSET_IN_USE', campaigns: used }, 409);
   try {
     await deleteObject(a.object_key);

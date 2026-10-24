@@ -48,6 +48,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import { cn } from '@/lib/utils';
 import type { LeadSort } from '@/services/homatchLeads';
+import { MortgageBuyersSection } from '@/components/matching/workspace/MortgageBuyersSection';
 import {
   type CatalogPage, type CatalogSort, type CuratedSelection, 
   EMPTY_FILTERS, emailCampaignPath, getCatalog, getInternalPage, type InternalPage, type MatchingFilters, newCuratedUnlockKey, newInternalUnlockKey, quoteCurated, quoteInternal,
@@ -503,6 +504,9 @@ function WorkspaceContent() {
         ) : (
           <p className="text-sm text-[hsl(224_14%_30%)]" data-testid="mw-library-intro">{t(product === 'external' ? 'mw_library_intro_external' : 'mw_library_intro_internal')}</p>
         )}
+
+        {/* Mortgage-interested buyers who opted in: same member entitlement, own price. */}
+        {product === 'internal' && view === 'available' && propertyId ? <MortgageBuyersSection propertyId={propertyId} /> : null}
 
         <FilterPanel product={product} filters={url.filters} internal={url.internal} facets={facets} onChange={setFilters}
           extra={<>{sortControl}{sizeControl}</>} />

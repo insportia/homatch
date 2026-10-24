@@ -15,6 +15,7 @@ import { HOMI_STRINGS as HOMI_CORE_STRINGS, HOMI_REBRAND_STRINGS as HOMI_CORE_RE
 import { HOMI_MORTGAGE_STRINGS } from './homi-mortgage-i18n-data.mjs';
 import { HOMI_INVESTMENT_STRINGS, HOMI_INVESTMENT_REWRITES } from './homi-investment-i18n-data.mjs';
 import { HOMI_EXPAT_STRINGS, HOMI_EXPAT_KA_FIXES } from './homi-expat-i18n-data.mjs';
+import { HOMI_MORTGAGE2_STRINGS } from './homi-mortgage2-i18n-data.mjs';
 import fs from 'node:fs';
 import { splice, validate } from './lib/i18nSplice.mjs';
 
@@ -43,7 +44,7 @@ function kaOnly(fixes) {
   return out;
 }
 const HOMI_REBRAND_STRINGS = { ...HOMI_CORE_REBRAND, ...HOMI_INVESTMENT_REWRITES, ...kaOnly(HOMI_EXPAT_KA_FIXES) };
-const HOMI_STRINGS = { ...HOMI_CORE_STRINGS, ...HOMI_MORTGAGE_STRINGS, ...HOMI_INVESTMENT_STRINGS, ...HOMI_EXPAT_STRINGS };
+const HOMI_STRINGS = { ...HOMI_CORE_STRINGS, ...HOMI_MORTGAGE_STRINGS, ...HOMI_INVESTMENT_STRINGS, ...HOMI_EXPAT_STRINGS, ...HOMI_MORTGAGE2_STRINGS };
 
 const problems = [...validate(HOMI_STRINGS, TAG), ...validate(HOMI_REBRAND_STRINGS, `${TAG}-rebrand`)];
 for (const key of Object.keys(HOMI_REBRAND_STRINGS)) {

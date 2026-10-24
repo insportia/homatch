@@ -12,12 +12,13 @@
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatMoney, intlLocaleFor } from '@/components/workspace/primitives';
+import { LabelTerm } from './TermInfo';
 import type { MortgageCalculationResult } from '@/mortgage/types';
 
-function Figure({ label, value }: { label: string; value: string }) {
+function Figure({ label, value, labelKey }: { label: string; value: string; labelKey?: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-2xs uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
+      <p className="flex items-center gap-1.5 text-2xs uppercase tracking-[0.12em] text-muted-foreground">{label}{labelKey ? <LabelTerm labelKey={labelKey} /> : null}</p>
       <p className="mt-1 font-display text-lg font-semibold tabular-nums text-foreground sm:text-xl">
         {value}
       </p>
@@ -45,12 +46,12 @@ export function ResultHeadline({
       <p className="mt-3 font-display text-4xl font-semibold leading-none tabular-nums text-[hsl(var(--gold-ink))] sm:text-5xl">
         {m(result.monthlyPayment)}
       </p>
-      <p className="mt-2 text-sm text-muted-foreground">{t('mortgage_result_monthly_label')}</p>
+      <p className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground">{t('mortgage_result_monthly_label')}<LabelTerm labelKey="mortgage_result_monthly_label" /></p>
 
       <div className="mt-6 grid gap-5 border-t border-border pt-5 sm:grid-cols-3">
-        <Figure label={t('mortgage_result_loan_amount')} value={m(result.loanAmount)} />
-        <Figure label={t('mortgage_result_total_interest')} value={m(result.totalInterest)} />
-        <Figure label={t('mortgage_result_total_repayment')} value={m(result.totalRepayment)} />
+        <Figure labelKey="mortgage_result_loan_amount" label={t('mortgage_result_loan_amount')} value={m(result.loanAmount)} />
+        <Figure labelKey="mortgage_result_total_interest" label={t('mortgage_result_total_interest')} value={m(result.totalInterest)} />
+        <Figure labelKey="mortgage_result_total_repayment" label={t('mortgage_result_total_repayment')} value={m(result.totalRepayment)} />
       </div>
 
       <p className="mt-5 max-w-[60ch] text-sm leading-relaxed text-foreground">

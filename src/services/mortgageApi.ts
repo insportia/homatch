@@ -163,6 +163,8 @@ export async function saveMortgageScenario(params: {
   offerRefs?: string[];
   supersedesScenarioId?: string | null;
   label?: string | null;
+  /** Which payment engine produced the result (see src/mortgage/workspace.ts). */
+  engineVersion?: string;
 }): Promise<MortgageScenario | null> {
   // Recalculation is a new row: if supersedesScenarioId is set, the caller
   // is explicitly saving version N+1 while version N stays in the table,
@@ -183,6 +185,7 @@ export async function saveMortgageScenario(params: {
       supersedes_scenario_id: params.supersedesScenarioId ?? null,
       version,
       label: params.label ?? null,
+      ...(params.engineVersion ? { engine_version: params.engineVersion } : {}),
     })
     .select('*')
     .single();

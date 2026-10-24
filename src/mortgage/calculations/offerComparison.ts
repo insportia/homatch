@@ -13,7 +13,35 @@ import { annualizeFromSchedule } from './effectiveRate.ts';
 
 function initialCosts(offer: MortgageOffer): number {
   const originationFromPercent = ((offer.originationFeePercent ?? 0) / 100) * offer.loanAmount;
-  return roundCurrency(originationFromPercent + (offer.originationFeeFlat ?? 0) + (offer.otherMandatoryOneTimeCosts ?? 0));
+  return roundCurrency(originationFromPercent + (offer.originationFeeFlat ?? 0) + (offer.otherMandatoryOneTimeCosts ?? 0) + (offer.appraisalFeeFlat ?? 0));
+}
+
+/** Percentage points the sensitivity check adds to the rate. */
+export const RATE_SHOCK_PP = 2;
+
+/** The first month in which the rate may change, or null when it is fixed for the whole term. */
+export function rateCanChangeFrom(offer: MortgageOffer): number | null {
+  const fixedFor = offer.fixedPeriodMonths ?? (offer.rateType === 'FIXED' ? offer.termMonths : 0);
+  if (offer.rateType === 'FIXED' && fixedFor >= offer.termMonths) return null;
+  if (!offer.rateType && offer.fixedPeriodMonths === undefined) return null;
+  return Math.min(Math.max(0, fixedFor), offer.termMonths - 1) + 1;
+}
+
+/** The regular payment once the rate has risen by RATE_SHOCK_PP, re-amortised over the months left. */
+function paymentAfterRise(offer: MortgageOffer, schedule: ReturnType<typeof buildAmortizationSchedule>, fromMonth: number | null): number | null {
+  if (fromMonth === null) return null;
+  const balance = fromMonth <= 1 ? offer.loanAmount : schedule[fromMonth - 2]?.remainingPrincipal ?? 0;
+  const monthsLeft = offer.termMonths - fromMonth + 1;
+  return monthsLeft > 0 ? computeMonthlyPayment(balance, offer.nominalAnnualRatePercent + RATE_SHOCK_PP, monthsLeft) : null;
+}
+
+function missingCosts(offer: MortgageOffer): string[] {
+  const out: string[] = [];
+  if (offer.originationFeePercent === undefined && offer.originationFeeFlat === undefined) out.push('mortgage_offer_missing_origination');
+  if (offer.appraisalFeeFlat === undefined) out.push('mortgage_offer_missing_appraisal');
+  if (offer.mandatoryInsuranceAnnualFlat === undefined) out.push('mortgage_offer_missing_insurance');
+  if (offer.recurringMonthlyFeeFlat === undefined) out.push('mortgage_offer_missing_monthly_fee');
+  return out;
 }
 
 function recurringMonthlyCosts(offer: MortgageOffer): number {
@@ -56,6 +84,9 @@ function evaluateOffer(offer: MortgageOffer): OfferComparisonRow {
     totalFinancingCost,
     effectiveAnnualRatePercent,
     effectiveRateSource,
+    paymentAfterRateRise: paymentAfterRise(offer, schedule, rateCanChangeFrom(offer)),
+    rateCanChangeFromMonth: rateCanChangeFrom(offer),
+    missingCostKeys: missingCosts(offer),
     labels: [],
   };
 }
@@ -79,7 +110,8 @@ export function compareOffers(offers: MortgageOffer[]): OfferComparisonResult {
   for (const row of rows) {
     if (row.monthlyPayment === lowestMonthly) row.labels.push('mortgage_offer_label_lower_monthly_payment');
     if (assumptionsComparable && lowestTotal !== null && row.totalRepayment === lowestTotal) row.labels.push('mortgage_offer_label_cheaper_under_assumptions');
-    if (row.offer.rateType === 'FIXED') row.labels.push('mortgage_offer_label_more_predictable_rate');
+    if (row.offer.rateType === 'FIXED' && row.rateCanChangeFromMonth === null) row.labels.push('mortgage_offer_label_more_predictable_rate');
+    if (row.offer.rateType === 'FIXED' && row.rateCanChangeFromMonth !== null) row.labels.push('mortgage_offer_label_fixed_for_period');
     if (!row.labels.length) row.labels.push('mortgage_offer_label_other_tradeoffs');
   }
 

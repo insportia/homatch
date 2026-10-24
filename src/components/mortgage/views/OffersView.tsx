@@ -24,9 +24,11 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { Module, formatMoney, formatPercent, intlLocaleFor } from '@/components/workspace/primitives';
 import { SourceBadge } from '@/components/workspace/controls';
-import { NumberField, NameField, StatRow } from '../fields';
+import { NumberField, NameField, OptionField, StatRow } from '../fields';
+import { useMortgageAsk } from '../askConsultant';
+import { TermInfo } from '../TermInfo';
 import type { PresetContext } from '@/mortgage/presets';
-import type { MortgageOffer, OfferComparisonResult, OfferComparisonRow } from '@/mortgage/types';
+import type { MortgageOffer, OfferComparisonResult, OfferComparisonRow, RateType } from '@/mortgage/types';
 
 function blankOffer(loanAmount: number, termMonths: number, currency: string, n: number): MortgageOffer {
   return {
@@ -125,6 +127,60 @@ function OfferEditor({
           context={context}
         />
         <NumberField
+          field="appraisalFeeFlat"
+          labelKey="mortgage_label_valuation_fee"
+          kind="money"
+          currency={offer.currency}
+          value={offer.appraisalFeeFlat ?? null}
+          onChange={(v) => patch({ appraisalFeeFlat: v ?? undefined })}
+          context={context}
+        />
+        <OptionField
+          labelKey="mortgage_label_rate_type"
+          options={[
+            { value: 'FIXED', labelKey: 'mortgage_rate_type_fixed' },
+            { value: 'VARIABLE', labelKey: 'mortgage_rate_type_variable' },
+            { value: 'INDEXED', labelKey: 'mortgage_rate_type_indexed' },
+          ]}
+          value={offer.rateType ?? null}
+          onChange={(v) => patch({ rateType: (v as RateType | null) ?? undefined })}
+        />
+        {offer.rateType === 'FIXED' ? (
+          <NumberField
+            field="fixedPeriodMonths"
+            labelKey="mortgage_offer_fixed_period"
+            hintKey="mortgage_offer_fixed_period_hint"
+            kind="months"
+            currency={offer.currency}
+            value={offer.fixedPeriodMonths ?? null}
+            onChange={(v) => patch({ fixedPeriodMonths: v ?? undefined })}
+            context={context}
+          />
+        ) : null}
+        {offer.rateType === 'VARIABLE' || offer.rateType === 'INDEXED' ? (
+          <>
+            <NameField
+              labelKey="mortgage_offer_reference_index"
+              value={offer.referenceIndexName ?? null}
+              onChange={(v) => patch({ referenceIndexName: v ?? undefined })}
+            />
+            <NumberField
+              field="marginPercent"
+              labelKey="mortgage_offer_margin"
+              kind="percent"
+              currency={offer.currency}
+              value={offer.marginPercent ?? null}
+              onChange={(v) => patch({ marginPercent: v ?? undefined })}
+              context={context}
+            />
+          </>
+        ) : null}
+        <NameField
+          labelKey="mortgage_offer_early_terms"
+          value={offer.earlyRepaymentTerms ?? null}
+          onChange={(v) => patch({ earlyRepaymentTerms: v ?? undefined })}
+        />
+        <NumberField
           field="termMonths"
           labelKey="mortgage_label_term"
           kind="months"
@@ -141,6 +197,34 @@ function OfferEditor({
 function effectiveCell(row: OfferComparisonRow, locale: string, t: (k: string) => string) {
   if (row.effectiveAnnualRatePercent === null) return t('mortgage_offer_effective_unavailable');
   return formatPercent(row.effectiveAnnualRatePercent, locale, 2);
+}
+
+function riseCell(row: OfferComparisonRow, locale: string, t: (k: string, v?: Record<string, string | number>) => string) {
+  if (row.rateCanChangeFromMonth === null) {
+    return row.offer.rateType ? t('mortgage_offer_rise_fixed_whole') : t('mortgage_offer_rise_unknown_type');
+  }
+  if (row.paymentAfterRateRise === null) return t('mortgage_offer_effective_unavailable');
+  return t('mortgage_offer_rise_value', { amount: formatMoney(row.paymentAfterRateRise, row.offer.currency, locale), month: row.rateCanChangeFromMonth });
+}
+
+/** What the offer did not state, and what it says about paying early. */
+function OfferNotes({ row }: { row: OfferComparisonRow }) {
+  const { t } = useLanguage();
+  if (!row.missingCostKeys.length && !row.offer.earlyRepaymentTerms) return null;
+  return (
+    <div className="mt-3 space-y-1.5 text-start text-2xs leading-relaxed">
+      {row.missingCostKeys.length ? (
+        <p className="text-[hsl(var(--gold-ink))]">
+          {t('mortgage_offer_missing_lead')} {row.missingCostKeys.map((k) => t(k)).join(', ')}
+        </p>
+      ) : null}
+      {row.offer.earlyRepaymentTerms ? (
+        <p className="text-muted-foreground">
+          <span className="font-medium text-foreground">{t('mortgage_offer_early_terms')}:</span> {row.offer.earlyRepaymentTerms}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 export function OffersView({
@@ -167,6 +251,7 @@ export function OffersView({
   const { t, lang } = useLanguage();
   const locale = intlLocaleFor(lang);
   const [editing, setEditing] = useState(true);
+  const { ask, available } = useMortgageAsk();
 
   return (
     <>
@@ -290,7 +375,15 @@ export function OffersView({
                     kind="money"
                     currency={row.offer.currency}
                   />
+                  <div className="flex items-baseline justify-between gap-3 py-2.5">
+                    <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                      {t('mortgage_offer_rise_label')}
+                      <TermInfo term="VARIABLE_RATE" />
+                    </span>
+                    <span className="text-end text-sm tabular-nums text-foreground">{riseCell(row, locale, t)}</span>
+                  </div>
                 </div>
+                <OfferNotes row={row} />
                 <ul className="mt-3 flex flex-wrap gap-1.5">
                   {row.labels.map((key) => (
                     <li
@@ -329,6 +422,7 @@ export function OffersView({
                   { key: 'mortgage_offer_recurring', render: (r: OfferComparisonRow) => formatMoney(r.recurringMonthlyCosts, r.offer.currency, locale) },
                   { key: 'mortgage_metric_total_repayment', render: (r: OfferComparisonRow) => formatMoney(r.totalRepayment, r.offer.currency, locale) },
                   { key: 'mortgage_offer_total_financing_cost', render: (r: OfferComparisonRow) => formatMoney(r.totalFinancingCost, r.offer.currency, locale) },
+                  { key: 'mortgage_offer_rise_label', render: (r: OfferComparisonRow) => riseCell(r, locale, t) },
                 ].map((line) => (
                   <tr key={line.key} className="border-t border-border">
                     <th scope="row" className="py-2.5 text-start font-normal text-muted-foreground">
@@ -357,6 +451,7 @@ export function OffersView({
                           </li>
                         ))}
                       </ul>
+                      <OfferNotes row={row} />
                     </td>
                   ))}
                 </tr>
@@ -367,6 +462,21 @@ export function OffersView({
           <p className={cn('mt-5 max-w-[64ch] text-2xs leading-relaxed text-muted-foreground')}>
             {t('mortgage_offers_assumptions_note')}
           </p>
+          <p className="mt-2 max-w-[64ch] text-2xs leading-relaxed text-muted-foreground">{t('mortgage_offers_effective_note')}</p>
+          {available ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {['mortgage_offers_ask_which', 'mortgage_offers_ask_rise', 'mortgage_offers_ask_term'].map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => ask(t(key))}
+                  className="min-h-11 rounded-full border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-4 text-sm font-medium text-[hsl(var(--gold-ink))]"
+                >
+                  {t(key)}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </Module>
       ) : null}
     </>

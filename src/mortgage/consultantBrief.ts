@@ -126,6 +126,13 @@ export interface ConsultantBrief {
       monthlyPayment: number;
       initialCosts: number;
       totalFinancingCost: number;
+      totalRepayment: number;
+      effectiveRateSource: 'BANK_SUPPLIED' | 'CALCULATED' | 'UNAVAILABLE';
+      rateType: string | null;
+      rateCanChangeFromMonth: number | null;
+      monthlyPaymentIfRateRises2pp: number | null;
+      costsNotStatedInOffer: string[];
+      earlyRepaymentTerms: string | null;
     }>;
   } | null;
   refinancing: {
@@ -303,6 +310,13 @@ export function buildConsultantBrief(args: BriefInputs): ConsultantBrief | null 
           monthlyPayment: money(row.monthlyPayment),
           initialCosts: money(row.initialCosts),
           totalFinancingCost: money(row.totalFinancingCost),
+          totalRepayment: money(row.totalRepayment),
+          effectiveRateSource: row.effectiveRateSource,
+          rateType: row.offer.rateType ?? null,
+          rateCanChangeFromMonth: row.rateCanChangeFromMonth,
+          monthlyPaymentIfRateRises2pp: row.paymentAfterRateRise === null ? null : money(row.paymentAfterRateRise),
+          costsNotStatedInOffer: row.missingCostKeys.map((k) => k.replace('mortgage_offer_missing_', '')),
+          earlyRepaymentTerms: row.offer.earlyRepaymentTerms?.slice(0, 400) ?? null,
         })),
       };
     } catch {

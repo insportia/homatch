@@ -39,6 +39,7 @@ import { cn } from '@/lib/utils';
 import { FigureValue } from '@/components/workspace/primitives';
 import { fig } from './fields';
 import { AskHomatch } from './askConsultant';
+import { LabelTerm } from './TermInfo';
 import type { FinancingPicture, PictureNote } from '@/mortgage/calculations/financingPicture';
 
 /**
@@ -144,8 +145,9 @@ export function FinancingPictureView({ picture }: { picture: FinancingPicture })
       <div className="grid divide-y divide-border sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4 lg:divide-x rtl:lg:divide-x-reverse">
         {slots.map((slot) => (
           <div key={slot.labelKey} className={cn('p-4 sm:p-5', slot.emphasis && 'bg-[hsl(var(--gold-soft))]')}>
-            <p className="text-2xs font-medium uppercase leading-tight tracking-wide text-muted-foreground">
+            <p className="flex items-center gap-1.5 text-2xs font-medium uppercase leading-tight tracking-wide text-muted-foreground">
               {t(slot.labelKey)}
+              <LabelTerm labelKey={slot.labelKey} />
             </p>
             <p
               className={cn(

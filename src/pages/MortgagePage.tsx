@@ -58,6 +58,9 @@ import { SummaryView } from '@/components/mortgage/SummaryView';
 import { OffersView } from '@/components/mortgage/views/OffersView';
 import { ProgramsView } from '@/components/mortgage/views/ProgramsView';
 import { BeforeYouSignView } from '@/components/mortgage/views/GuidanceViews';
+import { GlossaryPanel, GlossaryScenarioProvider } from '@/components/mortgage/TermInfo';
+import { MortgageWorkspace } from '@/components/mortgage/MortgageWorkspace';
+import { MortgageLeadOptIn } from '@/components/mortgage/MortgageLeadOptIn';
 
 interface MortgagePrefillState extends FinancingPrefill {
   propertyId?: string;
@@ -93,6 +96,7 @@ export default function MortgagePage() {
   const {
     draft,
     set,
+    replaceDraft,
     reset,
     topic,
     selectTopic,
@@ -150,6 +154,19 @@ export default function MortgagePage() {
   }, [homatchUser, prefill?.propertyId]);
 
   const currency = draft.currency;
+  /* The person's own numbers for the glossary examples, once there is a scenario. */
+  const exampleScenario = useMemo(
+    () => (input ? {
+      propertyPrice: input.propertyPrice, downPayment: input.downPayment, termMonths: input.termMonths,
+      nominalAnnualRatePercent: input.nominalAnnualRatePercent, currency,
+      monthlyNetIncome: draft.monthlyNetIncome, originationFeePercent: draft.originationFeePercent,
+    } : null),
+    [input, currency, draft.monthlyNetIncome, draft.originationFeePercent],
+  );
+  const activeRuleIds = useMemo(
+    () => (rulesReady ? [...ptiRules, ...ltvRules].map((r) => r.id) : null),
+    [rulesReady, ptiRules, ltvRules],
+  );
   const presetContext = useMemo(
     () => ({
       propertyPrice: draft.propertyPrice ?? undefined,
@@ -214,6 +231,7 @@ export default function MortgagePage() {
     <AppLayout noPadding>
       <PageMeta title={t('mortgage_page_title')} description={t('mortgage_page_subtitle')} />
       <MortgageAskProvider>
+      <GlossaryScenarioProvider scenario={exampleScenario}>
         {/*
           * PREMIUM LIGHT, NOT THE ANALYTICAL NAVY.
           *
@@ -246,6 +264,7 @@ export default function MortgagePage() {
             </header>
 
             {/* ── B. The calculator ── */}
+            <div id="calculator" className="scroll-mt-20">
             <SimpleCalculator
               draft={draft}
               set={set}
@@ -257,11 +276,27 @@ export default function MortgagePage() {
                 });
               }}
             />
+            </div>
 
             {showResult && result ? (
               <>
                 {/* ── C. The answer ── */}
                 <ResultHeadline result={result} currency={currency} />
+
+                {/* ── C1. Save it, come back to it ── */}
+                <MortgageWorkspace
+                  userId={homatchUser?.id ?? null}
+                  draft={draft}
+                  input={input}
+                  result={result}
+                  affordability={affordability}
+                  activeRuleIds={activeRuleIds}
+                  onOpenDraft={(next) => { replaceDraft(next); setPressed(true); }}
+                  onNew={() => { reset(); setPressed(false); }}
+                />
+
+                {/* ── C1b. Optional: let matching sellers reach me ── */}
+                {input ? <MortgageLeadOptIn input={input} currency={currency} propertyId={prefill?.propertyId ?? null} /> : null}
 
                 {/* ── D. The consultant ── */}
                 {/* ── C2. Readiness, optional and collapsed ── */}
@@ -393,7 +428,7 @@ export default function MortgagePage() {
                     <button
                       type="button"
                       className="min-h-11 text-2xs text-muted-foreground underline decoration-dotted underline-offset-2"
-                      onClick={() => navigate('/auth/login')}
+                      onClick={() => navigate('/auth/login?next=/mortgage')}
                     >
                       {t('mortgage_sign_in_to_save')}
                     </button>
@@ -402,6 +437,8 @@ export default function MortgagePage() {
               </>
             ) : null}
 
+            <GlossaryPanel />
+
             <p className="rounded-xl border border-dashed border-border px-5 py-4 text-2xs leading-relaxed text-muted-foreground">
               {t('mortgage_global_disclaimer')}
             </p>
@@ -409,6 +446,7 @@ export default function MortgagePage() {
             <PageBlocks slug="mortgage" />
           </div>
         </div>
+      </GlossaryScenarioProvider>
       </MortgageAskProvider>
     </AppLayout>
   );

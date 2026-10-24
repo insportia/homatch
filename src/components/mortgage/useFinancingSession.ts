@@ -224,6 +224,7 @@ export function toMortgageInput(draft: FinancingDraft): MortgageInput | null {
 export interface FinancingSession {
   draft: FinancingDraft;
   set: (field: DraftField, value: number | string | null) => void;
+  replaceDraft: (next: Partial<FinancingDraft>) => void;
   reset: () => void;
 
   topic: TopicId | null;
@@ -347,6 +348,16 @@ export function useFinancingSession(prefill?: FinancingPrefill): FinancingSessio
 
   const set = useCallback((field: DraftField, value: number | string | null) => {
     setDraft((current) => ({ ...current, [field]: value }));
+  }, []);
+
+  /** Reopen a saved scenario: every field it stored, nothing left over from before. */
+  const replaceDraft = useCallback((next: Partial<FinancingDraft>) => {
+    const clean: FinancingDraft = { ...EMPTY_DRAFT };
+    for (const key of Object.keys(EMPTY_DRAFT) as DraftField[]) {
+      const value = next[key];
+      if (value !== undefined) (clean as unknown as Record<string, unknown>)[key] = value;
+    }
+    setDraft(clean);
   }, []);
 
   const reset = useCallback(() => {
@@ -565,6 +576,7 @@ export function useFinancingSession(prefill?: FinancingPrefill): FinancingSessio
   return {
     draft,
     set,
+    replaceDraft,
     reset,
     topic,
     selectTopic,

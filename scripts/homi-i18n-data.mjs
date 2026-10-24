@@ -104,7 +104,7 @@ export const HOMI_STRINGS = {
   homi_reach_contract_s: ['Contract', 'ხელშეკრულება', 'Договор', 'Sözleşme', 'العقود', 'חוזה'],
   homi_reach_expats_s: ['Expats', 'ექსპატები', 'Экспатам', 'Yabancılar', 'المغتربون', 'עולים וזרים'],
   homi_reach_match_s: ['Buyers', 'მყიდველები', 'Покупатели', 'Alıcılar', 'المشترون', 'קונים'],
-  homi_reach_email_s: ['Email', 'Email', 'Email', 'E-posta', 'البريد', 'אימייל'],
+  homi_reach_email_s: ['Email', 'ელფოსტა', 'Почта', 'E-posta', 'البريد', 'אימייל'],
   homi_reach_dev_s: ['Developers', 'დეველოპერები', 'Застройщикам', 'Geliştiriciler', 'المطورون', 'יזמים'],
   homi_reach_open: ['Open', 'გახსნა', 'Открыть', 'Aç', 'افتح', 'פתח'],
   homi_reach_hint: ['Pick one and HOMI takes you there', 'აირჩიე და HOMI იქ მიგიყვანს', 'Выбери, и HOMI отведёт тебя туда', 'Birini seç, HOMI seni oraya götürsün', 'اختر واحدة وسيأخذك HOMI إليها', 'בחר אחד ו-HOMI ייקח אותך לשם'],

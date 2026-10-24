@@ -115,7 +115,9 @@ function categoryOf(eventType: string, metadata?: Record<string, unknown> | null
   if (eventType.startsWith('WHATSAPP_')) return 'whatsapp';
   if (eventType.startsWith('MATCH_')) return 'matches';
   if (eventType.startsWith('SUBSCRIPTION_') || eventType.startsWith('CREDITS_')
-    || eventType === 'LOW_CREDITS' || eventType === 'INCLUDED_USAGE_EXHAUSTED') return 'billing';
+    || eventType === 'LOW_CREDITS' || eventType === 'INCLUDED_USAGE_EXHAUSTED'
+    /* A failed top-up is money, filed with money (the in-app feed agrees). */
+    || eventType === 'PAYMENT_FAILED') return 'billing';
   if (eventType.startsWith('IMPORT_') || eventType.startsWith('PROVIDER_')) return 'system';
   if (eventType === 'VERIFY_COMPLETE' || eventType === 'DOCUMENT_ANALYZED') return 'ai_results';
   if (eventType === 'CALLBACK_REQUESTED' || eventType === 'QUALIFIED_LEAD') return 'leads';

@@ -53,6 +53,7 @@ import {
   parseAnalysis,
   hasMeaningfulText,
   normalizeDocumentText,
+  documentTextWasTruncated,
   looksLikePromptInjection,
 } from '../../../src/dealroom/domain/documentExtract.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
@@ -253,6 +254,8 @@ serve(async (req) => {
     /* ---- text ---- */
     let raw = '';
     let pages = 0;
+    /* A PDF whose reading stopped before its last page (pdfTextForAnalysis). */
+    let stoppedEarly = false;
     try {
       if (kind === 'DOCX') {
         // A .docx is a ZIP; word/document.xml is the body. Everything after
@@ -269,7 +272,9 @@ serve(async (req) => {
         const pdf = await getDocumentProxy(bytes);
         pages = pdf.numPages ?? 0;
         /* Only as far as the analysis reads (MAX_DOCUMENT_CHARS); the result is the same text. */
-        raw = (await pdfTextForAnalysis(pdf)).raw;
+        const read = await pdfTextForAnalysis(pdf);
+        raw = read.raw;
+        stoppedEarly = pages > 0 && read.pagesRead < pages;
       }
     } catch (e) {
       const tooLarge = e instanceof DocumentTooLarge;
@@ -285,6 +290,9 @@ serve(async (req) => {
     }
 
     const text = normalizeDocumentText(raw);
+    // Only the first MAX_DOCUMENT_CHARS were sent to the model: the stored
+    // analysis says so, and the page and every export warn the customer.
+    const textTruncated = stoppedEarly || documentTextWasTruncated(raw);
 
     // A scan is a scan. Saying anything else about a document nobody could
     // read is exactly the failure mode this product exists to avoid.
@@ -472,8 +480,15 @@ serve(async (req) => {
       // A document that tried to instruct the model is worth surfacing to the
       // buyer as a fact about the document itself.
       containsInstructionLikeText: looksLikePromptInjection(text),
+      textTruncated,
+      // The file this analysis was produced from (same value as analysis_sha256).
+      documentSha256: sha,
       analysedAt: new Date().toISOString(),
     };
+    /* Identity of THIS analysis: contract revisions record it, and a revision
+     * saved against another analysis (a forced re-run of the same file gives
+     * the same documentSha256) is shown as stale instead of applied. */
+    const analysisSha = await sha256Hex(new TextEncoder().encode(JSON.stringify(stored)).buffer as ArrayBuffer);
 
     /*
      * THE TEXT IS KEPT NOW.
@@ -495,7 +510,7 @@ serve(async (req) => {
       .update({
         analysis_state: 'DONE',
         analysis_error: null,
-        analysis: stored,
+        analysis: { ...stored, analysisSha },
         analysis_sha256: sha,
         analyzed_at: new Date().toISOString(),
         state: 'ANALYZED',

@@ -9,16 +9,41 @@
  *
  * The optional Snake game is a separate component in its own chunk. It
  * shares nothing with the analysis: closing it, losing at it or never
- * opening it changes nothing about the document.
+ * opening it changes nothing about the document. It sits behind its own
+ * error boundary (SnakeBoundary): a game that throws, or a chunk that no
+ * longer exists after a deploy, closes the game and leaves this page alone.
  */
-import { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { Check, FileText, Gamepad2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import type { AnalysisState } from '@/services/dealRoomDocuments';
 import { formatElapsed } from './progressEstimate';
+import { isChunkLoadError } from '@/lib/lazyRoute';
+import { reportError } from '@/lib/errorReporting';
 
-const SnakeGame = lazy(() => import('./SnakeGame'));
+/* One retry for a chunk the network or a deploy lost; anything else reaches the boundary. */
+const SnakeGame = lazy(() => import('./SnakeGame').catch((e: unknown) => {
+  if (!isChunkLoadError(e)) throw e;
+  return import('./SnakeGame');
+}));
+
+class SnakeBoundary extends React.Component<{ onFailed: () => void; children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error): void {
+    reportError(error, { boundary: 'contract-snake', route: typeof window !== 'undefined' ? window.location.pathname : undefined });
+    this.props.onFailed();
+  }
+
+  render(): React.ReactNode {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 
 const STAGES = ['UPLOADED', 'QUEUED', 'RUNNING', 'DONE'] as const;
 type Stage = (typeof STAGES)[number];
@@ -87,9 +112,11 @@ export function ContractProgress({
 
       {state !== 'DONE' ? (
         playing ? (
-          <Suspense fallback={null}>
-            <SnakeGame onClose={() => setPlaying(false)} />
-          </Suspense>
+          <SnakeBoundary onFailed={() => setPlaying(false)}>
+            <Suspense fallback={null}>
+              <SnakeGame onClose={() => setPlaying(false)} />
+            </Suspense>
+          </SnakeBoundary>
         ) : (
           <button type="button" onClick={() => setPlaying(true)}
             className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 px-4 text-sm font-medium text-white/90 hover:border-[hsl(38_92%_56%)]">

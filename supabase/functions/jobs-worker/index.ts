@@ -221,7 +221,30 @@ async function mirror(sb: Sb): Promise<{ mirrored: number; finished: number }> {
       finished++;
       /* A task the person started has failed: tell them once, with a way back to it.
          A refusal for payment is not a failure of ours and is not announced as one. */
-      if (nextState === 'FAILED' && errorKey !== 'doc_error_billing' && job.user_id) {
+      /* A scanned document (no text layer) or an unsupported file is an expected
+         outcome, not a service failure: it gets an in-app notice that says what to
+         do, and no "something went wrong" email. */
+      const unreadableDoc = errorKey === 'doc_error_requires_ocr' || errorKey === 'doc_error_unsupported';
+      if (nextState === 'FAILED' && unreadableDoc && job.user_id) {
+        const { data: owner } = await sb.from('users').select('id').eq('auth_id', job.user_id).maybeSingle();
+        if (owner?.id) {
+          await notify(sb as never, {
+            userId: owner.id,
+            type: 'SERVICE_FAILED',
+            title: 'We could not read this document',
+            body: errorKey === 'doc_error_requires_ocr'
+              ? 'This document is a scan with no text layer. A version exported as text would work.'
+              : 'We can read PDF and Word (.docx) documents. This one is a different format.',
+            priority: 'NORMAL',
+            deepLink: resultRef ?? job.result_ref ?? '/contracts',
+            entityType: 'background_job',
+            entityId: job.id,
+            dedupeKey: `job-failed:${job.id}`,
+            email: false,
+            metadata: { kind: 'DOCUMENT_UNREADABLE', reason: errorKey, product_type: job.product_type, subject_type: job.subject_type },
+          });
+        }
+      } else if (nextState === 'FAILED' && errorKey !== 'doc_error_billing' && job.user_id) {
         const { data: owner } = await sb.from('users').select('id').eq('auth_id', job.user_id).maybeSingle();
         if (owner?.id) {
           await notify(sb as never, {

@@ -177,6 +177,14 @@ export function notificationText(
   if (notif.type === 'PAYMENT_FAILED') {
     return { title: t('notif_payment_failed_title'), body: t('notif_payment_failed_body') };
   }
+  /* A scanned or unsupported document: an expected outcome with something to do, not a failure. */
+  if (kind === 'DOCUMENT_UNREADABLE') {
+    const reason = metaString(notif, 'reason');
+    return {
+      title: t('doc_status_failed'),
+      body: t(reason === 'doc_error_requires_ocr' ? 'doc_error_requires_ocr' : 'doc_error_unsupported'),
+    };
+  }
   if (notif.type === 'SERVICE_FAILED') {
     return { title: t('notif_service_failed_title'), body: t('notif_service_failed_body') };
   }

@@ -1,7 +1,8 @@
 // Mortgage-interested buyers: the buyer's own opt-in, and the seller's view of who fits a listing.
 //
-// The opt-in carries only what the person typed on the opt-in form. No mortgage figure is
-// read or sent from here; the server never reads mortgage_scenarios for this either.
+// The opt-in carries only what the person chose on the opt-in form, plus the listing they were
+// looking at when they opted in (if any). No mortgage figure (income, debts, rate, payment) is
+// read or sent from here, and the server never reads mortgage_scenarios for this either.
 
 import { supabase } from '@/db/supabase';
 import { UnlockError } from './homatchLeads';
@@ -112,7 +113,7 @@ export async function unlockMortgageLeads(args: { propertyId: string; refs: stri
 
 export interface MortgageLeadContact {
   restricted: boolean;
-  reason?: 'WITHDRAWN' | 'BLOCKED' | 'UNAVAILABLE';
+  reason?: 'WITHDRAWN' | 'BLOCKED' | 'UNAVAILABLE' | 'OPTED_OUT';
   displayName?: string | null;
   language?: string | null;
   phone?: string | null;

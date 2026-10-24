@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assessReadiness, readinessScenarios, loanForPayment, bandThresholdFor } from '../readiness.ts';
+import { assessReadiness, readinessScenarios, loanForPayment, bandThresholdFor, INCOME_SOURCES } from '../readiness.ts';
 import { selectActivePtiRule, ptiCurrencyClass } from '../rules/ptiLtv.ts';
 import { computeMonthlyPayment } from '../calculations/amortization.ts';
 
@@ -123,11 +123,46 @@ test('scenarios change one thing each and include the co-borrower comparison', (
   const input = { ...base, netMonthlyIncome: 3000, existingMonthlyDebt: 300, coBorrower: { netMonthlyIncome: 2000, monthlyDebt: 0 }, additionalCollateralValue: 50000 };
   const s = readinessScenarios(input, PTI, LTV, TODAY);
   const keys = s.map((x) => x.key);
-  for (const k of ['AS_ENTERED', 'MORE_DOWN', 'LESS_DEBT', 'LONGER_TERM', 'LOWER_PRICE', 'NO_CO_BORROWER', 'COLLATERAL']) assert.ok(keys.includes(k), k);
+  for (const k of ['AS_ENTERED', 'MORE_DOWN', 'LESS_DEBT', 'LONGER_TERM', 'LOWER_PRICE', 'NO_CO_BORROWER', 'NO_COLLATERAL']) assert.ok(keys.includes(k), k);
   const asIs = s.find((x) => x.key === 'AS_ENTERED').result;
   const more = s.find((x) => x.key === 'MORE_DOWN').result;
   assert.ok(more.monthlyPayment < asIs.monthlyPayment);
   assert.ok(s.find((x) => x.key === 'NO_CO_BORROWER').result.totalIncome < asIs.totalIncome);
+  // Collateral is compared against the same scenario without it: only the LTV-with-collateral figure differs.
+  const noCol = s.find((x) => x.key === 'NO_COLLATERAL').result;
+  assert.equal(noCol.ltvWithCollateralPercent, null);
+  assert.ok(asIs.ltvWithCollateralPercent < asIs.ltvPercent);
+  assert.equal(noCol.monthlyPayment, asIs.monthlyPayment);
+  assert.ok(!keys.includes('WITH_CO_BORROWER'), 'a co-borrower is already there');
+});
+
+test('a short income without a co-borrower offers one earning exactly the shortfall', () => {
+  const input = { ...base, netMonthlyIncome: 1000, existingMonthlyDebt: 0, coBorrower: null, additionalCollateralValue: null };
+  const s = readinessScenarios(input, PTI, LTV, TODAY);
+  const asIs = s.find((x) => x.key === 'AS_ENTERED').result;
+  const gap = asIs.gaps.find((g) => g.key === 'INCOME');
+  assert.ok(gap && gap.amount > 0, 'the base case is short on income');
+  const withCo = s.find((x) => x.key === 'WITH_CO_BORROWER');
+  assert.ok(withCo, 'the co-borrower variant is offered');
+  assert.equal(withCo.vars.amount, Math.ceil(gap.amount));
+  assert.notEqual(withCo.result.checks.find((c) => c.key === 'PTI').status, 'NOT_MET');
+});
+
+test('optional answers add a line only when given and never invent a limit', () => {
+  const plain = assessReadiness(base, PTI, LTV, TODAY);
+  for (const k of ['RESIDENCY', 'GUARANTOR', 'COSTS']) assert.ok(!plain.checks.some((c) => c.key === k), k);
+  const r = assessReadiness({ ...base, residency: 'NON_RESIDENT', guarantor: true, costsKnown: false }, PTI, LTV, TODAY);
+  assert.equal(r.checks.find((c) => c.key === 'RESIDENCY').status, 'ATTENTION');
+  assert.equal(r.checks.find((c) => c.key === 'GUARANTOR').status, 'OK');
+  assert.equal(r.checks.find((c) => c.key === 'COSTS').status, 'ATTENTION');
+  assert.equal(r.ptiLimit, plain.ptiLimit, 'a guarantor never changes the published limit');
+  assert.equal(r.maxLoan, plain.maxLoan);
+});
+
+test('foreign income is its own income source with its own document list', () => {
+  assert.ok(INCOME_SOURCES.includes('FOREIGN_INCOME'));
+  const r = assessReadiness({ ...base, source: 'FOREIGN_INCOME' }, PTI, LTV, TODAY);
+  assert.equal(r.checks.find((c) => c.key === 'INCOME_PROOF').status, 'ATTENTION');
 });
 
 test('loanForPayment inverts the engine formula', () => {

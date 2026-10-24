@@ -6,19 +6,53 @@
 // nothing reaches the revised contract without that choice. Saving writes a
 // numbered revision; exports are built from the stored contract text and the
 // choices, in the browser.
+//
+// Unsaved choices live in sessionStorage, keyed by document and analysis, so
+// going to "Ask HOMI" about a clause and coming back loses nothing. A saved
+// revision made against a different analysis is listed as stale and cannot
+// be opened onto this one: its clauses may not be this analysis's clauses.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Download, FileText, History, Pencil, Printer, X } from 'lucide-react';
+import { AlertTriangle, Check, Download, FileText, History, Pencil, Printer, X } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import { applyDecisions, reviewItems, type AnalysisLike, type Decision, type ReviewItem } from '@/contracts/revisions';
+import {
+  analysisIdentity, applyDecisions, draftStorageKey, isStaleRevision, reviewItems,
+  type AnalysisLike, type Decision, type ReviewItem,
+} from '@/contracts/revisions';
 import { DOCX_MIME, buildDocx, downloadBytes } from '@/contracts/docx';
 import { getContractText, listRevisions, saveRevision, type SavedRevision } from '@/services/contractRevisions';
 
 const chip = 'inline-flex min-h-11 items-center gap-1.5 rounded-full border px-4 text-sm font-medium transition-colors';
 
-function printHtml(title: string, text: string, lang: string, dir: 'ltr' | 'rtl') {
+interface Draft { decisions: Record<string, Decision>; editing: string | null; draft: string }
+
+function readDraft(key: string): Draft | null {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as Partial<Draft>;
+    if (!v || typeof v !== 'object' || !v.decisions || typeof v.decisions !== 'object') return null;
+    return { decisions: v.decisions, editing: typeof v.editing === 'string' ? v.editing : null, draft: typeof v.draft === 'string' ? v.draft : '' };
+  } catch { return null; }
+}
+
+function writeDraft(key: string, d: Draft): void {
+  try { sessionStorage.setItem(key, JSON.stringify(d)); } catch { /* storage full or blocked: the page still works */ }
+}
+
+/*
+ * "PDF" EXPORT IS THE BROWSER'S PRINT DIALOG, NOT A GENERATED FILE.
+ *
+ * This opens the revised text in a plain printable window and calls
+ * window.print(). Whether a .pdf comes out depends on the customer choosing
+ * "Save as PDF" (or a PDF printer) in their own browser's dialog; HOMATCH
+ * builds no PDF and the button copy (ct_rev_print_pdf, ct_rev_print_hint)
+ * must never promise one. A pop-up blocker can stop the window: reported as
+ * ct_rev_popup_blocked.
+ */
+function printHtml(title: string, text: string, lang: string, dir: 'ltr' | 'rtl', notes: string[] = []) {
   const w = window.open('', '_blank');
   if (!w) return false;
   w.opener = null;
@@ -26,7 +60,7 @@ function printHtml(title: string, text: string, lang: string, dir: 'ltr' | 'rtl'
   w.document.write(`<!doctype html><html lang="${lang}" dir="${dir}"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <style>body{font-family:"Noto Sans Georgian","Sylfaen","Segoe UI",system-ui,sans-serif;max-width:46rem;margin:2.5rem auto;padding:0 1.25rem;line-height:1.6;color:#111}
 h1{font-size:1.25rem;margin:0 0 1.5rem}p{margin:0 0 .6rem;white-space:pre-wrap}@media print{body{margin:0 auto}}</style></head>
-<body><h1>${esc(title)}</h1>${text.split('\n').map((l) => `<p>${esc(l) || '&nbsp;'}</p>`).join('')}</body></html>`);
+<body><h1>${esc(title)}</h1>${notes.map((n) => `<p><em>${esc(n)}</em></p>`).join('')}${text.split('\n').map((l) => `<p>${esc(l) || '&nbsp;'}</p>`).join('')}</body></html>`);
   w.document.close();
   w.focus();
   setTimeout(() => w.print(), 300);
@@ -37,6 +71,11 @@ export function ContractReview({ documentId, title, analysis }: { documentId: st
   const { t, lang, isRTL } = useLanguage();
   const navigate = useNavigate();
   const items = useMemo(() => reviewItems(analysis), [analysis]);
+  const analysisId = useMemo(() => analysisIdentity(analysis), [analysis]);
+  const draftKey = draftStorageKey(documentId, analysisId);
+  // Set once the stored draft for this document and analysis has been read; nothing is written before.
+  const [hydratedKey, setHydratedKey] = useState<string | null>(null);
+  const hadDraft = useRef(false);
   const [text, setText] = useState<string | null | undefined>(undefined);
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [editing, setEditing] = useState<string | null>(null);
@@ -47,16 +86,36 @@ export function ContractReview({ documentId, title, analysis }: { documentId: st
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
+  /* The unsaved draft for this document and analysis, if the customer left the page mid-review. */
+  useEffect(() => {
+    const d = readDraft(draftKey);
+    hadDraft.current = !!d;
+    setDecisions(d?.decisions ?? {});
+    setEditing(d?.editing ?? null);
+    setDraft(d?.draft ?? '');
+    setHydratedKey(draftKey);
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (hydratedKey !== draftKey) return;
+    writeDraft(draftKey, { decisions, editing, draft });
+  }, [hydratedKey, draftKey, decisions, editing, draft]);
+
   useEffect(() => {
     let alive = true;
     getContractText(documentId).then((x) => { if (alive) setText(x); }).catch(() => { if (alive) setText(null); });
     listRevisions(documentId).then((h) => {
       if (!alive) return;
       setHistory(h);
-      if (h[0]) setDecisions(Object.fromEntries(h[0].decisions.map((d) => [d.key, d])));
+      // The latest saved revision is the starting point only when nothing unsaved exists
+      // and it was made against this very analysis.
+      const latest = h[0];
+      if (latest && !hadDraft.current && !isStaleRevision(latest.analysisSha, analysis)) {
+        setDecisions(Object.fromEntries(latest.decisions.map((d) => [d.key, d])));
+      }
     }).catch(() => {});
     return () => { alive = false; };
-  }, [documentId]);
+  }, [documentId, analysis]);
 
   const list = Object.values(decisions);
   const result = useMemo(
@@ -69,6 +128,7 @@ export function ContractReview({ documentId, title, analysis }: { documentId: st
 
   const decide = (key: string, d: Decision | null) => {
     setNotice(null);
+    hadDraft.current = true; // a choice made here is never replaced by a saved revision arriving late
     setDecisions((cur) => { const next = { ...cur }; if (d) next[key] = d; else delete next[key]; return next; });
   };
   const counts = {
@@ -81,11 +141,14 @@ export function ContractReview({ documentId, title, analysis }: { documentId: st
     if (!result) return;
     setSaving(true);
     try {
-      const saved = await saveRevision({ documentId, decisions: list, applied: result.changes.length, unplaced: result.unplaced.length, nextVersion: (history[0]?.version ?? 0) + 1 });
+      const saved = await saveRevision({ documentId, analysisSha: analysisId, decisions: list, applied: result.changes.length, unplaced: result.unplaced.length, nextVersion: (history[0]?.version ?? 0) + 1 });
       setHistory((h) => [saved, ...h]);
       setNotice('ct_rev_saved');
     } catch { setNotice('ct_rev_save_failed'); } finally { setSaving(false); }
   };
+
+  const truncated = analysis.textTruncated === true;
+  const exportNotes = truncated ? [t('ct_rev_truncated_export')] : [];
 
   const fileBase = (title || 'contract').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 60) || 'contract';
   const exportDocx = (tracked: boolean) => {
@@ -93,6 +156,7 @@ export function ContractReview({ documentId, title, analysis }: { documentId: st
     const bytes = buildDocx({
       title: `${title} · ${t('ct_rev_revised')}`,
       text: result.text,
+      notes: exportNotes,
       ...(tracked ? { tracked: { original: text, changes: result.changes, author: 'HOMATCH', addedHeading: t('ct_rev_added_heading') } } : {}),
     });
     downloadBytes(bytes, `${fileBase}${tracked ? '-changes' : '-revised'}.docx`, DOCX_MIME);
@@ -114,6 +178,12 @@ export function ContractReview({ documentId, title, analysis }: { documentId: st
       <div className="rounded-2xl bg-[#0C1119] p-5 text-white">
         <h2 id="ct-review-title" className="font-display text-lg font-semibold">{t('ct_rev_title')}</h2>
         <p className="mt-1.5 text-sm leading-relaxed text-white/80">{t('ct_rev_intro')}</p>
+        {truncated ? (
+          <p role="note" className="mt-3 flex items-start gap-2 rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm leading-relaxed text-white">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" aria-hidden="true" />
+            <span className="min-w-0 break-words">{t('ct_rev_truncated')}</span>
+          </p>
+        ) : null}
         <p className="mt-3 text-xs text-white/70" aria-live="polite">{t('ct_rev_counts', { accepted: counts.accepted, rejected: counts.rejected, open: counts.open })}</p>
       </div>
 
@@ -184,7 +254,11 @@ export function ContractReview({ documentId, title, analysis }: { documentId: st
                   </>
                 )}
               </div>
-              {result?.unplaced.includes(item.key) ? <p role="status" className="mt-2 text-xs text-[hsl(var(--destructive))]">{t('ct_rev_unplaced')}</p> : null}
+              {result?.unplaced.includes(item.key) ? (
+                <p role="status" className="mt-2 text-xs text-[hsl(var(--destructive))]">
+                  {t(result.unplacedReasons[item.key] === 'TRUNCATED' ? 'ct_rev_unplaced_truncated' : 'ct_rev_unplaced')}
+                </p>
+              ) : null}
             </li>
           );
         })}
@@ -201,14 +275,18 @@ export function ContractReview({ documentId, title, analysis }: { documentId: st
           </button>
           <button type="button" disabled={!result} onClick={() => exportDocx(false)} className={cn(chip, 'border-border')}><Download className="h-4 w-4" aria-hidden="true" />{t('ct_rev_docx')}</button>
           <button type="button" disabled={!result || !result.changes.length} onClick={() => exportDocx(true)} className={cn(chip, 'border-border')}><Download className="h-4 w-4" aria-hidden="true" />{t('ct_rev_docx_tracked')}</button>
-          <button type="button" disabled={!result} onClick={() => { if (result && !printHtml(`${title} · ${t('ct_rev_revised')}`, result.text, lang, isRTL ? 'rtl' : 'ltr')) setNotice('ct_rev_popup_blocked'); }} className={cn(chip, 'border-border')}>
-            <Printer className="h-4 w-4" aria-hidden="true" />{t('ct_rev_pdf')}
+          <button type="button" disabled={!result} aria-describedby="ct-rev-print-hint"
+            onClick={() => { if (result && !printHtml(`${title} · ${t('ct_rev_revised')}`, result.text, lang, isRTL ? 'rtl' : 'ltr', exportNotes)) setNotice('ct_rev_popup_blocked'); }}
+            className={cn(chip, 'border-border')}>
+            <Printer className="h-4 w-4" aria-hidden="true" />{t('ct_rev_print_pdf')}
           </button>
           {history.length ? (
             <button type="button" onClick={() => setShowHistory((v) => !v)} aria-expanded={showHistory} className={cn(chip, 'border-border')}><History className="h-4 w-4" aria-hidden="true" />{t('ct_rev_history')}</button>
           ) : null}
         </div>
         {notice ? <p role="status" className="mt-2 text-sm text-foreground">{t(notice)}</p> : null}
+        <p id="ct-rev-print-hint" className="mt-2 text-2xs leading-relaxed text-muted-foreground">{t('ct_rev_print_hint')}</p>
+        {truncated ? <p className="mt-1 text-2xs leading-relaxed text-foreground">{t('ct_rev_truncated_export')}</p> : null}
         <p className="mt-2 text-2xs leading-relaxed text-muted-foreground">{t('ct_rev_disclaimer')}</p>
       </div>
 
@@ -232,13 +310,23 @@ export function ContractReview({ documentId, title, analysis }: { documentId: st
         <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
           <h3 className="font-display text-base font-semibold">{t('ct_rev_history')}</h3>
           <ol className="mt-2">
-            {history.map((h) => (
-              <li key={h.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border py-2 text-sm last:border-0">
-                <span>{t('ct_rev_version', { n: h.version })} · {new Intl.DateTimeFormat(lang, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(h.createdAt))} · {t('ct_rev_version_counts', { applied: h.applied })}</span>
-                <button type="button" className="min-h-11 font-medium text-[hsl(var(--gold-ink))] underline underline-offset-4"
-                  onClick={() => setDecisions(Object.fromEntries(h.decisions.map((d) => [d.key, d])))}>{t('ct_rev_restore')}</button>
-              </li>
-            ))}
+            {history.map((h) => {
+              const stale = isStaleRevision(h.analysisSha, analysis);
+              return (
+                <li key={h.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border py-2 text-sm last:border-0">
+                  <span className="min-w-0 break-words">
+                    {t('ct_rev_version', { n: h.version })} · {new Intl.DateTimeFormat(lang, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(h.createdAt))} · {t('ct_rev_version_counts', { applied: h.applied })}
+                    {stale ? <span className="ms-2 rounded-full bg-muted px-2 py-0.5 text-2xs font-semibold text-muted-foreground">{t('ct_rev_stale')}</span> : null}
+                  </span>
+                  {stale ? (
+                    <span className="text-2xs text-muted-foreground">{t('ct_rev_stale_hint')}</span>
+                  ) : (
+                    <button type="button" className="min-h-11 font-medium text-[hsl(var(--gold-ink))] underline underline-offset-4"
+                      onClick={() => { setNotice(null); setEditing(null); setDecisions(Object.fromEntries(h.decisions.map((d) => [d.key, d]))); }}>{t('ct_rev_restore')}</button>
+                  )}
+                </li>
+              );
+            })}
           </ol>
         </div>
       ) : null}

@@ -120,6 +120,7 @@ interface MortgageScenarioRow {
   version: number;
   supersedes_scenario_id: string | null;
   label: string | null;
+  engine_version?: string | null;
   created_at: string;
 }
 
@@ -137,6 +138,7 @@ function mapScenarioRow(row: MortgageScenarioRow): MortgageScenario {
     version: row.version,
     supersedesScenarioId: row.supersedes_scenario_id,
     label: row.label,
+    engineVersion: row.engine_version ?? null,
   };
 }
 
@@ -201,8 +203,11 @@ async function getScenarioVersion(scenarioId: string): Promise<number> {
   return (data as { version: number } | null)?.version ?? 1;
 }
 
-export async function deleteMortgageScenario(scenarioId: string): Promise<boolean> {
-  const { error } = await supabase.from('mortgage_scenarios').delete().eq('id', scenarioId);
+export async function deleteMortgageScenario(scenarioId: string | string[]): Promise<boolean> {
+  // A whole chain goes in one statement, so a failure part way can never leave half a scenario.
+  const ids = Array.isArray(scenarioId) ? scenarioId : [scenarioId];
+  if (ids.length === 0) return true;
+  const { error } = await supabase.from('mortgage_scenarios').delete().in('id', ids);
   if (error) {
     console.error('mortgageApi.deleteMortgageScenario failed', error);
     return false;

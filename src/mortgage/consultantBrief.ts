@@ -131,6 +131,8 @@ export interface ConsultantBrief {
       effectiveRateSource: 'BANK_SUPPLIED' | 'CALCULATED' | 'UNAVAILABLE';
       rateType: string | null;
       rateCanChangeFromMonth: number | null;
+      /** Variable or indexed rate: how often the bank may reset it, as the offer states. */
+      rateResetEveryMonths: number | null;
       monthlyPaymentIfRateRises2pp: number | null;
       costsNotStatedInOffer: string[];
       earlyRepaymentTerms: string | null;
@@ -315,6 +317,7 @@ export function buildConsultantBrief(args: BriefInputs): ConsultantBrief | null 
           effectiveRateSource: row.effectiveRateSource,
           rateType: row.offer.rateType ?? null,
           rateCanChangeFromMonth: row.rateCanChangeFromMonth,
+          rateResetEveryMonths: row.offer.rateResetMonths ?? null,
           monthlyPaymentIfRateRises2pp: row.paymentAfterRateRise === null ? null : money(row.paymentAfterRateRise),
           costsNotStatedInOffer: row.missingCostKeys.map((k) => MISSING_COST_NAME[k] ?? k),
           earlyRepaymentTerms: row.offer.earlyRepaymentTerms?.slice(0, 400) ?? null,

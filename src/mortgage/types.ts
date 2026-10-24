@@ -203,6 +203,8 @@ export interface MortgageOffer {
   /** For a variable or indexed rate: the index name and the margin over it, as written in the offer. */
   referenceIndexName?: string;
   marginPercent?: number;
+  /** Variable or indexed rate: how often, in months, the bank may reset it, as written in the offer. */
+  rateResetMonths?: number;
   /** What the offer says about early repayment, in the bank's words. Free text; never interpreted. */
   earlyRepaymentTerms?: string;
   // Extraction provenance — only present for OfferSource === 'USER_UPLOADED'
@@ -394,6 +396,8 @@ export interface MortgageScenario {
   version: number; // this scenario's own version — a "Recalculate" produces a NEW MortgageScenario row, never mutates this one
   supersedesScenarioId: string | null;
   label?: string | null;
+  /** The payment engine that produced the result (mortgage_scenarios.engine_version). */
+  engineVersion?: string | null;
 }
 
 // ─── Foreign / non-resident context ───────────────────────────────────────

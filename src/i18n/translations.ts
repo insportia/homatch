@@ -22795,7 +22795,7 @@ const en = {
 
   /* ── HOMI ASSISTANT ── */
   mortgage_rd_title: 'Mortgage readiness assessment',
-  mortgage_rd_intro: 'Six short questions. HOMI checks your scenario against the National Bank of Georgia rules in force today and shows what helps and what is missing.',
+  mortgage_rd_intro: 'Seven short steps. HOMI checks your scenario against the National Bank of Georgia rules in force today and shows what helps and what is missing.',
   mortgage_rd_cta: 'Check your mortgage options',
   mortgage_rd_step: 'Step {{n}} of {{total}}',
   mortgage_rd_q_income: 'What is your net monthly income?',
@@ -23188,7 +23188,7 @@ const en = {
   mortgage_buyer_restricted_blocked: 'Contact with this buyer is restricted.',
   mortgage_buyer_restricted_unavailable: 'This account is currently unavailable.',
   mortgage_buyer_privacy: 'You pay for a buyer only once. Income, debts and credit data are never shown, and an unlock does not mean a bank has approved the buyer.',
-  mortgage_buyer_err_price: 'The price has changed. Close this and try again.',
+  mortgage_buyer_err_price: 'The price has changed and nothing was charged. Check the new price and confirm again.',
   mortgage_buyer_err_unlock: 'Unlock did not go through. Try again, you will not be charged twice.',
 
   /* ── HOMI ASSISTANT ── */
@@ -23263,7 +23263,7 @@ const en = {
   notif_payment_ok_title: 'Payment successful',
   notif_payment_ok_body: 'Your credit balance has been updated.',
   notif_payment_failed_title: 'Payment could not be completed',
-  notif_payment_failed_body: 'Check your payment method so your plan can renew.',
+  notif_payment_failed_body: 'Your top-up did not go through. No Credits were added. You can try again.',
   notif_service_failed_title: 'There was a problem completing your task',
   notif_service_failed_body: 'You are not charged for what was not delivered. You can try again.',
   notif_action_view_result: 'View the result',
@@ -23799,6 +23799,61 @@ const en = {
   inv_saved_delete: 'Delete',
   inv_saved_delete_title: 'Delete this saved result?',
   inv_saved_cancel: 'Cancel',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_rd_sc_no_collateral: 'Without the extra collateral of {{value}}',
+  mortgage_rd_src_foreign_income: 'Paid from abroad by a foreign employer',
+  mortgage_rd_profile_foreign_income: 'Income from a foreign employer counts when the bank can follow it: an employment contract, statements showing the salary arriving, and translations where needed. A loan in the currency you are paid in avoids exchange rate risk.',
+  mortgage_rd_q_residency: 'Are you a tax resident of Georgia?',
+  mortgage_rd_res_resident: 'Yes, resident',
+  mortgage_rd_res_non_resident: 'No, non resident',
+  mortgage_rd_q_guarantor: 'Is someone ready to be a guarantor for your loan?',
+  mortgage_rd_q_costs: 'Have you counted the bank’s one time fees and the mandatory insurance?',
+  mortgage_rd_costs_note: 'Appraisal, loan issuance fee, property and life insurance. Ask each bank for the full list in writing.',
+  mortgage_rd_check_residency_ok: 'As a resident, the usual document list applies.',
+  mortgage_rd_check_residency_attention: 'As a non resident, banks usually ask for more documents and sometimes a larger down payment. The published limits are the same.',
+  mortgage_rd_check_guarantor_ok: 'A guarantor can strengthen the application with a bank, but does not change the published income limit.',
+  mortgage_rd_check_costs_ok: 'You have counted the one time fees and insurance.',
+  mortgage_rd_check_costs_attention: 'Fees and insurance are not counted yet. Add them under the bank’s costs to see the real price of the loan.',
+  mortgage_rd_sc_with_co_borrower: 'With a co-borrower earning {{amount}} a month',
+  mortgage_rd_with_co_note: 'Their own debts would count too. This shows the smallest income that closes the gap.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_rs_title: 'What if the rate changes?',
+  mortgage_rs_note: 'The same loan and term at {{rate}}, with only the rate moved up or down. This is not a forecast.',
+  mortgage_rs_rate: 'Rate',
+  mortgage_rs_monthly: 'Monthly payment',
+  mortgage_rs_change: 'Change a month',
+  mortgage_rs_interest: 'Total interest',
+  mortgage_offer_rate_reset: 'Rate reset every (months)',
+  mortgage_offer_rate_reset_hint: 'How often the bank may change the rate, as written in the offer.',
+
+  /* ── HOMI ASSISTANT ── */
+  ct_rev_print_pdf: 'Print or save as PDF',
+  ct_rev_print_hint: 'Opens your browser\'s print window. To get a PDF file, choose Save as PDF there.',
+  ct_rev_truncated: 'This contract is longer than the part HOMI read. Clauses after that point were not reviewed and stay unchanged in the revised copy.',
+  ct_rev_truncated_export: 'Note: only the first part of this contract was reviewed. The rest is unchanged and was not checked.',
+  ct_rev_unplaced_truncated: 'The quoted wording was shortened, so it was not replaced automatically. Edit it in the document yourself.',
+  ct_rev_stale: 'Earlier analysis',
+  ct_rev_stale_hint: 'Saved against an earlier analysis of this contract, so it cannot be opened onto the current one.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_buyer_restricted_opted_out: 'This buyer no longer accepts property offers, so their contact details are not shown.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_bp_title: 'Bank products in {{currency}}',
+  mortgage_bp_sub: 'Only products HOMATCH has checked against the bank’s own published page. Add one to the comparison to see it with your numbers.',
+  mortgage_bp_loading: 'Checking verified products',
+  mortgage_bp_empty: 'No bank product in this currency has been verified yet. Add the offers you received from banks below.',
+  mortgage_bp_failed: 'Bank products could not be loaded right now. Your own offers below still work.',
+  mortgage_bp_rate: 'Rate',
+  mortgage_bp_to: 'to',
+  mortgage_bp_effective: 'Effective rate from',
+  mortgage_bp_down: 'Down payment from',
+  mortgage_bp_term: 'Up to {{years}} years',
+  mortgage_bp_source: 'Bank’s page, checked {{date}}',
+  mortgage_bp_use: 'Add to the comparison',
+  mortgage_bp_disclaimer: 'The starting rate is what the bank publishes. The rate it offers you depends on its own assessment.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -46508,7 +46563,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMI ASSISTANT ── */
   mortgage_rd_title: 'სესხისთვის მზადყოფნის შეფასება',
-  mortgage_rd_intro: 'ექვსი მოკლე კითხვა. HOMI შენს სცენარს საქართველოს ეროვნული ბანკის მოქმედ წესებთან შეადარებს და გაჩვენებს, რა გეხმარება და რა გაკლია.',
+  mortgage_rd_intro: 'შვიდი მოკლე ნაბიჯი. HOMI შენს სცენარს საქართველოს ეროვნული ბანკის მოქმედ წესებთან შეადარებს და გაჩვენებს, რა გეხმარება და რა გაკლია.',
   mortgage_rd_cta: 'შეამოწმე იპოთეკის შესაძლებლობა',
   mortgage_rd_step: 'ნაბიჯი {{n}} / {{total}}',
   mortgage_rd_q_income: 'რა არის შენი წმინდა ყოველთვიური შემოსავალი?',
@@ -46901,7 +46956,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mortgage_buyer_restricted_blocked: 'ამ მყიდველთან კონტაქტი შეზღუდულია.',
   mortgage_buyer_restricted_unavailable: 'ეს ანგარიში ამჟამად მიუწვდომელია.',
   mortgage_buyer_privacy: 'ერთ მყიდველზე თანხას მხოლოდ ერთხელ იხდი. შემოსავალი, ვალები და საკრედიტო მონაცემები არასოდეს ჩანს და განბლოკვა არ ნიშნავს, რომ მყიდველს ბანკმა დაუმტკიცა სესხი.',
-  mortgage_buyer_err_price: 'ფასი შეიცვალა. დახურე და სცადე ხელახლა.',
+  mortgage_buyer_err_price: 'ფასი შეიცვალა და არაფერი ჩამოგეჭრა. ნახე ახალი ფასი და ხელახლა დაადასტურე.',
   mortgage_buyer_err_unlock: 'განბლოკვა ვერ მოხერხდა. სცადე ხელახლა, თანხა ორჯერ არ ჩამოგეჭრება.',
 
   /* ── HOMI ASSISTANT ── */
@@ -46976,7 +47031,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   notif_payment_ok_title: 'გადახდა წარმატებით შესრულდა',
   notif_payment_ok_body: 'შენი კრედიტების ბალანსი განახლდა.',
   notif_payment_failed_title: 'გადახდის შესრულება ვერ მოხერხდა',
-  notif_payment_failed_body: 'შეამოწმე გადახდის მეთოდი, რომ გეგმა განახლდეს.',
+  notif_payment_failed_body: 'ბალანსის შევსება ვერ შესრულდა. კრედიტები არ დაგერიცხა. შეგიძლია ხელახლა სცადო.',
   notif_service_failed_title: 'დავალების შესრულებისას პრობლემა წარმოიშვა',
   notif_service_failed_body: 'გამოუყენებელი თანხა არ ჩამოგეჭრება. შეგიძლია ხელახლა სცადო.',
   notif_action_view_result: 'შედეგის ნახვა',
@@ -47512,6 +47567,61 @@ const ka: Partial<Record<TranslationKey, string>> = {
   inv_saved_delete: 'წაშლა',
   inv_saved_delete_title: 'ნამდვილად გსურს ამ შედეგის წაშლა?',
   inv_saved_cancel: 'გაუქმება',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_rd_sc_no_collateral: '{{value}}-ის დამატებითი უზრუნველყოფის გარეშე',
+  mortgage_rd_src_foreign_income: 'ხელფასს უცხოელი დამსაქმებელი საზღვარგარეთიდან მიხდის',
+  mortgage_rd_profile_foreign_income: 'უცხოელი დამსაქმებლის შემოსავალს ბანკი ითვალისწინებს, თუ მისი გადამოწმება შეუძლია: შრომითი ხელშეკრულება, ამონაწერი, სადაც ხელფასის ჩარიცხვა ჩანს, და საჭიროების შემთხვევაში თარგმანი. სესხი იმ ვალუტაში, რომელშიც ხელფასს იღებ, კურსის რისკს გაცილებს.',
+  mortgage_rd_q_residency: 'საქართველოს საგადასახადო რეზიდენტი ხარ?',
+  mortgage_rd_res_resident: 'კი, რეზიდენტი ვარ',
+  mortgage_rd_res_non_resident: 'არა, არარეზიდენტი ვარ',
+  mortgage_rd_q_guarantor: 'ვინმე მზადაა, სესხზე თავდებად დაგიდგეს?',
+  mortgage_rd_q_costs: 'ბანკის ერთჯერადი საკომისიოები და სავალდებულო დაზღვევა გათვლილი გაქვს?',
+  mortgage_rd_costs_note: 'შეფასება, სესხის გაცემის საკომისიო, ქონებისა და სიცოცხლის დაზღვევა. სრული სია ყველა ბანკს წერილობით სთხოვე.',
+  mortgage_rd_check_residency_ok: 'როგორც რეზიდენტზე, შენზე ჩვეულებრივი დოკუმენტების სია ვრცელდება.',
+  mortgage_rd_check_residency_attention: 'არარეზიდენტს ბანკები ჩვეულებრივ მეტ დოკუმენტს სთხოვენ და ზოგჯერ უფრო დიდ პირველად შენატანს. გამოქვეყნებული ზღვრები იგივეა.',
+  mortgage_rd_check_guarantor_ok: 'თავდები ბანკთან შენს განაცხადს აძლიერებს, მაგრამ შემოსავლის გამოქვეყნებულ ზღვარს არ ცვლის.',
+  mortgage_rd_check_costs_ok: 'ერთჯერადი საკომისიოები და დაზღვევა გათვლილი გაქვს.',
+  mortgage_rd_check_costs_attention: 'საკომისიოები და დაზღვევა ჯერ არ გაქვს გათვლილი. დაამატე ბანკის ხარჯებში და სესხის რეალურ ფასს დაინახავ.',
+  mortgage_rd_sc_with_co_borrower: 'თანამსესხებლით, რომელიც თვეში {{amount}}-ს გამოიმუშავებს',
+  mortgage_rd_with_co_note: 'მისი ვალებიც ჩაითვლება. აქ ჩანს ის მინიმალური შემოსავალი, რომელიც სხვაობას ფარავს.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_rs_title: 'რა მოხდება, თუ განაკვეთი შეიცვლება?',
+  mortgage_rs_note: 'იგივე სესხი და ვადა, {{rate}}-ის ნაცვლად მხოლოდ განაკვეთი იცვლება ზემოთ ან ქვემოთ. ეს პროგნოზი არ არის.',
+  mortgage_rs_rate: 'განაკვეთი',
+  mortgage_rs_monthly: 'ყოველთვიური შენატანი',
+  mortgage_rs_change: 'სხვაობა თვეში',
+  mortgage_rs_interest: 'ჯამური პროცენტი',
+  mortgage_offer_rate_reset: 'განაკვეთის გადახედვა ყოველ (თვე)',
+  mortgage_offer_rate_reset_hint: 'რამდენად ხშირად შეუძლია ბანკს განაკვეთის შეცვლა, როგორც შეთავაზებაშია მითითებული.',
+
+  /* ── HOMI ASSISTANT ── */
+  ct_rev_print_pdf: 'დაბეჭდვა ან PDF-ად შენახვა',
+  ct_rev_print_hint: 'გაიხსნება შენი ბრაუზერის ბეჭდვის ფანჯარა. PDF ფაილისთვის იქ აირჩიე PDF-ად შენახვა.',
+  ct_rev_truncated: 'ეს ხელშეკრულება იმ ნაწილზე გრძელია, რაც HOMI-მ წაიკითხა. ამის შემდეგ მოსული პუნქტები არ შემოწმებულა და შესწორებულ ასლში უცვლელი რჩება.',
+  ct_rev_truncated_export: 'შენიშვნა: შემოწმდა მხოლოდ ხელშეკრულების პირველი ნაწილი. დანარჩენი უცვლელია და არ შემოწმებულა.',
+  ct_rev_unplaced_truncated: 'ციტატა შემოკლებულია, ამიტომ ავტომატურად არ ჩანაცვლებულა. დოკუმენტში თავად შეასწორე.',
+  ct_rev_stale: 'წინა ანალიზი',
+  ct_rev_stale_hint: 'ეს ვერსია ხელშეკრულების წინა ანალიზზე შეინახა, ამიტომ მიმდინარეზე ვერ გაიხსნება.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_buyer_restricted_opted_out: 'ეს მყიდველი ქონების შეთავაზებებს აღარ იღებს, ამიტომ მისი საკონტაქტო მონაცემები არ ჩანს.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_bp_title: 'საბანკო პროდუქტები, {{currency}}',
+  mortgage_bp_sub: 'მხოლოდ ის პროდუქტები, რომლებიც HOMATCH-მა ბანკის ოფიციალურ გვერდთან გადაამოწმა. დაამატე შედარებაში და შენი რიცხვებით ნახავ.',
+  mortgage_bp_loading: 'ვამოწმებ გადამოწმებულ პროდუქტებს',
+  mortgage_bp_empty: 'ამ ვალუტაში ჯერ არცერთი საბანკო პროდუქტი არ არის გადამოწმებული. ქვემოთ დაამატე ბანკებისგან მიღებული შეთავაზებები.',
+  mortgage_bp_failed: 'საბანკო პროდუქტები ახლა ვერ ჩაიტვირთა. ქვემოთ შენი შეთავაზებები ჩვეულებრივ მუშაობს.',
+  mortgage_bp_rate: 'განაკვეთი',
+  mortgage_bp_to: 'დან',
+  mortgage_bp_effective: 'ეფექტური განაკვეთი',
+  mortgage_bp_down: 'პირველადი შენატანი',
+  mortgage_bp_term: 'მაქსიმუმ {{years}} წელი',
+  mortgage_bp_source: 'ბანკის გვერდი, გადამოწმდა {{date}}',
+  mortgage_bp_use: 'შედარებაში დამატება',
+  mortgage_bp_disclaimer: 'საწყისი განაკვეთი ბანკის გამოქვეყნებული განაკვეთია. შენთვის შემოთავაზებული განაკვეთი ბანკის შეფასებაზეა დამოკიდებული.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -70212,7 +70322,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMI ASSISTANT ── */
   mortgage_rd_title: 'Оценка готовности к кредиту',
-  mortgage_rd_intro: 'Шесть коротких вопросов. HOMI сравнит твой сценарий с действующими правилами Национального банка Грузии и покажет, что помогает и чего не хватает.',
+  mortgage_rd_intro: 'Семь коротких шагов. HOMI сравнит твой сценарий с действующими правилами Национального банка Грузии и покажет, что помогает и чего не хватает.',
   mortgage_rd_cta: 'Проверь возможность ипотеки',
   mortgage_rd_step: 'Шаг {{n}} из {{total}}',
   mortgage_rd_q_income: 'Какой у тебя чистый ежемесячный доход?',
@@ -70605,7 +70715,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mortgage_buyer_restricted_blocked: 'Связь с этим покупателем ограничена.',
   mortgage_buyer_restricted_unavailable: 'Этот аккаунт сейчас недоступен.',
   mortgage_buyer_privacy: 'За одного покупателя ты платишь только один раз. Доход, долги и кредитные данные никогда не показываются, а открытие не означает, что банк одобрил покупателю кредит.',
-  mortgage_buyer_err_price: 'Цена изменилась. Закрой окно и попробуй снова.',
+  mortgage_buyer_err_price: 'Цена изменилась, ничего не списано. Проверь новую цену и подтверди снова.',
   mortgage_buyer_err_unlock: 'Открыть не удалось. Попробуй ещё раз, дважды деньги не спишутся.',
 
   /* ── HOMI ASSISTANT ── */
@@ -70680,7 +70790,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   notif_payment_ok_title: 'Оплата прошла успешно',
   notif_payment_ok_body: 'Баланс кредитов обновлён.',
   notif_payment_failed_title: 'Оплата не прошла',
-  notif_payment_failed_body: 'Проверь способ оплаты, чтобы план продлился.',
+  notif_payment_failed_body: 'Пополнение не прошло. Кредиты не начислены. Можно попробовать снова.',
   notif_service_failed_title: 'При выполнении задачи возникла проблема',
   notif_service_failed_body: 'За невыполненное деньги не списываются. Можно попробовать снова.',
   notif_action_view_result: 'Посмотреть результат',
@@ -71216,6 +71326,61 @@ const ru: Partial<Record<TranslationKey, string>> = {
   inv_saved_delete: 'Удалить',
   inv_saved_delete_title: 'Удалить этот результат?',
   inv_saved_cancel: 'Отмена',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_rd_sc_no_collateral: 'Без дополнительного обеспечения на {{value}}',
+  mortgage_rd_src_foreign_income: 'Зарплату платит иностранный работодатель из-за рубежа',
+  mortgage_rd_profile_foreign_income: 'Доход от иностранного работодателя учитывается, если банк может его проследить: трудовой договор, выписки с поступлением зарплаты и при необходимости переводы. Кредит в валюте зарплаты избавляет от валютного риска.',
+  mortgage_rd_q_residency: 'Ты налоговый резидент Грузии?',
+  mortgage_rd_res_resident: 'Да, резидент',
+  mortgage_rd_res_non_resident: 'Нет, нерезидент',
+  mortgage_rd_q_guarantor: 'Кто-то готов стать поручителем по кредиту?',
+  mortgage_rd_q_costs: 'Ты учёл разовые комиссии банка и обязательную страховку?',
+  mortgage_rd_costs_note: 'Оценка, комиссия за выдачу, страхование имущества и жизни. Попроси у каждого банка полный список письменно.',
+  mortgage_rd_check_residency_ok: 'Как резидент, ты подаёшь обычный пакет документов.',
+  mortgage_rd_check_residency_attention: 'У нерезидента банки обычно просят больше документов, иногда больший первоначальный взнос. Опубликованные лимиты те же.',
+  mortgage_rd_check_guarantor_ok: 'Поручитель усиливает заявку в банке, но не меняет опубликованный лимит по доходу.',
+  mortgage_rd_check_costs_ok: 'Разовые комиссии и страховка учтены.',
+  mortgage_rd_check_costs_attention: 'Комиссии и страховка ещё не учтены. Добавь их в расходы банка, чтобы увидеть реальную цену кредита.',
+  mortgage_rd_sc_with_co_borrower: 'С созаёмщиком с доходом {{amount}} в месяц',
+  mortgage_rd_with_co_note: 'Его долги тоже будут учтены. Здесь показан минимальный доход, который закрывает разрыв.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_rs_title: 'Что если ставка изменится?',
+  mortgage_rs_note: 'Тот же кредит и срок, меняется только ставка {{rate}} вверх или вниз. Это не прогноз.',
+  mortgage_rs_rate: 'Ставка',
+  mortgage_rs_monthly: 'Ежемесячный платёж',
+  mortgage_rs_change: 'Разница в месяц',
+  mortgage_rs_interest: 'Всего процентов',
+  mortgage_offer_rate_reset: 'Пересмотр ставки каждые (мес.)',
+  mortgage_offer_rate_reset_hint: 'Как часто банк может менять ставку, как указано в предложении.',
+
+  /* ── HOMI ASSISTANT ── */
+  ct_rev_print_pdf: 'Распечатать или сохранить в PDF',
+  ct_rev_print_hint: 'Откроется окно печати браузера. Чтобы получить PDF файл, выбери там «Сохранить как PDF».',
+  ct_rev_truncated: 'Этот договор длиннее той части, которую прочитал HOMI. Пункты после неё не проверены и в исправленной копии остаются без изменений.',
+  ct_rev_truncated_export: 'Примечание: проверена только первая часть договора. Остальное не изменено и не проверено.',
+  ct_rev_unplaced_truncated: 'Цитата была сокращена, поэтому её не заменили автоматически. Исправь её в документе сам.',
+  ct_rev_stale: 'Прежний анализ',
+  ct_rev_stale_hint: 'Эта версия сохранена для прежнего анализа договора, поэтому её нельзя открыть для текущего.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_buyer_restricted_opted_out: 'Этот покупатель больше не принимает предложения недвижимости, поэтому его контакты не показываются.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_bp_title: 'Банковские продукты в {{currency}}',
+  mortgage_bp_sub: 'Только продукты, которые HOMATCH сверил с официальной страницей банка. Добавь продукт в сравнение, чтобы увидеть его с твоими цифрами.',
+  mortgage_bp_loading: 'Проверяю проверенные продукты',
+  mortgage_bp_empty: 'В этой валюте пока нет проверенных банковских продуктов. Добавь ниже предложения, которые ты получил от банков.',
+  mortgage_bp_failed: 'Сейчас не удалось загрузить банковские продукты. Твои предложения ниже работают как обычно.',
+  mortgage_bp_rate: 'Ставка',
+  mortgage_bp_to: 'до',
+  mortgage_bp_effective: 'Эффективная ставка от',
+  mortgage_bp_down: 'Первоначальный взнос от',
+  mortgage_bp_term: 'До {{years}} лет',
+  mortgage_bp_source: 'Страница банка, проверено {{date}}',
+  mortgage_bp_use: 'Добавить в сравнение',
+  mortgage_bp_disclaimer: 'Начальная ставка опубликована банком. Ставка для тебя зависит от его собственной оценки.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -93914,7 +94079,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMI ASSISTANT ── */
   mortgage_rd_title: 'Krediye hazırlık değerlendirmesi',
-  mortgage_rd_intro: 'Altı kısa soru. HOMI senaryonu Gürcistan Ulusal Bankası’nın yürürlükteki kurallarıyla karşılaştırır, neyin işe yaradığını ve neyin eksik olduğunu gösterir.',
+  mortgage_rd_intro: 'Yedi kısa adım. HOMI senaryonu Gürcistan Ulusal Bankası’nın yürürlükteki kurallarıyla karşılaştırır, neyin işe yaradığını ve neyin eksik olduğunu gösterir.',
   mortgage_rd_cta: 'Konut kredisi imkânını kontrol et',
   mortgage_rd_step: 'Adım {{n}} / {{total}}',
   mortgage_rd_q_income: 'Aylık net gelirin ne kadar?',
@@ -94307,7 +94472,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mortgage_buyer_restricted_blocked: 'Bu alıcıyla iletişim kısıtlı.',
   mortgage_buyer_restricted_unavailable: 'Bu hesap şu anda kullanılamıyor.',
   mortgage_buyer_privacy: 'Bir alıcı için yalnızca bir kez ödersin. Gelir, borçlar ve kredi verileri asla gösterilmez ve kilit açma, bankanın alıcıya kredi onayı verdiği anlamına gelmez.',
-  mortgage_buyer_err_price: 'Fiyat değişti. Kapat ve tekrar dene.',
+  mortgage_buyer_err_price: 'Fiyat değişti ve hiçbir ücret alınmadı. Yeni fiyatı kontrol et ve tekrar onayla.',
   mortgage_buyer_err_unlock: 'Kilit açılamadı. Tekrar dene, iki kez ücret alınmaz.',
 
   /* ── HOMI ASSISTANT ── */
@@ -94382,7 +94547,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   notif_payment_ok_title: 'Ödeme başarılı',
   notif_payment_ok_body: 'Kredi bakiyen güncellendi.',
   notif_payment_failed_title: 'Ödeme tamamlanamadı',
-  notif_payment_failed_body: 'Planının yenilenmesi için ödeme yöntemini kontrol et.',
+  notif_payment_failed_body: 'Bakiye yüklemen gerçekleşmedi. Kredi eklenmedi. Tekrar deneyebilirsin.',
   notif_service_failed_title: 'Görev tamamlanırken bir sorun oluştu',
   notif_service_failed_body: 'Verilmeyen hizmet için ücret alınmaz. Tekrar deneyebilirsin.',
   notif_action_view_result: 'Sonucu gör',
@@ -94918,6 +95083,61 @@ const tr: Partial<Record<TranslationKey, string>> = {
   inv_saved_delete: 'Sil',
   inv_saved_delete_title: 'Bu sonuç silinsin mi?',
   inv_saved_cancel: 'Vazgeç',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_rd_sc_no_collateral: '{{value}} değerindeki ek teminat olmadan',
+  mortgage_rd_src_foreign_income: 'Maaşımı yabancı bir işveren yurt dışından ödüyor',
+  mortgage_rd_profile_foreign_income: 'Yabancı bir işverenden gelen gelir, banka bunu izleyebildiğinde dikkate alınır: iş sözleşmesi, maaşın yattığını gösteren hesap dökümleri ve gerekirse çeviriler. Maaşını aldığın para biriminde kredi, kur riskini ortadan kaldırır.',
+  mortgage_rd_q_residency: 'Gürcistan’da vergi mukimi misin?',
+  mortgage_rd_res_resident: 'Evet, mukimim',
+  mortgage_rd_res_non_resident: 'Hayır, mukim değilim',
+  mortgage_rd_q_guarantor: 'Kredine kefil olmaya hazır biri var mı?',
+  mortgage_rd_q_costs: 'Bankanın tek seferlik ücretlerini ve zorunlu sigortayı hesaba kattın mı?',
+  mortgage_rd_costs_note: 'Ekspertiz, kredi tahsis ücreti, konut ve hayat sigortası. Her bankadan tam listeyi yazılı iste.',
+  mortgage_rd_check_residency_ok: 'Mukim olarak standart belge listesi geçerli.',
+  mortgage_rd_check_residency_attention: 'Mukim olmayanlardan bankalar genelde daha fazla belge, bazen daha yüksek peşinat ister. Yayımlanan sınırlar aynıdır.',
+  mortgage_rd_check_guarantor_ok: 'Kefil, banka başvurunu güçlendirir ama yayımlanan gelir sınırını değiştirmez.',
+  mortgage_rd_check_costs_ok: 'Tek seferlik ücretleri ve sigortayı hesaba kattın.',
+  mortgage_rd_check_costs_attention: 'Ücretler ve sigorta henüz hesaba katılmadı. Kredinin gerçek maliyetini görmek için banka masraflarına ekle.',
+  mortgage_rd_sc_with_co_borrower: 'Ayda {{amount}} kazanan bir ortak borçluyla',
+  mortgage_rd_with_co_note: 'Onun borçları da sayılır. Burada açığı kapatan en düşük gelir gösteriliyor.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_rs_title: 'Faiz değişirse ne olur?',
+  mortgage_rs_note: 'Aynı kredi ve vade, yalnızca {{rate}} faiz yukarı ya da aşağı değişiyor. Bu bir tahmin değil.',
+  mortgage_rs_rate: 'Faiz',
+  mortgage_rs_monthly: 'Aylık taksit',
+  mortgage_rs_change: 'Aylık fark',
+  mortgage_rs_interest: 'Toplam faiz',
+  mortgage_offer_rate_reset: 'Faiz güncelleme sıklığı (ay)',
+  mortgage_offer_rate_reset_hint: 'Bankanın faizi ne sıklıkla değiştirebileceği, teklifte yazdığı gibi.',
+
+  /* ── HOMI ASSISTANT ── */
+  ct_rev_print_pdf: 'Yazdır veya PDF olarak kaydet',
+  ct_rev_print_hint: 'Tarayıcının yazdırma penceresi açılır. PDF dosyası için orada PDF olarak kaydet seçeneğini seç.',
+  ct_rev_truncated: 'Bu sözleşme HOMI\'nin okuduğu kısımdan daha uzun. O noktadan sonraki maddeler incelenmedi ve düzeltilmiş kopyada değişmeden kalıyor.',
+  ct_rev_truncated_export: 'Not: Bu sözleşmenin yalnızca ilk kısmı incelendi. Geri kalanı değişmedi ve kontrol edilmedi.',
+  ct_rev_unplaced_truncated: 'Alıntılanan ifade kısaltıldığı için otomatik olarak değiştirilmedi. Belgede kendin düzelt.',
+  ct_rev_stale: 'Önceki analiz',
+  ct_rev_stale_hint: 'Bu sürüm sözleşmenin önceki bir analizine göre kaydedildi, bu yüzden güncel analize açılamaz.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_buyer_restricted_opted_out: 'Bu alıcı artık mülk teklifi kabul etmiyor, bu yüzden iletişim bilgileri gösterilmiyor.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_bp_title: '{{currency}} banka ürünleri',
+  mortgage_bp_sub: 'Yalnızca HOMATCH’in bankanın kendi yayımladığı sayfayla karşılaştırdığı ürünler. Kendi rakamlarınla görmek için karşılaştırmaya ekle.',
+  mortgage_bp_loading: 'Doğrulanmış ürünlere bakıyorum',
+  mortgage_bp_empty: 'Bu para biriminde henüz doğrulanmış banka ürünü yok. Bankalardan aldığın teklifleri aşağıya ekle.',
+  mortgage_bp_failed: 'Banka ürünleri şu an yüklenemedi. Aşağıdaki kendi tekliflerin çalışmaya devam ediyor.',
+  mortgage_bp_rate: 'Faiz',
+  mortgage_bp_to: 'ile',
+  mortgage_bp_effective: 'Efektif faiz',
+  mortgage_bp_down: 'Peşinat en az',
+  mortgage_bp_term: '{{years}} yıla kadar',
+  mortgage_bp_source: 'Bankanın sayfası, {{date}} tarihinde kontrol edildi',
+  mortgage_bp_use: 'Karşılaştırmaya ekle',
+  mortgage_bp_disclaimer: 'Başlangıç faizi bankanın yayımladığı faizdir. Sana sunulan faiz bankanın kendi değerlendirmesine bağlıdır.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -117616,7 +117836,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMI ASSISTANT ── */
   mortgage_rd_title: 'تقييم الجاهزية للقرض',
-  mortgage_rd_intro: 'ستة أسئلة قصيرة. يقارن HOMI حالتك بقواعد البنك الوطني الجورجي السارية ويوضح ما يساعدك وما ينقصك.',
+  mortgage_rd_intro: 'سبع خطوات قصيرة. يقارن HOMI حالتك بقواعد البنك الوطني الجورجي السارية ويوضح ما يساعدك وما ينقصك.',
   mortgage_rd_cta: 'تحقّق من إمكانية الرهن العقاري',
   mortgage_rd_step: 'الخطوة {{n}} من {{total}}',
   mortgage_rd_q_income: 'ما صافي دخلك الشهري؟',
@@ -118009,7 +118229,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mortgage_buyer_restricted_blocked: 'التواصل مع هذا المشتري مقيد.',
   mortgage_buyer_restricted_unavailable: 'هذا الحساب غير متاح حاليًا.',
   mortgage_buyer_privacy: 'تدفع مقابل المشتري مرة واحدة فقط. لا تظهر أبدًا بيانات الدخل أو الديون أو الائتمان، وفتح البيانات لا يعني أن البنك وافق على قرض المشتري.',
-  mortgage_buyer_err_price: 'تغير السعر. أغلق النافذة وحاول مرة أخرى.',
+  mortgage_buyer_err_price: 'تغير السعر ولم يُخصم شيء. راجع السعر الجديد وأكّد مرة أخرى.',
   mortgage_buyer_err_unlock: 'لم يكتمل فتح البيانات. حاول مرة أخرى، لن يخصم المبلغ مرتين.',
 
   /* ── HOMI ASSISTANT ── */
@@ -118084,7 +118304,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   notif_payment_ok_title: 'تمت عملية الدفع بنجاح',
   notif_payment_ok_body: 'تم تحديث رصيدك.',
   notif_payment_failed_title: 'تعذر إتمام الدفع',
-  notif_payment_failed_body: 'تحقق من وسيلة الدفع حتى تتجدد خطتك.',
+  notif_payment_failed_body: 'لم تكتمل عملية شحن الرصيد. لم تتم إضافة أي أرصدة. يمكنك المحاولة مرة أخرى.',
   notif_service_failed_title: 'حدثت مشكلة أثناء تنفيذ المهمة',
   notif_service_failed_body: 'لا تحتسب رسوم على ما لم يقدم. يمكنك المحاولة مرة أخرى.',
   notif_action_view_result: 'عرض النتيجة',
@@ -118620,6 +118840,61 @@ const ar: Partial<Record<TranslationKey, string>> = {
   inv_saved_delete: 'حذف',
   inv_saved_delete_title: 'هل تريد حذف هذه النتيجة؟',
   inv_saved_cancel: 'إلغاء',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_rd_sc_no_collateral: 'بدون الضمان الإضافي بقيمة {{value}}',
+  mortgage_rd_src_foreign_income: 'يدفع لي صاحب عمل أجنبي من الخارج',
+  mortgage_rd_profile_foreign_income: 'يُحتسب دخل صاحب العمل الأجنبي عندما يستطيع البنك التحقق منه: عقد عمل، وكشوف حساب تُظهر وصول الراتب، وترجمات عند الحاجة. القرض بعملة راتبك يجنبك مخاطر سعر الصرف.',
+  mortgage_rd_q_residency: 'هل أنت مقيم ضريبي في جورجيا؟',
+  mortgage_rd_res_resident: 'نعم، مقيم',
+  mortgage_rd_res_non_resident: 'لا، غير مقيم',
+  mortgage_rd_q_guarantor: 'هل هناك من هو مستعد لكفالة القرض؟',
+  mortgage_rd_q_costs: 'هل احتسبت رسوم البنك لمرة واحدة والتأمين الإلزامي؟',
+  mortgage_rd_costs_note: 'التقييم، ورسوم إصدار القرض، وتأمين العقار والحياة. اطلب من كل بنك القائمة الكاملة كتابيًا.',
+  mortgage_rd_check_residency_ok: 'بصفتك مقيمًا، تنطبق عليك قائمة المستندات المعتادة.',
+  mortgage_rd_check_residency_attention: 'تطلب البنوك عادةً من غير المقيم مستندات أكثر وأحيانًا دفعة أولى أكبر. الحدود المنشورة نفسها.',
+  mortgage_rd_check_guarantor_ok: 'يقوّي الكفيل طلبك لدى البنك، لكنه لا يغيّر حد الدخل المنشور.',
+  mortgage_rd_check_costs_ok: 'لقد احتسبت الرسوم لمرة واحدة والتأمين.',
+  mortgage_rd_check_costs_attention: 'الرسوم والتأمين غير محتسبة بعد. أضفها إلى تكاليف البنك لترى السعر الحقيقي للقرض.',
+  mortgage_rd_sc_with_co_borrower: 'مع مقترض مشارك يكسب {{amount}} شهريًا',
+  mortgage_rd_with_co_note: 'ستُحتسب ديونه أيضًا. يوضح هذا أقل دخل يسد الفجوة.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_rs_title: 'ماذا لو تغيّر سعر الفائدة؟',
+  mortgage_rs_note: 'القرض والمدة نفسهما، ويتغير سعر الفائدة {{rate}} فقط صعودًا أو هبوطًا. هذا ليس توقعًا.',
+  mortgage_rs_rate: 'سعر الفائدة',
+  mortgage_rs_monthly: 'القسط الشهري',
+  mortgage_rs_change: 'الفرق شهريًا',
+  mortgage_rs_interest: 'إجمالي الفائدة',
+  mortgage_offer_rate_reset: 'تعديل السعر كل (أشهر)',
+  mortgage_offer_rate_reset_hint: 'كم مرة يمكن للبنك تغيير السعر، كما هو مكتوب في العرض.',
+
+  /* ── HOMI ASSISTANT ── */
+  ct_rev_print_pdf: 'اطبع أو احفظ بصيغة PDF',
+  ct_rev_print_hint: 'تفتح نافذة الطباعة في متصفحك. للحصول على ملف PDF اختر هناك الحفظ بصيغة PDF.',
+  ct_rev_truncated: 'هذا العقد أطول من الجزء الذي قرأه HOMI. البنود بعد ذلك لم تُراجع وتبقى دون تغيير في النسخة المعدلة.',
+  ct_rev_truncated_export: 'ملاحظة: تمت مراجعة الجزء الأول فقط من هذا العقد. الباقي لم يتغير ولم يُفحص.',
+  ct_rev_unplaced_truncated: 'تم اختصار النص المقتبس، لذلك لم يُستبدل تلقائيًا. عدّله في المستند بنفسك.',
+  ct_rev_stale: 'تحليل سابق',
+  ct_rev_stale_hint: 'حُفظت هذه النسخة وفق تحليل سابق لهذا العقد، لذلك لا يمكن فتحها على التحليل الحالي.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_buyer_restricted_opted_out: 'لم يعد هذا المشتري يقبل عروض العقارات، لذلك لا تظهر بيانات الاتصال الخاصة به.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_bp_title: 'منتجات البنوك بعملة {{currency}}',
+  mortgage_bp_sub: 'فقط المنتجات التي تحقق منها HOMATCH مقابل صفحة البنك المنشورة. أضف منتجًا إلى المقارنة لتراه بأرقامك.',
+  mortgage_bp_loading: 'أتحقق من المنتجات الموثقة',
+  mortgage_bp_empty: 'لا يوجد بعد منتج بنكي موثق بهذه العملة. أضف أدناه العروض التي تلقيتها من البنوك.',
+  mortgage_bp_failed: 'تعذر تحميل منتجات البنوك الآن. عروضك أدناه تعمل كالمعتاد.',
+  mortgage_bp_rate: 'سعر الفائدة',
+  mortgage_bp_to: 'إلى',
+  mortgage_bp_effective: 'السعر الفعلي من',
+  mortgage_bp_down: 'الدفعة الأولى من',
+  mortgage_bp_term: 'حتى {{years}} سنة',
+  mortgage_bp_source: 'صفحة البنك، تم التحقق في {{date}}',
+  mortgage_bp_use: 'أضف إلى المقارنة',
+  mortgage_bp_disclaimer: 'سعر البداية هو ما ينشره البنك. السعر الذي يعرضه عليك يعتمد على تقييمه الخاص.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -141318,7 +141593,7 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMI ASSISTANT ── */
   mortgage_rd_title: 'הערכת מוכנות להלוואה',
-  mortgage_rd_intro: 'שש שאלות קצרות. HOMI משווה את התרחיש שלך לכללים התקפים של הבנק הלאומי של גאורגיה ומראה מה עוזר ומה חסר.',
+  mortgage_rd_intro: 'שבעה צעדים קצרים. HOMI משווה את התרחיש שלך לכללים התקפים של הבנק הלאומי של גאורגיה ומראה מה עוזר ומה חסר.',
   mortgage_rd_cta: 'בדוק את אפשרות המשכנתא',
   mortgage_rd_step: 'שלב {{n}} מתוך {{total}}',
   mortgage_rd_q_income: 'מה ההכנסה החודשית נטו שלך?',
@@ -141711,7 +141986,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   mortgage_buyer_restricted_blocked: 'הקשר עם הקונה הזה מוגבל.',
   mortgage_buyer_restricted_unavailable: 'החשבון הזה לא זמין כרגע.',
   mortgage_buyer_privacy: 'משלמים על קונה רק פעם אחת. הכנסה, חובות ונתוני אשראי לעולם לא מוצגים, ופתיחה לא אומרת שהבנק אישר לקונה הלוואה.',
-  mortgage_buyer_err_price: 'המחיר השתנה. סגור ונסה שוב.',
+  mortgage_buyer_err_price: 'המחיר השתנה ולא חויבת. בדוק את המחיר החדש ואשר שוב.',
   mortgage_buyer_err_unlock: 'הפתיחה לא הצליחה. נסה שוב, לא תחויב פעמיים.',
 
   /* ── HOMI ASSISTANT ── */
@@ -141786,7 +142061,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   notif_payment_ok_title: 'התשלום בוצע בהצלחה',
   notif_payment_ok_body: 'יתרת הקרדיטים שלך עודכנה.',
   notif_payment_failed_title: 'התשלום לא הושלם',
-  notif_payment_failed_body: 'בדוק את אמצעי התשלום כדי שהתוכנית תתחדש.',
+  notif_payment_failed_body: 'טעינת היתרה לא הושלמה. לא נוספו קרדיטים. אפשר לנסות שוב.',
   notif_service_failed_title: 'אירעה בעיה בביצוע המשימה',
   notif_service_failed_body: 'לא תחויב על מה שלא סופק. אפשר לנסות שוב.',
   notif_action_view_result: 'צפה בתוצאה',
@@ -142322,6 +142597,61 @@ const he: Partial<Record<TranslationKey, string>> = {
   inv_saved_delete: 'מחק',
   inv_saved_delete_title: 'למחוק את התוצאה הזו?',
   inv_saved_cancel: 'ביטול',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_rd_sc_no_collateral: 'בלי הבטוחה הנוספת בשווי {{value}}',
+  mortgage_rd_src_foreign_income: 'מעסיק זר משלם לי מחו״ל',
+  mortgage_rd_profile_foreign_income: 'הכנסה ממעסיק זר נחשבת כשהבנק יכול לעקוב אחריה: חוזה עבודה, דפי חשבון שמראים את כניסת המשכורת ותרגומים לפי הצורך. הלוואה במטבע שבו אתה מקבל משכורת חוסכת סיכון שער.',
+  mortgage_rd_q_residency: 'האם אתה תושב מס בגאורגיה?',
+  mortgage_rd_res_resident: 'כן, תושב',
+  mortgage_rd_res_non_resident: 'לא, לא תושב',
+  mortgage_rd_q_guarantor: 'האם מישהו מוכן לערוב להלוואה?',
+  mortgage_rd_q_costs: 'האם חישבת את העמלות החד פעמיות של הבנק ואת הביטוח החובה?',
+  mortgage_rd_costs_note: 'שמאות, עמלת הקצאה, ביטוח נכס וביטוח חיים. בקש מכל בנק את הרשימה המלאה בכתב.',
+  mortgage_rd_check_residency_ok: 'כתושב, חלה עליך רשימת המסמכים הרגילה.',
+  mortgage_rd_check_residency_attention: 'מתושב חוץ בנקים בדרך כלל מבקשים יותר מסמכים ולפעמים הון עצמי גדול יותר. המגבלות שפורסמו זהות.',
+  mortgage_rd_check_guarantor_ok: 'ערב מחזק את הבקשה בבנק, אבל לא משנה את מגבלת ההכנסה שפורסמה.',
+  mortgage_rd_check_costs_ok: 'חישבת את העמלות החד פעמיות ואת הביטוח.',
+  mortgage_rd_check_costs_attention: 'העמלות והביטוח עוד לא חושבו. הוסף אותם לעלויות הבנק כדי לראות את המחיר האמיתי של ההלוואה.',
+  mortgage_rd_sc_with_co_borrower: 'עם לווה נוסף שמרוויח {{amount}} בחודש',
+  mortgage_rd_with_co_note: 'גם החובות שלו ייספרו. כאן מוצגת ההכנסה המינימלית שסוגרת את הפער.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_rs_title: 'מה אם הריבית תשתנה?',
+  mortgage_rs_note: 'אותה הלוואה ואותה תקופה, רק הריבית {{rate}} זזה למעלה או למטה. זו לא תחזית.',
+  mortgage_rs_rate: 'ריבית',
+  mortgage_rs_monthly: 'החזר חודשי',
+  mortgage_rs_change: 'הפרש בחודש',
+  mortgage_rs_interest: 'סך הריבית',
+  mortgage_offer_rate_reset: 'עדכון ריבית כל (חודשים)',
+  mortgage_offer_rate_reset_hint: 'באיזו תדירות הבנק רשאי לשנות את הריבית, כפי שכתוב בהצעה.',
+
+  /* ── HOMI ASSISTANT ── */
+  ct_rev_print_pdf: 'הדפסה או שמירה כ-PDF',
+  ct_rev_print_hint: 'נפתח חלון ההדפסה של הדפדפן. כדי לקבל קובץ PDF, בחר שם שמירה כ-PDF.',
+  ct_rev_truncated: 'החוזה הזה ארוך יותר מהחלק ש-HOMI קרא. סעיפים שאחרי נקודה זו לא נבדקו ונשארים ללא שינוי בעותק המתוקן.',
+  ct_rev_truncated_export: 'הערה: נבדק רק החלק הראשון של החוזה. השאר לא שונה ולא נבדק.',
+  ct_rev_unplaced_truncated: 'הנוסח המצוטט קוצר, ולכן לא הוחלף אוטומטית. ערוך אותו במסמך בעצמך.',
+  ct_rev_stale: 'ניתוח קודם',
+  ct_rev_stale_hint: 'הגרסה הזו נשמרה לפי ניתוח קודם של החוזה, ולכן אי אפשר לפתוח אותה על הניתוח הנוכחי.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_buyer_restricted_opted_out: 'הקונה הזה כבר לא מקבל הצעות נכסים, ולכן פרטי הקשר שלו לא מוצגים.',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_bp_title: 'מוצרי בנקים ב{{currency}}',
+  mortgage_bp_sub: 'רק מוצרים ש־HOMATCH בדק מול העמוד הרשמי של הבנק. הוסף מוצר להשוואה כדי לראות אותו עם המספרים שלך.',
+  mortgage_bp_loading: 'בודק מוצרים מאומתים',
+  mortgage_bp_empty: 'עדיין אין מוצר בנקאי מאומת במטבע הזה. הוסף למטה את ההצעות שקיבלת מהבנקים.',
+  mortgage_bp_failed: 'לא ניתן לטעון כרגע את מוצרי הבנקים. ההצעות שלך למטה ממשיכות לעבוד.',
+  mortgage_bp_rate: 'ריבית',
+  mortgage_bp_to: 'עד',
+  mortgage_bp_effective: 'ריבית אפקטיבית מ',
+  mortgage_bp_down: 'הון עצמי מ',
+  mortgage_bp_term: 'עד {{years}} שנים',
+  mortgage_bp_source: 'עמוד הבנק, נבדק ב־{{date}}',
+  mortgage_bp_use: 'הוסף להשוואה',
+  mortgage_bp_disclaimer: 'ריבית הפתיחה היא מה שהבנק מפרסם. הריבית שתוצע לך תלויה בהערכה של הבנק עצמו.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

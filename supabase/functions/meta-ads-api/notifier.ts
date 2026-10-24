@@ -36,7 +36,8 @@ export async function recipientFor(sb: Sb, userId: string): Promise<Recipient> {
   const flag = (k: string, d: boolean) => (typeof cat[k] === 'boolean' ? cat[k] : d);
   return {
     userId,
-    locale: normLocale(u?.preferred_language),
+    /* Georgian when the person never chose a language (the platform default), as every HOMATCH email. */
+    locale: normLocale(u?.preferred_language || 'ka'),
     prefs: {
       push: p?.push_enabled !== false,
       email: p?.email_enabled !== false,

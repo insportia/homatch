@@ -44,6 +44,7 @@ import { buildConsultantBrief } from '@/mortgage/consultantBrief';
 import { useFinancingSession, type FinancingPrefill } from '@/components/mortgage/useFinancingSession';
 import { SimpleCalculator } from '@/components/mortgage/SimpleCalculator';
 import { ResultHeadline } from '@/components/mortgage/ResultHeadline';
+import { BankProductsPanel } from '@/components/mortgage/BankProductsPanel';
 import { ReadinessAssessment, type ReadinessAnswers } from '@/components/mortgage/ReadinessAssessment';
 import type { ReadinessResult } from '@/mortgage/readiness';
 import { ConsultantPanel } from '@/components/mortgage/ConsultantPanel';
@@ -112,6 +113,7 @@ export default function MortgagePage() {
     addOffer,
     updateOffer,
     removeOffer,
+    replaceOffers,
     offerComparison,
     subsidyPrograms,
     subsidyAnswers,
@@ -163,8 +165,8 @@ export default function MortgagePage() {
     } : null),
     [input, currency, draft.monthlyNetIncome, draft.originationFeePercent],
   );
-  const activeRuleIds = useMemo(
-    () => (rulesReady ? [...ptiRules, ...ltvRules].map((r) => r.id) : null),
+  const workspaceRules = useMemo(
+    () => (rulesReady ? { pti: ptiRules, ltv: ltvRules } : null),
     [rulesReady, ptiRules, ltvRules],
   );
   const presetContext = useMemo(
@@ -243,7 +245,7 @@ export default function MortgagePage() {
           * speaks in tokens, so the same markup carries on the light ground.
           */}
         <div className="hm-customer hm-customer-canvas min-h-[calc(100vh-4rem)]">
-          <div className="mx-auto w-full max-w-[64rem] space-y-8 px-4 py-8 sm:px-6 sm:py-10">
+          <div className="mx-auto w-full max-w-[64rem] space-y-6 px-4 py-6 sm:space-y-8 sm:px-6 sm:py-10">
             {/* ── A. The name — DARK STRUCTURAL FRAMING.
                 The navy band is the product's frame: deep ink ground, white
                 title, gold eyebrow and a hairline of gold light. The WORK
@@ -276,22 +278,24 @@ export default function MortgagePage() {
               }}
             />
 
+            {showResult && result ? <ResultHeadline result={result} currency={currency} input={input} /> : null}
+
+            {/* ── C1. Save it, come back to it: saved scenarios open even before a new calculation. ── */}
+            <MortgageWorkspace
+              userId={homatchUser?.id ?? null}
+              draft={draft}
+              input={input}
+              result={showResult ? result : null}
+              affordability={affordability}
+              rules={workspaceRules}
+              propertyId={prefill?.propertyId ?? null}
+              offers={offers}
+              onOpenDraft={(next, savedOffers) => { replaceDraft(next); replaceOffers(savedOffers); setPressed(true); }}
+              onNew={() => { reset(); setPressed(false); }}
+            />
+
             {showResult && result ? (
               <>
-                {/* ── C. The answer ── */}
-                <ResultHeadline result={result} currency={currency} />
-
-                {/* ── C1. Save it, come back to it ── */}
-                <MortgageWorkspace
-                  userId={homatchUser?.id ?? null}
-                  draft={draft}
-                  input={input}
-                  result={result}
-                  affordability={affordability}
-                  activeRuleIds={activeRuleIds}
-                  onOpenDraft={(next) => { replaceDraft(next); setPressed(true); }}
-                  onNew={() => { reset(); setPressed(false); }}
-                />
 
                 {/* ── C1b. Optional: let matching sellers reach me ── */}
                 {input ? <MortgageLeadOptIn input={input} currency={currency} propertyId={prefill?.propertyId ?? null} /> : null}
@@ -317,6 +321,15 @@ export default function MortgagePage() {
                   ) : null}
 
                   {topic === 'COMPARE_OFFERS' ? (
+                    <>
+                    {/* Verified bank products, as an alternative scenario to add to the comparison. */}
+                    <BankProductsPanel
+                      currency={currency}
+                      loanAmount={result.loanAmount}
+                      termMonths={draft.termMonths ?? 240}
+                      canAdd={offers.length < 3}
+                      onUse={addOffer}
+                    />
                     <OffersView
                       offers={offers}
                       comparison={offerComparison}
@@ -328,6 +341,7 @@ export default function MortgagePage() {
                       currency={currency}
                       context={presetContext}
                     />
+                    </>
                   ) : null}
 
                   {topic === 'AFFORDABILITY' ? (

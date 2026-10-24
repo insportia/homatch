@@ -67,8 +67,14 @@ create table if not exists public.mortgage_buyer_intents (
   updated_at       timestamptz not null default now(),
   check (budget_min is null or budget_max is null or budget_min <= budget_max)
 );
+-- Every listing the person calculated a mortgage for while opted in (latest last, at most 20).
+alter table public.mortgage_buyer_intents add column if not exists property_ids uuid[] not null default '{}';
+alter table public.mortgage_buyer_intents drop constraint if exists mortgage_buyer_intents_property_ids_cap;
+alter table public.mortgage_buyer_intents add constraint mortgage_buyer_intents_property_ids_cap check (cardinality(property_ids) <= 20);
 create index if not exists mortgage_buyer_intents_active
   on public.mortgage_buyer_intents (lower(city), last_signal_at desc) where status = 'ACTIVE';
+create index if not exists mortgage_buyer_intents_property_ids
+  on public.mortgage_buyer_intents using gin (property_ids) where status = 'ACTIVE';
 alter table public.mortgage_buyer_intents enable row level security;
 revoke all on public.mortgage_buyer_intents from anon, authenticated;
 drop policy if exists mortgage_buyer_intents_own_read on public.mortgage_buyer_intents;
@@ -95,7 +101,7 @@ returns jsonb language sql stable security definer set search_path = public as $
     'status', i.status, 'consentedAt', i.consented_at, 'withdrawnAt', i.withdrawn_at,
     'city', i.city, 'district', i.district, 'propertyTypes', to_jsonb(i.property_types),
     'roomsMin', i.rooms_min, 'budgetMin', i.budget_min, 'budgetMax', i.budget_max, 'currency', i.currency,
-    'timeframe', i.timeframe, 'propertyId', i.property_id,
+    'timeframe', i.timeframe, 'propertyId', i.property_id, 'propertyIds', to_jsonb(i.property_ids),
     'sharePhone', i.share_phone, 'shareEmail', i.share_email, 'lastSignalAt', i.last_signal_at) end
     from (select 1) one
     left join public.mortgage_buyer_intents i on i.user_id = public.current_homatch_user_id()
@@ -128,7 +134,7 @@ begin
 
   insert into public.mortgage_buyer_intents as i
     (user_id, status, consent_version, consented_at, withdrawn_at, city, district, property_types, rooms_min,
-     budget_min, budget_max, currency, timeframe, property_id, share_phone, share_email,
+     budget_min, budget_max, currency, timeframe, property_id, property_ids, share_phone, share_email,
      signal_count, first_signal_at, last_signal_at, updated_at)
   values
     (v_me, 'ACTIVE', p_consent_version, now(), null,
@@ -136,6 +142,7 @@ begin
      v_types, nullif(p->>'roomsMin', '')::integer,
      round(nullif(p->>'budgetMin', '')::numeric, -3), round(nullif(p->>'budgetMax', '')::numeric, -3),
      nullif(upper(p->>'currency'), ''), nullif(p->>'timeframe', ''), v_property,
+     case when v_property is null then '{}'::uuid[] else array[v_property] end,
      coalesce((p->>'sharePhone')::boolean, false), coalesce((p->>'shareEmail')::boolean, false),
      1, now(), now(), now())
   on conflict (user_id) do update set
@@ -147,12 +154,18 @@ begin
     rooms_min = excluded.rooms_min, budget_min = excluded.budget_min, budget_max = excluded.budget_max,
     currency = excluded.currency, timeframe = excluded.timeframe,
     property_id = coalesce(excluded.property_id, i.property_id),
+    -- A new listing joins the list (moved to the end if already there); the oldest drop off past 20.
+    property_ids = case when excluded.property_id is null then i.property_ids else
+      (select coalesce(array_agg(x order by o), '{}') from (
+         select x, o from unnest(array_remove(i.property_ids, excluded.property_id) || excluded.property_id) with ordinality as t(x, o)
+         order by o desc limit 20) last20) end,
     share_phone = excluded.share_phone, share_email = excluded.share_email,
     signal_count = i.signal_count + 1, last_signal_at = now(), updated_at = now();
 
   select jsonb_build_object('city', city, 'district', district, 'propertyTypes', to_jsonb(property_types),
            'roomsMin', rooms_min, 'budgetMin', budget_min, 'budgetMax', budget_max, 'currency', currency,
-           'timeframe', timeframe, 'propertyId', property_id, 'sharePhone', share_phone, 'shareEmail', share_email)
+           'timeframe', timeframe, 'propertyId', property_id, 'propertyIds', to_jsonb(property_ids),
+           'sharePhone', share_phone, 'shareEmail', share_email)
     into v_shared from public.mortgage_buyer_intents where user_id = v_me;
   insert into public.mortgage_buyer_consent_events (user_id, action, consent_version, shared)
   values (v_me, case when v_prev.user_id is null or v_prev.status = 'WITHDRAWN' then 'GRANTED' else 'UPDATED' end,
@@ -162,7 +175,8 @@ end $$;
 revoke all on function public.set_my_mortgage_buyer_intent(jsonb, text) from public, anon;
 grant execute on function public.set_my_mortgage_buyer_intent(jsonb, text) to authenticated;
 
-/* Withdraw: no new exposure, no new unlocks, and contact reads stop. */
+/* Withdraw: no new exposure, no new unlocks, contact reads stop, and the stated
+   preferences are erased (the consent events keep the record of what was shared and when). */
 create or replace function public.withdraw_my_mortgage_buyer_intent()
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_me uuid := public.current_homatch_user_id(); v_version text;
@@ -170,7 +184,10 @@ begin
   if v_me is null then raise exception 'not signed in' using errcode = '42501'; end if;
   update public.mortgage_buyer_intents
      set status = 'WITHDRAWN', withdrawn_at = now(), public_ref = gen_random_uuid(),
-         share_phone = false, share_email = false, updated_at = now()
+         share_phone = false, share_email = false,
+         city = null, district = null, property_types = '{}', rooms_min = null,
+         budget_min = null, budget_max = null, currency = null, timeframe = null,
+         property_id = null, property_ids = '{}', updated_at = now()
    where user_id = v_me and status = 'ACTIVE'
   returning consent_version into v_version;
   if found then
@@ -233,7 +250,7 @@ language sql stable security definer set search_path = public as $$
       from public.properties pr left join public.property_facts f on f.property_id = pr.id
      where pr.id = p_property_id
   )
-  select i.user_id, i.public_ref, (i.property_id = prop.id),
+  select i.user_id, i.public_ref, (i.property_id = prop.id or prop.id = any (i.property_ids)),
          case when i.budget_max is null or prop.total_price is null then 'UNKNOWN'
               when i.currency is distinct from prop.currency then 'UNKNOWN'
               when prop.total_price <= i.budget_max then 'WITHIN'
@@ -250,7 +267,7 @@ language sql stable security definer set search_path = public as $$
      and not exists (select 1 from public.conversation_blocks b
                       where (b.blocker_id = i.user_id and b.blocked_id = p_owner)
                          or (b.blocker_id = p_owner and b.blocked_id = i.user_id))
-     and (i.property_id = prop.id
+     and (i.property_id = prop.id or prop.id = any (i.property_ids)
           or (i.city is not null and prop.city is not null and lower(i.city) = lower(prop.city)
               and (cardinality(i.property_types) = 0 or prop.ptype = any (i.property_types))
               and (i.budget_max is null or prop.total_price is null or i.currency is distinct from prop.currency
@@ -411,6 +428,7 @@ declare
   v_unlock public.internal_lead_unlocks;
   v_user record;
   v_phone text;
+  v_email text;
 begin
   if v_me is null then raise exception 'not signed in' using errcode = '42501'; end if;
   select * into v_i from public.mortgage_buyer_intents where public_ref = p_ref;
@@ -425,8 +443,18 @@ begin
               where (b.blocker_id = v_i.user_id and b.blocked_id = v_me) or (b.blocker_id = v_me and b.blocked_id = v_i.user_id)) then
     return jsonb_build_object('restricted', true, 'reason', 'BLOCKED');
   end if;
+  -- Turning off property offers after the unlock stops contact too: the preference is read now, not at unlock time.
+  if not coalesce((select pr2.accept_property_offers from public.lead_contact_prefs_of(v_i.user_id) pr2), false) then
+    return jsonb_build_object('restricted', true, 'reason', 'OPTED_OUT');
+  end if;
   if v_i.share_phone and v_user.phone is not null and length(v_user.phone) > 4 then
     v_phone := v_user.phone;
+  end if;
+  if v_i.share_email and v_user.email is not null then
+    v_email := v_user.email;
+  end if;
+  -- Every read that shows a contact channel is recorded, phone or email alike.
+  if v_phone is not null or v_email is not null then
     insert into public.contact_disclosures (viewer_user_id, subject_user_id, property_id, relationship_kind, relationship_id)
     values (v_me, v_i.user_id, v_unlock.first_property_id, 'MORTGAGE_LEAD_UNLOCK', v_unlock.id);
   end if;
@@ -435,7 +463,7 @@ begin
     'displayName', coalesce(nullif(v_user.nickname, ''), nullif(split_part(coalesce(v_user.full_name, ''), ' ', 1), '')),
     'language', v_user.preferred_language::text,
     'phone', v_phone,
-    'email', case when v_i.share_email then v_user.email end,
+    'email', v_email,
     'unlockedAt', v_unlock.created_at,
     'creditsCharged', v_unlock.credits_charged);
 end $$;

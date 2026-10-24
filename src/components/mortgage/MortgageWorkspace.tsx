@@ -17,12 +17,15 @@ import {
 } from '@/components/ui/alert-dialog';
 import { formatMoney, formatPercent, intlLocaleFor } from '@/components/workspace/primitives';
 import { deleteMortgageScenario, getMyMortgageScenarios, saveMortgageScenario } from '@/services/mortgageApi';
-import { MORTGAGE_ENGINE_VERSION, chainRowIds, isStale, toChains, type ScenarioChain } from '@/mortgage/workspace';
-import type { AffordabilityResult, MortgageCalculationResult, MortgageInput, MortgageScenario } from '@/mortgage/types';
+import { MORTGAGE_ENGINE_VERSION, appliedRuleIds, chainRowIds, scenarioFreshness, toChains, type ScenarioChain } from '@/mortgage/workspace';
+import type {
+  AffordabilityResult, LtvLimitRuleData, MortgageCalculationResult, MortgageInput, MortgageOffer, MortgageRule, MortgageScenario, PtiLimitRuleData,
+} from '@/mortgage/types';
 import type { FinancingDraft } from './useFinancingSession';
 import { useMortgageAsk } from './askConsultant';
 
-type StoredInput = MortgageInput & { draft?: Partial<FinancingDraft> };
+/* What a saved row's input holds beyond the engine input: the form as typed, and the bank offers compared with it. */
+type StoredInput = MortgageInput & { draft?: Partial<FinancingDraft>; offers?: MortgageOffer[] };
 
 const btn = 'inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:border-[hsl(var(--gold-border))]';
 const goldBtn = 'inline-flex min-h-11 items-center gap-1.5 rounded-full bg-[hsl(var(--gold))] px-5 text-sm font-semibold text-[hsl(var(--primary-foreground))] transition-colors hover:bg-[hsl(var(--gold-hover))] disabled:cursor-not-allowed disabled:opacity-60';
@@ -33,7 +36,9 @@ export function MortgageWorkspace({
   input,
   result,
   affordability,
-  activeRuleIds,
+  rules,
+  propertyId,
+  offers,
   onOpenDraft,
   onNew,
 }: {
@@ -42,9 +47,13 @@ export function MortgageWorkspace({
   input: MortgageInput | null;
   result: MortgageCalculationResult | null;
   affordability: AffordabilityResult | null;
-  /** Ids of the rules in force now, or null while they load. */
-  activeRuleIds: string[] | null;
-  onOpenDraft: (draft: Partial<FinancingDraft>) => void;
+  /** Today's PTI and LTV rules, or null while they load. */
+  rules: { pti: MortgageRule<PtiLimitRuleData>[]; ltv: MortgageRule<LtvLimitRuleData>[] } | null;
+  /** The listing this calculation was opened from, if any. */
+  propertyId: string | null;
+  /** The bank offers being compared right now; saved with the scenario. */
+  offers: MortgageOffer[];
+  onOpenDraft: (draft: Partial<FinancingDraft>, offers: MortgageOffer[]) => void;
   onNew: () => void;
 }) {
   const { t, lang } = useLanguage();
@@ -77,10 +86,13 @@ export function MortgageWorkspace({
     setBusy(true);
     const saved = await saveMortgageScenario({
       userId,
-      input: { ...input, draft } as StoredInput,
+      // A new version keeps the listing it was first opened from.
+      propertyId: propertyId ?? (mode === 'changes' && current ? current.latest.propertyId ?? null : null),
+      input: { ...input, draft, offers } as StoredInput,
       result: { ...result, amortizationSchedule: [] },
       affordability,
-      ruleVersionIds: activeRuleIds ?? [],
+      // Exactly the rules applied to these numbers; empty when they had not loaded (read as unknown, never stale).
+      ruleVersionIds: rules ? appliedRuleIds({ monthlyNetIncome: draft.monthlyNetIncome, currency: draft.currency }, rules.pti, rules.ltv) : [],
       supersedesScenarioId: mode === 'changes' && current ? current.latest.id : null,
       label: mode === 'changes' && current ? current.name : name.trim() || null,
       engineVersion: MORTGAGE_ENGINE_VERSION,
@@ -107,7 +119,8 @@ export function MortgageWorkspace({
       affordability: latest.affordability ?? null,
       ruleVersionIds: latest.ruleVersionIds,
       label: t('mortgage_ws_copy_name', { name: chain.name ?? t('mortgage_ws_untitled') }),
-      engineVersion: MORTGAGE_ENGINE_VERSION,
+      // A copy is the same calculation: it keeps the engine that produced it.
+      engineVersion: latest.engineVersion ?? MORTGAGE_ENGINE_VERSION,
     });
     setBusy(false);
     await reload();
@@ -115,7 +128,7 @@ export function MortgageWorkspace({
 
   const remove = async (chain: ScenarioChain) => {
     setBusy(true);
-    for (const id of chainRowIds(chain)) await deleteMortgageScenario(id);
+    await deleteMortgageScenario(chainRowIds(chain));
     setBusy(false);
     setConfirmDelete(null);
     if (openChain === chain.rootId) setOpenChain(null);
@@ -128,7 +141,7 @@ export function MortgageWorkspace({
     onOpenDraft(stored.draft ?? {
       propertyPrice: stored.propertyPrice, currency: stored.propertyCurrency, downPayment: stored.downPayment,
       termMonths: stored.termMonths, nominalAnnualRatePercent: stored.nominalAnnualRatePercent,
-    });
+    }, Array.isArray(stored.offers) ? stored.offers : []);
     setOpenChain(chain.rootId);
     requestAnimationFrame(() => document.getElementById('calculator')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
@@ -144,6 +157,8 @@ export function MortgageWorkspace({
     }));
   };
 
+  // A signed-out visitor has nothing saved: the invitation appears once there is a result worth keeping.
+  if (!userId && !result) return null;
   if (!userId) {
     return (
       <section id="my-mortgages" aria-labelledby="ws-title" className="rounded-2xl border border-[hsl(var(--gold-border))] bg-card p-5 shadow-card sm:p-6">
@@ -217,7 +232,10 @@ export function MortgageWorkspace({
         <ul className="mt-3 grid gap-3">
           {chains.map((chain) => {
             const r = chain.latest.result;
-            const stale = isStale(chain.latest, activeRuleIds);
+            const stored = chain.latest.input as StoredInput;
+            const stale = scenarioFreshness(chain.latest, rules
+              ? appliedRuleIds({ monthlyNetIncome: stored.draft?.monthlyNetIncome ?? null, currency: stored.draft?.currency ?? stored.propertyCurrency }, rules.pti, rules.ltv)
+              : null) === 'STALE';
             const open = expanded === chain.rootId;
             const selected = compare.includes(chain.rootId);
             return (

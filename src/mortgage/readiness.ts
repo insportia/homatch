@@ -26,12 +26,14 @@ import { calculateMortgage, computeMonthlyPayment, roundCurrency } from './calcu
 import { COMFORT_MARGIN_POINTS } from './calculations/financingPicture.ts';
 import { classifyCurrency, nextRuleChange, ptiCurrencyClass, selectActiveLtvRule, selectActivePtiRule } from './rules/ptiLtv.ts';
 
-export const INCOME_SOURCES = ['SALARIED', 'SELF_EMPLOYED', 'BUSINESS_OWNER', 'FREELANCER', 'RENTAL', 'EMIGRANT', 'FOREIGN_NATIONAL'] as const;
+export const INCOME_SOURCES = ['SALARIED', 'SELF_EMPLOYED', 'BUSINESS_OWNER', 'FREELANCER', 'RENTAL', 'EMIGRANT', 'FOREIGN_INCOME', 'FOREIGN_NATIONAL'] as const;
 export type IncomeSource = typeof INCOME_SOURCES[number];
 export const INCOME_HISTORY = ['UNDER_6', 'M6_12', 'M12_24', 'OVER_24'] as const;
 export type IncomeHistory = typeof INCOME_HISTORY[number];
 export const CREDIT_HISTORY = ['CLEAN', 'MINOR_LATE', 'SERIOUS', 'NONE'] as const;
 export type CreditHistory = typeof CREDIT_HISTORY[number];
+export const RESIDENCY = ['RESIDENT', 'NON_RESIDENT'] as const;
+export type Residency = typeof RESIDENCY[number];
 
 export interface ReadinessInput {
   price: number;
@@ -52,11 +54,17 @@ export interface ReadinessInput {
   coBorrower: { netMonthlyIncome: number; monthlyDebt: number } | null;
   /** Market value of additional property offered as collateral. */
   additionalCollateralValue: number | null;
+  /** Tax residency in Georgia, as the person states it. Optional. */
+  residency?: Residency | null;
+  /** Someone willing to guarantee the loan. Optional. */
+  guarantor?: boolean | null;
+  /** Whether the bank's one-time fees and mandatory insurance are already counted in the plan. Optional. */
+  costsKnown?: boolean | null;
 }
 
 export type CheckStatus = 'OK' | 'ATTENTION' | 'NOT_MET' | 'UNKNOWN';
 export interface ReadinessCheck {
-  key: 'PTI' | 'LTV' | 'INCOME_HISTORY' | 'CREDIT' | 'INCOME_PROOF' | 'CURRENCY';
+  key: 'PTI' | 'LTV' | 'INCOME_HISTORY' | 'CREDIT' | 'INCOME_PROOF' | 'CURRENCY' | 'RESIDENCY' | 'GUARANTOR' | 'COSTS';
   status: CheckStatus;
   vars?: Record<string, string | number>;
 }
@@ -180,6 +188,13 @@ export function assessReadiness(
   }
   /* An unhedged foreign-currency loan carries currency risk and a lower limit. */
   if (!local && input.incomeInLoanCurrency === false) checks.push({ key: 'CURRENCY', status: 'ATTENTION' });
+  /* The optional questions add a line only when answered, so skipping one never lowers the summary. */
+  if (input.residency === 'NON_RESIDENT') checks.push({ key: 'RESIDENCY', status: 'ATTENTION' });
+  else if (input.residency === 'RESIDENT') checks.push({ key: 'RESIDENCY', status: 'OK' });
+  /* A guarantor may matter to a bank, but it does not change the published PTI or LTV limits. */
+  if (input.guarantor === true) checks.push({ key: 'GUARANTOR', status: 'OK' });
+  if (input.costsKnown === false) checks.push({ key: 'COSTS', status: 'ATTENTION' });
+  else if (input.costsKnown === true) checks.push({ key: 'COSTS', status: 'OK' });
 
   const gaps: ReadinessResult['gaps'] = [];
   if (income !== null && ptiLimit !== null && ptiPercent !== null && ptiPercent > ptiLimit) {
@@ -209,13 +224,16 @@ export function assessReadiness(
   };
 }
 
-export type ScenarioKey = 'AS_ENTERED' | 'MORE_DOWN' | 'LESS_DEBT' | 'LONGER_TERM' | 'LOWER_PRICE' | 'NO_CO_BORROWER' | 'COLLATERAL';
+export type ScenarioKey = 'AS_ENTERED' | 'MORE_DOWN' | 'LESS_DEBT' | 'LONGER_TERM' | 'LOWER_PRICE' | 'NO_CO_BORROWER' | 'WITH_CO_BORROWER' | 'NO_COLLATERAL';
 export interface ReadinessScenario { key: ScenarioKey; result: ReadinessResult; vars: Record<string, number> }
 
 /**
  * "Compare the possible options." Each variant changes ONE thing and is run
- * through the same assessment. Collateral is shown separately because it can
- * only move the loan-to-value check — it never repairs repayment capacity.
+ * through the same assessment. What the co-borrower and the extra collateral
+ * contribute is shown by the same scenario without them (collateral can only
+ * move the loan-to-value check, never repayment capacity). When income falls
+ * short and nobody shares the loan, one variant adds a co-borrower earning
+ * exactly the shortfall, so the person sees what that would take.
  */
 export function readinessScenarios(
   input: ReadinessInput,
@@ -236,7 +254,11 @@ export function readinessScenarios(
   if (lower > input.downPayment) out.push(run('LOWER_PRICE', { ...input, price: lower }, { price: lower }));
   /* What the co-borrower contributes: the same scenario without them. */
   if (input.coBorrower) out.push(run('NO_CO_BORROWER', { ...input, coBorrower: null }));
-  if ((input.additionalCollateralValue ?? 0) > 0) out.push(run('COLLATERAL', input, { value: input.additionalCollateralValue as number }));
+  else {
+    const shortfall = out[0].result.gaps.find((g) => g.key === 'INCOME')?.amount ?? 0;
+    if (shortfall > 0) out.push(run('WITH_CO_BORROWER', { ...input, coBorrower: { netMonthlyIncome: Math.ceil(shortfall), monthlyDebt: 0 } }, { amount: Math.ceil(shortfall) }));
+  }
+  if ((input.additionalCollateralValue ?? 0) > 0) out.push(run('NO_COLLATERAL', { ...input, additionalCollateralValue: null }, { value: input.additionalCollateralValue as number }));
   return out;
 }
 
@@ -256,12 +278,16 @@ export interface ReadinessAnswers {
   hasCollateral: boolean | null;
   collateral: number | null;
   credit: CreditHistory | null;
+  residency: Residency | null;
+  hasGuarantor: boolean | null;
+  costsKnown: boolean | null;
 }
 
 export const EMPTY_ANSWERS: ReadinessAnswers = {
   income: null, incomeInLoanCurrency: null, incomeAtLeastBand: null, source: null, history: null,
   hasDebt: null, debt: null, hasCoBorrower: null, coIncome: null, coDebt: null,
   hasCollateral: null, collateral: null, credit: null,
+  residency: null, hasGuarantor: null, costsKnown: null,
 };
 
 /** Answers + the calculator's scenario → the assessment input. */
@@ -276,5 +302,6 @@ export function toReadinessInput(a: ReadinessAnswers, input: MortgageInput): Rea
     source: a.source, history: a.history, credit: a.credit,
     coBorrower: a.hasCoBorrower && a.coIncome ? { netMonthlyIncome: a.coIncome, monthlyDebt: a.coDebt ?? 0 } : null,
     additionalCollateralValue: a.hasCollateral ? a.collateral : null,
+    residency: a.residency ?? null, guarantor: a.hasGuarantor ?? null, costsKnown: a.costsKnown ?? null,
   };
 }

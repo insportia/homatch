@@ -8,9 +8,10 @@
 //
 // The language is the one the person chose (users.preferred_language),
 // Georgian when they never chose. The person's email switch
-// (notification_preferences.email_enabled) is honoured; payment failures are
-// sent regardless, because a failed payment the customer never hears about
-// is a service they lose without warning.
+// (notification_preferences.email_enabled) is honoured; a failed top-up is
+// sent regardless, because a payment that silently did not arrive leaves the
+// person believing they have Credits they do not. Billing is PAYG (10 Credits
+// = $1): nothing here mentions a plan, a subscription or a renewal.
 
 import { renderNotificationEmail, sendNotificationEmail } from './notifyEmail.ts';
 
@@ -30,7 +31,7 @@ export function emailEventFor(type: string): EmailEvent | null {
   }
 }
 
-/** Sent even when the email switch is off: losing a service silently is worse than an email. */
+/** Sent even when the email switch is off: a top-up that silently failed is worse than an email. */
 const ALWAYS_SENT: EmailEvent[] = ['PAYMENT_FAILED'];
 
 type Copy = { title: string; body: string; cta: string; next: string };
@@ -60,13 +61,14 @@ const COPY: Record<EmailEvent, Copy[]> = {
     { title: 'تمت عملية الدفع بنجاح', body: 'تم تحديث رصيدك.', cta: 'تفاصيل الدفع', next: 'يمكنك الاطلاع على رصيدك وسجل الدفعات في أي وقت.' },
     { title: 'התשלום בוצע בהצלחה', body: 'יתרת הקרדיטים שלך עודכנה.', cta: 'פרטי התשלום', next: 'אפשר לראות את היתרה ואת היסטוריית התשלומים בכל עת.' },
   ],
+  /* PAYG only: a failed top-up adds nothing and changes nothing. No plan, no renewal, nothing automatic. */
   PAYMENT_FAILED: [
-    { title: 'გადახდის შესრულება ვერ მოხერხდა', body: 'ბოლო გადახდა არ განხორციელდა. გეგმა ჯერ აქტიურია, მაგრამ განახლებისთვის გადახდის მეთოდი უნდა შეამოწმო.', cta: 'სცადე ხელახლა', next: 'შეამოწმე ბარათის მონაცემები ან აირჩიე სხვა გადახდის მეთოდი.' },
-    { title: 'Payment could not be completed', body: 'Your latest payment did not go through. Your plan is still active, but please check your payment method so it can renew.', cta: 'Try again', next: 'Check your card details or choose another payment method.' },
-    { title: 'Оплата не прошла', body: 'Последний платёж не прошёл. План пока активен, но проверь способ оплаты, чтобы он продлился.', cta: 'Попробовать снова', next: 'Проверь данные карты или выбери другой способ оплаты.' },
-    { title: 'Ödeme tamamlanamadı', body: 'Son ödemen gerçekleşmedi. Planın hâlâ aktif, ancak yenilenebilmesi için ödeme yöntemini kontrol et.', cta: 'Tekrar dene', next: 'Kart bilgilerini kontrol et veya başka bir ödeme yöntemi seç.' },
-    { title: 'تعذر إتمام الدفع', body: 'لم تنجح دفعتك الأخيرة. خطتك ما زالت فعالة، لكن تحقق من وسيلة الدفع حتى تتجدد.', cta: 'حاول مرة أخرى', next: 'تحقق من بيانات البطاقة أو اختر وسيلة دفع أخرى.' },
-    { title: 'התשלום לא הושלם', body: 'התשלום האחרון לא עבר. התוכנית עדיין פעילה, אבל כדאי לבדוק את אמצעי התשלום כדי שתתחדש.', cta: 'נסה שוב', next: 'בדוק את פרטי הכרטיס או בחר אמצעי תשלום אחר.' },
+    { title: 'გადახდის შესრულება ვერ მოხერხდა', body: 'ბალანსის შევსება ვერ შესრულდა. კრედიტები არ დაგერიცხა და ბალანსი არ შეცვლილა.', cta: 'სცადე ხელახლა', next: 'შეამოწმე ბარათის მონაცემები ან აირჩიე სხვა გადახდის მეთოდი და ბალანსი ხელახლა შეავსე.' },
+    { title: 'Payment could not be completed', body: 'Your top-up did not go through. No Credits were added and your balance has not changed.', cta: 'Try again', next: 'Check your card details or choose another payment method, then top up again.' },
+    { title: 'Оплата не прошла', body: 'Пополнение баланса не прошло. Кредиты не начислены, баланс не изменился.', cta: 'Попробовать снова', next: 'Проверь данные карты или выбери другой способ оплаты и пополни баланс снова.' },
+    { title: 'Ödeme tamamlanamadı', body: 'Bakiye yüklemen gerçekleşmedi. Kredi eklenmedi ve bakiyen değişmedi.', cta: 'Tekrar dene', next: 'Kart bilgilerini kontrol et veya başka bir ödeme yöntemi seç, sonra tekrar yükle.' },
+    { title: 'تعذر إتمام الدفع', body: 'لم تكتمل عملية شحن الرصيد. لم تتم إضافة أي أرصدة ولم يتغير رصيدك.', cta: 'حاول مرة أخرى', next: 'تحقق من بيانات البطاقة أو اختر وسيلة دفع أخرى، ثم اشحن رصيدك من جديد.' },
+    { title: 'התשלום לא הושלם', body: 'טעינת היתרה לא הושלמה. לא נוספו קרדיטים והיתרה שלך לא השתנתה.', cta: 'נסה שוב', next: 'בדוק את פרטי הכרטיס או בחר אמצעי תשלום אחר, ואז טען שוב.' },
   ],
   SERVICE_FAILED: [
     { title: 'დავალების შესრულებისას პრობლემა წარმოიშვა', body: 'სერვისი, რომელიც გაუშვი, ბოლომდე ვერ შესრულდა. გამოუყენებელი თანხა არ ჩამოგეჭრება.', cta: 'სცადე ხელახლა', next: 'თუ პრობლემა განმეორდა, დახმარების მიღება შეგიძლია.' },

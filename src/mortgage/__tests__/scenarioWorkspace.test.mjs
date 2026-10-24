@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { chainRowIds, isStale, toChains } from '../workspace.ts';
+import { MORTGAGE_ENGINE_VERSION, appliedRuleIds, chainRowIds, scenarioFreshness, toChains } from '../workspace.ts';
 
 const row = (id, { v = 1, sup = null, at = '2026-10-01T10:00:00Z', label = null, rules = ['pti-1', 'ltv-1'] } = {}) => ({
   id, userId: 'u', input: { propertyPrice: 1, downPayment: 0, termMonths: 12, nominalAnnualRatePercent: 1, propertyCurrency: 'GEL' },
@@ -31,12 +31,31 @@ test('a cycle or a missing parent never loops or loses a row', () => {
   assert.equal(chains.reduce((n, c) => n + c.versions.length, 0), 3);
 });
 
-test('stale only when a rule it was checked against is no longer in force', () => {
+test('stale only when a rule that applies to its numbers today is not the one it was checked against', () => {
   const r = row('a', { rules: ['pti-1', 'ltv-1'] });
-  assert.equal(isStale(r, ['pti-1', 'ltv-1', 'pti-2']), false);
-  assert.equal(isStale(r, ['pti-2', 'ltv-1']), true);
-  assert.equal(isStale(r, null), false, 'rules not loaded is never reported as stale');
-  assert.equal(isStale(r, []), false);
+  assert.equal(scenarioFreshness(r, ['pti-1', 'ltv-1']), 'CURRENT');
+  assert.equal(scenarioFreshness(r, ['pti-2', 'ltv-1']), 'STALE');
+  assert.equal(scenarioFreshness(r, null), 'UNKNOWN', 'rules not loaded is never reported as stale');
+  assert.equal(scenarioFreshness(r, []), 'UNKNOWN');
+  assert.equal(scenarioFreshness(row('b', { rules: [] }), ['pti-1', 'ltv-1']), 'UNKNOWN', 'saved before rules loaded: unknown, not stale');
+  // Rows saved before this change recorded every rule in force; they stay current while the applied ones are among them.
+  assert.equal(scenarioFreshness(row('c', { rules: ['pti-1', 'pti-9', 'ltv-1', 'ltv-9'] }), ['pti-1', 'ltv-1']), 'CURRENT');
+  assert.equal(scenarioFreshness({ ...r, engineVersion: 'mortgage-engine-0' }, ['pti-1', 'ltv-1']), 'STALE', 'another engine');
+  assert.equal(scenarioFreshness({ ...r, engineVersion: MORTGAGE_ENGINE_VERSION }, ['pti-1', 'ltv-1']), 'CURRENT');
+});
+
+test('applied rules: the PTI tier for this income and currency, and the LTV for the currency', () => {
+  const rule = (id, type, data, extra = {}) => ({ id, type, status: 'ACTIVE', data, effectiveFrom: null, effectiveTo: null, ...extra });
+  const pti = [
+    rule('pti-low', 'PTI_LIMIT', { currencyClass: 'LOCAL', incomeTierMaxMonthlyNet: 1500, maxPtiPercent: 25 }),
+    rule('pti-high', 'PTI_LIMIT', { currencyClass: 'LOCAL', incomeTierMaxMonthlyNet: null, maxPtiPercent: 50 }),
+    rule('pti-fx', 'PTI_LIMIT', { currencyClass: 'FOREIGN', incomeTierMaxMonthlyNet: null, maxPtiPercent: 30 }),
+  ];
+  const ltv = [rule('ltv-gel', 'LTV_LIMIT', { currencyClass: 'LOCAL', maxLtvPercent: 90 }), rule('ltv-fx', 'LTV_LIMIT', { currencyClass: 'FOREIGN', maxLtvPercent: 70 })];
+  assert.deepEqual(appliedRuleIds({ monthlyNetIncome: 1200, currency: 'GEL' }, pti, ltv), ['pti-low', 'ltv-gel']);
+  assert.deepEqual(appliedRuleIds({ monthlyNetIncome: 4000, currency: 'GEL' }, pti, ltv), ['pti-high', 'ltv-gel']);
+  assert.deepEqual(appliedRuleIds({ monthlyNetIncome: 4000, currency: 'USD' }, pti, ltv), ['pti-fx', 'ltv-fx']);
+  assert.deepEqual(appliedRuleIds({ monthlyNetIncome: null, currency: 'GEL' }, pti, ltv), ['ltv-gel'], 'no income: only the LTV applies');
 });
 
 test('saved rows are never updated in place: the service only inserts and deletes', () => {
@@ -47,6 +66,10 @@ test('saved rows are never updated in place: the service only inserts and delete
   assert.ok(/supersedesScenarioId: mode === 'changes'/.test(ui), '"save changes" adds a version');
   assert.ok(/AlertDialog/.test(ui), 'delete asks first');
   assert.ok(/engineVersion: MORTGAGE_ENGINE_VERSION/.test(ui), 'the engine version is recorded');
+  assert.ok(ui.includes('propertyId: propertyId ??'), 'the listing it came from is saved');
+  assert.ok(ui.includes('offers } as StoredInput'), 'the compared offers are saved with it');
+  assert.ok(ui.includes('deleteMortgageScenario(chainRowIds(chain))'), 'a chain is deleted in one call');
+  assert.ok(api.includes(".delete().in('id', ids)"), 'one statement deletes the chain');
 });
 
 test('the lead opt-in is never pre-ticked and never sends mortgage figures', () => {

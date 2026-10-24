@@ -11,8 +11,8 @@ import type { LtvLimitRuleData, MortgageInput, MortgageRule, PtiLimitRuleData } 
 export type { ReadinessAnswers } from '@/mortgage/readiness';
 import {
   EMPTY_ANSWERS as EMPTY, toReadinessInput, type ReadinessAnswers,
-  assessReadiness, bandThresholdFor, CREDIT_HISTORY, INCOME_HISTORY, INCOME_SOURCES, readinessScenarios,
-  type CreditHistory, type IncomeHistory, type IncomeSource, type ReadinessResult,
+  assessReadiness, bandThresholdFor, CREDIT_HISTORY, INCOME_HISTORY, INCOME_SOURCES, RESIDENCY, readinessScenarios,
+  type CreditHistory, type IncomeHistory, type IncomeSource, type ReadinessResult, type Residency,
 } from '@/mortgage/readiness';
 import { classifyCurrency, ptiCurrencyClass } from '@/mortgage/rules/ptiLtv';
 
@@ -20,7 +20,7 @@ import { classifyCurrency, ptiCurrencyClass } from '@/mortgage/rules/ptiLtv';
  * MORTGAGE READINESS — the guided, optional part of the consultant.
  *
  * Collapsed behind one button so the calculator above stays the first
- * screen. Six short questions, one at a time, answered by tapping wherever a
+ * screen. Seven short steps, one at a time, answered by tapping wherever a
  * tap will do. Everything stays on this device (localStorage), never sent
  * anywhere except as the consultant's context when the person asks HOMI.
  *
@@ -44,7 +44,7 @@ const num = (v: string): number | null => {
 };
 
 
-const STEPS = ['income', 'source', 'debt', 'co', 'collateral', 'credit'] as const;
+const STEPS = ['income', 'source', 'debt', 'co', 'collateral', 'situation', 'credit'] as const;
 type Step = typeof STEPS[number];
 
 function MoneyInput({ id, value, onChange, currency, labelKey }: { id: string; value: number | null; onChange: (v: number | null) => void; currency: string; labelKey: string }) {
@@ -116,6 +116,7 @@ export function ReadinessAssessment({
     : current === 'debt' ? answers.hasDebt === false || (answers.hasDebt === true && answers.debt !== null)
     : current === 'co' ? answers.hasCoBorrower === false || (answers.hasCoBorrower === true && answers.coIncome !== null)
     : current === 'collateral' ? answers.hasCollateral === false || (answers.hasCollateral === true && answers.collateral !== null)
+    : current === 'situation' ? answers.residency !== null && answers.hasGuarantor !== null && answers.costsKnown !== null
     : answers.credit !== null;
 
   const next = () => { if (step < STEPS.length - 1) setStep(step + 1); else { setDone(true); } };
@@ -224,6 +225,26 @@ export function ReadinessAssessment({
                 <YesNoField labelledBy="rd-col" value={answers.hasCollateral === null ? undefined : answers.hasCollateral ? 'YES' : 'NO'} onChange={(v) => set('hasCollateral', v === null ? null : v === 'YES')} />
                 {answers.hasCollateral && <MoneyInput id="rd-col-val" value={answers.collateral} onChange={(v) => set('collateral', v)} currency={currency} labelKey="mortgage_rd_q_collateral_value" />}
                 <p className="text-sm text-muted-foreground">{t('mortgage_rd_collateral_note')}</p>
+              </div>
+            )}
+
+            {current === 'situation' && (
+              <div className="grid gap-5">
+                <div className="grid gap-2">
+                  <p id="rd-res" className="text-sm font-medium text-foreground">{t('mortgage_rd_q_residency')}</p>
+                  <ChoiceField labelledBy="rd-res" value={answers.residency ?? undefined}
+                    options={RESIDENCY.map((r) => ({ value: r, labelKey: `mortgage_rd_res_${r.toLowerCase()}` }))}
+                    onChange={(v) => set('residency', v as Residency | null)} />
+                </div>
+                <div className="grid gap-2">
+                  <p id="rd-guar" className="text-sm font-medium text-foreground">{t('mortgage_rd_q_guarantor')}</p>
+                  <YesNoField labelledBy="rd-guar" value={answers.hasGuarantor === null ? undefined : answers.hasGuarantor ? 'YES' : 'NO'} onChange={(v) => set('hasGuarantor', v === null ? null : v === 'YES')} />
+                </div>
+                <div className="grid gap-2">
+                  <p id="rd-costs" className="text-sm font-medium text-foreground">{t('mortgage_rd_q_costs')}</p>
+                  <YesNoField labelledBy="rd-costs" value={answers.costsKnown === null ? undefined : answers.costsKnown ? 'YES' : 'NO'} onChange={(v) => set('costsKnown', v === null ? null : v === 'YES')} />
+                  <p className="text-sm text-muted-foreground">{t('mortgage_rd_costs_note')}</p>
+                </div>
               </div>
             )}
 
@@ -375,12 +396,14 @@ function ResultView({
                   <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
                     <div><dt className="text-muted-foreground">{t('mortgage_rd_sc_payment')}</dt><dd className="font-medium text-foreground">{money(r.monthlyPayment)}</dd></div>
                     <div><dt className="text-muted-foreground">{t('mortgage_rd_sc_pti')}</dt><dd className="font-medium text-foreground">{pct(r.ptiPercent)}</dd></div>
-                    <div><dt className="text-muted-foreground">{t('mortgage_rd_sc_ltv')}</dt><dd className="font-medium text-foreground">{pct(r.ltvPercent)}</dd></div>
+                    {/* With extra collateral a bank may count it: show that figure, so "without the collateral" has something to compare against. */}
+                    <div><dt className="text-muted-foreground">{t('mortgage_rd_sc_ltv')}</dt><dd className="font-medium text-foreground">{pct(r.ltvWithCollateralPercent ?? r.ltvPercent)}</dd></div>
                   </dl>
                   <p className={cn('mt-2 text-xs font-medium', ok ? 'text-emerald-700' : 'text-rose-700')}>
                     {ok ? t('mortgage_rd_sc_ok') : t('mortgage_rd_sc_not_ok')}
                   </p>
-                  {s.key === 'COLLATERAL' && <p className="mt-1 text-xs text-muted-foreground">{t('mortgage_rd_collateral_note')}</p>}
+                  {s.key === 'NO_COLLATERAL' && <p className="mt-1 text-xs text-muted-foreground">{t('mortgage_rd_collateral_note')}</p>}
+                  {s.key === 'WITH_CO_BORROWER' && <p className="mt-1 text-xs text-muted-foreground">{t('mortgage_rd_with_co_note')}</p>}
                 </div>
               );
             })}

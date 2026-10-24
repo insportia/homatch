@@ -1,17 +1,30 @@
 // A small Snake to pass the wait while a contract is read. Entirely local:
 // no network, no storage beyond this tab's best score, no effect on the
 // analysis. Arrow keys, swipes or the on-screen pad steer it.
+//
+// Keys are scoped to the game: the board listens only while it (or one of its
+// own buttons) has focus, so arrow keys typed into a field elsewhere on the
+// page, or used to scroll it, are never taken. Opening the game focuses it.
+//
+// State updaters stay pure: the score and best live in refs as well as in
+// state, and the game-over bookkeeping (best score, sessionStorage) runs once
+// in the tick, never inside a setState callback (React may call those twice).
+// ContractProgress renders this behind an error boundary: a crash here closes
+// the game, never the analysis page.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type React from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, X } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 const N = 16;
 const CELL = 16;
+const BEST_KEY = 'hm.snake.best';
 type P = { x: number; y: number };
 type Dir = 'U' | 'D' | 'L' | 'R';
 const STEP: Record<Dir, P> = { U: { x: 0, y: -1 }, D: { x: 0, y: 1 }, L: { x: -1, y: 0 }, R: { x: 1, y: 0 } };
 const OPPOSITE: Record<Dir, Dir> = { U: 'D', D: 'U', L: 'R', R: 'L' };
+const KEYS: Record<string, Dir> = { ArrowUp: 'U', ArrowDown: 'D', ArrowLeft: 'L', ArrowRight: 'R' };
 
 function freeCell(snake: P[]): P {
   for (;;) {
@@ -20,26 +33,43 @@ function freeCell(snake: P[]): P {
   }
 }
 
+const fresh = () => ({ snake: [{ x: 8, y: 8 }, { x: 7, y: 8 }, { x: 6, y: 8 }] as P[], dir: 'R' as Dir, next: 'R' as Dir, food: { x: 12, y: 8 } as P });
+
+function readBest(): number {
+  try { return Number(sessionStorage.getItem(BEST_KEY) ?? 0) || 0; } catch { return 0; }
+}
+
 export default function SnakeGame({ onClose }: { onClose: () => void }) {
   const { t } = useLanguage();
+  const root = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const state = useRef({ snake: [{ x: 8, y: 8 }, { x: 7, y: 8 }, { x: 6, y: 8 }] as P[], dir: 'R' as Dir, next: 'R' as Dir, food: { x: 12, y: 8 } as P });
+  const state = useRef(fresh());
+  const scoreRef = useRef(0);
+  const bestRef = useRef(readBest());
   const [score, setScore] = useState(0);
   const [over, setOver] = useState(false);
-  const [best, setBest] = useState(() => { try { return Number(sessionStorage.getItem('hm.snake.best') ?? 0); } catch { return 0; } });
+  const [best, setBest] = useState(bestRef.current);
 
   const steer = useCallback((d: Dir) => { if (d !== OPPOSITE[state.current.dir]) state.current.next = d; }, []);
   const restart = () => {
-    state.current = { snake: [{ x: 8, y: 8 }, { x: 7, y: 8 }, { x: 6, y: 8 }], dir: 'R', next: 'R', food: { x: 12, y: 8 } };
+    state.current = fresh();
+    scoreRef.current = 0;
     setScore(0); setOver(false);
+    root.current?.focus({ preventScroll: true });
   };
 
-  useEffect(() => {
-    const keys: Record<string, Dir> = { ArrowUp: 'U', ArrowDown: 'D', ArrowLeft: 'L', ArrowRight: 'R' };
-    const onKey = (e: KeyboardEvent) => { const d = keys[e.key]; if (d) { e.preventDefault(); steer(d); } };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [steer]);
+  // Focus the game when it opens, so the arrow keys reach it without a click.
+  useEffect(() => { root.current?.focus({ preventScroll: true }); }, []);
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const d = KEYS[e.key];
+    if (!d) return;
+    const el = e.target as HTMLElement;
+    // Never steal keys from a text field, even one that someday sits inside the game.
+    if (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+    e.preventDefault();
+    steer(d);
+  };
 
   useEffect(() => {
     if (over) return;
@@ -49,12 +79,21 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
       s.dir = s.next;
       const head = { x: s.snake[0].x + STEP[s.dir].x, y: s.snake[0].y + STEP[s.dir].y };
       if (head.x < 0 || head.y < 0 || head.x >= N || head.y >= N || s.snake.some((p) => p.x === head.x && p.y === head.y)) {
+        const nb = Math.max(bestRef.current, scoreRef.current);
+        if (nb !== bestRef.current) {
+          bestRef.current = nb;
+          try { sessionStorage.setItem(BEST_KEY, String(nb)); } catch { /* ignore */ }
+        }
+        setBest(nb);
         setOver(true);
-        setScore((sc) => { setBest((b) => { const nb = Math.max(b, sc); try { sessionStorage.setItem('hm.snake.best', String(nb)); } catch { /* ignore */ } return nb; }); return sc; });
         return;
       }
       s.snake.unshift(head);
-      if (head.x === s.food.x && head.y === s.food.y) { s.food = freeCell(s.snake); setScore((v) => v + 1); } else s.snake.pop();
+      if (head.x === s.food.x && head.y === s.food.y) {
+        s.food = freeCell(s.snake);
+        scoreRef.current += 1;
+        setScore(scoreRef.current);
+      } else s.snake.pop();
       const ctx = canvas.current?.getContext('2d');
       if (!ctx) return;
       ctx.fillStyle = '#0C1119'; ctx.fillRect(0, 0, N * CELL, N * CELL);
@@ -68,7 +107,9 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
   const pad = 'flex h-11 w-11 items-center justify-center rounded-full border border-white/20 text-white';
 
   return (
-    <div className="rounded-xl border border-white/15 bg-black/30 p-3" data-testid="contract-snake">
+    <div ref={root} tabIndex={0} onKeyDown={onKeyDown} role="group" aria-label={t('ct_snake_label')}
+      className="rounded-xl border border-white/15 bg-black/30 p-3 outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]"
+      data-testid="contract-snake">
       <div className="mb-2 flex items-center justify-between gap-2 text-sm">
         <span>{t('ct_snake_score', { score, best })}</span>
         <button type="button" onClick={onClose} aria-label={t('ct_snake_close')} className="flex h-11 w-11 items-center justify-center rounded-full text-white/80"><X className="h-4 w-4" aria-hidden="true" /></button>

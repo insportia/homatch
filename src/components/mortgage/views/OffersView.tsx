@@ -173,6 +173,16 @@ function OfferEditor({
               onChange={(v) => patch({ marginPercent: v ?? undefined })}
               context={context}
             />
+            <NumberField
+              field="rateResetMonths"
+              labelKey="mortgage_offer_rate_reset"
+              hintKey="mortgage_offer_rate_reset_hint"
+              kind="months"
+              currency={offer.currency}
+              value={offer.rateResetMonths ?? null}
+              onChange={(v) => patch({ rateResetMonths: v ?? undefined })}
+              context={context}
+            />
           </>
         ) : null}
         <NameField

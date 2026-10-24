@@ -65,6 +65,11 @@ export function MortgageBuyersSection({ propertyId }: { propertyId: string }) {
     } catch (e) {
       const code = e instanceof UnlockError ? e.code : 'INTERNAL';
       setError(code === 'INSUFFICIENT_CREDITS' ? 'mw_err_insufficient' : code === 'PRICE_CHANGED' ? 'mortgage_buyer_err_price' : 'mortgage_buyer_err_unlock');
+      if (code === 'PRICE_CHANGED') {
+        // Nothing was charged. Show the price in force now, and confirming again is a new request.
+        await load();
+        setKey(newMortgageUnlockKey());
+      }
     } finally { setBusy(false); }
   };
 

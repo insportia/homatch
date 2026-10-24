@@ -36,6 +36,7 @@
  */
 
 import { maybeEmailNotification } from './transactionalEmail.ts';
+import { runAfterResponse } from './notifyEmail.ts';
 
 interface Client {
   rpc(fn: string, args: Record<string, unknown>): Promise<{ data: unknown; error: unknown }>;
@@ -88,6 +89,12 @@ export interface NotifyInput {
   /** Rewritten onto the aggregate row; `{n}` becomes the count. */
   groupTitle?: string | null;
   metadata?: Record<string, unknown>;
+  /**
+   * false keeps this notice in-app and push only, even for a type that
+   * normally earns an email: an expected outcome (a scanned document, an
+   * unsupported file) is something to show, not a failure to email about.
+   */
+  email?: boolean;
 }
 
 /**
@@ -137,20 +144,31 @@ export async function notify(sb: Client, input: NotifyInput): Promise<string | n
      * customer's JWT, and the push would be refused as it should be.
      */
     const serviceKey = readServiceKey();
-    void sb.functions.invoke('push-send', {
+    const push = sb.functions.invoke('push-send', {
       body: { action: 'deliver', notificationId: data },
       ...(serviceKey ? { headers: { Authorization: `Bearer ${serviceKey}` } } : {}),
     }).catch(() => { /* delivery is best effort; the in-app row is the record */ });
+    /* Kept alive past the response where the runtime allows; never awaited. */
+    runAfterResponse(push);
 
     /*
      * THE EMAIL LEG, FOR THE FEW EVENTS THAT EARN ONE.
      *
      * A finished verification or contract analysis, a payment, a service
      * that failed: things the person started and would want to hear about
-     * even with the app closed. Decided in transactionalEmail.ts, idempotent
-     * per notification id, and it never throws: the in-app row stands.
+     * even with the app closed. Decided in transactionalEmail.ts, claimed
+     * per notification id before anything is sent, and it never throws: the
+     * in-app row stands.
+     *
+     * Off the response path: a provider that takes seconds (or retries)
+     * must not hold up the request that produced the event, so the edge
+     * runtime keeps it alive after the response (EdgeRuntime.waitUntil).
+     * Where there is no such runtime (tests, local) it is awaited.
      */
-    await maybeEmailNotification(sb, { notificationId: data, userId: input.userId, type: input.type, deepLink: input.deepLink ?? null });
+    if (input.email !== false) {
+      const emailLeg = maybeEmailNotification(sb, { notificationId: data, userId: input.userId, type: input.type, deepLink: input.deepLink ?? null });
+      if (!runAfterResponse(emailLeg)) await emailLeg;
+    }
 
     return data;
   } catch (err) {

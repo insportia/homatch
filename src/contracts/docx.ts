@@ -15,17 +15,30 @@ const esc = (s: string) => s
   // eslint-disable-next-line no-control-regex
   .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
 
-const run = (text: string, bold = false) =>
-  `<w:r>${bold ? '<w:rPr><w:b/></w:rPr>' : ''}<w:t xml:space="preserve">${esc(text)}</w:t></w:r>`;
+/**
+ * The inside of a run for text that may hold line breaks. Each newline becomes
+ * a real <w:br/>: inside a <w:t> a newline is just whitespace to Word, so an
+ * edited clause written over several lines would otherwise collapse into one.
+ */
+export function runText(text: string, tag: 'w:t' | 'w:delText' = 'w:t'): string {
+  return text.replace(/\r\n?/g, '\n').split('\n')
+    .map((part) => `<${tag} xml:space="preserve">${esc(part)}</${tag}>`)
+    .join('<w:br/>');
+}
+
+const run = (text: string, bold = false, italic = false) => {
+  const props = bold || italic ? `<w:rPr>${bold ? '<w:b/>' : ''}${italic ? '<w:i/>' : ''}</w:rPr>` : '';
+  return `<w:r>${props}${runText(text)}</w:r>`;
+};
 
 const para = (inner: string) => `<w:p>${inner}</w:p>`;
 
 const STAMP = '2026-01-01T00:00:00Z';
 let revId = 1;
 const ins = (text: string, author: string) =>
-  `<w:ins w:id="${revId++}" w:author="${esc(author)}" w:date="${STAMP}"><w:r><w:t xml:space="preserve">${esc(text)}</w:t></w:r></w:ins>`;
+  `<w:ins w:id="${revId++}" w:author="${esc(author)}" w:date="${STAMP}"><w:r>${runText(text)}</w:r></w:ins>`;
 const del = (text: string, author: string) =>
-  `<w:del w:id="${revId++}" w:author="${esc(author)}" w:date="${STAMP}"><w:r><w:delText xml:space="preserve">${esc(text)}</w:delText></w:r></w:del>`;
+  `<w:del w:id="${revId++}" w:author="${esc(author)}" w:date="${STAMP}"><w:r>${runText(text, 'w:delText')}</w:r></w:del>`;
 
 /** Paragraph runs for `text`, with each change shown as a tracked deletion and insertion. */
 function trackedParagraphs(original: string, changes: Change[], author: string, addedHeading: string): string[] {
@@ -49,7 +62,8 @@ function trackedParagraphs(original: string, changes: Change[], author: string, 
   let cursor = 0;
   for (const l of located) {
     pushPlain(original.slice(cursor, l.start));
-    current += del(l.change.before.replace(/\n/g, ' '), author) + ins(l.change.after, author);
+    // Both sides keep their own line breaks (as w:br inside the tracked run).
+    current += del(l.change.before, author) + ins(l.change.after, author);
     cursor = l.end;
   }
   pushPlain(original.slice(cursor));
@@ -93,9 +107,15 @@ const STYLES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
   + '</w:styles>';
 
 /** A .docx of `text`: clean, or with every change marked as a tracked change. */
-export function buildDocx(opts: { title: string; text: string; tracked?: { original: string; changes: Change[]; author: string; addedHeading: string } }): Uint8Array {
+export function buildDocx(opts: {
+  title: string;
+  text: string;
+  /** Notes printed under the title, in italics (e.g. the document was only partly reviewed). */
+  notes?: string[];
+  tracked?: { original: string; changes: Change[]; author: string; addedHeading: string };
+}): Uint8Array {
   revId = 1;
-  const heading = para(run(opts.title, true));
+  const heading = para(run(opts.title, true)) + (opts.notes ?? []).filter(Boolean).map((n) => para(run(n, false, true))).join('');
   const body = opts.tracked
     ? trackedParagraphs(opts.tracked.original, opts.tracked.changes, opts.tracked.author, opts.tracked.addedHeading)
     : opts.text.split('\n').map((line) => para(line ? run(line) : ''));

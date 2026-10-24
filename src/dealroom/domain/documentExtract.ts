@@ -103,7 +103,8 @@ export const MAX_CLAUSES = 60;
 export const MAX_FINDINGS = 40;
 const MAX_LABEL = 140;
 const MAX_VALUE = 200;
-const MAX_QUOTE = 600;
+/** Mirrored by QUOTE_CAP in src/contracts/revisions.ts: a quote cut here is never auto-placed. */
+export const MAX_QUOTE = 600;
 const MAX_PLAIN = 600;
 
 /* ------------------------------------------------------------------ *
@@ -125,6 +126,18 @@ const ZERO_WIDTH = new RegExp('[\\u200B-\\u200D\\uFEFF]', 'g');
  * to a customer must still read like their document.
  */
 export function normalizeDocumentText(raw: unknown): string {
+  return normalizeUncapped(raw).slice(0, MAX_DOCUMENT_CHARS);
+}
+
+/**
+ * Did normalizing cut the document at MAX_DOCUMENT_CHARS? The analysis then
+ * covers only the start of the contract, and the customer must be told so.
+ */
+export function documentTextWasTruncated(raw: unknown): boolean {
+  return normalizeUncapped(raw).length > MAX_DOCUMENT_CHARS;
+}
+
+function normalizeUncapped(raw: unknown): string {
   const s = typeof raw === 'string' ? raw : '';
   return s
     .split(NUL)
@@ -136,8 +149,7 @@ export function normalizeDocumentText(raw: unknown): string {
     .replace(/[ \t\f\v]+/g, ' ')
     .replace(/ ?\n ?/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
-    .trim()
-    .slice(0, MAX_DOCUMENT_CHARS);
+    .trim();
 }
 
 /** Comparison form for grounding: whitespace flattened, case folded. */
@@ -291,6 +303,12 @@ export function buildAnalysisPrompt(
     '  other side may push back on, in one or two sentences). Put the interests',
     '  of the person who will sign first, but propose wording a reasonable',
     '  counterparty could accept.',
+    '- A clause `suggestion` REPLACES EXACTLY the text in that clause\'s `quote`,',
+    '  nothing more and nothing less: it must read correctly when the quoted',
+    '  words are cut out and the suggestion is put in their place. So quote the',
+    '  whole sentence or sentences the suggestion rewrites, and keep every quote',
+    `  under ${MAX_QUOTE} characters; if the clause is longer, quote only the part`,
+    '  being changed. A longer quote is cut and then cannot be replaced.',
     '- questions: what the buyer should ask the seller or developer before signing.',
     '- findings: the same facts in the structured comparison vocabulary below.',
     '',
@@ -366,6 +384,8 @@ export interface AnalyzedClause {
   page: number | null;
   attention: Attention;
   review?: ClauseReview;
+  /** The model's quote was longer than MAX_QUOTE and was cut: the start of the clause only. */
+  quoteTruncated?: boolean;
 }
 
 export interface AnalyzedObligation {
@@ -573,7 +593,13 @@ export function parseAnalysis(raw: string, documentText: string): ContractAnalys
       ? (x.attention as Attention)
       : 'NORMAL';
     const review = attention === 'NORMAL' ? undefined : reviewOf(x.review, `clause "${label}"`);
-    clauses.push({ label, plain, quote, page: pageOf(x.page), attention, ...(review ? { review } : {}) });
+    // str() cut it at MAX_QUOTE: the stored quote is only the start of the clause.
+    const quoteTruncated = typeof x.quote === 'string' && x.quote.trim().length > MAX_QUOTE;
+    clauses.push({
+      label, plain, quote, page: pageOf(x.page), attention,
+      ...(review ? { review } : {}),
+      ...(quoteTruncated ? { quoteTruncated: true } : {}),
+    });
     if (clauses.length >= MAX_CLAUSES) break;
   }
 

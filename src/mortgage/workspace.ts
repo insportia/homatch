@@ -7,7 +7,8 @@
 // chains and decides, without touching any number, whether a chain was
 // calculated under rules that are no longer in force.
 
-import type { MortgageScenario } from './types';
+import type { LtvLimitRuleData, MortgageRule, MortgageScenario, PtiLimitRuleData } from './types';
+import { classifyCurrency, selectActiveLtvRule, selectActivePtiRule } from './rules/ptiLtv.ts';
 
 /** Bumped when the payment engine's output for the same input would change. */
 export const MORTGAGE_ENGINE_VERSION = 'mortgage-engine-1';
@@ -50,14 +51,36 @@ export function toChains(rows: MortgageScenario[]): ScenarioChain[] {
 }
 
 /**
- * Saved under rules no longer in force: some rule the scenario was checked
- * against is not among today's active rules. An unknown rule set (rules not
- * loaded) is never reported as stale.
+ * The rules that apply to this person's numbers: the PTI tier for their income and
+ * currency, and the LTV limit for the currency. These, not every rule in force, are what a
+ * saved scenario records, so a later change to an unrelated tier never flags it.
  */
-export function isStale(scenario: MortgageScenario, activeRuleIds: string[] | null): boolean {
-  if (!activeRuleIds || activeRuleIds.length === 0) return false;
-  const active = new Set(activeRuleIds);
-  return scenario.ruleVersionIds.some((id) => !active.has(id));
+export function appliedRuleIds(
+  facts: { monthlyNetIncome?: number | null; currency?: string | null },
+  ptiRules: MortgageRule<PtiLimitRuleData>[],
+  ltvRules: MortgageRule<LtvLimitRuleData>[],
+  asOf: Date = new Date(),
+): string[] {
+  const cls = classifyCurrency(facts.currency ?? undefined);
+  const pti = typeof facts.monthlyNetIncome === 'number' && facts.monthlyNetIncome > 0
+    ? selectActivePtiRule(ptiRules, facts.monthlyNetIncome, cls, asOf) : null;
+  const ltv = selectActiveLtvRule(ltvRules, cls, undefined, asOf);
+  return [pti?.id, ltv?.id].filter((id): id is string => typeof id === 'string');
+}
+
+export type Freshness = 'CURRENT' | 'STALE' | 'UNKNOWN';
+
+/**
+ * Whether a saved scenario still reflects today's rules and engine.
+ * STALE: it came from another payment engine, or a rule that applies to its numbers today
+ * is not one it was checked against. UNKNOWN: today's rules have not loaded, none apply, or
+ * it was saved before any rule had loaded. Unknown is never shown as stale.
+ */
+export function scenarioFreshness(scenario: MortgageScenario, todayIds: string[] | null): Freshness {
+  if (scenario.engineVersion && scenario.engineVersion !== MORTGAGE_ENGINE_VERSION) return 'STALE';
+  if (!todayIds || todayIds.length === 0 || scenario.ruleVersionIds.length === 0) return 'UNKNOWN';
+  const saved = new Set(scenario.ruleVersionIds);
+  return todayIds.every((id) => saved.has(id)) ? 'CURRENT' : 'STALE';
 }
 
 /** Every row id in a chain, for deleting the whole scenario. */

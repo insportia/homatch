@@ -83,3 +83,27 @@ test('the same notification is never emailed twice', async () => {
   await maybeEmailNotification(db, { notificationId: 'n9', userId: 'u', type: 'DOCUMENT_ANALYZED', deepLink: '/contracts/1' });
   assert.equal(db.deliveries.length, 1);
 });
+
+test('PAYG only: no payment email mentions a plan, a subscription or a renewal, in any language', () => {
+  const banned = /plan|subscri|renew|გეგმ|გამოწერ|план|подписк|продл|yenilen|abonelik|خطت|اشتراك|تتجدد|תוכנית|מנוי|תתחדש/i;
+  for (const lang of ['ka', 'en', 'ru', 'tr', 'ar', 'he']) {
+    for (const ev of ['PAYMENT_OK', 'PAYMENT_FAILED']) {
+      const e = buildTransactionalEmail(ev, lang, '/credits');
+      assert.ok(!banned.test(e.text), `${ev} ${lang}: ${e.text}`);
+    }
+  }
+  assert.ok(buildTransactionalEmail('PAYMENT_FAILED', 'en', '/credits').text.includes('No Credits were added'));
+});
+
+test('a notice emitted with email: false never reaches the email leg', async () => {
+  globalThis.Deno = { env: { get: () => undefined } };
+  const { notify } = await import('../notify.ts');
+  const db = fakeDb();
+  let emitted = 0;
+  const sb = { ...db, rpc: async () => { emitted += 1; return { data: `n-${emitted}`, error: null }; }, functions: { invoke: async () => ({ data: null, error: null }) } };
+  await notify(sb, { userId: 'u', type: 'SERVICE_FAILED', title: 't', email: false, metadata: { kind: 'DOCUMENT_UNREADABLE', reason: 'doc_error_requires_ocr' } });
+  assert.equal(db.deliveries.length, 0, 'no delivery row, no email');
+  await notify(sb, { userId: 'u', type: 'SERVICE_FAILED', title: 't' });
+  assert.equal(db.deliveries.length, 1, 'a real failure still takes the email leg (SKIPPED here: no provider)');
+  assert.equal(db.deliveries[0].reason, 'NO_PROVIDER');
+});

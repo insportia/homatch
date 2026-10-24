@@ -245,6 +245,8 @@ export interface FinancingSession {
   addOffer: (offer: MortgageOffer) => void;
   updateOffer: (index: number, offer: MortgageOffer) => void;
   removeOffer: (index: number) => void;
+  /** Reopen a saved scenario's offers, replacing whatever is on screen. */
+  replaceOffers: (offers: MortgageOffer[]) => void;
   offerComparison: OfferComparisonResult | null;
 
   subsidyPrograms: MortgageRule<SubsidyProgramRuleData>[];
@@ -593,6 +595,7 @@ export function useFinancingSession(prefill?: FinancingPrefill): FinancingSessio
     addOffer,
     updateOffer,
     removeOffer,
+    replaceOffers: setOffers,
     offerComparison,
     subsidyPrograms,
     subsidyAnswers,

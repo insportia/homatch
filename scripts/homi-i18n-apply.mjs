@@ -20,6 +20,8 @@ import { HOMI_CONTRACT_STRINGS } from './homi-contract-i18n-data.mjs';
 import { HOMI_NOTIFY_STRINGS, HOMI_NOTIFY_KA_FIXES } from './homi-notify-i18n-data.mjs';
 import { HOMI_ADMIN_STRINGS } from './homi-admin-i18n-data.mjs';
 import { HOMI_AUDIT_STRINGS } from './homi-audit-i18n-data.mjs';
+import { NOTIFY_AUDIT_STRINGS } from './homi-notify-audit-i18n-data.mjs';
+import { CONTRACTS_AUDIT_STRINGS } from './homi-contracts-audit-i18n-data.mjs';
 import fs from 'node:fs';
 import { splice, validate } from './lib/i18nSplice.mjs';
 
@@ -48,7 +50,7 @@ function kaOnly(fixes) {
   return out;
 }
 const HOMI_REBRAND_STRINGS = { ...HOMI_CORE_REBRAND, ...HOMI_INVESTMENT_REWRITES, ...kaOnly(HOMI_EXPAT_KA_FIXES), ...kaOnly(HOMI_NOTIFY_KA_FIXES) };
-const HOMI_STRINGS = { ...HOMI_CORE_STRINGS, ...HOMI_MORTGAGE_STRINGS, ...HOMI_INVESTMENT_STRINGS, ...HOMI_EXPAT_STRINGS, ...HOMI_MORTGAGE2_STRINGS, ...HOMI_CONTRACT_STRINGS, ...HOMI_NOTIFY_STRINGS, ...HOMI_ADMIN_STRINGS, ...HOMI_AUDIT_STRINGS };
+const HOMI_STRINGS = { ...HOMI_CORE_STRINGS, ...HOMI_MORTGAGE_STRINGS, ...HOMI_INVESTMENT_STRINGS, ...HOMI_EXPAT_STRINGS, ...HOMI_MORTGAGE2_STRINGS, ...HOMI_CONTRACT_STRINGS, ...CONTRACTS_AUDIT_STRINGS, ...HOMI_NOTIFY_STRINGS, ...NOTIFY_AUDIT_STRINGS, ...HOMI_ADMIN_STRINGS, ...HOMI_AUDIT_STRINGS };
 
 const problems = [...validate(HOMI_STRINGS, TAG), ...validate(HOMI_REBRAND_STRINGS, `${TAG}-rebrand`)];
 for (const key of Object.keys(HOMI_REBRAND_STRINGS)) {

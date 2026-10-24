@@ -9,7 +9,15 @@ const B = '00000000-0000-4000-8000-000000000002';
 
 test('a valid selection is deduplicated and keeps its idempotency key', () => {
   const r = parseUnlockRequest({ action: 'unlock', matchIds: [A, B, A.toUpperCase()], idempotencyKey: 'ilu:abc12345' });
-  assert.deepEqual(r, { ok: true, matchIds: [A, B], idempotencyKey: 'ilu:abc12345' });
+  assert.deepEqual(r, { ok: true, matchIds: [A, B], idempotencyKey: 'ilu:abc12345', expectedCredits: null });
+});
+
+test('the confirmed total travels with the unlock; a bad one is refused', () => {
+  const ok = parseUnlockRequest({ action: 'unlock', matchIds: [A], idempotencyKey: 'ilu:abc12345', expectedCredits: 5 });
+  assert.equal(ok.ok && ok.expectedCredits, 5);
+  for (const bad of [-1, Number.NaN, '5']) {
+    assert.deepEqual(parseUnlockRequest({ action: 'unlock', matchIds: [A], idempotencyKey: 'ilu:abc12345', expectedCredits: bad }), { ok: false, error: 'INVALID_REQUEST' });
+  }
 });
 
 test('anything malformed is refused before it reaches the wallet', () => {

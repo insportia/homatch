@@ -290,10 +290,22 @@ revoke all on function public.withdraw_my_mortgage_buyer_intent() from public, a
 grant execute on function public.withdraw_my_mortgage_buyer_intent() to authenticated;
 
 /* ════════════════════════════════════════════════════════════════════════
- * 3 · price: one more HOMATCH Leads segment, MORTGAGE, 3 credits
+ * 3 · value-based price for Home Financing buyer intent in HOMATCH Leads
  *
- * The Matching functions below are the production definitions with one segment added.
- * STANDARD, EXACT and PREMIUM keep their products, prices and rules exactly.
+ *   Mortgage interest only ........................................ MORTGAGE        3 credits
+ *   Mortgage interest + the person's own property search also
+ *   matching this listing (two independent, verified signals) ..... MORTGAGE_MATCH  5 credits
+ *   Anything else keeps its existing price: STANDARD 3, EXACT 5, PREMIUM 10. A PREMIUM
+ *   (high-budget) search stays PREMIUM when mortgage interest is added: a signal never
+ *   lowers a price.
+ *
+ * The price belongs to the person and the listing, not to one search row: every Matching
+ * surface asks internal_lead_member_price, so the feeds, the quote and the unlock agree, and
+ * each price comes with the reasons that produced it. The production segment and price-key
+ * functions are not changed.
+ *
+ * One person, one payment per account: internal_lead_unlocks (unique account, member) is the
+ * entitlement for every route, checked under the per-account advisory lock before any charge.
  * ════════════════════════════════════════════════════════════════════════ */
 
 insert into public.billable_products
@@ -301,37 +313,18 @@ insert into public.billable_products
    reference_landed_cogs_cents, min_gross_margin_bps, estimate_strategy,
    enabled, pricing_active, sort_order, config, min_viable_budget_credits)
 values
-  -- Internal member data, no external cost: the same zero landed COGS as the other three
-  -- HOMATCH Leads products.
-  ('INTERNAL_LEAD_MORTGAGE', 'HOMATCH Leads — member who opted in from Home Financing', 'FIXED',
+  -- Internal member data, no external cost: the same zero landed COGS as the other HOMATCH Leads products.
+  ('INTERNAL_LEAD_MORTGAGE', 'HOMATCH Leads — mortgage interest', 'FIXED',
    true, 30, 0, 0, 'PER_UNIT', true, true, 95,
-   jsonb_build_object('unit', 'INTERNAL_LEAD', 'segment', 'MORTGAGE'), 0)
+   jsonb_build_object('unit', 'INTERNAL_LEAD', 'segment', 'MORTGAGE'), 0),
+  ('INTERNAL_LEAD_MORTGAGE_MATCH', 'HOMATCH Leads — mortgage interest and a matching property search', 'FIXED',
+   true, 50, 0, 0, 'PER_UNIT', true, true, 96,
+   jsonb_build_object('unit', 'INTERNAL_LEAD', 'segment', 'MORTGAGE_MATCH'), 0)
 on conflict (code) do nothing;
 
 alter table public.internal_lead_unlocks drop constraint if exists internal_lead_unlocks_segment_check;
 alter table public.internal_lead_unlocks add constraint internal_lead_unlocks_segment_check
-  check (segment in ('STANDARD', 'EXACT', 'PREMIUM', 'MORTGAGE'));
-
-/* The active mortgage consent a search belongs to, if it is one. */
-create or replace function public.internal_lead_mortgage_intent(p_intent_profile_id uuid)
-returns public.mortgage_buyer_intents language sql stable security definer set search_path = public as $$
-  select i.* from public.mortgage_buyer_intents i
-   where i.intent_profile_id = p_intent_profile_id and i.status = 'ACTIVE'
-$$;
-revoke all on function public.internal_lead_mortgage_intent(uuid) from public, anon, authenticated;
-grant execute on function public.internal_lead_mortgage_intent(uuid) to service_role;
-
-/* The price shown to the public in Home Financing and Admin: the MORTGAGE segment's product. */
-create or replace function public.mortgage_lead_price()
-returns jsonb language sql stable security definer set search_path = public as $$
-  select jsonb_build_object(
-    'cents', p.standard_retail_cents,
-    'credits', round(p.standard_retail_cents * public.billing_setting_num('credits_per_usd', 10) / 100.0, 2),
-    'active', p.enabled and not p.kill_switch and p.pricing_active)
-    from public.billable_products p where p.code = 'INTERNAL_LEAD_MORTGAGE'
-$$;
-revoke all on function public.mortgage_lead_price() from public, anon;
-grant execute on function public.mortgage_lead_price() to authenticated, service_role;
+  check (segment in ('STANDARD', 'EXACT', 'PREMIUM', 'MORTGAGE', 'MORTGAGE_MATCH'));
 
 create or replace function public.internal_lead_prices()
 returns jsonb language sql stable security definer set search_path = public as $$
@@ -344,59 +337,93 @@ returns jsonb language sql stable security definer set search_path = public as $
                    from public.billable_products p where p.code = 'INTERNAL_LEAD_PREMIUM'),
     'MORTGAGE', (select round(p.standard_retail_cents * public.billing_setting_num('credits_per_usd', 10) / 100.0, 2)
                    from public.billable_products p where p.code = 'INTERNAL_LEAD_MORTGAGE'),
+    'MORTGAGE_MATCH', (select round(p.standard_retail_cents * public.billing_setting_num('credits_per_usd', 10) / 100.0, 2)
+                   from public.billable_products p where p.code = 'INTERNAL_LEAD_MORTGAGE_MATCH'),
     'active', coalesce((select bool_and(p.enabled and not p.kill_switch and p.pricing_active) and count(*) = 3
                           from public.billable_products p
                          where p.code in ('INTERNAL_LEAD_STANDARD', 'INTERNAL_LEAD_EXACT', 'INTERNAL_LEAD_PREMIUM')), false),
-    -- Separate, so turning the mortgage segment off never stops the other three.
+    -- Separate switches, so turning a mortgage price off never stops the other segments.
     'mortgageActive', coalesce((select p.enabled and not p.kill_switch and p.pricing_active
-                                  from public.billable_products p where p.code = 'INTERNAL_LEAD_MORTGAGE'), false))
+                                  from public.billable_products p where p.code = 'INTERNAL_LEAD_MORTGAGE'), false),
+    'mortgageMatchActive', coalesce((select p.enabled and not p.kill_switch and p.pricing_active
+                                       from public.billable_products p where p.code = 'INTERNAL_LEAD_MORTGAGE_MATCH'), false))
 $$;
 
-/* A search a member made by opting in from Home Financing is the MORTGAGE segment. */
-create or replace function public.internal_lead_segment(p_intent_profile_id uuid)
-returns table(segment text, budget_usd numeric, rule_id uuid, threshold_usd numeric)
-language plpgsql stable security definer set search_path = public as $$
-declare
-  v_ip record;
-  v_rule record;
-  v_tx text;
-  v_usd numeric;
-begin
-  select * into v_ip from public.intent_profiles where id = p_intent_profile_id;
-  if not found then return query select 'STANDARD'::text, null::numeric, null::uuid, null::numeric; return; end if;
-  v_tx := case when upper(coalesce(v_ip.transaction_type, '')) in ('RENT', 'LEASE', 'RENTAL') then 'RENT' else 'SALE' end;
-  if v_ip.budget_max is not null and v_ip.budget_max > 0 and v_ip.currency is not null then
-    begin
-      v_usd := public.fx_to_usd(v_ip.budget_max, v_ip.currency, now());
-    exception when others then v_usd := null;
-    end;
-  end if;
-  if exists (select 1 from public.mortgage_buyer_intents i where i.intent_profile_id = p_intent_profile_id and i.status = 'ACTIVE') then
-    return query select 'MORTGAGE'::text, round(v_usd), null::uuid, null::numeric;
-    return;
-  end if;
-  select r.* into v_rule
-    from public.internal_lead_premium_rules r
-   where r.active and r.transaction_type = v_tx
-     and (r.property_type is null or r.property_type = any (coalesce(v_ip.property_types, '{}'::text[])))
-     and (r.country is null or upper(r.country) = upper(coalesce(v_ip.country, 'GE')))
-     and (r.city is null or lower(r.city) = lower(coalesce(v_ip.city, '')))
-   order by (r.city is not null)::int + (r.country is not null)::int + (r.property_type is not null)::int desc,
-            r.updated_at desc
-   limit 1;
-  if v_usd is not null and v_rule.id is not null and v_usd >= v_rule.min_budget_usd then
-    return query select 'PREMIUM'::text, round(v_usd), v_rule.id, v_rule.min_budget_usd;
-  else
-    return query select 'STANDARD'::text, round(v_usd), v_rule.id, v_rule.min_budget_usd;
-  end if;
-end $$;
+/* The public prices of the two mortgage segments, for Home Financing copy and Admin. */
+create or replace function public.mortgage_lead_price()
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'cents', m.standard_retail_cents,
+    'credits', round(m.standard_retail_cents * public.billing_setting_num('credits_per_usd', 10) / 100.0, 2),
+    'active', m.enabled and not m.kill_switch and m.pricing_active,
+    'withSearch', (select jsonb_build_object(
+        'cents', x.standard_retail_cents,
+        'credits', round(x.standard_retail_cents * public.billing_setting_num('credits_per_usd', 10) / 100.0, 2),
+        'active', x.enabled and not x.kill_switch and x.pricing_active)
+      from public.billable_products x where x.code = 'INTERNAL_LEAD_MORTGAGE_MATCH'))
+    from public.billable_products m where m.code = 'INTERNAL_LEAD_MORTGAGE'
+$$;
+revoke all on function public.mortgage_lead_price() from public, anon;
+grant execute on function public.mortgage_lead_price() to authenticated, service_role;
 
-create or replace function public.internal_lead_price_key(p_category text, p_intent_profile_id uuid)
-returns text language sql stable security definer set search_path = public as $$
-  select case (select s.segment from public.internal_lead_segment(p_intent_profile_id) s)
-              when 'MORTGAGE' then 'MORTGAGE'
-              when 'PREMIUM' then 'PREMIUM'
-              else case when p_category = 'EXACT' then 'EXACT' else 'STANDARD' end end
+/*
+ * THE PRICE OF ONE PERSON FOR ONE LISTING, AND WHY.
+ *
+ * Evidence is the engine's own match rows for this owner, listing and person that Matching
+ * would show (active search, visible under the owner's preferences): a row from the person's
+ * Home Financing consent is mortgage interest; the best other row is their property search.
+ * Reasons: MORTGAGE_INTEREST, SEARCH_MATCH or EXACT_SEARCH_MATCH, HIGH_BUDGET.
+ */
+create or replace function public.internal_lead_member_price(p_owner uuid, p_property_id uuid, p_member uuid)
+returns table (price_key text, reasons text[], mortgage boolean, search_match boolean)
+language sql stable security definer set search_path = public as $$
+  with c as (
+    select c.category, c.intent_profile_id, c.score,
+           exists (select 1 from public.mortgage_buyer_intents i
+                    where i.intent_profile_id = c.intent_profile_id and i.status = 'ACTIVE') as is_mortgage
+      from public.internal_match_candidates c
+     where c.property_id = p_property_id and c.supply_user_id = p_owner and c.demand_user_id = p_member
+       and public.internal_match_visible(c.property_id, c.kind, c.budget_verdict, c.geo_km)
+       and exists (select 1 from public.active_search_subscriptions s
+                    where s.user_id = c.demand_user_id and s.intent_id = c.intent_profile_id and s.is_active)
+  ), m as (
+    select coalesce(bool_or(c.is_mortgage), false) as yes from c
+  ), s as (
+    select c.category, public.internal_lead_price_key(c.category, c.intent_profile_id) as key
+      from c where not c.is_mortgage
+     order by (c.category = 'EXACT') desc, c.score desc
+     limit 1
+  )
+  select case when m.yes and s.key = 'PREMIUM' then 'PREMIUM'
+              when m.yes and s.key is not null then 'MORTGAGE_MATCH'
+              when m.yes then 'MORTGAGE'
+              else coalesce(s.key, 'STANDARD') end,
+         array_remove(array[
+           case when s.key = 'PREMIUM' then 'HIGH_BUDGET' end,
+           case when m.yes then 'MORTGAGE_INTEREST' end,
+           case when s.category = 'EXACT' then 'EXACT_SEARCH_MATCH' when s.key is not null then 'SEARCH_MATCH' end
+         ]::text[], null),
+         m.yes,
+         s.key is not null
+    from m left join s on true
+$$;
+revoke all on function public.internal_lead_member_price(uuid, uuid, uuid) from public, anon, authenticated;
+grant execute on function public.internal_lead_member_price(uuid, uuid, uuid) to service_role;
+
+/* The person behind each selected row, once, priced for the listing that row belongs to. */
+create or replace function public.internal_lead_pick(p_user_id uuid, p_match_ids uuid[])
+returns table (match_id uuid, lead_user_id uuid, intent_profile_id uuid, property_id uuid, price_key text)
+language sql stable security definer set search_path = public as $$
+  select x.id, x.demand_user_id, x.intent_profile_id, x.property_id,
+         (select mp.price_key from public.internal_lead_member_price(p_user_id, x.property_id, x.demand_user_id) mp)
+    from (
+      select distinct on (c.demand_user_id) c.id, c.demand_user_id, c.intent_profile_id, c.property_id
+        from public.internal_match_candidates c
+       where c.id = any (coalesce(p_match_ids, '{}'::uuid[]))
+         and c.supply_user_id = p_user_id
+         and exists (select 1 from public.internal_lead_rows(p_user_id, c.property_id) r where r.lead_user_id = c.demand_user_id)
+       order by c.demand_user_id, (c.category = 'EXACT') desc, c.score desc
+    ) x
 $$;
 
 create or replace function public.internal_leads_unlock_quote_for(p_user_id uuid, p_match_ids uuid[])
@@ -418,10 +445,12 @@ begin
     'exactCount', count(*) filter (where not already and price_key = 'EXACT'),
     'premiumCount', count(*) filter (where not already and price_key = 'PREMIUM'),
     'mortgageCount', count(*) filter (where not already and price_key = 'MORTGAGE'),
+    'mortgageMatchCount', count(*) filter (where not already and price_key = 'MORTGAGE_MATCH'),
     'standardCredits', coalesce(sum((v_prices->>'STANDARD')::numeric) filter (where not already and price_key = 'STANDARD'), 0),
     'exactCredits', coalesce(sum((v_prices->>'EXACT')::numeric) filter (where not already and price_key = 'EXACT'), 0),
     'premiumCredits', coalesce(sum((v_prices->>'PREMIUM')::numeric) filter (where not already and price_key = 'PREMIUM'), 0),
     'mortgageCredits', coalesce(sum((v_prices->>'MORTGAGE')::numeric) filter (where not already and price_key = 'MORTGAGE'), 0),
+    'mortgageMatchCredits', coalesce(sum((v_prices->>'MORTGAGE_MATCH')::numeric) filter (where not already and price_key = 'MORTGAGE_MATCH'), 0),
     'totalCredits', coalesce(sum((v_prices->>price_key)::numeric) filter (where not already), 0),
     'balance', (select ca.balance from public.credit_accounts ca where ca.user_id = p_user_id),
     'prices', v_prices)
@@ -429,7 +458,15 @@ begin
   return v_out;
 end $$;
 
-create or replace function public.internal_leads_unlock(p_user_id uuid, p_match_ids uuid[], p_idempotency_key text)
+/*
+ * The unlock: production's, with the two mortgage segments and a price guard. The client
+ * sends the total it showed (p_expected_credits); if new evidence raised a price since the
+ * quote, nothing is charged and PRICE_CHANGED asks for a fresh quote. A lower total goes
+ * through. An older caller that sends no expected total behaves exactly as before.
+ */
+drop function if exists public.internal_leads_unlock(uuid, uuid[], text);
+create or replace function public.internal_leads_unlock(p_user_id uuid, p_match_ids uuid[], p_idempotency_key text,
+                                                         p_expected_credits numeric default null)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   v_existing jsonb;
@@ -439,6 +476,7 @@ declare
   v_n integer;
   v_unit numeric;
   v_total numeric;
+  v_due numeric;
   v_res uuid;
   v_res_ids jsonb := '{}'::jsonb;
   v_unlocked jsonb := '[]'::jsonb;
@@ -454,6 +492,7 @@ begin
   if p_idempotency_key is null or length(p_idempotency_key) < 8 then raise exception 'IDEMPOTENCY_KEY_REQUIRED'; end if;
   if coalesce(array_length(p_match_ids, 1), 0) = 0 then raise exception 'NOTHING_SELECTED'; end if;
   if array_length(p_match_ids, 1) > 200 then raise exception 'TOO_MANY_SELECTED'; end if;
+  if p_expected_credits is not null and p_expected_credits < 0 then raise exception 'INVALID_ARGUMENT'; end if;
 
   perform pg_advisory_xact_lock(hashtextextended('internal_lead_unlock:' || p_user_id::text, 0));
 
@@ -469,6 +508,8 @@ begin
   ) on commit drop;
   truncate pg_temp.ilu_pick;
 
+  -- "already" is read under the lock: a person this account has unlocked by any source,
+  -- listing, search or segment is never charged again.
   insert into pg_temp.ilu_pick
   select p.match_id, p.lead_user_id, p.intent_profile_id, p.property_id, p.price_key,
          exists (select 1 from public.internal_lead_unlocks u where u.account_user_id = p_user_id and u.lead_user_id = p.lead_user_id)
@@ -476,10 +517,14 @@ begin
 
   select coalesce(jsonb_agg(match_id), '[]'::jsonb) into v_already from pg_temp.ilu_pick where already;
 
-  foreach v_seg in array array['STANDARD', 'EXACT', 'PREMIUM', 'MORTGAGE'] loop
+  select coalesce(sum((v_prices->>segment)::numeric), 0) into v_due from pg_temp.ilu_pick where not already;
+  if p_expected_credits is not null and v_due > p_expected_credits then raise exception 'PRICE_CHANGED'; end if;
+
+  foreach v_seg in array array['STANDARD', 'EXACT', 'PREMIUM', 'MORTGAGE', 'MORTGAGE_MATCH'] loop
     select count(*) into v_n from pg_temp.ilu_pick where not already and segment = v_seg;
     continue when v_n = 0;
     if v_seg = 'MORTGAGE' and not coalesce((v_prices->>'mortgageActive')::boolean, false) then raise exception 'PRODUCT_DISABLED'; end if;
+    if v_seg = 'MORTGAGE_MATCH' and not coalesce((v_prices->>'mortgageMatchActive')::boolean, false) then raise exception 'PRODUCT_DISABLED'; end if;
     v_unit := (v_prices->>v_seg)::numeric;
     if v_unit is null then raise exception 'PRODUCT_DISABLED'; end if;
     v_total := round(v_unit * v_n, 4);
@@ -536,10 +581,11 @@ begin
   values (v_batch, p_user_id, p_idempotency_key, v_result);
   return v_result;
 end $$;
+revoke all on function public.internal_leads_unlock(uuid, uuid[], text, numeric) from public, anon, authenticated;
+grant execute on function public.internal_leads_unlock(uuid, uuid[], text, numeric) to service_role;
 
 /* Contact after an unlock: the member's general preferences, plus the channels they ticked
-   when they opted in from Home Financing while that consent is active. Every read that shows
-   a channel is recorded. */
+   in their Home Financing consent while it is active. Every read that shows a channel is recorded. */
 create or replace function public.internal_lead_contact(p_match_id uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
@@ -589,10 +635,12 @@ end $$;
 /* ════════════════════════════════════════════════════════════════════════
  * 4 · the Matching feeds: mortgage-origin members among the other buyer leads
  *
- * Production definitions, with: the MORTGAGE price key; 'origin' (MORTGAGE or SEARCH);
- * a MORTGAGE filter and count; and, for a mortgage-origin member, the intent indicators
- * they agreed to share: that they used the mortgage calculator (once or repeatedly, and
- * the month of the latest use), whether it was for THIS listing, and their timeframe.
+ * Production definitions, with: the price, its key and its reasons from
+ * internal_lead_member_price (one person, one listing); 'origin' (SEARCH, MORTGAGE or
+ * MORTGAGE_AND_SEARCH); a MORTGAGE filter and count (anyone with mortgage interest here); and,
+ * with mortgage interest, the indicators the person agreed to share: that they used the
+ * mortgage calculator (once or repeatedly, and the month of the latest use), whether it was
+ * for THIS listing, and their timeframe.
  * Budget, area and property type are the search itself and are shown like any other.
  * Nothing from the mortgage calculation (income, debts, rate, payment, readiness answers,
  * guarantor, residency) exists in these tables, so nothing of it can be shown.
@@ -633,6 +681,7 @@ begin
            prefs.share_email_on_unlock or coalesce(mi.share_email, false) as share_email_on_unlock,
            usr.phone is not null and length(usr.phone) > 4 as has_phone,
            usr.nickname, usr.full_name, usr.preferred_language,
+           mp.price_key as member_key, mp.reasons as price_reasons, mp.mortgage as has_mortgage, mp.search_match as has_search,
            mi.signal_count as mi_signals, mi.last_signal_at as mi_last, mi.timeframe as mi_timeframe,
            (p_property_id = any (coalesce(mi.property_ids, '{}'::uuid[]))) as mi_listing
       from public.internal_lead_rows(v_me, p_property_id) r
@@ -640,7 +689,8 @@ begin
       join public.users usr on usr.id = r.lead_user_id
       cross join lateral public.internal_lead_segment(r.intent_profile_id) seg
       cross join lateral public.lead_contact_prefs_of(r.lead_user_id) prefs
-      left join public.mortgage_buyer_intents mi on mi.intent_profile_id = r.intent_profile_id and mi.status = 'ACTIVE'
+      cross join lateral public.internal_lead_member_price(v_me, p_property_id, r.lead_user_id) mp
+      left join public.mortgage_buyer_intents mi on mi.user_id = r.lead_user_id and mi.status = 'ACTIVE'
       left join public.internal_lead_unlocks u on u.account_user_id = v_me and u.lead_user_id = r.lead_user_id
       left join public.lead_crm_entries c on c.owner_user_id = v_me and c.lead_user_id = r.lead_user_id
   ), filtered as (
@@ -650,7 +700,7 @@ begin
              when 'POTENTIAL' then b.band = 'POTENTIAL'
              when 'STANDARD' then b.segment = 'STANDARD'
              when 'PREMIUM' then b.segment = 'PREMIUM'
-             when 'MORTGAGE' then b.segment = 'MORTGAGE'
+             when 'MORTGAGE' then b.has_mortgage
              when 'FRESH' then b.fresh
              when 'UNLOCKED' then b.unlocked
              when 'CONTACTED' then b.contacted
@@ -682,7 +732,7 @@ begin
         'POTENTIAL', count(*) filter (where band = 'POTENTIAL'),
         'STANDARD', count(*) filter (where segment = 'STANDARD'),
         'PREMIUM', count(*) filter (where segment = 'PREMIUM'),
-        'MORTGAGE', count(*) filter (where segment = 'MORTGAGE'),
+        'MORTGAGE', count(*) filter (where has_mortgage),
         'FRESH', count(*) filter (where fresh),
         'UNLOCKED', count(*) filter (where unlocked),
         'CONTACTED', count(*) filter (where contacted),
@@ -693,14 +743,17 @@ begin
         'matchId', p.match_id,
         'score', round(p.match_score * 100),
         'band', p.band,
-        'segment', p.segment,
-        'origin', case when p.segment = 'MORTGAGE' then 'MORTGAGE' else 'SEARCH' end,
-        'mortgage', case when p.segment = 'MORTGAGE' then jsonb_build_object(
+        'segment', case when p.member_key in ('MORTGAGE', 'MORTGAGE_MATCH') then p.member_key else p.segment end,
+        'origin', case when p.has_mortgage and p.has_search then 'MORTGAGE_AND_SEARCH' when p.has_mortgage then 'MORTGAGE' else 'SEARCH' end,
+        'priceKey', p.member_key,
+        'priceReasons', to_jsonb(p.price_reasons),
+        'mortgage', case when p.has_mortgage then jsonb_build_object(
             'calculatorUse', case when p.mi_signals > 1 then 'REPEATED' else 'ONCE' end,
             'lastUseMonth', to_char(p.mi_last, 'YYYY-MM'),
             'thisListing', p.mi_listing,
             'timeframe', p.mi_timeframe) end,
-        'priceCredits', (public.internal_lead_prices() ->> p.segment)::numeric,
+        -- The price that is charged (the older feed used to show the segment's price for EXACT rows).
+        'priceCredits', (public.internal_lead_prices() ->> p.member_key)::numeric,
         'unlocked', p.unlocked,
         'contacted', p.contacted,
         'crmStatus', p.crm_status,
@@ -787,9 +840,8 @@ begin
                 else 'DIRECT' end as searcher,
            seg.segment, seg.budget_usd,
            c.category, c.kind, c.confidence, public.internal_lead_explanation(c) as explanation,
-           case when seg.segment = 'PREMIUM' then 'VIP' else c.category end as display_category,
-           case when seg.segment = 'MORTGAGE' then 'MORTGAGE'
-                when seg.segment = 'PREMIUM' then 'PREMIUM' when c.category = 'EXACT' then 'EXACT' else 'STANDARD' end as price_key,
+           case when mp.price_key = 'PREMIUM' then 'VIP' else c.category end as display_category,
+           mp.price_key,
            case when upper(coalesce(ip.transaction_type, '')) in ('RENT', 'LEASE', 'RENTAL') then 'RENT' else 'SALE' end as tx,
            case when ip.intent_type::text in ('RENT', 'RELOCATE_RENT') or upper(coalesce(ip.transaction_type, '')) in ('RENT', 'LEASE', 'RENTAL') then 'RENT'
                 when ip.intent_type::text = 'INVEST' or upper(coalesce(ip.transaction_type, '')) = 'INVESTMENT' then 'INVEST'
@@ -805,6 +857,7 @@ begin
            usr.phone is not null and length(usr.phone) > 4 as has_phone,
            usr.email is not null and position('@' in usr.email) > 1 as has_email,
            usr.nickname, usr.full_name, usr.preferred_language,
+           mp.price_key as member_key, mp.reasons as price_reasons, mp.mortgage as has_mortgage, mp.search_match as has_search,
            mi.signal_count as mi_signals, mi.last_signal_at as mi_last, mi.timeframe as mi_timeframe,
            (p_property_id = any (coalesce(mi.property_ids, '{}'::uuid[]))) as mi_listing
       from public.internal_lead_rows(v_me, p_property_id) r
@@ -817,7 +870,8 @@ begin
                           order by s.created_at desc limit 1) sub on true
       cross join lateral public.internal_lead_segment(r.intent_profile_id) seg
       cross join lateral public.lead_contact_prefs_of(r.lead_user_id) prefs
-      left join public.mortgage_buyer_intents mi on mi.intent_profile_id = r.intent_profile_id and mi.status = 'ACTIVE'
+      cross join lateral public.internal_lead_member_price(v_me, p_property_id, r.lead_user_id) mp
+      left join public.mortgage_buyer_intents mi on mi.user_id = r.lead_user_id and mi.status = 'ACTIVE'
       left join public.internal_lead_unlocks u on u.account_user_id = v_me and u.lead_user_id = r.lead_user_id
       left join public.lead_crm_entries cr on cr.owner_user_id = v_me and cr.lead_user_id = r.lead_user_id
   ), marked as (
@@ -828,7 +882,7 @@ begin
        and (not ('POTENTIAL' = any (v_filters)) or b.band = 'POTENTIAL')
        and (not ('STANDARD' = any (v_filters)) or b.segment = 'STANDARD')
        and (not ('PREMIUM' = any (v_filters)) or b.segment = 'PREMIUM')
-       and (not ('MORTGAGE' = any (v_filters)) or b.segment = 'MORTGAGE')
+       and (not ('MORTGAGE' = any (v_filters)) or b.has_mortgage)
        and (not ('VIP' = any (v_filters)) or b.display_category = 'VIP')
        and (not ('EXACT' = any (v_filters)) or b.display_category = 'EXACT')
        and (not ('NEARBY' = any (v_filters)) or b.display_category = 'NEARBY_SIMILAR')
@@ -875,7 +929,7 @@ begin
         'POTENTIAL', count(*) filter (where band = 'POTENTIAL'),
         'STANDARD', count(*) filter (where segment = 'STANDARD'),
         'PREMIUM', count(*) filter (where segment = 'PREMIUM'),
-        'MORTGAGE', count(*) filter (where segment = 'MORTGAGE'),
+        'MORTGAGE', count(*) filter (where has_mortgage),
         'FRESH', count(*) filter (where fresh),
         'UNLOCKED', count(*) filter (where unlocked),
         'LOCKED', count(*) filter (where not unlocked),
@@ -904,9 +958,10 @@ begin
         'matchId', pg.match_id,
         'score', round(pg.match_score * 100),
         'band', pg.band,
-        'segment', pg.segment,
-        'origin', case when pg.segment = 'MORTGAGE' then 'MORTGAGE' else 'SEARCH' end,
-        'mortgage', case when pg.segment = 'MORTGAGE' then jsonb_build_object(
+        'segment', case when pg.price_key in ('MORTGAGE', 'MORTGAGE_MATCH') then pg.price_key else pg.segment end,
+        'origin', case when pg.has_mortgage and pg.has_search then 'MORTGAGE_AND_SEARCH' when pg.has_mortgage then 'MORTGAGE' else 'SEARCH' end,
+        'priceReasons', to_jsonb(pg.price_reasons),
+        'mortgage', case when pg.has_mortgage then jsonb_build_object(
             'calculatorUse', case when pg.mi_signals > 1 then 'REPEATED' else 'ONCE' end,
             'lastUseMonth', to_char(pg.mi_last, 'YYYY-MM'),
             'thisListing', pg.mi_listing,
@@ -977,8 +1032,9 @@ begin
     'withdrawn', (select count(*) from public.mortgage_buyer_intents where status = 'WITHDRAWN'),
     'matchedListings', (select count(*) from public.internal_match_candidates c
                           join public.mortgage_buyer_intents i on i.intent_profile_id = c.intent_profile_id and i.status = 'ACTIVE'),
-    'uniqueUnlocks', (select count(*) from public.internal_lead_unlocks where segment = 'MORTGAGE'),
-    'unlockCredits', (select coalesce(sum(credits_charged), 0) from public.internal_lead_unlocks where segment = 'MORTGAGE'),
+    'uniqueUnlocks', (select count(*) from public.internal_lead_unlocks where segment in ('MORTGAGE', 'MORTGAGE_MATCH')),
+    'unlocksWithSearch', (select count(*) from public.internal_lead_unlocks where segment = 'MORTGAGE_MATCH'),
+    'unlockCredits', (select coalesce(sum(credits_charged), 0) from public.internal_lead_unlocks where segment in ('MORTGAGE', 'MORTGAGE_MATCH')),
     'price', public.mortgage_lead_price());
 end $$;
 revoke all on function public.admin_mortgage_lead_stats() from public, anon;

@@ -16,7 +16,7 @@ import { getLeadContact, openLeadConversation, UnlockError, type LeadContact, ty
 import { budgetLabel, buildLeadSummary, DIMENSION_ORDER, featureParts, leadCategory, leadPriceKey, locationLabel, matchReasons, propertyTypeLabel, requirementParts } from '@/leads/leadSummary';
 import { BTN_PRIMARY, BTN_SECONDARY, EYEBROW } from './kit';
 import { BandBadge, CategoryPill, ContactOptions, formatCreditsLabel, SearcherPill, useLeadFormatters } from './LeadCard';
-import { MortgagePill, MortgageSignals } from './MortgageSignals';
+import { MortgagePill, MortgageSignals, PriceReasons } from './MortgageSignals';
 
 export function LeadDetailsDrawer({
   lead, propertyId, open, onClose, onUnlock,
@@ -165,7 +165,10 @@ export function LeadDetailsDrawer({
             </ul>
           </section>
 
-          {lead.origin === 'MORTGAGE' || lead.segment === 'MORTGAGE' ? (
+          {!lead.unlocked && lead.priceReasons?.length ? (
+            <section data-testid="lead-details-price"><PriceReasons lead={lead} credits={formatCreditsLabel(lead.priceCredits, lang)} /></section>
+          ) : null}
+          {lead.origin === 'MORTGAGE' || lead.origin === 'MORTGAGE_AND_SEARCH' || lead.segment === 'MORTGAGE' || lead.segment === 'MORTGAGE_MATCH' ? (
             <section data-testid="lead-details-mortgage">
               <MortgagePill lead={lead} />
               <MortgageSignals lead={lead} />
@@ -229,7 +232,7 @@ export function LeadDetailsDrawer({
               <p className="mt-1 text-xs leading-relaxed text-[hsl(224_14%_30%)]">{t('hl_unlock_privacy')}</p>
               <button type="button" className={cn(BTN_PRIMARY, 'mt-3 w-full')} onClick={() => onUnlock(lead.matchId)}>
                 <Lock className="h-4 w-4" aria-hidden="true" />
-                {t(key === 'PREMIUM' ? 'hl_cta_unlock_premium' : key === 'EXACT' ? 'hl_cta_unlock_exact' : 'hl_cta_unlock_standard', { credits: formatCreditsLabel(lead.priceCredits, lang) })}
+                {t(key === 'PREMIUM' ? 'hl_cta_unlock_premium' : key === 'EXACT' ? 'hl_cta_unlock_exact' : key === 'MORTGAGE' || key === 'MORTGAGE_MATCH' ? 'hl_cta_unlock_mortgage' : 'hl_cta_unlock_standard', { credits: formatCreditsLabel(lead.priceCredits, lang) })}
               </button>
             </section>
           )}

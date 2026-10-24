@@ -90,7 +90,7 @@ export const HOMI_ADMIN_STRINGS = {
   admin_hs_unverified: ['Not verified', 'არ არის გადამოწმებული', 'Не проверено', 'Doğrulanmadı', 'لم يتم التحقق', 'לא אומת'],
   admin_hs_ml_saved: ['Saved calculations', 'შენახული გამოთვლები', 'Сохранённые расчёты', 'Kayıtlı hesaplamalar', 'الحسابات المحفوظة', 'חישובים שמורים'],
   admin_hs_ml_saved_hint: ['By {{n}} people', '{{n}} ადამიანის მიერ', 'От {{n}} человек', '{{n}} kişi tarafından', 'من {{n}} أشخاص', 'על ידי {{n}} אנשים'],
-  admin_hs_ml_consented: ['Buyers who opted in', 'თანხმობის მქონე მყიდველები', 'Покупатели с согласием', 'Onay veren alıcılar', 'مشترون موافقون', 'קונים שהסכימו'],
+  admin_hs_ml_consented: ['People who opted in', 'თანხმობის მქონე ადამიანები', 'Люди, давшие согласие', 'Onay veren kişiler', 'أشخاص وافقوا', 'אנשים שהסכימו'],
   admin_hs_ml_withdrawn: ['{{n}} withdrew', '{{n}}-მა გააუქმა', '{{n}} отозвали', '{{n}} geri çekti', '{{n}} سحبوا موافقتهم', '{{n}} ביטלו'],
   admin_hs_ml_unlocks: ['Unique unlocks', 'უნიკალური განბლოკვები', 'Уникальные открытия', 'Benzersiz kilit açmalar', 'عمليات فتح فريدة', 'פתיחות ייחודיות'],
   admin_hs_ml_revenue: ['Unlock revenue', 'განბლოკვის შემოსავალი', 'Доход от открытий', 'Kilit açma geliri', 'إيرادات الفتح', 'הכנסה מפתיחות'],

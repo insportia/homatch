@@ -7,7 +7,12 @@
 import type { LeadItem } from '../services/homatchLeads';
 
 export function isMortgageOrigin(lead: Pick<LeadItem, 'origin' | 'segment'>): boolean {
-  return lead.origin === 'MORTGAGE' || lead.segment === 'MORTGAGE';
+  return lead.origin === 'MORTGAGE' || lead.origin === 'MORTGAGE_AND_SEARCH' || lead.segment === 'MORTGAGE' || lead.segment === 'MORTGAGE_MATCH';
+}
+
+/** The reasons for a price, in the order the server gives them, as sentences. */
+export function priceReasonLines(lead: Pick<LeadItem, 'priceReasons'>, t: (k: string) => string): string[] {
+  return (lead.priceReasons ?? []).map((r) => t(`hl_reason_${r}`));
 }
 
 /* Some browsers ship without Georgian calendar data; the month names never depend on that. */

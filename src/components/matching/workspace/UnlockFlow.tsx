@@ -25,7 +25,11 @@ export interface WsQuote {
   active: boolean;
   /** Curated only: the USD the customer pays, from the server's cents. */
   usd: number | null;
+  /** Internal only: one line per price, so the customer sees what each price is for. */
+  lines?: { key: 'STANDARD' | 'EXACT' | 'PREMIUM' | 'MORTGAGE' | 'MORTGAGE_MATCH'; count: number; unit: number; credits: number }[];
 }
+
+const LINE_KEY = { STANDARD: 'hl_bulk_standard', EXACT: 'hl_bulk_exact', PREMIUM: 'hl_bulk_premium', MORTGAGE: 'hl_bulk_mortgage', MORTGAGE_MATCH: 'hl_bulk_mortgage_match' } as const;
 
 export function quoteUsd(q: WsQuote): number {
   return q.usd ?? creditsToUsd(q.totalCredits);
@@ -114,6 +118,12 @@ export function UnlockConfirmDialog({
             {quote.alreadyUnlocked > 0 ? (
               <div className="flex justify-between gap-3 text-[hsl(152_55%_24%)]"><dt>{t('mw_confirm_already')}</dt><dd className="font-semibold tabular-nums" dir="ltr">{formatCount(quote.alreadyUnlocked, lang)}</dd></div>
             ) : null}
+            {(quote.lines ?? []).filter((l) => l.count > 0).map((l) => (
+              <div key={l.key} className="flex justify-between gap-3 text-[hsl(224_14%_26%)]" data-testid={`mw-confirm-line-${l.key}`}>
+                <dt className="min-w-0">{t(LINE_KEY[l.key], { n: formatCount(l.count, lang), price: t(l.unit === 1 ? 'mw_credit_one' : 'mw_credits_n', { n: cr(l.unit) }) })}</dt>
+                <dd className="shrink-0 font-semibold tabular-nums" dir="ltr">{cr(l.credits)}</dd>
+              </div>
+            ))}
             <div className="flex justify-between gap-3"><dt>{t('mw_confirm_new')}</dt><dd className="font-semibold tabular-nums" dir="ltr">{formatCount(quote.newCount, lang)}</dd></div>
             <div className="flex items-baseline justify-between gap-3 border-t border-[hsl(var(--border))] pt-2">
               <dt className="font-semibold">{t('mw_confirm_total')}</dt>

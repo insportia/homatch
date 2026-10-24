@@ -24,15 +24,29 @@ MATTERS right now, verify against the live systems, not this file)
   (intent_profiles + active_search_subscriptions, demand_source MORTGAGE, classifier mortgage-optin-1);
   supply-matching scores it like any search and the Matching feeds show it beside the other buyer leads
   (one row per member, existing rule), with origin and the signals the person agreed to share (calculator
-  use, this listing, timeframe). It is the MORTGAGE segment of HOMATCH Leads: product INTERNAL_LEAD_MORTGAGE,
-  30 cents = 3 credits, charged only when a Matching user unlocks the contact, through the existing
-  internal_leads_unlock (same wallet reserve/settle, idempotency, advisory lock, internal_lead_unlocks
-  entitlement: never twice for the same account and member). STANDARD 3 / EXACT 5 / PREMIUM 10 unchanged.
-  Withdrawal deletes the search (its matches cascade). Contract pricing ($0.20/$0.50) is analysis only.
+  use, this listing, timeframe). Value-based price (owner rule 2026-10-25), per person and listing, from
+  internal_lead_member_price with its reasons: mortgage interest only = MORTGAGE (INTERNAL_LEAD_MORTGAGE,
+  3 credits); mortgage interest + the person's own property search also matched to this listing =
+  MORTGAGE_MATCH (INTERNAL_LEAD_MORTGAGE_MATCH, 5 credits); a PREMIUM search stays PREMIUM 10 (a signal never
+  lowers a price); everyone else keeps STANDARD 3 / EXACT 5 / PREMIUM 10. Feeds, quote and unlock share the
+  function; cards, drawer and both unlock dialogs show the reasons. Charged only when a Matching user unlocks,
+  through the existing internal_leads_unlock (wallet reserve/settle, idempotency, advisory lock): one person,
+  one payment per account by any source, listing, search or later price (internal_lead_unlocks); the client
+  sends the confirmed total and a higher price is refused (PRICE_CHANGED, nothing charged). The production
+  internal_lead_segment / internal_lead_price_key are untouched. Withdrawal deletes the search.
+- Consent and legal basis: sharing a contact channel with sellers needs the person's separate, explicit,
+  withdrawable choice (one step after a calculation: what sellers see, channel toggles, one confirm);
+  accepting the Terms or Privacy Policy is never treated as that permission. Ordinary member searches already
+  share no contact channel by default (lead_contact_preferences share_* default false). Privacy Policy s2/s4
+  (#matching) and Terms s2/s4/s5 describe Matching, potentially interested people, one payment per person
+  and permitted use (updated 2026-10-25). The basis stated is consent under the Law of Georgia on Personal
+  Data Protection; counsel should confirm the wording before release.
+- Contract pricing ($0.20/$0.50) is analysis only.
 - Email: notify() sends a transactional email only for VERIFY_COMPLETE, DOCUMENT_ANALYZED,
   CREDITS_TOPPED_UP, PAYMENT_FAILED, SERVICE_FAILED; preferred_language, Georgian default; honours
   notification_preferences.email_enabled (payment failure always sent); once per notification id.
 - Edge functions touched: homatch-ai, deal-room-document-analyze, supply-matching (origin wording only),
+  atomic-unlock (passes the confirmed total to internal_leads_unlock),
   jobs-worker, payment-webhook, and every producer that imports _shared/notify.ts (deploy-scope computes it).
   No new edge function.
 - Final audit round (owner prompt "PR #325 FINAL COMPLETE AUDIT", 2026-10-24): migration
@@ -46,13 +60,13 @@ MATTERS right now, verify against the live systems, not this file)
   quote) -> 25 concurrent unlocks = 1 charge of 3 credits (INTERNAL_LEAD_MORTGAGE usage event) -> retry
   storm one execution -> other listing / re-consent never recharged -> cross-account isolation ->
   insufficient-credit rollback -> mortgage product off stops only that segment -> contact limited to the
-  chosen channels and recorded -> offers switch and withdrawal remove the person at once.
+  chosen channels and recorded -> offers switch and withdrawal remove the person at once. Value pricing:
+  mortgage only 3, mortgage + search 5, PREMIUM with mortgage stays 10, reasons on every row; a price
+  raised after the quote is refused with nothing charged; new evidence after a purchase never charges again;
+  8 concurrent overlapping bulk unlocks of bought people charge nothing.
 - Local-only environment notes: tsgo's 7 errors (Array.at, Intl.ListFormat, @huggingface/transformers,
   pdfjs-dist) come from a drifted local node_modules (@types/node 26.5.0 vs lockfile 26.4.0, two optional
   packages absent); CI's frozen-lockfile type-check is clean.
-- Pricing when one member has both a Home Financing search and their own search matching the same listing:
-  Matching shows one row per member (EXACT first, then score, existing rule) and that row's segment sets the
-  price; once an account has unlocked the member, no route charges it again.
 
 ## Verify fixed price + 30-day validity + Snake/ads fixes (branch claude/verify-fixed-price-validity, 2026-10-23) — PR OPEN, NOT DEPLOYED
 

@@ -6,7 +6,7 @@
 import { Loader2, Mail, MessageSquare, Phone, UserRound } from 'lucide-react';
 import { useState } from 'react';
 import { CategoryPill, useLeadFormatters } from '@/components/leads/LeadCard';
-import { MortgagePill, MortgageSignals } from '@/components/leads/MortgageSignals';
+import { MortgagePill, MortgageSignals, PriceReasons } from '@/components/leads/MortgageSignals';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { buildLeadSummary } from '@/leads/leadSummary';
 import { cn } from '@/lib/utils';
@@ -82,6 +82,7 @@ export function InternalRows({
               </div>
               <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[hsl(224_14%_26%)]" data-testid="mw-row-summary">{buildLeadSummary(lead, t, money)}</p>
               <MortgageSignals lead={lead} compact />
+              {unlocked ? null : <PriceReasons lead={lead} credits={t(lead.priceCredits === 1 ? 'mw_credit_one' : 'mw_credits_n', { n: formatCredits(lead.priceCredits, lang) })} />}
               {lead.matchedAt ? <p className="mt-0.5 text-2xs text-muted-foreground">{t('mw_matched_on', { date: date(lead.matchedAt) ?? '' })}</p> : null}
             </div>
             <div className="col-start-2 flex items-center gap-2 md:col-start-auto md:justify-end">

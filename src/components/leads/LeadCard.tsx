@@ -6,7 +6,7 @@
 // before an unlock (the server never sends one). Category and score are shown side by side
 // and never mixed: a nearby lead may match better than an exact one.
 
-import { MortgagePill, MortgageSignals } from './MortgageSignals';
+import { MortgagePill, MortgageSignals, PriceReasons } from './MortgageSignals';
 import React from 'react';
 import { Bookmark, BookmarkCheck, Briefcase, CalendarClock, Check, Crosshair, Lock, Mail, MapPinned, MessageSquare, Phone, Sparkles, Unlock, UserRound } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -201,6 +201,7 @@ export function LeadCard({
 
       <p className="mt-2.5 text-sm leading-relaxed text-[hsl(224_14%_22%)] [overflow-wrap:anywhere]" dir="auto">{summary}</p>
       <MortgageSignals lead={lead} />
+      {!lead.unlocked ? <PriceReasons lead={lead} credits={price} /> : null}
       {why.reasons.length ? (
         <p className="mt-1.5 text-xs leading-relaxed text-[hsl(224_14%_26%)] [overflow-wrap:anywhere]" data-testid="lead-why" dir="auto">
           {why.reasons.slice(0, 2).join(' ')}
@@ -231,7 +232,7 @@ export function LeadCard({
         ) : (
           <button type="button" className={cn(BTN_PRIMARY, 'min-[420px]:flex-1')} onClick={onUnlock} disabled={busy} data-testid="lead-unlock">
             <Lock className="h-4 w-4" aria-hidden="true" />
-            {t(key === 'PREMIUM' ? 'hl_cta_unlock_premium' : key === 'EXACT' ? 'hl_cta_unlock_exact' : key === 'MORTGAGE' ? 'hl_cta_unlock_mortgage' : 'hl_cta_unlock_standard', { credits: price })}
+            {t(key === 'PREMIUM' ? 'hl_cta_unlock_premium' : key === 'EXACT' ? 'hl_cta_unlock_exact' : key === 'MORTGAGE' || key === 'MORTGAGE_MATCH' ? 'hl_cta_unlock_mortgage' : 'hl_cta_unlock_standard', { credits: price })}
           </button>
         )}
         <button type="button" className={BTN_SECONDARY} onClick={onOpenDetails} data-testid="lead-details">

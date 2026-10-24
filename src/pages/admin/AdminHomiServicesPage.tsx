@@ -282,6 +282,12 @@ function MortgageLeadsSection() {
       ) : (
         <Tile label={t('admin_hs_ml_price')} value={`${usd(centsToUsd(priceCents))} = ${credits(data.price?.credits)}`} hint={t(data.price?.active ? 'admin_hs_ml_price_on' : 'admin_hs_ml_price_off')} />
       )}
+      {toNumber(data.price?.withSearch?.cents) === null ? (
+        <Tile label={t('admin_hs_ml_price_search')} value={t('admin_hs_ml_price_missing')} tone="warn" />
+      ) : (
+        <Tile label={t('admin_hs_ml_price_search')} value={`${usd(centsToUsd(toNumber(data.price?.withSearch?.cents) as number))} = ${credits(data.price?.withSearch?.credits)}`}
+          hint={t('admin_hs_ml_with_search_n', { n: data.unlocksWithSearch ?? 0 })} />
+      )}
     </div>
   );
 }

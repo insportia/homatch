@@ -23332,7 +23332,7 @@ const en = {
   admin_hs_unverified: 'Not verified',
   admin_hs_ml_saved: 'Saved calculations',
   admin_hs_ml_saved_hint: 'By {{n}} people',
-  admin_hs_ml_consented: 'Buyers who opted in',
+  admin_hs_ml_consented: 'People who opted in',
   admin_hs_ml_withdrawn: '{{n}} withdrew',
   admin_hs_ml_unlocks: 'Unique unlocks',
   admin_hs_ml_revenue: 'Unlock revenue',
@@ -23940,6 +23940,32 @@ const en = {
 
   /* ── HOMI ASSISTANT ── */
   hl_price_mortgage: 'Mortgage interest',
+
+  /* ── HOMI ASSISTANT ── */
+  hl_price_why: 'Why {{credits}}:',
+  hl_reason_MORTGAGE_INTEREST: 'asked for property offers in Home Financing',
+  hl_reason_SEARCH_MATCH: 'their own property search matches this listing nearby or by similarity',
+  hl_reason_EXACT_SEARCH_MATCH: 'their own property search matches this listing exactly',
+  hl_reason_HIGH_BUDGET: 'stated budget at or above the high value threshold for this market',
+  hl_bulk_mortgage_match: 'Mortgage interest and a matching search × {{n}} ({{price}} each)',
+  hl_price_mortgage_match: 'Mortgage and search',
+  hl_error_price_changed: 'New evidence changed the price after your quote. Nothing was charged. Check the new price below and confirm again.',
+  admin_hs_ml_price_search: 'Price with a matching search',
+  admin_hs_ml_with_search_n: '{{n}} unlocked at this price',
+
+  /* ── HOMI ASSISTANT ── */
+  privacy_s2_li9: 'To show your property search or your Home Financing request to relevant property owners and brokers in HOMATCH Matching, only after you have chosen to receive offers',
+  privacy_s4_li5_label: 'HOMATCH Matching, only with your permission:',
+  privacy_s4_li5_body: 'If you choose to receive property offers (for example in Home Financing, or with an active property search), owners and brokers whose listing fits can see an anonymous preview: the area, property type, a rounded budget, your timeframe and, if you asked in Home Financing, that you are interested in a mortgage. Your name and only the contact channels you chose are shown after they open your contact details. Your income, debts, credit history, guarantor, residency and mortgage calculations are never shared. Accepting this policy does not by itself give this permission: you give it with a separate, explicit choice, and you can withdraw it at any time in Home Financing or in your contact preferences, which removes you from Matching immediately. The legal basis for this sharing is your consent.',
+  terms_s2_body3: 'People shown in HOMATCH Matching are potentially interested, based on what they stated and what our matching found. Nobody is presented as a guaranteed buyer or tenant, and opening someone’s contact details does not mean a bank has approved anyone for a loan.',
+  terms_s4_body3: 'HOMATCH Matching: opening a person’s contact details costs the price shown on their card and in the confirmation, together with the reasons for that price. You pay for the same person only once per account: anyone you have already opened stays accessible without a new charge, whatever the listing, search or later price. If the price rises before you confirm, nothing is charged and you are shown the new price.',
+  terms_s5_item8: 'Use contact details obtained in HOMATCH Matching for anything other than offers about relevant properties, pass them to others, or contact people who have withdrawn their permission or blocked you',
+  mortgage_lead_summary_budget: 'Budget up to {{budget}}',
+  mortgage_lead_summary_area: 'Area: {{area}}',
+  mortgage_lead_summary_area_listing: 'Area: the same as this listing',
+  mortgage_lead_details: 'Adjust what sellers see',
+  mortgage_lead_details_hide: 'Hide the details',
+  mortgage_lead_privacy_link: 'How we use this',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -47186,7 +47212,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_hs_unverified: 'არ არის გადამოწმებული',
   admin_hs_ml_saved: 'შენახული გამოთვლები',
   admin_hs_ml_saved_hint: '{{n}} ადამიანის მიერ',
-  admin_hs_ml_consented: 'თანხმობის მქონე მყიდველები',
+  admin_hs_ml_consented: 'თანხმობის მქონე ადამიანები',
   admin_hs_ml_withdrawn: '{{n}}-მა გააუქმა',
   admin_hs_ml_unlocks: 'უნიკალური განბლოკვები',
   admin_hs_ml_revenue: 'განბლოკვის შემოსავალი',
@@ -47794,6 +47820,32 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMI ASSISTANT ── */
   hl_price_mortgage: 'იპოთეკა',
+
+  /* ── HOMI ASSISTANT ── */
+  hl_price_why: 'რატომ {{credits}}:',
+  hl_reason_MORTGAGE_INTEREST: 'იპოთეკის გვერდზე ქონების შეთავაზებები მოითხოვა',
+  hl_reason_SEARCH_MATCH: 'მისი ქონების ძიება ამ განცხადებას ახლომდებარე ან მსგავს ვარიანტად ემთხვევა',
+  hl_reason_EXACT_SEARCH_MATCH: 'მისი ქონების ძიება ამ განცხადებას ზუსტად ემთხვევა',
+  hl_reason_HIGH_BUDGET: 'მითითებული ბიუჯეტი ამ ბაზრისთვის მაღალ ზღვარს აღწევს',
+  hl_bulk_mortgage_match: 'იპოთეკა და შესაბამისი ძიება × {{n}} ({{price}} თითო)',
+  hl_price_mortgage_match: 'იპოთეკა და ძიება',
+  hl_error_price_changed: 'შეთავაზების შემდეგ ახალმა მონაცემმა ფასი შეცვალა. არაფერი ჩამოგეჭრა. ნახე ახალი ფასი და ხელახლა დაადასტურე.',
+  admin_hs_ml_price_search: 'ფასი შესაბამისი ძიებით',
+  admin_hs_ml_with_search_n: '{{n}} გაიხსნა ამ ფასად',
+
+  /* ── HOMI ASSISTANT ── */
+  privacy_s2_li9: 'თქვენი ქონების ძიების ან იპოთეკის გვერდზე გაკეთებული მოთხოვნის HOMATCH-ის დამთხვევებში შესაბამისი მესაკუთრეებისა და ბროკერებისთვის საჩვენებლად, მხოლოდ მას შემდეგ, რაც შეთავაზებების მიღებას აირჩევთ',
+  privacy_s4_li5_label: 'HOMATCH-ის დამთხვევები, მხოლოდ თქვენი ნებართვით:',
+  privacy_s4_li5_body: 'თუ ქონების შეთავაზებების მიღებას აირჩევთ (მაგალითად, იპოთეკის გვერდზე ან აქტიური ქონების ძიებით), იმ მესაკუთრეებსა და ბროკერებს, რომელთა განცხადებაც თქვენს მოთხოვნას შეესაბამება, შეუძლიათ ნახონ ანონიმური მიმოხილვა: ლოკაცია, ქონების ტიპი, დამრგვალებული ბიუჯეტი, თქვენი ვადები და, თუ იპოთეკის გვერდზე მოითხოვეთ, ის, რომ იპოთეკით ხართ დაინტერესებული. თქვენი სახელი და მხოლოდ თქვენ მიერ არჩეული საკონტაქტო არხები გამოჩნდება მას შემდეგ, რაც თქვენს კონტაქტს გახსნიან. თქვენი შემოსავალი, ვალები, საკრედიტო ისტორია, თავდები, რეზიდენტობა და იპოთეკის გამოთვლები არასოდეს გაზიარდება. ამ პოლიტიკის მიღება თავისთავად ამ ნებართვას არ ნიშნავს: მას ცალკე, მკაფიო არჩევანით გასცემთ და ნებისმიერ დროს შეგიძლიათ გააუქმოთ იპოთეკის გვერდზე ან საკონტაქტო პარამეტრებში, რაც დამთხვევებიდან მაშინვე გამოგრიცხავთ. ამ გაზიარების სამართლებრივი საფუძველი თქვენი თანხმობაა.',
+  terms_s2_body3: 'HOMATCH-ის დამთხვევებში ნაჩვენები ადამიანები პოტენციურად დაინტერესებულები არიან, მათ მიერ მითითებულისა და ჩვენი დამთხვევის საფუძველზე. არავინ არ არის წარმოდგენილი, როგორც გარანტირებული მყიდველი ან მოიჯარე, და კონტაქტის გახსნა არ ნიშნავს, რომ ბანკმა ვინმეს სესხი დაუმტკიცა.',
+  terms_s4_body3: 'HOMATCH-ის დამთხვევები: ადამიანის საკონტაქტო მონაცემების გახსნა ღირს იმ ფასად, რომელიც მის ბარათზე და დადასტურებისას ჩანს, ამ ფასის მიზეზებთან ერთად. ერთსა და იმავე ადამიანზე ერთ ანგარიშზე მხოლოდ ერთხელ იხდით: ვისაც უკვე გახსენით, ხელმისაწვდომი რჩება ახალი გადასახადის გარეშე, განცხადების, ძიების ან შემდგომი ფასის მიუხედავად. თუ ფასი დადასტურებამდე გაიზარდა, არაფერი ჩამოგეჭრებათ და ახალ ფასს ნახავთ.',
+  terms_s5_item8: 'HOMATCH-ის დამთხვევებში მიღებული საკონტაქტო მონაცემები გამოიყენოთ შესაბამისი ქონების შეთავაზების გარდა სხვა მიზნით, გადასცეთ სხვებს ან დაუკავშირდეთ პირებს, რომლებმაც ნებართვა გააუქმეს ან დაგბლოკეს',
+  mortgage_lead_summary_budget: 'ბიუჯეტი მაქსიმუმ {{budget}}',
+  mortgage_lead_summary_area: 'ლოკაცია: {{area}}',
+  mortgage_lead_summary_area_listing: 'ლოკაცია: ამ განცხადების მსგავსი',
+  mortgage_lead_details: 'შეცვალე, რას დაინახავენ გამყიდველები',
+  mortgage_lead_details_hide: 'დეტალების დამალვა',
+  mortgage_lead_privacy_link: 'როგორ ვიყენებთ ამას',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -71031,7 +71083,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_hs_unverified: 'Не проверено',
   admin_hs_ml_saved: 'Сохранённые расчёты',
   admin_hs_ml_saved_hint: 'От {{n}} человек',
-  admin_hs_ml_consented: 'Покупатели с согласием',
+  admin_hs_ml_consented: 'Люди, давшие согласие',
   admin_hs_ml_withdrawn: '{{n}} отозвали',
   admin_hs_ml_unlocks: 'Уникальные открытия',
   admin_hs_ml_revenue: 'Доход от открытий',
@@ -71639,6 +71691,32 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMI ASSISTANT ── */
   hl_price_mortgage: 'Ипотека',
+
+  /* ── HOMI ASSISTANT ── */
+  hl_price_why: 'Почему {{credits}}:',
+  hl_reason_MORTGAGE_INTEREST: 'запросил предложения недвижимости в разделе ипотеки',
+  hl_reason_SEARCH_MATCH: 'его собственный поиск подходит к этому объявлению по соседству или по сходству',
+  hl_reason_EXACT_SEARCH_MATCH: 'его собственный поиск точно подходит к этому объявлению',
+  hl_reason_HIGH_BUDGET: 'указанный бюджет на уровне или выше высокого порога для этого рынка',
+  hl_bulk_mortgage_match: 'Ипотека и подходящий поиск × {{n}} ({{price}} за каждый)',
+  hl_price_mortgage_match: 'Ипотека и поиск',
+  hl_error_price_changed: 'После расчёта новые данные изменили цену. Ничего не списано. Проверь новую цену ниже и подтверди снова.',
+  admin_hs_ml_price_search: 'Цена с подходящим поиском',
+  admin_hs_ml_with_search_n: '{{n}} открыто по этой цене',
+
+  /* ── HOMI ASSISTANT ── */
+  privacy_s2_li9: 'Чтобы показывать ваш поиск недвижимости или запрос из раздела ипотеки подходящим владельцам и брокерам в подборе HOMATCH, только после того, как вы выбрали получать предложения',
+  privacy_s4_li5_label: 'Подбор HOMATCH, только с вашего разрешения:',
+  privacy_s4_li5_body: 'Если вы выбрали получать предложения недвижимости (например, в разделе ипотеки или с активным поиском), владельцы и брокеры подходящих объектов видят анонимный обзор: район, тип недвижимости, округлённый бюджет, ваши сроки и, если вы запросили это в разделе ипотеки, интерес к ипотеке. Ваше имя и только выбранные вами каналы связи показываются после того, как они откроют ваш контакт. Ваш доход, долги, кредитная история, поручитель, резидентство и ипотечные расчёты никогда не передаются. Принятие этой политики само по себе не даёт такого разрешения: вы даёте его отдельным явным выбором и можете отозвать в любой момент в разделе ипотеки или в настройках контактов, после чего вы сразу исчезаете из подбора. Правовое основание такой передачи — ваше согласие.',
+  terms_s2_body3: 'Люди в подборе HOMATCH потенциально заинтересованы, исходя из того, что они указали, и того, что нашёл подбор. Никто не представлен как гарантированный покупатель или арендатор, а открытие контакта не означает, что банк кому-то одобрил кредит.',
+  terms_s4_body3: 'Подбор HOMATCH: открытие контактов человека стоит цену, указанную на его карточке и при подтверждении, вместе с причинами этой цены. За одного и того же человека вы платите на один аккаунт только один раз: те, кого вы уже открыли, остаются доступными без новой оплаты, независимо от объявления, поиска или более поздней цены. Если цена выросла до подтверждения, ничего не списывается и вы видите новую цену.',
+  terms_s5_item8: 'Использовать контакты, полученные в подборе HOMATCH, для чего-либо кроме предложений подходящей недвижимости, передавать их другим или связываться с людьми, отозвавшими разрешение или заблокировавшими вас',
+  mortgage_lead_summary_budget: 'Бюджет до {{budget}}',
+  mortgage_lead_summary_area: 'Район: {{area}}',
+  mortgage_lead_summary_area_listing: 'Район: как у этого объявления',
+  mortgage_lead_details: 'Изменить, что видят продавцы',
+  mortgage_lead_details_hide: 'Скрыть детали',
+  mortgage_lead_privacy_link: 'Как мы это используем',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -94874,7 +94952,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_hs_unverified: 'Doğrulanmadı',
   admin_hs_ml_saved: 'Kayıtlı hesaplamalar',
   admin_hs_ml_saved_hint: '{{n}} kişi tarafından',
-  admin_hs_ml_consented: 'Onay veren alıcılar',
+  admin_hs_ml_consented: 'Onay veren kişiler',
   admin_hs_ml_withdrawn: '{{n}} geri çekti',
   admin_hs_ml_unlocks: 'Benzersiz kilit açmalar',
   admin_hs_ml_revenue: 'Kilit açma geliri',
@@ -95482,6 +95560,32 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMI ASSISTANT ── */
   hl_price_mortgage: 'Konut kredisi',
+
+  /* ── HOMI ASSISTANT ── */
+  hl_price_why: 'Neden {{credits}}:',
+  hl_reason_MORTGAGE_INTEREST: 'konut kredisi bölümünde mülk teklifleri istedi',
+  hl_reason_SEARCH_MATCH: 'kendi mülk araması bu ilanla yakınlık ya da benzerlik üzerinden eşleşiyor',
+  hl_reason_EXACT_SEARCH_MATCH: 'kendi mülk araması bu ilanla tam eşleşiyor',
+  hl_reason_HIGH_BUDGET: 'belirttiği bütçe bu pazarın yüksek değer eşiğinde ya da üstünde',
+  hl_bulk_mortgage_match: 'Konut kredisi ve uygun arama × {{n}} (tanesi {{price}})',
+  hl_price_mortgage_match: 'Kredi ve arama',
+  hl_error_price_changed: 'Teklifinden sonra yeni bir sinyal fiyatı değiştirdi. Hiçbir ücret alınmadı. Aşağıdaki yeni fiyatı kontrol et ve tekrar onayla.',
+  admin_hs_ml_price_search: 'Uygun aramayla fiyat',
+  admin_hs_ml_with_search_n: 'Bu fiyattan {{n}} açıldı',
+
+  /* ── HOMI ASSISTANT ── */
+  privacy_s2_li9: 'Mülk aramanızı veya konut kredisi bölümündeki talebinizi HOMATCH eşleştirmesinde ilgili mülk sahiplerine ve brokerlara göstermek için, yalnızca teklif almayı seçtikten sonra',
+  privacy_s4_li5_label: 'HOMATCH eşleştirmesi, yalnızca izninizle:',
+  privacy_s4_li5_body: 'Mülk teklifleri almayı seçerseniz (örneğin konut kredisi bölümünde ya da aktif bir mülk aramasıyla), ilanı uygun olan mülk sahipleri ve brokerlar anonim bir önizleme görebilir: bölge, mülk tipi, yuvarlanmış bütçe, zamanlamanız ve konut kredisi bölümünde istediyseniz konut kredisine ilginiz. Adınız ve yalnızca seçtiğiniz iletişim kanalları, iletişim bilgilerinizi açtıktan sonra gösterilir. Geliriniz, borçlarınız, kredi geçmişiniz, kefiliniz, mukimliğiniz ve kredi hesaplamalarınız asla paylaşılmaz. Bu politikayı kabul etmek tek başına bu izni vermez: izni ayrı ve açık bir seçimle verirsiniz ve konut kredisi bölümünde ya da iletişim tercihlerinizde istediğiniz zaman geri alabilirsiniz; bu sizi eşleştirmeden hemen çıkarır. Bu paylaşımın hukuki dayanağı rızanızdır.',
+  terms_s2_body3: 'HOMATCH eşleştirmesinde gösterilen kişiler, belirttikleri ve eşleştirmemizin bulduğu bilgilere göre potansiyel olarak ilgilidir. Hiç kimse garantili alıcı ya da kiracı olarak sunulmaz; iletişim bilgilerini açmak bir bankanın kimseye kredi onayladığı anlamına gelmez.',
+  terms_s4_body3: 'HOMATCH eşleştirmesi: bir kişinin iletişim bilgilerini açmak, kartında ve onay ekranında gösterilen fiyata ve o fiyatın gerekçelerine tabidir. Aynı kişi için hesap başına yalnızca bir kez ödersiniz: zaten açtığınız herkes, ilan, arama ya da sonraki fiyat ne olursa olsun yeni bir ücret olmadan erişilebilir kalır. Onaylamadan önce fiyat yükselirse hiçbir ücret alınmaz ve yeni fiyat size gösterilir.',
+  terms_s5_item8: 'HOMATCH eşleştirmesinde elde edilen iletişim bilgilerini ilgili mülk teklifleri dışında bir amaçla kullanmak, başkalarına vermek ya da iznini geri almış veya sizi engellemiş kişilerle iletişime geçmek',
+  mortgage_lead_summary_budget: '{{budget}} bütçeye kadar',
+  mortgage_lead_summary_area: 'Bölge: {{area}}',
+  mortgage_lead_summary_area_listing: 'Bölge: bu ilanla aynı',
+  mortgage_lead_details: 'Satıcıların gördüklerini düzenle',
+  mortgage_lead_details_hide: 'Ayrıntıları gizle',
+  mortgage_lead_privacy_link: 'Bunu nasıl kullanıyoruz',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -118717,7 +118821,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_hs_unverified: 'لم يتم التحقق',
   admin_hs_ml_saved: 'الحسابات المحفوظة',
   admin_hs_ml_saved_hint: 'من {{n}} أشخاص',
-  admin_hs_ml_consented: 'مشترون موافقون',
+  admin_hs_ml_consented: 'أشخاص وافقوا',
   admin_hs_ml_withdrawn: '{{n}} سحبوا موافقتهم',
   admin_hs_ml_unlocks: 'عمليات فتح فريدة',
   admin_hs_ml_revenue: 'إيرادات الفتح',
@@ -119325,6 +119429,32 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMI ASSISTANT ── */
   hl_price_mortgage: 'تمويل عقاري',
+
+  /* ── HOMI ASSISTANT ── */
+  hl_price_why: 'لماذا {{credits}}:',
+  hl_reason_MORTGAGE_INTEREST: 'طلب عروض عقارات في قسم التمويل العقاري',
+  hl_reason_SEARCH_MATCH: 'بحثه العقاري الخاص يطابق هذا الإعلان بالقرب أو بالتشابه',
+  hl_reason_EXACT_SEARCH_MATCH: 'بحثه العقاري الخاص يطابق هذا الإعلان تمامًا',
+  hl_reason_HIGH_BUDGET: 'الميزانية المذكورة عند حد القيمة العالية لهذا السوق أو أعلى',
+  hl_bulk_mortgage_match: 'تمويل عقاري وبحث مطابق × {{n}} ({{price}} لكلٍّ)',
+  hl_price_mortgage_match: 'تمويل وبحث',
+  hl_error_price_changed: 'غيّرت معلومات جديدة السعر بعد عرضك. لم يُخصم شيء. راجع السعر الجديد أدناه وأكّد مرة أخرى.',
+  admin_hs_ml_price_search: 'السعر مع بحث مطابق',
+  admin_hs_ml_with_search_n: 'تم فتح {{n}} بهذا السعر',
+
+  /* ── HOMI ASSISTANT ── */
+  privacy_s2_li9: 'لعرض بحثك العقاري أو طلبك من قسم التمويل العقاري على الملاك والوسطاء المعنيين في مطابقة HOMATCH، فقط بعد أن تختار تلقي العروض',
+  privacy_s4_li5_label: 'مطابقة HOMATCH، بإذنك فقط:',
+  privacy_s4_li5_body: 'إذا اخترت تلقي عروض العقارات (مثلًا في قسم التمويل العقاري أو مع بحث عقاري نشط)، يمكن للملاك والوسطاء الذين يناسب إعلانهم طلبك رؤية معاينة مجهولة الهوية: المنطقة ونوع العقار وميزانية مقرّبة وإطارك الزمني، وإذا طلبت ذلك في قسم التمويل العقاري، اهتمامك بالتمويل العقاري. يظهر اسمك وقنوات التواصل التي اخترتها فقط بعد أن يفتحوا جهة اتصالك. لا تتم مشاركة دخلك وديونك وسجلك الائتماني وكفيلك وإقامتك وحسابات التمويل العقاري أبدًا. قبول هذه السياسة لا يمنح هذا الإذن بحد ذاته: تمنحه باختيار منفصل وصريح، ويمكنك سحبه في أي وقت من قسم التمويل العقاري أو من تفضيلات التواصل، مما يزيلك من المطابقة فورًا. الأساس القانوني لهذه المشاركة هو موافقتك.',
+  terms_s2_body3: 'الأشخاص الذين يظهرون في مطابقة HOMATCH مهتمون محتملون بناءً على ما ذكروه وما وجدته المطابقة. لا يُقدَّم أحد كمشترٍ أو مستأجر مضمون، وفتح جهة الاتصال لا يعني أن بنكًا وافق على قرض لأحد.',
+  terms_s4_body3: 'مطابقة HOMATCH: فتح بيانات اتصال شخص يكلّف السعر المعروض على بطاقته وفي التأكيد، مع أسباب هذا السعر. تدفع مقابل الشخص نفسه مرة واحدة فقط لكل حساب: من فتحته سابقًا يبقى متاحًا دون رسوم جديدة مهما كان الإعلان أو البحث أو السعر اللاحق. إذا ارتفع السعر قبل أن تؤكد، لا يُخصم شيء ويُعرض عليك السعر الجديد.',
+  terms_s5_item8: 'استخدام بيانات الاتصال التي تم الحصول عليها في مطابقة HOMATCH لأي غرض غير عروض العقارات المناسبة، أو تمريرها للآخرين، أو التواصل مع أشخاص سحبوا إذنهم أو حظروك',
+  mortgage_lead_summary_budget: 'ميزانية حتى {{budget}}',
+  mortgage_lead_summary_area: 'المنطقة: {{area}}',
+  mortgage_lead_summary_area_listing: 'المنطقة: نفس منطقة هذا الإعلان',
+  mortgage_lead_details: 'عدّل ما يراه البائعون',
+  mortgage_lead_details_hide: 'إخفاء التفاصيل',
+  mortgage_lead_privacy_link: 'كيف نستخدم ذلك',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -142560,7 +142690,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_hs_unverified: 'לא אומת',
   admin_hs_ml_saved: 'חישובים שמורים',
   admin_hs_ml_saved_hint: 'על ידי {{n}} אנשים',
-  admin_hs_ml_consented: 'קונים שהסכימו',
+  admin_hs_ml_consented: 'אנשים שהסכימו',
   admin_hs_ml_withdrawn: '{{n}} ביטלו',
   admin_hs_ml_unlocks: 'פתיחות ייחודיות',
   admin_hs_ml_revenue: 'הכנסה מפתיחות',
@@ -143168,6 +143298,32 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMI ASSISTANT ── */
   hl_price_mortgage: 'משכנתה',
+
+  /* ── HOMI ASSISTANT ── */
+  hl_price_why: 'למה {{credits}}:',
+  hl_reason_MORTGAGE_INTEREST: 'ביקש הצעות נכסים בעמוד המשכנתה',
+  hl_reason_SEARCH_MATCH: 'החיפוש שלו עצמו מתאים למודעה הזו לפי קרבה או דמיון',
+  hl_reason_EXACT_SEARCH_MATCH: 'החיפוש שלו עצמו מתאים למודעה הזו בדיוק',
+  hl_reason_HIGH_BUDGET: 'התקציב שצוין בסף הערך הגבוה של השוק הזה או מעליו',
+  hl_bulk_mortgage_match: 'משכנתה וחיפוש מתאים × {{n}} ({{price}} לכל אחד)',
+  hl_price_mortgage_match: 'משכנתה וחיפוש',
+  hl_error_price_changed: 'נתון חדש שינה את המחיר אחרי ההצעה. לא חויבת. בדוק את המחיר החדש למטה ואשר שוב.',
+  admin_hs_ml_price_search: 'מחיר עם חיפוש מתאים',
+  admin_hs_ml_with_search_n: '{{n}} נפתחו במחיר הזה',
+
+  /* ── HOMI ASSISTANT ── */
+  privacy_s2_li9: 'כדי להציג את חיפוש הנכס שלך או את הבקשה מעמוד המשכנתה לבעלי נכסים ולמתווכים רלוונטיים בהתאמות של HOMATCH, רק אחרי שבחרת לקבל הצעות',
+  privacy_s4_li5_label: 'ההתאמות של HOMATCH, רק ברשותך:',
+  privacy_s4_li5_body: 'אם בחרת לקבל הצעות נכסים (למשל בעמוד המשכנתה או עם חיפוש נכס פעיל), בעלי נכסים ומתווכים שהמודעה שלהם מתאימה יכולים לראות תצוגה מקדימה אנונימית: אזור, סוג נכס, תקציב מעוגל, לוח הזמנים שלך, ואם ביקשת זאת בעמוד המשכנתה, את העניין שלך במשכנתה. שמך ורק ערוצי הקשר שבחרת מוצגים אחרי שפתחו את איש הקשר שלך. הכנסה, חובות, היסטוריית אשראי, ערב, תושבות וחישובי משכנתה לעולם אינם משותפים. קבלת המדיניות הזו אינה נותנת כשלעצמה את ההרשאה הזו: נותנים אותה בבחירה נפרדת ומפורשת, ואפשר לבטל אותה בכל עת בעמוד המשכנתה או בהעדפות הקשר, מה שמסיר אותך מההתאמות מיד. הבסיס החוקי לשיתוף הזה הוא הסכמתך.',
+  terms_s2_body3: 'האנשים שמוצגים בהתאמות של HOMATCH מתעניינים פוטנציאליים, לפי מה שציינו ומה שההתאמה מצאה. אף אחד לא מוצג כקונה או שוכר מובטח, ופתיחת איש קשר אינה אומרת שבנק אישר למישהו הלוואה.',
+  terms_s4_body3: 'ההתאמות של HOMATCH: פתיחת פרטי הקשר של אדם עולה את המחיר שמוצג בכרטיס שלו ובאישור, יחד עם הסיבות למחיר. על אותו אדם משלמים רק פעם אחת לכל חשבון: מי שכבר פתחת נשאר נגיש בלי חיוב חדש, בלי קשר למודעה, לחיפוש או למחיר מאוחר יותר. אם המחיר עלה לפני שאישרת, לא מחויב דבר ומוצג לך המחיר החדש.',
+  terms_s5_item8: 'להשתמש בפרטי קשר שהתקבלו בהתאמות של HOMATCH לכל דבר מלבד הצעות על נכסים רלוונטיים, להעביר אותם לאחרים או ליצור קשר עם מי שביטל את ההרשאה או חסם אותך',
+  mortgage_lead_summary_budget: 'תקציב עד {{budget}}',
+  mortgage_lead_summary_area: 'אזור: {{area}}',
+  mortgage_lead_summary_area_listing: 'אזור: כמו במודעה הזו',
+  mortgage_lead_details: 'לשנות מה המוכרים רואים',
+  mortgage_lead_details_hide: 'להסתיר את הפרטים',
+  mortgage_lead_privacy_link: 'איך אנחנו משתמשים בזה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

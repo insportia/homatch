@@ -109,11 +109,16 @@ export function mortgageItem() {
   const [base] = internalItems();
   return {
     ...base, matchId: uuid('aaaaaaaa', 4), score: 90, category: 'EXACT', segment: 'MORTGAGE', priceKey: 'MORTGAGE', priceCredits: 3,
-    origin: 'MORTGAGE', mortgage: { calculatorUse: 'REPEATED', lastUseMonth: '2026-10', thisListing: true, timeframe: 'MONTHS_3' },
+    origin: 'MORTGAGE', priceReasons: ['MORTGAGE_INTEREST'], mortgage: { calculatorUse: 'REPEATED', lastUseMonth: '2026-10', thisListing: true, timeframe: 'MONTHS_3' },
     budget: { min: null, max: 130000, currency: 'GEL' }, contactOptions: { message: true, phone: true, email: false },
   };
 }
-const PRICES = { STANDARD: 3, EXACT: 5, PREMIUM: 10, MORTGAGE: 3, active: true, mortgageActive: true };
+/* Mortgage interest AND the person's own search matching this listing: 5 credits, with both reasons. */
+export function mortgageMatchItem() {
+  return { ...mortgageItem(), matchId: uuid('aaaaaaaa', 5), score: 87, segment: 'MORTGAGE_MATCH', priceKey: 'MORTGAGE_MATCH', priceCredits: 5,
+    origin: 'MORTGAGE_AND_SEARCH', priceReasons: ['MORTGAGE_INTEREST', 'EXACT_SEARCH_MATCH'] };
+}
+const PRICES = { STANDARD: 3, EXACT: 5, PREMIUM: 10, MORTGAGE: 3, MORTGAGE_MATCH: 5, active: true, mortgageActive: true, mortgageMatchActive: true };
 
 export const SWITCHES_ON = { maintenance: false, internal: true, curated: true, unlockedLibrary: true };
 
@@ -218,14 +223,14 @@ export async function boot(t, { port, width = 1440, height = 900, lang = 'en', s
       let rows = marked.filter((x) => (unlockedView ? x.unlocked : !x.unlocked));
       if (filters.includes('VIP')) rows = rows.filter((x) => x.category === 'VIP');
       if (filters.includes('EXACT')) rows = rows.filter((x) => x.category === 'EXACT');
-      if (filters.includes('MORTGAGE')) rows = rows.filter((x) => x.segment === 'MORTGAGE');
+      if (filters.includes('MORTGAGE')) rows = rows.filter((x) => x.origin === 'MORTGAGE' || x.origin === 'MORTGAGE_AND_SEARCH');
       if ((p.interests ?? []).length) rows = rows.filter((x) => p.interests.includes(x.interest));
       const limit = Number(p.limit ?? 100);
       const offset = Number(p.offset ?? 0);
       const c = (fn) => marked.filter(fn).length;
       return r.fulfill(json({
         total: rows.length,
-        counts: { ALL: marked.length, LOCKED: c((x) => !x.unlocked), UNLOCKED: c((x) => x.unlocked), EXACT: c((x) => x.category === 'EXACT'), NEARBY: c((x) => x.category === 'NEARBY_SIMILAR'), VIP: c((x) => x.category === 'VIP'), MORTGAGE: c((x) => x.segment === 'MORTGAGE'), STRONG: c((x) => x.band === 'STRONG'), POTENTIAL: c((x) => x.band === 'POTENTIAL') },
+        counts: { ALL: marked.length, LOCKED: c((x) => !x.unlocked), UNLOCKED: c((x) => x.unlocked), EXACT: c((x) => x.category === 'EXACT'), NEARBY: c((x) => x.category === 'NEARBY_SIMILAR'), VIP: c((x) => x.category === 'VIP'), MORTGAGE: c((x) => x.origin === 'MORTGAGE' || x.origin === 'MORTGAGE_AND_SEARCH'), STRONG: c((x) => x.band === 'STRONG'), POTENTIAL: c((x) => x.band === 'POTENTIAL') },
         facets: { districts: ['Krtsanisi', 'Ortachala'], propertyTypes: ['APARTMENT'], countries: { GE: marked.length }, languages: { unknown: marked.length }, interests: { BUY: 2, RENT: 1 } },
         ids: p.withIds ? rows.map((x) => x.matchId) : null,
         prices: PRICES, preferences: null, lastSeenAt: null,
@@ -239,8 +244,8 @@ export async function boot(t, { port, width = 1440, height = 900, lang = 'en', s
       const fresh = sel.filter((x) => !x.unlocked);
       const n = (k) => fresh.filter((x) => x.priceKey === k).length;
       return r.fulfill(json({ requested: ids.length, eligible: sel.length, alreadyUnlocked: sel.length - fresh.length,
-        standardCount: n('STANDARD'), exactCount: n('EXACT'), premiumCount: n('PREMIUM'), mortgageCount: n('MORTGAGE'),
-        standardCredits: n('STANDARD') * 3, exactCredits: n('EXACT') * 5, premiumCredits: n('PREMIUM') * 10, mortgageCredits: n('MORTGAGE') * 3,
+        standardCount: n('STANDARD'), exactCount: n('EXACT'), premiumCount: n('PREMIUM'), mortgageCount: n('MORTGAGE'), mortgageMatchCount: n('MORTGAGE_MATCH'),
+        standardCredits: n('STANDARD') * 3, exactCredits: n('EXACT') * 5, premiumCredits: n('PREMIUM') * 10, mortgageCredits: n('MORTGAGE') * 3, mortgageMatchCredits: n('MORTGAGE_MATCH') * 5,
         totalCredits: fresh.reduce((s, x) => s + x.priceCredits, 0), balance: state.balance, prices: PRICES }));
     }
     if (url.includes('/rpc/internal_lead_contact')) {
@@ -264,6 +269,9 @@ export async function boot(t, { port, width = 1440, height = 900, lang = 'en', s
         state.unlockResults.set(b.idempotencyKey, res);
         return r.fulfill(json(res));
       }
+      /* The server refuses to charge more than the customer confirmed (PRICE_CHANGED, nothing charged). */
+      const due = state.internal.filter((x) => (b.matchIds ?? []).includes(x.matchId) && !x.unlocked).reduce((s, x) => s + x.priceCredits, 0);
+      if (b.expectedCredits != null && due > Number(b.expectedCredits)) return r.fulfill(json({ error: 'PRICE_CHANGED' }, 409));
       let charged = 0;
       const unlocked = [];
       for (const x of state.internal) {

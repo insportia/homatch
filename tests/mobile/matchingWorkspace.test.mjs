@@ -18,7 +18,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { boot, internalItems, mortgageItem, noOverflow, openWorkspace, PROPERTY_ID, shot, testOptions, waitRows } from './matchingWorkspaceFixture.mjs';
+import { boot, internalItems, mortgageItem, mortgageMatchItem, noOverflow, openWorkspace, PROPERTY_ID, shot, testOptions, waitRows } from './matchingWorkspaceFixture.mjs';
 
 /* Unique within the mobile:discovery shard (node --test runs its files in parallel). */
 const PORT = 4397;
@@ -261,6 +261,28 @@ test('Home Financing opt-ins in Matching: beside the others, origin and signals,
   assert.equal(new Set(state.unlockCalls.map((c) => c.idempotencyKey)).size, 1, 'one unlock, one key');
   assert.equal(state.unlockCalls[0].kind, 'internal_leads', 'the existing Matching unlock, not a mortgage one');
   assert.equal(state.balance, 497, 'charged 3 once');
+});
+
+test('value-based price: mortgage + matching search is 5 with both reasons; a price raised after the quote is re-quoted, never charged', opts, async (t) => {
+  const { page, state, BASE } = await boot(t, { port: PORT, width: 390, height: 844, internal: [...internalItems(), mortgageItem(), mortgageMatchItem()] });
+  await openWorkspace(page, BASE, '?product=internal');
+  await waitRows(page, 5);
+  const row = page.locator('[data-testid="mw-row"][data-id="' + mortgageMatchItem().matchId + '"]');
+  assert.equal((await row.locator('[data-testid="mw-row-price"]').textContent()).trim(), '5 credits');
+  assert.match(await row.locator('[data-testid="lead-price-reasons"]').textContent(), /Why 5 credits:[\s\S]*asked for property offers in Home Financing[\s\S]*matches this listing exactly/);
+  assert.match(await text(page, '[data-testid="mw-internal-prices"]'), /Mortgage and search[\s\S]*5 credits/);
+  await row.locator('[data-testid="mw-row-check"]').check();
+  await page.waitForFunction(() => /1 new · 5 credits/.test(document.querySelector('[data-testid="mw-quote"]')?.textContent ?? ''));
+  await page.locator('[data-testid="mw-unlock"]').click();
+  await page.locator('[data-testid="mw-confirm-line-MORTGAGE_MATCH"]').waitFor();
+  assert.match(await text(page, '[data-testid="mw-confirm-line-MORTGAGE_MATCH"]'), /Mortgage interest and a matching search × 1/);
+  /* New evidence after the quote: the server's price rises to 8; the confirmed 5 is refused, nothing charged. */
+  state.internal.find((x) => x.matchId === mortgageMatchItem().matchId).priceCredits = 8;
+  await page.locator('[data-testid="mw-confirm"]').click();
+  await page.locator('[data-testid="mw-confirm-error"][data-code="PRICE_CHANGED"]').waitFor({ timeout: 15000 });
+  assert.equal(state.unlockCalls.at(-1).expectedCredits, 5, 'the confirmed total travels with the unlock');
+  assert.equal(state.balance, 500, 'nothing charged');
+  assert.equal(await page.locator('[data-testid="mw-requote"]').count(), 1, 'a fresh quote is one click away');
 });
 
 test('switches: internal only, curated only, both off (library only), library hidden, nothing at all', opts, async (t) => {

@@ -3031,8 +3031,25 @@ const persistOfficialTransition = (sb: any, j: any, patch: Record<string, any>) 
  * a stuck queue still ends in a report built from the other sources.
  */
 const OFFICIAL_QUEUE_MAX_MS = 45 * 60 * 1000;
+/*
+ * QUEUE TIME IS NOT EXECUTION TIME (owner 2026-10-24, Verify at scale). In
+ * queue mode a job whose official tasks are still waiting their turn never
+ * expires for waiting: the execution window counts from the most recent
+ * start of a task still running, so every task gets its own full window. A
+ * long cap remains so a stuck queue still ends in a report.
+ */
+const OFFICIAL_QUEUE_WAIT_CAP_MS = 3 * 60 * 60 * 1000;
 function officialPastDeadline(j: any, w: any): boolean {
   const launched = Date.parse(j.result_json?._worker?.startedAt || '');
+  if (w?.view === 'queue' && Number(w?.waitingTasks) > 0) return Number.isFinite(launched) && Date.now() - launched > OFFICIAL_QUEUE_WAIT_CAP_MS;
+  if (w?.view === 'queue' && typeof w?.latestRunningStartedAt === 'string') {
+    const startedRun = Date.parse(w.latestRunningStartedAt);
+    if (w.stragglersRetrying) {
+      const last = Date.parse(w.lastFinishedAt || '');
+      if (Number.isFinite(last) && Date.now() - last > OFFICIAL_STRAGGLER_GRACE_MS) return true;
+    }
+    return Number.isFinite(startedRun) && Date.now() - startedRun > OFFICIAL_BROWSER_DEADLINE_MS;
+  }
   if (w?.status === 'QUEUED') return Number.isFinite(launched) && Date.now() - launched > OFFICIAL_QUEUE_MAX_MS;
   const started = Date.parse(w?.runStartedAt || '') || launched;
   if (w?.view === 'queue' && w.stragglersRetrying) {
@@ -3084,6 +3101,14 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     }
     w = queueWorkerView(rows);
     live = officialLiveOf(rows);
+    // Waiting its turn: where it stands and, from measured throughput, when it is likely to start.
+    if (w.status !== 'COMPLETE' && w.waitingTasks > 0) {
+      const { data: pos } = await sb.rpc('verify_queue_position', { p_job_id: j.id });
+      if (pos && typeof pos === 'object') {
+        (w as any).queuePosition = Number(pos.ahead) + 1;
+        (w as any).etaSeconds = typeof pos.etaSeconds === 'number' ? pos.etaSeconds : null;
+      }
+    }
     /*
      * THE CODE DOES NOT EXIST (owner 2026-10-24): every official source, for
      * the code and its parent parcel, confirmed there is no record. The run
@@ -3274,7 +3299,7 @@ function officialWaitProgress(w: any): Record<string, any> {
   const total = Array.isArray(w?.steps) && w.steps.length ? w.steps.length : null;
   const done = Array.isArray(w?.results) ? w.results.length : 0;
   const percent = total ? Math.min(43, 34 + Math.round((done / total) * 9)) : 34;
-  return { phase: 'official_browser', percent, provider: w?.view === 'queue' ? 'queue' : 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null, queuePosition: w?.status === 'QUEUED' && typeof w?.queuePosition === 'number' ? w.queuePosition : null };
+  return { phase: 'official_browser', percent, provider: w?.view === 'queue' ? 'queue' : 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null, queuePosition: (w?.status === 'QUEUED' || Number(w?.waitingTasks) > 0) && typeof w?.queuePosition === 'number' ? w.queuePosition : null, etaSeconds: typeof w?.etaSeconds === 'number' ? w.etaSeconds : null };
 }
 
 // pickFinancialCandidate() / startFinancialEntity() / pollFinancialEntity() /

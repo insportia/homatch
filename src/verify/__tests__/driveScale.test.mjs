@@ -47,3 +47,24 @@ test('research-agent claims through verify_drive_claim, fans out with the cron t
   // The bookkeeping sweeps stay once per tick.
   assert.match(ra, /if \(depth === 0\) \{\n\s+await driveSynthesis\(sb\);/);
 });
+
+test('queue time is not execution time: waiting tasks never expire the stage; each running task gets its own window', async () => {
+  const { queueWorkerView } = await import('../queueOfficial.ts');
+  const row = (k, state, started) => ({ id: k, source: k, dedupe_key: k, state, attempts: 1, started_at: started, created_at: '2026-10-24T10:00:00Z' });
+  const v = queueWorkerView([row('TAS_MAP', 'SUCCEEDED', '2026-10-24T10:01:00Z'), row('tas', 'RUNNING', '2026-10-24T10:20:00Z'), row('mygov', 'QUEUED', null)]);
+  assert.equal(v.waitingTasks, 1);
+  assert.equal(v.latestRunningStartedAt, '2026-10-24T10:20:00Z');
+  assert.match(ra, /if \(w\?\.view === 'queue' && Number\(w\?\.waitingTasks\) > 0\) return Number\.isFinite\(launched\) && Date\.now\(\) - launched > OFFICIAL_QUEUE_WAIT_CAP_MS;/);
+  assert.match(ra, /return Number\.isFinite\(startedRun\) && Date\.now\(\) - startedRun > OFFICIAL_BROWSER_DEADLINE_MS;/);
+  const rec = readFileSync(fileURLToPath(new URL('../officialRecovery.ts', import.meta.url)), 'utf8');
+  assert.match(rec, /in\('state', \['QUEUED', 'WAITING_SHARED'\]\)\.neq\('source', 'rstax'\);\n\s+if \(\(count \?\? 0\) > 0\) return false;/);
+});
+
+test('a waiting job shows its position and a measured estimate', () => {
+  assert.match(ra, /sb\.rpc\('verify_queue_position', \{ p_job_id: j\.id \}\)/);
+  assert.match(ra, /etaSeconds: typeof w\?\.etaSeconds === 'number' \? w\.etaSeconds : null/);
+  const page = readFileSync(fileURLToPath(new URL('../../pages/VerifyPage.tsx', import.meta.url)), 'utf8');
+  assert.match(page, /<ResearchStream queue=\{typeof progress\?\.queuePosition==='number'/);
+  const rs = readFileSync(fileURLToPath(new URL('../../components/verify/ResearchStream.tsx', import.meta.url)), 'utf8');
+  assert.match(rs, /t\('verify_queue_line_eta', \{ n: queue\.position, min:/);
+});

@@ -23110,6 +23110,10 @@ const en = {
   ems_homi_l_consent: 'How do I record consent?',
   ems_homi_l_why: 'Why can some leads not receive email?',
   ems_homi_l_import: 'How do I import a spreadsheet?',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_queue_line: 'Waiting for its turn in the official-source queue. Position: {{n}}.',
+  verify_queue_line_eta: 'Waiting for its turn in the official-source queue. Position: {{n}}, about {{min}} min to start.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -46134,6 +46138,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ems_homi_l_consent: 'როგორ დავაფიქსირო თანხმობა?',
   ems_homi_l_why: 'რატომ ვერ იღებენ ზოგი ლიდი წერილს?',
   ems_homi_l_import: 'როგორ შემოვიტანო ცხრილი?',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_queue_line: 'ოფიციალური წყაროების რიგში ელოდება თავის ჯერს. ადგილი რიგში: {{n}}.',
+  verify_queue_line_eta: 'ოფიციალური წყაროების რიგში ელოდება თავის ჯერს. ადგილი რიგში: {{n}}, დაწყებამდე დაახლოებით {{min}} წთ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -69149,6 +69157,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ems_homi_l_consent: 'Как зафиксировать согласие?',
   ems_homi_l_why: 'Почему некоторые лиды не получают письма?',
   ems_homi_l_import: 'Как импортировать таблицу?',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_queue_line: 'Ожидает своей очереди к официальным источникам. Позиция: {{n}}.',
+  verify_queue_line_eta: 'Ожидает своей очереди к официальным источникам. Позиция: {{n}}, до начала примерно {{min}} мин.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -92162,6 +92174,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ems_homi_l_consent: 'Onayı nasıl kaydederim?',
   ems_homi_l_why: 'Bazı kişiler neden e-posta alamıyor?',
   ems_homi_l_import: 'Bir tabloyu nasıl içe aktarırım?',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_queue_line: 'Resmi kaynak kuyruğunda sırasını bekliyor. Sıra: {{n}}.',
+  verify_queue_line_eta: 'Resmi kaynak kuyruğunda sırasını bekliyor. Sıra: {{n}}, başlamasına yaklaşık {{min}} dk.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -115175,6 +115191,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ems_homi_l_consent: 'كيف أسجّل الموافقة؟',
   ems_homi_l_why: 'لماذا لا يستطيع بعض العملاء الاستلام؟',
   ems_homi_l_import: 'كيف أستورد جدولًا؟',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_queue_line: 'في انتظار دوره في قائمة المصادر الرسمية. الترتيب: {{n}}.',
+  verify_queue_line_eta: 'في انتظار دوره في قائمة المصادر الرسمية. الترتيب: {{n}}، حوالي {{min}} دقيقة حتى البدء.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -138188,6 +138208,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   ems_homi_l_consent: 'איך רושמים הסכמה?',
   ems_homi_l_why: 'למה חלק מהלידים לא יכולים לקבל מייל?',
   ems_homi_l_import: 'איך מייבאים גיליון?',
+
+  /* ── VERIFY AT SCALE ── */
+  verify_queue_line: 'ממתין לתורו בתור המקורות הרשמיים. מיקום: {{n}}.',
+  verify_queue_line_eta: 'ממתין לתורו בתור המקורות הרשמיים. מיקום: {{n}}, כ-{{min}} דקות עד ההתחלה.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -256,7 +256,7 @@ const PAGE_CENSUS = () => ({
   pathways: [...document.querySelectorAll('[data-expat-pathway]')].map((a) => a.getAttribute('href')),
   cities: document.querySelectorAll('[data-expat-city]').length,
   drawers: document.querySelectorAll('[data-expat-evidence-open]').length,
-  costRows: document.querySelectorAll('[data-expat-cost-row]').length,
+  starter: document.querySelector('[data-expat-plan-starter]') !== null,
   anchorTargets: ['plan', 'needs', 'topics', 'tools'].filter((id) => document.getElementById(id)),
   scrollWidth: document.body.scrollWidth,
   clientWidth: document.documentElement.clientWidth,
@@ -489,6 +489,7 @@ test('FOR EXPATS navigation goes where it says', opts, async (t) => {
   /*
    * A Georgian landing page in Georgian.
    *
+   * (2026-10-24: the cost section is gone; the start and the guide carry the check.)
    * The cost note was a plain `text` column while every other content
    * field was locale-keyed, so the Georgian page rendered its headings,
    * its categories and its coverage copy in Georgian and then a paragraph
@@ -498,16 +499,16 @@ test('FOR EXPATS navigation goes where it says', opts, async (t) => {
   {
     const { ctx, page } = await open('/for-expats/georgia', 'ka');
     const rows = await page.evaluate(() =>
-      [...document.querySelectorAll('[data-expat-cost-row] p')].map((p) => p.textContent.trim()));
+      [...document.querySelectorAll('[data-expat-plan-starter] h2, [data-expat-plan-starter] p, [data-guide-hub] h3')].map((p) => p.textContent.trim()));
     for (const text of rows) {
       /* Four or more consecutive Latin letters, three times over, is a
          sentence rather than a unit or a brand: "Mbps", "GEL" and
          "Magticom" each survive this, "The operator's published price"
          does not. */
       const latin = (text.match(/[A-Za-z]{4,}/g) || []).filter((w) => !/^(Mbps|Magticom)$/.test(w));
-      if (latin.length >= 3) failures.push(`Georgian cost row is in English: "${text.slice(0, 70)}" (${latin.slice(0, 5).join(' ')})`);
+      if (latin.length >= 3) failures.push(`Georgian landing copy is in English: "${text.slice(0, 70)}" (${latin.slice(0, 5).join(' ')})`);
     }
-    if (!rows.some((t) => /[Ⴀ-ჿ]/.test(t))) failures.push('no Georgian in any cost row note');
+    if (!rows.some((t) => /[Ⴀ-ჿ]/.test(t))) failures.push('no Georgian in the My Georgia start or the guide');
     await ctx.close();
   }
 
@@ -544,17 +545,18 @@ test('FOR EXPATS navigation goes where it says', opts, async (t) => {
     const anon = await open('/for-expats/georgia', 'en');
     const c = await anon.page.evaluate(PAGE_CENSUS);
     if (c.path !== '/for-expats/georgia') failures.push(`the landing page redirected an anonymous visitor to ${c.path}`);
-    if (c.costRows < 2) failures.push('the cost tool did not render for an anonymous visitor');
+    if (!c.starter) failures.push('the My Georgia start did not render for an anonymous visitor');
     await anon.ctx.close();
 
-    const gated = await open('/for-expats/plan', 'en');
+    /* The plan lives in My Georgia now: the old address leads there, and the dashboard is the account's. */
+    const gated = await open('/my-georgia', 'en');
     const g = await gated.page.evaluate(PAGE_CENSUS);
-    if (g.path === '/for-expats/plan') failures.push('the plan rendered for a signed-out visitor');
+    if (g.path === '/my-georgia') failures.push('My Georgia rendered for a signed-out visitor');
     await gated.ctx.close();
 
     const member = await open('/for-expats/plan', 'en', { signedIn: true });
     const m = await member.page.evaluate(PAGE_CENSUS);
-    if (m.path !== '/for-expats/plan') failures.push(`a signed-in visitor was sent to ${m.path} instead of the plan`);
+    if (m.path !== '/my-georgia') failures.push(`a signed-in visitor was sent to ${m.path} instead of My Georgia`);
     await member.ctx.close();
   }
 

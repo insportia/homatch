@@ -23,18 +23,24 @@
 //
 // emits those topics, their facts and the sources they cite, with no
 // begin/commit (the migration runner owns the transaction) and no cost
-// observations. Used for 20261203090000_for_expats_documents_and_tax.
+// observations. Used for 20261203090000_for_expats_documents_and_tax (the two
+// missing guides and the eight Georgia living guides).
 
-import { SOURCES } from './sources.mjs';
+import { SOURCES as BASE_SOURCES } from './sources.mjs';
+import { GUIDE_SOURCES } from './sources-guide.mjs';
 import { MOVE_TOPICS } from './topics-move.mjs';
 import { LIVE_TOPICS } from './topics-live.mjs';
 import { MONEY_TOPICS } from './topics-money.mjs';
 import { MORE_TOPICS } from './topics-more.mjs';
+import { GUIDE_TOPICS } from './topics-guide.mjs';
+
+/* The guide sources live in their own file; one lookup for both. */
+const SOURCES = { ...BASE_SOURCES, ...GUIDE_SOURCES };
 import { COST_OBSERVATIONS } from './cost-observations.mjs';
 
 const onlyArg = process.argv.indexOf('--only');
 const ONLY = onlyArg > 0 ? new Set(String(process.argv[onlyArg + 1] ?? '').split(',').filter(Boolean)) : null;
-const ALL_TOPICS = [...MOVE_TOPICS, ...LIVE_TOPICS, ...MONEY_TOPICS, ...MORE_TOPICS];
+const ALL_TOPICS = [...MOVE_TOPICS, ...LIVE_TOPICS, ...MONEY_TOPICS, ...MORE_TOPICS, ...GUIDE_TOPICS];
 const TOPICS = ONLY ? ALL_TOPICS.filter((t) => ONLY.has(t.slug)) : ALL_TOPICS;
 if (ONLY && TOPICS.length !== ONLY.size) throw new Error('--only names a topic that does not exist');
 /* With --only, just the sources those topics cite. */

@@ -64,7 +64,8 @@ const DesignStudioPage = lazyRoute(() => import('./pages/designStudio/DesignStud
 const DesignStudioWorkspacePage = lazyRoute(() => import('./pages/designStudio/DesignStudioWorkspacePage'));
 const DesignStudioHomePage = lazyRoute(() => import('./pages/designStudio/DesignStudioHomePage'));
 const ExpatTopicPage = lazyRoute(withFeatureStrings(() => import('./pages/ExpatTopicPage')));
-const ExpatPlanPage = lazyRoute(withFeatureStrings(() => import('./pages/ExpatPlanPage')));
+const MyGeorgiaPage = lazyRoute(withFeatureStrings(() => import('./pages/MyGeorgiaPage')));
+const MyGeorgiaStartPage = lazyRoute(withFeatureStrings(() => import('./pages/MyGeorgiaStartPage')));
 /*
  * HOMATCH INVESTMENT INTELLIGENCE.
  *
@@ -379,7 +380,10 @@ const routeTable: RouteConfig[] = [
    */
   { name: 'For Expats',        path: '/for-expats',               element: <Navigate to="/for-expats/georgia" replace />, public: true },
   { name: 'For Expats',        path: '/for-expats/georgia',       element: <ForExpatsPage />,     public: true },
-  { name: 'My Expat Plan',     path: '/for-expats/plan',          element: <ExpatPlanPage />,     public: false },
+  /* The plan now lives in My Georgia by HOMI (2026-10-24): one place for the profile, the plan and the guides. */
+  { name: 'My Expat Plan',     path: '/for-expats/plan',          element: <Navigate to="/my-georgia" replace />, public: true, visible: false },
+  { name: 'My Georgia',        path: '/my-georgia',               element: <MyGeorgiaPage />,     public: false },
+  { name: 'My Georgia start',  path: '/my-georgia/start',         element: <MyGeorgiaStartPage />, public: true },
   { name: 'For Expats topic',  path: '/for-expats/georgia/:slug', element: <ExpatTopicPage />,    public: true },
   /*
    * HOMATCH DESIGN STUDIO — "now that I have THIS space, let me design it".

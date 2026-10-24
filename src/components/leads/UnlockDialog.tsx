@@ -125,6 +125,12 @@ export function UnlockDialog({
                   <dd className="font-semibold tabular-nums" dir="ltr">{cr(quote.mortgageMatchCredits)}</dd>
                 </div>
               ) : null}
+              {quote.expatCount > 0 ? (
+                <div className="flex items-baseline justify-between gap-3 px-3 py-2.5 text-sm" data-testid="unlock-expat-row">
+                  <dt>{t('hl_bulk_expat', { n: quote.expatCount, price: cr(quote.prices.EXPAT ?? 5) })}</dt>
+                  <dd className="font-semibold tabular-nums" dir="ltr">{cr(quote.expatCredits)}</dd>
+                </div>
+              ) : null}
               {quote.premiumCount > 0 ? (
                 <div className="flex items-baseline justify-between gap-3 px-3 py-2.5 text-sm">
                   <dt>{t('hl_bulk_premium', { n: quote.premiumCount, price: cr(quote.prices.PREMIUM) })}</dt>

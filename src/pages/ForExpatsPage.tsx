@@ -30,7 +30,7 @@ import PageMeta from '@/components/common/PageMeta';
 import { ExpatHero } from '@/components/expats/ExpatHero';
 import { ExpatSeo } from '@/components/expats/ExpatSeo';
 import { GeorgiaAtAGlance } from '@/components/expats/GeorgiaAtAGlance';
-import { TopicIndex } from '@/components/expats/TopicIndex';
+import { GuideHub } from '@/components/expats/GuideHub';
 import { WhatChanged } from '@/components/expats/WhatChanged';
 import WhatDoYouNeed from '@/components/expats/WhatDoYouNeed';
 import { ExpatPlanStarter } from '@/components/expats/ExpatPlanStarter';
@@ -115,7 +115,12 @@ export default function ForExpatsPage() {
             sticky header. The monthly cost, budget and rental group sections
             were removed on the owner's instruction (2026-10-24). */}
         <div id="topics" className="scroll-mt-24">
-          <TopicIndex topics={topics} />
+          {/* The Georgia living guide: twelve categories, every card a sourced, dated guide. */}
+          <section data-expat-guide>
+            <p className="mb-2 text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--gold-ink))]">{t('expat_topics_eyebrow')}</p>
+            <h2 className="mb-6 font-display text-2xl font-semibold text-foreground sm:text-3xl">{t('expat_topics_title')}</h2>
+            <GuideHub topics={topics} />
+          </section>
         </div>
 
         <WhatChanged updates={updates} />

@@ -11,6 +11,10 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // My Georgia by HOMI: the product name is the same in every language; Kutaisi and Zugdidi are spelled so in Turkish.
+  'mg_product',
+  'mg_city_kutaisi',
+  'mg_city_zugdidi',
   // Email deliverability: mailbox providers are brand names in every language.
   'ems_dq_mailbox_gmail',
   'ems_dq_mailbox_yahoo',

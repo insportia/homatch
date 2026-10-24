@@ -4,13 +4,22 @@
 // only what the member agreed to share. Budget, area and property type are the search itself and
 // appear in the card like any other. Nothing from the calculation exists to show.
 
-import { Landmark } from 'lucide-react';
+import { Globe2, Landmark } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { isMortgageOrigin, mortgageSignalLines, priceReasonLines } from '@/leads/mortgageSignals';
+import { expatSignalLines, isExpatOrigin, isMortgageOrigin, mortgageSignalLines, priceReasonLines } from '@/leads/mortgageSignals';
+import { countryName } from '@/components/matching/workspace/format';
 import type { LeadItem } from '@/services/homatchLeads';
 
 export function MortgagePill({ lead }: { lead: Pick<LeadItem, 'origin' | 'segment'> }) {
   const { t } = useLanguage();
+  /* A completed My Georgia profile: "potentially interested", never a confirmed buyer. */
+  if (isExpatOrigin(lead)) {
+    return (
+      <span data-testid="lead-origin-expat" className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--gold-soft))] px-2.5 py-1 text-xs font-semibold text-[hsl(var(--gold-ink))]">
+        <Globe2 className="h-3.5 w-3.5" aria-hidden="true" />{t('hl_origin_expat')}
+      </span>
+    );
+  }
   if (!isMortgageOrigin(lead)) return null;
   return (
     <span data-testid="lead-origin-mortgage" className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--gold-soft))] px-2.5 py-1 text-xs font-semibold text-[hsl(var(--gold-ink))]">
@@ -31,9 +40,13 @@ export function PriceReasons({ lead, credits }: { lead: Pick<LeadItem, 'priceRea
   );
 }
 
-export function MortgageSignals({ lead, compact = false }: { lead: Pick<LeadItem, 'mortgage'>; compact?: boolean }) {
+export function MortgageSignals({ lead, compact = false }: { lead: Pick<LeadItem, 'mortgage' | 'expat'>; compact?: boolean }) {
   const { t, lang } = useLanguage();
-  const lines = mortgageSignalLines(lead, t, lang === 'ka' ? 'ka-GE' : lang);
+  const locale = lang === 'ka' ? 'ka-GE' : lang;
+  const lines = [
+    ...expatSignalLines(lead, t, locale, (code) => countryName(code, lang)),
+    ...mortgageSignalLines(lead, t, locale),
+  ];
   if (lines.length === 0) return null;
   return (
     <ul data-testid="lead-mortgage-signals" className={compact ? 'mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-2xs text-[hsl(224_14%_30%)]' : 'mt-1.5 grid gap-0.5 text-xs text-[hsl(224_14%_26%)]'}>

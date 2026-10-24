@@ -191,7 +191,8 @@ test('every internal FOR EXPATS link resolves to a route or an anchor on its pag
     ...fs.readdirSync(path.join(ROOT, 'src/components/expats')).map((f) => `src/components/expats/${f}`),
     'src/pages/ForExpatsPage.tsx',
     'src/pages/ExpatTopicPage.tsx',
-    'src/pages/ExpatPlanPage.tsx',
+    'src/pages/MyGeorgiaPage.tsx',
+    'src/pages/MyGeorgiaStartPage.tsx',
   ];
 
   const dead = [];

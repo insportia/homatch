@@ -268,7 +268,7 @@ export function OwnerDemoJourney({ propertyId, propertyLabel, onExit }: {
       const price = payload?.profile.details?.unlock_credits ?? 2.5;
       return {
         requested: 1, eligible: unlocked ? 0 : 1, alreadyUnlocked: unlocked ? 1 : 0,
-        standardCount: unlocked ? 0 : 1, exactCount: 0, premiumCount: 0, mortgageCount: 0, mortgageMatchCount: 0, standardCredits: unlocked ? 0 : price, exactCredits: 0, premiumCredits: 0, mortgageCredits: 0, mortgageMatchCredits: 0,
+        standardCount: unlocked ? 0 : 1, exactCount: 0, premiumCount: 0, mortgageCount: 0, mortgageMatchCount: 0, expatCount: 0, standardCredits: unlocked ? 0 : price, exactCredits: 0, premiumCredits: 0, mortgageCredits: 0, mortgageMatchCredits: 0, expatCredits: 0,
         totalCredits: unlocked ? 0 : price, balance: null, prices: { STANDARD: price, EXACT: price, PREMIUM: 6, MORTGAGE: price, MORTGAGE_MATCH: price, active: true },
       };
     },

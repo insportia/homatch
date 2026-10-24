@@ -136,22 +136,6 @@ export function AISection() {
         </div>
       </div>
 
-      <div className="mt-8 min-w-0 sm:mt-10" onMouseEnter={look('pointing', -1)} onMouseLeave={rest} onFocusCapture={look('pointing', -1)} onBlurCapture={rest}>
-        <HomatchAsk variant="console" placeholder={t('mp_hero_ai_placeholder')} actions={[]} />
-
-        <p className="mt-7 text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground" {...fp('intent_label')}>
-          {sf('intent_label', 'mp_intent_label')}
-        </p>
-        {/* Eight questions, eight fields. Keyed by the intent rather than
-            numbered, because the set is fixed here and an admin's rewrite
-            should follow the question it belongs to. */}
-        <IntentCards
-          className="mt-4"
-          text={intent => sf(`q_${intent.key}`, intent.prompt)}
-          mark={intent => fp(`q_${intent.key}`)}
-        />
-      </div>
-
       {/*
         * WHAT A QUESTION REACHES — the HOMI panel.
         *
@@ -162,7 +146,7 @@ export function AISection() {
         */}
       <div
         id="homi-reach"
-        className="relative mt-10 scroll-mt-24 overflow-clip rounded-[1.5rem] border border-[hsl(38_92%_56%)]/25 bg-[#0C1119] px-3.5 py-5 text-white shadow-[0_30px_80px_-40px_rgba(0,0,0,0.6)] sm:mt-12 sm:p-8"
+        className="relative mt-8 scroll-mt-24 overflow-clip rounded-[1.5rem] border border-[hsl(38_92%_56%)]/25 bg-[#0C1119] px-3.5 py-5 text-white shadow-[0_30px_80px_-40px_rgba(0,0,0,0.6)] sm:mt-12 sm:p-8"
       >
         <div aria-hidden="true" className="pointer-events-none absolute -start-24 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(245,166,35,0.22),transparent_65%)]" />
         <div aria-hidden="true" className="pointer-events-none absolute -bottom-32 end-0 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(79,178,255,0.14),transparent_65%)]" />
@@ -246,6 +230,22 @@ export function AISection() {
           </ul>
         </div>
       </div>
+      <div className="mt-8 min-w-0 sm:mt-10" onMouseEnter={look('pointing', -1)} onMouseLeave={rest} onFocusCapture={look('pointing', -1)} onBlurCapture={rest}>
+        <HomatchAsk variant="console" placeholder={t('mp_hero_ai_placeholder')} actions={[]} />
+
+        <p className="mt-7 text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground" {...fp('intent_label')}>
+          {sf('intent_label', 'mp_intent_label')}
+        </p>
+        {/* Eight questions, eight fields. Keyed by the intent rather than
+            numbered, because the set is fixed here and an admin's rewrite
+            should follow the question it belongs to. */}
+        <IntentCards
+          className="mt-4"
+          text={intent => sf(`q_${intent.key}`, intent.prompt)}
+          mark={intent => fp(`q_${intent.key}`)}
+        />
+      </div>
+
     </section>
   );
 }

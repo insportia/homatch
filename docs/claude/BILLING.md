@@ -239,6 +239,20 @@ warns when a diff enters this domain.
   applied once, on the customer price; top-ups carry no VAT (payments
   vat_rate_bps 0).
 
+## External Leads Database (owner, 2026-10-24)
+
+- Product `CURATED_LEAD`: **$0.10 per lead = 1 credit** (10 credits = $1), final and
+  VAT-inclusive, set in cents by `admin_curated_set_price` (audited). PAYG, no plan.
+  Finance V2 service `curated_leads`, policy `fixed_retail_v1`.
+- One entitlement per account and lead (`curated_lead_unlocks` UNIQUE): a purchase never
+  removes the lead from the shared catalog; the same account is never charged twice.
+- `curated_leads_unlock` (service role, via `atomic-unlock` kind `curated_leads`): advisory lock
+  per account, idempotency key replay, all-or-nothing reserve → settle of exactly
+  new-leads × price, refuses a selection that grew past the confirmed `expectedCredits`
+  (`PRICE_CHANGED`), ≤ 5,000 new leads per purchase; contacts land in the account's
+  standing "HOMATCH Curated Leads" email list in the same transaction.
+- Internal-match unlock prices (3 / 5 / 10 credits) are unchanged and separate.
+
 ## Where it lives
 
 - Edge: `supabase/functions/{billing,credits-topup,payment-webhook,

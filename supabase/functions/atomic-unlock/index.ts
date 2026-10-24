@@ -10,7 +10,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
 import { judgeActiveDemand } from '../../../src/research-core/discovery/freshness-policy.ts';
-import { parseUnlockRequest, unlockErrorCode } from '../_shared/internalLeads.ts';
+import { parseCuratedUnlockRequest, parseUnlockRequest, unlockErrorCode } from '../_shared/internalLeads.ts';
+import { serviceBackendEnabled } from '../_shared/serviceControl.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -42,6 +43,10 @@ serve(async (req) => {
        project is at its edge-function cap. Nothing below changes for external matches. */
     if (body && (body as { kind?: unknown }).kind === 'internal_leads') {
       return await unlockInternalLeads(req, supabaseUser, supabaseAdmin, authHeader, body);
+    }
+    /* The External Leads Database: a third product, its own entitlements and price (CURATED_LEAD). */
+    if (body && (body as { kind?: unknown }).kind === 'curated_leads') {
+      return await unlockCuratedLeads(supabaseUser, supabaseAdmin, authHeader, body);
     }
     const { matchId } = (body ?? {}) as { matchId?: string };
     if (!matchId) return json({ error: 'matchId required' }, 400);
@@ -283,6 +288,9 @@ async function unlockInternalLeads(req: Request, supabaseUser: any, supabaseAdmi
   if (hmUser.suspended_at) return json({ error: 'ACCOUNT_SUSPENDED' }, 403);
   const parsed = parseUnlockRequest({ ...(body as Record<string, unknown>), kind: undefined, action: 'unlock' });
   if (!parsed.ok) return json({ error: parsed.error }, 400);
+  /* Internal Matches switched off (or matching in maintenance): no NEW unlocks. Members already
+     unlocked stay readable through the feed's UNLOCKED view. */
+  if (!(await internalMatchingOpen(supabaseAdmin))) return json({ error: 'SERVICE_DISABLED' }, 503);
   const { data, error } = await supabaseAdmin.rpc('internal_leads_unlock', {
     p_user_id: hmUser.id, p_match_ids: parsed.matchIds, p_idempotency_key: parsed.idempotencyKey,
   });
@@ -300,4 +308,40 @@ function json(data: unknown, status = 200) {
     status,
     headers: { ...CORS, 'Content-Type': 'application/json' },
   });
+}
+
+// deno-lint-ignore no-explicit-any
+async function internalMatchingOpen(supabaseAdmin: any): Promise<boolean> {
+  if (!(await serviceBackendEnabled(supabaseAdmin, 'internal_matching'))) return false;
+  const { data } = await supabaseAdmin.from('admin_settings').select('value').eq('key', 'matching_maintenance_mode').maybeSingle();
+  return !(data && (data.value === true || data.value === 'true'));
+}
+
+/*
+ * External Leads Database unlock — curated_leads_unlock() is all-or-nothing, idempotent on the
+ * caller's key, serialised per account, never charges a lead the account already holds, refuses a
+ * selection that grew past the confirmed price, and saves the contacts to the account's email list
+ * in the same transaction. It also refuses while sales are off or matching is in maintenance.
+ */
+// deno-lint-ignore no-explicit-any
+async function unlockCuratedLeads(supabaseUser: any, supabaseAdmin: any, authHeader: string, body: unknown) {
+  const { data: { user }, error: authErr } = await supabaseUser.auth.getUser();
+  if (authErr || !user) return json({ error: 'UNAUTHORIZED' }, 401);
+  const impersonating = await refuseIfImpersonating(supabaseAdmin, authHeader, CORS);
+  if (impersonating) return impersonating;
+  const { data: hmUser } = await supabaseAdmin.from('users').select('id,suspended_at').eq('auth_id', user.id).maybeSingle();
+  if (!hmUser) return json({ error: 'USER_NOT_FOUND' }, 404);
+  if (hmUser.suspended_at) return json({ error: 'ACCOUNT_SUSPENDED' }, 403);
+  const parsed = parseCuratedUnlockRequest(body);
+  if (!parsed.ok) return json({ error: parsed.error }, 400);
+  if (!(await serviceBackendEnabled(supabaseAdmin, 'curated_leads'))) return json({ error: 'SERVICE_DISABLED' }, 503);
+  const { data, error } = await supabaseAdmin.rpc('curated_leads_unlock', {
+    p_user_id: hmUser.id, p: parsed.selection, p_idempotency_key: parsed.idempotencyKey,
+  });
+  if (error) {
+    const code = unlockErrorCode(error.message);
+    if (code === 'INTERNAL') console.error('[atomic-unlock:curated_leads]', error.message);
+    return json({ error: code }, code === 'INSUFFICIENT_CREDITS' ? 402 : code === 'SERVICE_DISABLED' ? 503 : code === 'INTERNAL' ? 500 : 409);
+  }
+  return json({ success: true, ...(data as Record<string, unknown>) });
 }

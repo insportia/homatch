@@ -103,7 +103,8 @@ test('pausing reports failure instead of claiming a pause that did not happen', 
   assert.match(fn.slice(0, 1600), /Could not pause the campaign/);
   assert.match(fn.slice(0, 1600), /Could not pause the property/);
 
-  for (const p of ['MatchesPage.tsx', 'PropertyDetailPage.tsx']) {
+  /* PropertyDetailPage no longer runs campaigns (matching workspace, 2026-10-24); MatchesPage keeps the guarantee. */
+  for (const p of ['MatchesPage.tsx']) {
     const page = fs.readFileSync(path.join(ROOT, 'src', 'pages', 'property', p), 'utf8');
     const handler = page.slice(page.indexOf('pauseMatchingCampaign(propertyId'));
     assert.match(handler.slice(0, 700), /matches_pause_error/, `${p} must surface a failed pause`);

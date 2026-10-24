@@ -15,9 +15,16 @@
 // It does not estimate. `reachable` counts rows the database says have a valid
 // phone and no suppression; `invalid` counts the rest. Neither is a projection,
 // and when the account is empty it says so rather than rendering zeros.
+//
+// WHERE PEOPLE CAME FROM
+//
+// Source (HOMATCH External Leads Database, HOMATCH Internal Matches, the user's own
+// uploads, Find Buyers), language (incl. none recorded) and country are server-side
+// filters kept in the URL (?source=&language=&country=&list=), so another screen can
+// link straight to "my purchased leads": /outreach/contacts?source=CURATED_LEAD.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Users, Upload, Search, UserPlus, PhoneOff, ShieldCheck, Globe } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,8 +42,28 @@ import {
 } from '@/components/communications/channel';
 import { AddContactDialog } from '@/components/communications/AddContactDialog';
 import type { CommContact } from '@/types/communications';
+import {
+  CAMPAIGN_LANGUAGES, CONTACT_SOURCE_FILTERS, type ContactFilters, type ContactSourceFilter, UNKNOWN_LANGUAGE,
+  contactFiltersToParams, parseContactFilters, sourceFilterOf,
+} from '@/emailMarketing/leadCampaigns';
+import { cn } from '@/lib/utils';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
+
+/** Toolbar / badge copy per source. */
+const SOURCE_LABEL_KEY: Record<ContactSourceFilter, TKey> = {
+  CURATED_LEAD: 'mwe_source_curated',
+  INTERNAL_MATCH: 'mwe_source_internal',
+  UPLOADED: 'mwe_source_uploaded',
+  FIND_BUYERS: 'mwe_source_find_buyers',
+};
+const SOURCE_TONE: Record<ContactSourceFilter, string> = {
+  CURATED_LEAD: 'border-[hsl(38_92%_50%)]/40 bg-[hsl(38_92%_50%)]/[0.08] text-[hsl(32_80%_28%)]',
+  INTERNAL_MATCH: 'border-sky-600/30 bg-sky-500/[0.06] text-sky-900',
+  UPLOADED: 'text-muted-foreground',
+  FIND_BUYERS: 'border-violet-600/30 bg-violet-500/[0.06] text-violet-900',
+};
+
 
 export default function ContactsPage() {
   const { t, lang: language } = useLanguage();
@@ -72,7 +99,17 @@ export default function ContactsPage() {
   const [segments, setSegments] = useState<Array<{
     id: string; name: string; total_rows: number; valid_rows: number;
   }>>([]);
-  const [segmentId, setSegmentId] = useState<string | null>(null);
+  /* Filters live in the URL so a link can open the manager already filtered. */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters = useMemo(() => parseContactFilters(searchParams), [searchParams]);
+  const segmentId = filters.list;
+  const setFilter = useCallback((patch: Partial<ContactFilters>) => {
+    setLoading(true);
+    setSearchParams((prev) => contactFiltersToParams({ ...parseContactFilters(prev), ...patch }, prev), { replace: true });
+  }, [setSearchParams]);
+  const setSegmentId = (id: string | null) => setFilter({ list: id });
+  /* Countries seen so far, so the country picker offers real values rather than a world list. */
+  const [seenCountries, setSeenCountries] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -82,15 +119,21 @@ export default function ContactsPage() {
       const res = await listContacts({
         search: search.trim() || undefined, pageSize: 100, channel: channel ?? undefined,
         listId: segmentId ?? undefined,
+        source: filters.source, language: filters.language, country: filters.country,
       });
       setRows(res.rows);
+      setSeenCountries((prev) => {
+        const next = new Set(prev);
+        for (const r of res.rows) if (r.country && /^[A-Za-z]{2}$/.test(r.country)) next.add(r.country.toUpperCase());
+        return next.size === prev.length ? prev : [...next].sort();
+      });
       setTotal(res.total);
     } catch {
       setError('comms_contacts_load_failed');
     } finally {
       setLoading(false);
     }
-  }, [search, channel, segmentId]);
+  }, [search, channel, segmentId, filters.source, filters.language, filters.country]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { void listAudienceSegments().then(setSegments).catch(() => setSegments([])); }, []);
@@ -179,6 +222,57 @@ export default function ContactsPage() {
               className="h-8 ps-8 text-xs"
             />
           </div>
+          <label className="sr-only" htmlFor="contacts-language">{t('comm_field_language')}</label>
+          <select
+            id="contacts-language"
+            value={filters.language ?? ''}
+            onChange={(e) => setFilter({ language: e.target.value || null })}
+            className="h-8 max-w-full rounded-md border border-input bg-background px-2 text-xs"
+          >
+            <option value="">{t('mwe_filter_all_languages')}</option>
+            {[...new Set<string>([...CAMPAIGN_LANGUAGES, ...(filters.language && filters.language !== UNKNOWN_LANGUAGE ? [filters.language] : [])])].map((l) => (
+              <option key={l} value={l}>{l.toUpperCase()}</option>
+            ))}
+            <option value={UNKNOWN_LANGUAGE}>{t('mwe_lang_unknown')}</option>
+          </select>
+          <label className="sr-only" htmlFor="contacts-country">{t('comms_contacts_country')}</label>
+          <select
+            id="contacts-country"
+            value={filters.country ?? ''}
+            onChange={(e) => setFilter({ country: e.target.value || null })}
+            className="h-8 max-w-full rounded-md border border-input bg-background px-2 text-xs"
+          >
+            <option value="">{t('mwe_filter_all_countries')}</option>
+            {[...new Set<string>([...seenCountries, ...(filters.country ? [filters.country] : [])])].map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Source chips: where each person came from. Server-side, and in the URL. */}
+        <div className="mb-3 flex flex-wrap items-center gap-1.5" role="group" aria-label={t('mwe_filter_source')}>
+          <button
+            type="button"
+            onClick={() => setFilter({ source: null })}
+            aria-pressed={filters.source === null}
+            className={cn('h-7 rounded-full border px-2.5 text-xs font-medium transition-colors',
+              filters.source === null ? 'border-[#0C1119] bg-[#0C1119] text-white' : 'border-border text-muted-foreground hover:text-foreground')}
+          >
+            {t('mwe_filter_all_sources')}
+          </button>
+          {CONTACT_SOURCE_FILTERS.map((src) => (
+            <button
+              key={src}
+              type="button"
+              data-source={src}
+              onClick={() => setFilter({ source: filters.source === src ? null : src })}
+              aria-pressed={filters.source === src}
+              className={cn('h-7 rounded-full border px-2.5 text-xs font-medium transition-colors',
+                filters.source === src ? 'border-[#0C1119] bg-[#0C1119] text-white' : 'border-border text-muted-foreground hover:text-foreground')}
+            >
+              {t(SOURCE_LABEL_KEY[src])}
+            </button>
+          ))}
         </div>
 
         {/*
@@ -228,13 +322,14 @@ export default function ContactsPage() {
             action={{ labelKey: 'comms_contact_add', onClick: () => setAdding(true) }}
           />
         ) : (
-          <ScrollTable minWidth={820}>
+          <ScrollTable minWidth={920}>
             <table className="w-full text-xs">
               <thead className="border-b bg-muted/40">
                 <tr className="[&>th]:px-3 [&>th]:py-2 [&>th]:text-start [&>th]:font-medium [&>th]:text-muted-foreground">
                   <th>{t('comm_col_contact')}</th>
                   <th>{t(isEmail ? 'emc_address' : 'comm_field_phone')}</th>
                   {isEmail ? <th>{t('emc_status')}</th> : null}
+                  <th>{t('mwe_col_source')}</th>
                   <th>{t('comm_field_language')}</th>
                   <th>{t('comms_contacts_country')}</th>
                   <th>{t('comm_lead_stage')}</th>
@@ -270,6 +365,11 @@ export default function ContactsPage() {
                         </Badge>
                       </td>
                     ) : null}
+                    <td>
+                      <Badge variant="outline" className={cn('whitespace-nowrap text-2xs', SOURCE_TONE[sourceFilterOf(c.source_kind)])}>
+                        {t(SOURCE_LABEL_KEY[sourceFilterOf(c.source_kind)])}
+                      </Badge>
+                    </td>
                     <td className="uppercase">{c.language ?? '·'}</td>
                     <td className="uppercase">{c.country ?? '·'}</td>
                     <td>{c.lead_stage ? t(`comm_stage_${c.lead_stage.toLowerCase()}` as TKey) : '·'}</td>

@@ -183,6 +183,9 @@ Deno.serve(async (req: Request) => {
     if (controlAction === 'extend_budget') {
       // SERVICE CONTROL (key `find_buyers`): a budget extension is a new reservation.
       if (!(await serviceBackendEnabled(db, 'find_buyers'))) return json(serviceDisabledBody('find_buyers'), 503);
+      /* Legacy paid external discovery is closed to new spending (owner, 2026-10-24): its own key,
+         fail-closed, seeded OFF. History, pause, stop and reports are untouched. */
+      if (!(await serviceBackendEnabled(db, 'find_buyers_external'))) return json(serviceDisabledBody('find_buyers_external'), 503);
       const extendJobId = String(body.jobId || '');
       const totalCredits = Math.floor(Number(body.totalCredits));
       const extendKey = String(body.idempotencyKey || '');
@@ -227,6 +230,12 @@ Deno.serve(async (req: Request) => {
      * stop and translation above, and campaigns already running, keep working.
      */
     if (!(await serviceBackendEnabled(db, 'find_buyers'))) return json(serviceDisabledBody('find_buyers'), 503);
+    /*
+     * Every NEW search here is a paid external discovery campaign (Apify / Actor runs). It is hidden
+     * and closed to new customer runs (owner, 2026-10-24) by its own fail-closed key, seeded OFF.
+     * Internal matching is not affected: members are matched by the native worker for free.
+     */
+    if (!(await serviceBackendEnabled(db, 'find_buyers_external'))) return json(serviceDisabledBody('find_buyers_external'), 503);
 
     /*
      * FRESHNESS. A property its owner has not confirmed for 30 days is not freshly

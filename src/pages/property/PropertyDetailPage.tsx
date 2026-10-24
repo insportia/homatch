@@ -1,24 +1,18 @@
 import {
-  AlertCircle, ArrowLeft, Bath, BedDouble, Bot, Building2, Calculator, Camera, CheckCircle2, ChevronRight,
-  Eraser, ExternalLink, Landmark, Layers, Loader2, Lock, MapPin, Megaphone, Pause, Pencil, Phone, Play, RefreshCcw,
-  Shield, Trash2, TrendingDown, Zap,
+  AlertCircle, ArrowLeft, Bath, BedDouble, Bot, Building2, Calculator, Camera, CheckCircle2,
+  ExternalLink, Landmark, Layers, Lock, MapPin, Megaphone, Pencil, Phone,
+  Shield, Trash2, TrendingDown,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { returnState } from '@/lib/backNavigation';
 import { toast } from 'sonner';
-import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
 import { RouteGuard } from '@/components/common/RouteGuard';
+import { MatchingEntryCard } from '@/components/matching/workspace/MatchingEntryCard';
 import { OWNER_SURFACE } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
-import { NAVY_BAND } from '@/components/findBuyers/brand';
 import { SearchDna } from '@/components/findBuyers/SearchDna';
-import { ClearResultsDialog } from '@/components/findBuyers/ClearResultsDialog';
-import { useFindBuyersSummary } from '@/components/findBuyers/useFindBuyersSummary';
-import { SearchStartingDialog, type SearchStartPhase } from '@/components/findBuyers/SearchStartingDialog';
-import { useCampaignStatus } from '@/hooks/useCampaignStatus';
-import { campaignView, currentState } from '@/findBuyers/campaignView';
 import { PropertyReference } from '@/components/owner/ContactPhoneField';
 import { FactLine, OWNER_ICON, OWNER_SECONDARY } from '@/components/owner/portfolio';
 import { CanonicalGroupBanner } from '@/components/property/CanonicalGroupBanner';
@@ -35,7 +29,6 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatMoney, intlLocaleFor } from '@/components/workspace/primitives';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -45,12 +38,9 @@ import { hasContactReadiness } from '@/lib/propertyContact';
 import { cn } from '@/lib/utils';
 import { type PropertyLifecycle, safeExternalUrl } from '@/property/lifecycle';
 import { intelligenceActionFor, isImported } from '@/property/rules';
-import {
-  type CampaignSearchLanguageChoice, calculateMatchability, campaignStartErrorKey, controlMatchingJob, getCreditAccount,
-  getMatchCounts, getProperty, pauseMatchingCampaign, softDeleteProperty, startMatchingCampaign,
-} from '@/services/api';
-import { fetchLifecycle, renewProperty } from '@/services/propertyLifecycle';
-import type { CreditAccount, Property } from '@/types/types';
+import { calculateMatchability, getMatchCounts, getProperty, softDeleteProperty } from '@/services/api';
+import { fetchLifecycle } from '@/services/propertyLifecycle';
+import type { Property } from '@/types/types';
 import { useServiceControls } from '@/lib/serviceControls';
 
 // ── THE OWNER'S PROPERTY WORKSPACE ─────────────────────────────────────────────
@@ -68,16 +58,17 @@ import { useServiceControls } from '@/lib/serviceControls';
 //   1. The property      photograph (hero ratio) beside identity, price, facts,
 //                        freshness/source status and the one primary action.
 //   2. Quick actions     one responsive grid of tiles — never a permanent sidebar.
-//   3. Discovery         buyers / tenants as a primary, full-width product area:
-//                        state, counts, the freshness guard, start / pause / view.
+//   3. Matching          one entry card into the matching workspace
+//                        (/property/:id/matches): HOMATCH Internal and the External
+//                        Leads Database. The paid external search launch (budget
+//                        dialog, CampaignLaunchPanel, start / pause) was removed
+//                        here on the owner's instruction (2026-10-24).
 //   4. The information   facts, amenities, description, source — in columns that
 //                        collapse when one side has nothing, so nothing is padded
 //                        out and nothing leaves a hole.
 //
-// Functionality is preserved exactly: the same campaign handlers, budget dialog,
-// CampaignLaunchPanel (FIND_CLIENTS), reserve-settle-release, pause confirmation,
-// job progress, trust badge, matchability, canonical banner, delete. No pricing or
-// unlock behaviour changes here.
+// Everything else is unchanged: trust badge, matchability, canonical banner, delete.
+// No pricing or unlock behaviour lives on this page.
 
 function MatchabilityPanel({ score, improvements }: { score: number; improvements: string[] }) {
   /* How searchable this listing is (completeness of the facts a search uses) —
@@ -180,313 +171,6 @@ function QuickActions({ actions }: { actions: QuickAction[] }) {
   );
 }
 
-// ── BUYER / TENANT DISCOVERY ─────────────────────────────────────────────────────
-
-function DiscoverySection({
-  propertyId, userId, transactionType, matchCounts, creditBalance, life, contactReady,
-  onNavigateMatches, onSearchStarted, onCountsRefresh, onRenewed, onSearchKnown,
-}: {
-  propertyId: string;
-  userId: string;
-  /** SALE, RENT or INVESTMENT. Decides what this property is looking FOR. */
-  transactionType?: string | null;
-  matchCounts: { total: number; newCount: number; strongCount: number };
-  creditBalance: number;
-  life: PropertyLifecycle | null | undefined;
-  contactReady: boolean;
-  onNavigateMatches: () => void;
-  /** A search was accepted: go to its live results page. */
-  onSearchStarted: () => void;
-  onCountsRefresh: (counts: { total: number; newCount: number; strongCount: number }) => void;
-  onRenewed: () => void;
-  /** Tells the page header whether this property already has a search (its results page). */
-  onSearchKnown?: (exists: boolean) => void;
-}) {
-  const { t } = useLanguage();
-  const [loading, setLoading] = useState(false);
-  const [renewing, setRenewing] = useState(false);
-  const [showPauseConfirm, setShowPauseConfirm] = useState(false);
-  /* Nothing is spent until the customer names the ceiling. */
-  const [showBudget, setShowBudget] = useState(false);
-  /* Old results can be cleared from here too, where their count is shown (owner, 2026-10-17). */
-  const [clearOpen, setClearOpen] = useState(false);
-  /* THE SEARCH STATE IS THE SERVER'S (find_buyers_campaign_status), never the
-     property's standing matching flag: a property can be "ACTIVE" with nothing
-     running, and a paused search is not a stopped one. */
-  const { status, refresh } = useCampaignStatus(propertyId);
-  const campaign = status?.campaign ?? null;
-  /* The saved results are the Find Buyers searches' own (find_buyers_campaigns + current
-     leads), never the legacy matches table; re-read when a search changes state. */
-  const fb = useFindBuyersSummary(propertyId, campaign ? `${campaign.jobId}:${campaign.state}` : null);
-  const featured = fb.featured;
-  const searchExists = Boolean(campaign);
-  useEffect(() => { onSearchKnown?.(searchExists); }, [searchExists, onSearchKnown]);
-  const view = campaign ? campaignView({
-    state: campaign.state, sources: campaign.sources, queue: campaign.queue,
-    signalsAnalyzed: campaign.signalsAnalyzed, newResults: campaign.newResults, strong: campaign.strong,
-  }) : null;
-  const live = Boolean(view?.live);
-  const readiness = status?.readiness ?? null;
-  const wasLive = React.useRef(live);
-  useEffect(() => {
-    if (wasLive.current && !live) {
-      getMatchCounts(propertyId).then(onCountsRefresh).catch(() => undefined);
-    }
-    wasLive.current = live;
-  }, [live, propertyId, onCountsRefresh]);
-
-  /* The server's answer. EXPIRED means not freshly confirmed inventory: history and
-     matches stay, a NEW search waits for the (free) renewal. */
-  const expired = life?.freshness_state === 'EXPIRED' && !life.archived;
-  const [startPhase, setStartPhase] = useState<SearchStartPhase>(null);
-  const mounted = React.useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-
-  const handleStart = async (
-    authorizedMaxCredits: number | null,
-    searchLanguages?: CampaignSearchLanguageChoice,
-    discoverBrokers?: boolean,
-  ) => {
-    setShowBudget(false);
-    setLoading(true);
-    setStartPhase('starting');
-    let started = false;
-    try {
-      const result = await startMatchingCampaign(
-        propertyId, userId, authorizedMaxCredits, searchLanguages ?? null,
-        discoverBrokers === true,
-      );
-      if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
-      started = true;
-    } catch (e) {
-      if (mounted.current) setStartPhase(null);
-      const refused = campaignStartErrorKey(e);
-      toast.error(refused ? t(refused.key as never, refused.vars) : t('matches_start_failed'));
-    }
-    /* Started: land on the live results page at once — no timer, no navigation inside a
-       state update. The results page reads the running search from the server. */
-    if (started) { onSearchStarted(); return; }
-    await refresh();
-    if (mounted.current) setLoading(false);
-  };
-
-  const control = async (action: 'pause' | 'resume') => {
-    setLoading(true);
-    try {
-      if (action === 'pause') { await pauseMatchingCampaign(propertyId, userId, campaign?.jobId ?? null); setShowPauseConfirm(false); }
-      else if (campaign?.jobId) await controlMatchingJob(propertyId, campaign.jobId, 'resume');
-    } catch (err) {
-      console.error(err);
-      toast.error(t(action === 'pause' ? 'matches_pause_error' : 'p2d_control_error'));
-    } finally {
-      await refresh();
-      setLoading(false);
-    }
-  };
-
-  const renew = async () => {
-    if (renewing) return;
-    setRenewing(true);
-    try {
-      const result = await renewProperty(propertyId);
-      if (result.ok) { toast.success(t('pow_renewed_toast')); onRenewed(); } else toast.error(t('pow_renew_not_available'));
-    } catch {
-      toast.error(t('pow_renew_failed'));
-    } finally {
-      setRenewing(false);
-    }
-  };
-
-  /* What this property is looking for decides the words; the machinery is unchanged. */
-  const contextual = intelligenceActionFor(transactionType);
-  const startLabel = contextual
-    ? t(`prop_action_${contextual.toLowerCase()}` as never)
-    : t('matches_start_matching');
-
-  /* The CURRENT state only: a past attempt is history, on its own line. */
-  const now = currentState(campaign, readiness);
-  const stateLabel = expired ? t('pow_discovery_state_paused_expired') : t(now.headlineKey as never);
-
-  return (
-    <>
-    <SearchStartingDialog phase={startPhase} tenant={String(transactionType ?? '').toUpperCase() === 'RENT'}
-      onGo={() => { setStartPhase(null); onSearchStarted(); }} onClose={() => setStartPhase(null)} />
-    <section aria-labelledby="pow-discovery-title" data-testid="pow-discovery" className="hm-owner-panel overflow-hidden">
-      <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
-        {/* Left: what this is and where the search stands — the server's state. */}
-        <div className={cn('space-y-4 p-5 text-white sm:p-6', NAVY_BAND)}>
-          <div className="space-y-1.5">
-            <h2 id="pow-discovery-title" className="font-display text-lg font-semibold tracking-[-0.01em] break-words">
-              {t('pow_discovery_title')}
-            </h2>
-            <p className="text-2xs leading-relaxed text-[hsl(218_40%_85%)] break-words">{t('pow_discovery_body')}</p>
-          </div>
-          <span data-testid="pow-discovery-state" role="status" className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-2.5 py-1 text-2xs font-semibold ring-1 ring-inset ring-[hsl(40_80%_60%/0.45)]">
-            {expired
-              ? <AlertCircle className="h-3.5 w-3.5 text-[hsl(38_92%_62%)]" aria-hidden="true" />
-              : view?.motion === 'active'
-                ? <span className="h-1.5 w-1.5 rounded-full bg-[hsl(38_92%_60%)] motion-safe:animate-pulse" aria-hidden="true" />
-                : view?.control === 'resume' || view?.control === 'pausing'
-                  ? <Pause className="h-3.5 w-3.5 text-[hsl(40_94%_64%)]" aria-hidden="true" />
-                  : <span className="h-1.5 w-1.5 rounded-full bg-[hsl(40_94%_64%)]" aria-hidden="true" />}
-            <span className="break-words">{stateLabel}</span>
-          </span>
-          {live && view && (
-            <p className="text-2xs leading-relaxed text-[hsl(218_40%_85%)]">
-              {t('fbl_live_line', { working: String(view.metrics.sourcesWorking), signals: String(view.metrics.signals), possible: String(view.metrics.possible) })}
-            </p>
-          )}
-          {now.last && !expired && (
-            <p className="text-2xs leading-relaxed text-[hsl(218_40%_85%)] break-words" data-testid="pow-last-search">
-              {t('fbl_last_search', { state: t(now.last.headlineKey as never), date: now.last.at ? new Date(now.last.at).toLocaleDateString() : '—' })}
-            </p>
-          )}
-          {!live && readiness && !readiness.ready && !expired && (
-            <p className="text-2xs leading-relaxed text-[hsl(350_80%_88%)]" role="status">{t('fbl_not_ready')}</p>
-          )}
-          <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-3 text-2xs">
-            <span className="text-[hsl(218_40%_85%)]">{t('prop_balance_label')}</span>
-            <Link to="/credits" className="inline-flex items-center gap-1 font-semibold text-[hsl(38_92%_66%)] hover:underline">
-              <Zap className="h-3 w-3" aria-hidden="true" />
-              <span dir="ltr">{creditBalance.toFixed(2)} CR</span>
-            </Link>
-          </div>
-        </div>
-
-        {/* Right: stored results (not the live search), and the one action that fits. */}
-        <div className="space-y-4 p-5 sm:p-6">
-          <p className="text-2xs font-bold uppercase tracking-[0.14em] text-[hsl(34_90%_34%)]">{t('fbl_results_heading')}</p>
-          <p className="text-2xs text-[hsl(218_28%_38%)] break-words" data-testid="pow-discovery-latest" data-job={featured?.jobId ?? ''}>
-            {fb.campaigns === null ? '…' : featured
-              ? t('fbrx_latest_line', { date: new Date(featured.createdAt).toLocaleDateString(), state: t(`fbrx_state_${featured.state}`) })
-              : t('fbrx_no_search_yet')}
-          </p>
-          <div className="grid grid-cols-3 gap-2.5" data-testid="pow-discovery-counts">
-            {[
-              { key: 'total', label: t('fbrx_stat_people'), value: featured?.total ?? 0, highlight: false },
-              { key: 'new', label: t('fbrx_stat_new'), value: featured?.newPeople ?? 0, highlight: (featured?.newPeople ?? 0) > 0 },
-              { key: 'strong', label: t('fbrx_stat_strong'), value: featured?.strong ?? 0, highlight: (featured?.strong ?? 0) > 0 },
-            ].map(({ key, label, value, highlight }) => (
-              <div key={key} data-testid={`pow-count-${key}`} className="min-w-0 rounded-xl bg-[hsl(42_100%_97%)] p-3 text-center ring-1 ring-inset ring-[hsl(40_70%_86%)]">
-                <p className={cn('font-display text-2xl font-semibold tabular-nums', highlight ? 'text-[hsl(34_90%_36%)]' : 'text-[hsl(218_45%_14%)]')} dir="ltr">{fb.campaigns === null ? '—' : value}</p>
-                <p className="text-2xs text-[hsl(218_28%_38%)] break-words">{label}</p>
-              </div>
-            ))}
-          </div>
-          {matchCounts.total > 0 && (
-            <p className="text-2xs text-[hsl(218_28%_38%)] break-words" data-testid="pow-legacy-matches">{t('fbrx_legacy_matches', { n: String(matchCounts.total) })}</p>
-          )}
-          {(matchCounts.total > 0 || (fb.campaigns?.length ?? 0) > 0) && (
-            <button type="button" onClick={() => setClearOpen(true)} data-testid="pow-clear-open"
-              className={cn(OWNER_SECONDARY, 'min-h-11 w-full justify-center gap-2 whitespace-normal text-center min-[420px]:w-auto')}>
-              <Eraser className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="min-w-0 break-words">{t('fbrx_clear_open')}</span>
-            </button>
-          )}
-          <ClearResultsDialog open={clearOpen} propertyId={propertyId} onClose={() => setClearOpen(false)}
-            onCleared={(o) => {
-              setClearOpen(false);
-              toast.success(t('fbrx_clear_done', { n: String(o.leadsCleared + o.legacyMatchesCleared) }));
-              /* Every count here re-reads from the server. */
-              fb.reload();
-              getMatchCounts(propertyId).then(onCountsRefresh).catch(() => undefined);
-            }} />
-
-          {expired && (
-            <div data-testid="pow-discovery-blocked" className="rounded-xl border border-red-600/30 bg-red-50 p-3.5 text-red-950 dark:bg-red-500/10 dark:text-red-100">
-              <p className="text-sm font-semibold break-words">{t('pow_discovery_paused_expired')}</p>
-              <p className="mt-1 text-2xs opacity-90 break-words">{t('pow_renew_is_free')}</p>
-              <button
-                type="button"
-                onClick={() => void renew()}
-                disabled={renewing}
-                className="mt-2.5 inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-[#0C1119] px-3.5 text-2xs font-bold text-white hover:bg-[#151d2a] disabled:opacity-70"
-              >
-                {renewing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCcw className="h-3.5 w-3.5" aria-hidden="true" />}
-                {t('pow_renew_free')}
-              </button>
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            {(matchCounts.total > 0 || live || Boolean(featured)) && (
-              <Button variant="outline" onClick={onNavigateMatches} className="h-auto min-h-10 gap-1.5 whitespace-normal border-[hsl(40_70%_80%)]">
-                <span className="break-words">{t(live ? 'fbl_open_live' : 'prop_view_matches')}</span>
-                <ChevronRight className="h-3.5 w-3.5 rtl:rotate-180" aria-hidden="true" />
-              </Button>
-            )}
-            {!expired && view?.control === 'pause' && (
-              <Button variant="outline" onClick={() => setShowPauseConfirm(true)} disabled={loading} className="h-auto min-h-10 gap-1.5 whitespace-normal border-[hsl(40_70%_80%)]">
-                {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pause className="h-3.5 w-3.5" />}
-                {t('fbl_pause')}
-              </Button>
-            )}
-            {!expired && view?.control === 'pausing' && (
-              <span role="status" aria-busy="true" className="inline-flex h-auto min-h-10 items-center gap-1.5 whitespace-normal rounded-md border border-[hsl(40_70%_80%)] px-4 text-sm font-medium opacity-70">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />{t('fbl_pausing')}
-              </span>
-            )}
-            {!expired && view?.control === 'resume' && (
-              <Button onClick={() => void control('resume')} disabled={loading} className="h-auto min-h-10 gap-1.5 whitespace-normal bg-[hsl(38_92%_54%)] font-semibold text-[#161309] hover:bg-[hsl(38_92%_60%)]">
-                {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-                {t('fbl_resume')}
-              </Button>
-            )}
-            {!expired && !live && (contactReady ? (
-              <Button onClick={() => setShowBudget(true)} disabled={loading || (readiness ? !readiness.ready : false)} className="h-auto min-h-10 gap-1.5 whitespace-normal bg-[hsl(38_92%_54%)] font-semibold text-[#161309] hover:bg-[hsl(38_92%_60%)]">
-                {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-                <span className="break-words">{startLabel}</span>
-              </Button>
-            ) : (
-              /* A search cannot start without somewhere to send people: the same place
-                 says the one thing that has to happen first. */
-              <Link to={`/property/${propertyId}/edit#contact`} state={returnState()} className="inline-flex min-h-10 items-center gap-1.5 rounded-md bg-[hsl(38_92%_54%)] px-4 text-sm font-semibold text-[#161309] hover:bg-[hsl(38_92%_60%)]">
-                <Phone className="h-3.5 w-3.5" aria-hidden="true" />
-                <span className="break-words">{t('contact_phone_add')}</span>
-              </Link>
-            ))}
-          </div>
-          {!contactReady && !expired && !live && (
-            <p className="text-2xs text-[hsl(218_28%_38%)] break-words">{t('contact_phone_missing_body')}</p>
-          )}
-        </div>
-      </div>
-
-      {/* The ceiling is chosen before anything is spent. */}
-      <Dialog open={showBudget} onOpenChange={setShowBudget}>
-        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md max-h-[85dvh] overflow-y-auto [&>*]:min-w-0">
-          <DialogHeader>
-            <DialogTitle className="break-words">{startLabel}</DialogTitle>
-            <DialogDescription className="sr-only">{t('budget_choose_title')}</DialogDescription>
-          </DialogHeader>
-          <CampaignLaunchPanel
-            propertyId={propertyId}
-            productCode="FIND_CLIENTS"
-            counterpart={String(transactionType ?? '').toUpperCase() === 'RENT' ? 'TENANT' : 'BUYER'}
-            onRun={(authorized, languages, discoverBrokers) => void handleStart(authorized, languages, discoverBrokers)}
-            running={loading}
-          />
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={showPauseConfirm} onOpenChange={setShowPauseConfirm}>
-        <AlertDialogContent className="max-w-[calc(100%-2rem)] md:max-w-md bg-card border-border">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('matches_pause_confirm')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('fbl_pause_confirm_desc')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="border-border">{t('general_cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void control('pause')} className="bg-[hsl(218_52%_11%)] text-[hsl(40_94%_64%)] hover:bg-[hsl(218_52%_16%)]">
-              {t('fbl_pause')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </section>
-    </>
-  );
-}
-
 // ── PROPERTY DETAIL ────────────────────────────────────────────────────────────
 
 function PropertyDetailContent() {
@@ -500,8 +184,6 @@ function PropertyDetailContent() {
   const [loading, setLoading] = useState(true);
   const [showDelete, setShowDelete] = useState(false);
   const [matchCounts, setMatchCounts] = useState({ total: 0, newCount: 0, strongCount: 0 });
-  const [searchExists, setSearchExists] = useState(false);
-  const [creditAccount, setCreditAccount] = useState<CreditAccount | null>(null);
 
   const loadLifecycle = useCallback(async () => {
     if (!id) return;
@@ -513,14 +195,12 @@ function PropertyDetailContent() {
 
   const loadData = useCallback(async () => {
     if (!id || !homatchUser) return;
-    const [prop, counts, credits] = await Promise.all([
+    const [prop, counts] = await Promise.all([
       getProperty(id),
       getMatchCounts(id),
-      getCreditAccount(homatchUser.id),
     ]);
     setProperty(prop);
     setMatchCounts(counts);
-    setCreditAccount(credits);
     setLoading(false);
     void loadLifecycle();
   }, [id, homatchUser, loadLifecycle]);
@@ -622,7 +302,7 @@ function PropertyDetailContent() {
   const action = intelligenceActionFor(property.transaction_type as string | null);
   /* A property with a search (or results) opens its results directly:
      "მყიდველები და მოთხოვნები" / "მოიჯარეები და მოთხოვნები" — one click, no new search. */
-  const hasSearch = searchExists || matchCounts.total > 0;
+  const hasSearch = matchCounts.total > 0;
   const resultsLabel = String(property.transaction_type ?? '').toUpperCase() === 'RENT' ? t('fbl_nav_results_tenants') : t('fbl_nav_results_buyers');
   const ownerAction = hasSearch ? resultsLabel : matchCounts.total > 0
     ? t('prop_view_matches')
@@ -794,23 +474,9 @@ function PropertyDetailContent() {
         {/* ── 2. QUICK ACTIONS ── */}
         <QuickActions actions={quickActions} />
 
-        {/* ── 3. BUYER / TENANT DISCOVERY ── (not offered while Find Buyers is paused) */}
-        {homatchUser && id && services.find_buyers.frontend && (
-          <DiscoverySection
-            propertyId={id}
-            userId={homatchUser.id}
-            transactionType={property.transaction_type}
-            matchCounts={matchCounts}
-            creditBalance={Number(creditAccount?.balance ?? 0)}
-            life={life}
-            contactReady={contactReady}
-            onNavigateMatches={() => navigate(`/property/${id}/matches`)}
-            onSearchStarted={() => navigate(`/property/${id}/buyers/external`, { state: { fbStarted: true } })}
-            onCountsRefresh={setMatchCounts}
-            onRenewed={onRenewed}
-            onSearchKnown={setSearchExists}
-          />
-        )}
+        {/* ── 3. MATCHING ── the way into the matching workspace (owner, 2026-10-24: the
+            property page no longer launches or prices a paid external search). */}
+        {homatchUser && id && services.find_buyers.frontend && <MatchingEntryCard propertyId={id} />}
 
         {/* ── 4. THE INFORMATION: one editorial system, no giant empty cards ── */}
         <section data-testid="pow-info" className="grid gap-4 lg:grid-cols-12">

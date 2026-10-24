@@ -31,3 +31,18 @@ test('database errors map to stable codes and never leak internals', () => {
   assert.equal(unlockErrorCode('relation "x" does not exist'), 'INTERNAL');
   assert.equal(unlockErrorCode(undefined), 'INTERNAL');
 });
+
+test('curated leads: ids or "all matching" by filter, a confirmed price, a key; never the database in the request', async () => {
+  const { parseCuratedUnlockRequest, MAX_CURATED_IDS } = await import('../internalLeads.ts');
+  const key = 'clu:abc12345';
+  const ok = parseCuratedUnlockRequest({ ids: [A, A.toUpperCase(), B], expectedCredits: 2, idempotencyKey: key });
+  assert.deepEqual(ok, { ok: true, idempotencyKey: key, selection: { ids: [A, B], expectedCredits: 2 } });
+  const all = parseCuratedUnlockRequest({ allMatching: true, filters: { countries: ['DE'], interests: ['BUY'], evil: 'x' }, exclude: [A], expectedCredits: 40, idempotencyKey: key });
+  assert.deepEqual(all.selection, { allMatching: true, filters: { countries: ['DE'], interests: ['BUY'] }, exclude: [A], expectedCredits: 40 }, 'unknown filter keys dropped');
+  assert.equal(parseCuratedUnlockRequest({ ids: [A], idempotencyKey: key }).error, 'INVALID_REQUEST', 'a confirmed price is required');
+  assert.equal(parseCuratedUnlockRequest({ ids: [A], expectedCredits: 1 }).error, 'IDEMPOTENCY_KEY_REQUIRED');
+  assert.equal(parseCuratedUnlockRequest({ ids: ['x'], expectedCredits: 1, idempotencyKey: key }).error, 'INVALID_REQUEST');
+  assert.equal(parseCuratedUnlockRequest({ ids: [], expectedCredits: 0, idempotencyKey: key }).error, 'NOTHING_SELECTED');
+  const many = Array.from({ length: MAX_CURATED_IDS + 1 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
+  assert.equal(parseCuratedUnlockRequest({ ids: many, expectedCredits: 600, idempotencyKey: key }).error, 'TOO_MANY_SELECTED', 'big selections go by filter');
+});

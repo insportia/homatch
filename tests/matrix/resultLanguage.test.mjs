@@ -83,13 +83,20 @@ const NOT_RESULT_ACCESS = {
   hl_reach_free: 'Find Buyers 2.0 match expansion: the reach controls are free — only an explicit contact unlock is charged (owner request 2026-10-18)',
   hl_unlock_receive_crm: 'Find Buyers 2.0: an unlocked contact joins the owner-named "Unlocked Leads" CRM (owner request 2026-10-18)',
   lp_unlocked: 'Find Buyers 2.0: the unlock date in the Unlocked Leads profile (owner request 2026-10-18)',
+  svc_desc_internal_matching: 'Matching workspace: the service is the paid per-member contact unlock of HOMATCH Internal Matches (owner brief 2026-10-24)',
 };
+/*
+ * Matching workspace (owner brief 2026-10-24): the owner names the product "Available Leads (Locked) |
+ * Unlocked Leads" with "Bulk Unlock" — every mw_ / mwe_ string is about that paid per-contact unlock
+ * (internal members and curated external leads). Research result cards remain under the rule.
+ */
+const MATCHING_WORKSPACE = /^(mw|mwe)_/;
 
 test('no customer string uses lock or unlock language', () => {
   const remaining = [];
   for (const lang of LANGS) {
     for (const [key, value] of bundle(lang)) {
-      if (key.startsWith('admin_') || key in NOT_RESULT_ACCESS) continue;
+      if (key.startsWith('admin_') || MATCHING_WORKSPACE.test(key) || key in NOT_RESULT_ACCESS) continue;
       if (LOCK[lang].test(value)) remaining.push(`${lang}.${key}: ${value.slice(0, 70)}`);
     }
   }

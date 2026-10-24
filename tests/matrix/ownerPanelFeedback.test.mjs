@@ -39,9 +39,10 @@ test('the dashboard features the newest search, a running one included', () => {
 test('clearing is a visible card on the Find Buyers dashboard and a button on the property page', () => {
   const dash = read('src/components/findBuyers/FindBuyersDashboard.tsx');
   assert.match(dash, /data-testid="fbd-clear"[\s\S]{0,600}t\('fbrx_clear_card_desc'\)[\s\S]{0,200}data-testid="fbd-clear-open" className=\{cn\(LINE_BTN/);
+  /* Matching workspace (owner, 2026-10-24): the property page no longer launches the legacy paid external campaign; it opens the workspace (MatchingEntryCard). */
   const detail = read('src/pages/property/PropertyDetailPage.tsx');
-  assert.match(detail, /data-testid="pow-clear-open"/);
-  assert.match(detail, /<ClearResultsDialog open=\{clearOpen\}/);
+  assert.match(detail, /<MatchingEntryCard propertyId=\{id\} \/>/);
+  assert.doesNotMatch(detail, /ClearResultsDialog/, 'legacy external results are not managed from the property page');
 });
 
 test('the broker add-on is a premium switch with its price stated, never a literal price', () => {

@@ -24,12 +24,12 @@
 
 export const PAUSED_BY_DEFAULT = ['publishing', 'ai_call_center', 'ai_talk', 'whatsapp', 'live_chat', 'design_studio'] as const;
 export const LIVE_BY_DEFAULT = [
-  'find_property', 'find_buyers',
+  'find_property', 'find_buyers', 'internal_matching', 'curated_leads',
   'verify', 'contracts', 'mortgage', 'investment', 'for_expats',
   'meta_ads', 'email_campaigns', 'ai_assistant',
   'brokers_directory', 'broker_desk', 'developers',
 ] as const;
-export const PAID_CLOSED_BY_DEFAULT = ['find_property_deep'] as const;
+export const PAID_CLOSED_BY_DEFAULT = ['find_property_deep', 'find_buyers_external'] as const;
 export const SERVICE_KEYS = [...PAUSED_BY_DEFAULT, ...LIVE_BY_DEFAULT, ...PAID_CLOSED_BY_DEFAULT] as const;
 export const HIDDEN_UNTIL_ANSWERED = ['brokers_directory', 'broker_desk'] as const;
 export type ServiceKey = typeof SERVICE_KEYS[number];

@@ -13,9 +13,13 @@ const edge = await import(join(ROOT, 'supabase/functions/_shared/serviceControl.
 const { serviceForPath } = await import(join(ROOT, 'src/lib/serviceControls/routes.ts'));
 const { translations } = await import(join(ROOT, 'src/i18n/translations.ts'));
 const MIGRATION = read('supabase/migrations/20261110090000_service_controls_expand.sql');
+/* The key list is redefined when a service is added; the newest definition is the truth.
+   20261129090000 added the matching workspace keys (owner, 2026-10-24). */
+const MATCHING = read('supabase/migrations/20261129090000_curated_leads_marketplace.sql');
+const MATCHING_KEYS = ['internal_matching', 'curated_leads', 'find_buyers_external'];
 
 test('one list of services: database, server and browser agree', () => {
-  const check = MIGRATION.match(/check \(service_key in \(([\s\S]*?)\)\);/)[1];
+  const check = MATCHING.match(/check \(service_key in \(([\s\S]*?)\)\);/)[1];
   const sqlKeys = [...check.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
   assert.deepEqual([...edge.SERVICE_KEYS].sort(), sqlKeys);
   assert.deepEqual([...front.SERVICE_KEYS].sort(), sqlKeys);
@@ -27,7 +31,7 @@ test('one list of services: database, server and browser agree', () => {
 test('every new row is seeded ON, in the group the Admin page shows', () => {
   const seeds = [...MIGRATION.matchAll(/\('([a-z_]+)',\s+(true|false), (true|false), '([a-z]+)'/g)];
   /* Seeded ON on 2026-11-10 when every one was live; paid Deep Search was paused later (20261116100000, #269). */
-  const seededLive = [...edge.LIVE_BY_DEFAULT, ...edge.PAID_CLOSED_BY_DEFAULT];
+  const seededLive = [...edge.LIVE_BY_DEFAULT, ...edge.PAID_CLOSED_BY_DEFAULT].filter((k) => !MATCHING_KEYS.includes(k));
   assert.equal(seeds.length, seededLive.length);
   const api = read('supabase/functions/service-control/index.ts');
   for (const [, key, f, b, group] of seeds) {
@@ -87,7 +91,11 @@ test('every new server gate checks its own key', () => {
     /* Paid Deep Search paused (2026-10-18): the worker and the free search's social add-in ask too. */
     'supabase/functions/_shared/findProperty/socialOffers.ts': ['find_property_deep'],
     'supabase/functions/_shared/marketplaceSearch.ts': ['find_property_deep'],
-    'supabase/functions/match-campaign/index.ts': ['find_buyers'],
+    'supabase/functions/match-campaign/index.ts': ['find_buyers', 'find_buyers_external'],
+    /* Matching workspace (2026-10-24): the legacy paid discovery key closes new runs; unlocks
+       ask the product's own key. */
+    'supabase/functions/external-discovery-orchestrator/index.ts': ['find_buyers_external'],
+    'supabase/functions/atomic-unlock/index.ts': ['internal_matching', 'curated_leads'],
     'supabase/functions/research-agent/index.ts': ['verify'],
     'supabase/functions/deal-room-document-analyze/index.ts': ['contracts'],
     'supabase/functions/deal-room-ai/index.ts': ['contracts'],

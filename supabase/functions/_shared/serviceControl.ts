@@ -29,13 +29,14 @@
 export const PAUSED_BY_DEFAULT = ['publishing', 'ai_call_center', 'ai_talk', 'whatsapp', 'live_chat', 'design_studio'] as const;
 /** Live products added with the expansion: fail open. */
 export const LIVE_BY_DEFAULT = [
-  'find_property', 'find_buyers',
+  'find_property', 'find_buyers', 'internal_matching', 'curated_leads',
   'verify', 'contracts', 'mortgage', 'investment', 'for_expats',
   'meta_ads', 'email_campaigns', 'ai_assistant',
   'brokers_directory', 'broker_desk', 'developers',
 ] as const;
-/** Paid, paused by the owner (2026-10-18): fail closed, like the six. */
-export const PAID_CLOSED_BY_DEFAULT = ['find_property_deep'] as const;
+/** Paid, paused by the owner (find_property_deep 2026-10-18; find_buyers_external — the legacy Apify /
+    Actor discovery campaigns — 2026-10-24): fail closed, like the six. */
+export const PAID_CLOSED_BY_DEFAULT = ['find_property_deep', 'find_buyers_external'] as const;
 export const SERVICE_KEYS = [...PAUSED_BY_DEFAULT, ...LIVE_BY_DEFAULT, ...PAID_CLOSED_BY_DEFAULT] as const;
 export type ServiceKey = typeof SERVICE_KEYS[number];
 export const SERVICE_DISABLED = 'SERVICE_DISABLED';

@@ -58,6 +58,11 @@ const RUNNING: Record<ServiceKey, Array<{ label: string; table: string; build: (
     { label: 'campaigns_running', table: 'discovery_runs', build: (q) => q.in('status', ['QUEUED', 'SEARCHING', 'PAUSED', 'MATCHING']) },
     { label: 'actor_runs_open', table: 'find_property_actor_runs', build: (q) => q.in('status', ['RESERVED', 'STARTING', 'RUNNING']) },
   ],
+  internal_matching: [],
+  curated_leads: [],
+  find_buyers_external: [
+    { label: 'actor_runs_open', table: 'find_buyers_actor_runs', build: (q) => q.in('status', ['RESERVED', 'STARTING', 'RUNNING']) },
+  ],
   find_buyers: [
     { label: 'searches_running', table: 'matching_jobs', build: (q) => q.in('status', ['queued', 'analysing_property', 'generating_queries', 'searching_sources', 'collecting_results', 'normalizing', 'deduplicating', 'classifying', 'ranking', 'paused']) },
     { label: 'actor_runs_open', table: 'find_buyers_actor_runs', build: (q) => q.in('status', ['RESERVED', 'STARTING', 'RUNNING']) },
@@ -92,6 +97,7 @@ export const SERVICE_GROUPS: Record<ServiceKey, string> = {
   publishing: 'publishing', design_studio: 'design',
   ai_call_center: 'communications', ai_talk: 'communications', whatsapp: 'communications', live_chat: 'communications',
   find_property: 'discovery', find_property_deep: 'discovery', find_buyers: 'discovery',
+  find_buyers_external: 'discovery', internal_matching: 'discovery', curated_leads: 'discovery',
   verify: 'intelligence', contracts: 'intelligence', mortgage: 'intelligence', investment: 'intelligence', for_expats: 'intelligence',
   meta_ads: 'marketing', email_campaigns: 'marketing',
   ai_assistant: 'assistant',

@@ -1,13 +1,12 @@
 // FIND BUYERS NAVIGATION — Back means the previous SCREEN (harness build, real browser).
 //
-//   * the live results page pushes no same-screen history: "Review Budget" is a button
-//     (it was <a href="#rb-title">), result pages replace ?rp=, so the top-left Back
-//     leaves the screen instead of popping to the same one and only scrolling;
-//   * "Edit search" / property Edit return to where they were opened from; a deep link
-//     to /property/P/edit returns to /property/P;
-//   * a Find Buyers notification opens THE search (/buyers/external?job=J), including
-//     rows stored with the old generic /matches link;
-//   * the browser's own Back (Android hardware Back) lands where the in-app Back does.
+// The live results page and the Find Buyers dashboard were retired into the matching
+// workspace (owner, 2026-10-24); their addresses redirect there. What still holds:
+//   * a retired address replaces itself (no history entry): Back leaves for the screen before;
+//   * property Edit returns to where it was opened from; a deep link to /property/P/edit
+//     returns to /property/P;
+//   * a Find Buyers notification (even one stored with the old generic /matches link) still
+//     opens — now the workspace's External Leads Database.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -136,14 +135,6 @@ async function boot(t, { width = 390, height = 844, status = { readiness: READY,
 const path = (page) => new URL(page.url()).pathname;
 /** The shell's top-left Back (SmartBack): a plain button labelled "Back". */
 const shellBack = (page) => page.getByRole('button', { name: 'Back', exact: true }).first();
-/* The live page re-renders on every status tick, so Playwright's "stable" wait can starve:
-   wait for the control, then press it the way a tap does. */
-async function clickPage2(page) {
-  /* At 390px the numbered cells are hidden (sm:flex); the phone pages with "next". */
-  const btn = page.locator('[data-testid="fbx-results"] nav > button').last();
-  await btn.waitFor({ timeout: 30000 });
-  await btn.dispatchEvent('click');
-}
 const toPath = (page, p) => page.waitForURL((u) => new URL(u).pathname === p, { timeout: 30000 });
 /* The shell's Back on a screen that has just rendered: a press can land before the new route
    has bound its handler (CI, 2026-10-18). Press, and press again only while still on `from`. */
@@ -156,83 +147,20 @@ async function backTo(page, from, to) {
   await toPath(page, to);
 }
 
-test('live results: Review Budget and page 2 add no history; Back leaves for the dashboard (not a scroll)', opts, async (t) => {
-  /* Finished, so "New search" is offered; only this search's leads, so it is the one shown. */
-  const { page } = await boot(t, { status: { readiness: READY, campaign: campaign('COMPLETED_WITH_RESULTS', { completedAt: agoSec(5) }) },
-    leads: LEADS.filter((l) => l.matching_job_id === 'job1') });
-  await page.goto(`${BASE}/property/${P}/matches`, { waitUntil: 'domcontentloaded' });
-  /* In-app to the results page: the dashboard's new-search control or its link to the results
-     (which one is the dashboard's business), then the live module's launch opens the budget step. */
-  const go = page.locator('[data-testid="fbd-primary-action"], main a[href*="/buyers/external"] >> visible=true').first();
-  await go.waitFor({ timeout: 30000 });
-  const entries = await page.evaluate(() => history.length);
-  await go.click();
-  await toPath(page, `/property/${P}/buyers/external`);
-  const review = page.locator('[data-testid="rb-review"]');
-  if (!(await review.isVisible().catch(() => false))) {
-    await page.waitForSelector('[data-testid="fbl-launch"], [data-testid="rb-review"]', { timeout: 30000 });
-    if (!(await review.isVisible().catch(() => false))) await page.click('[data-testid="fbl-launch"]');
-  }
-  /* "Review Budget" must not push #rb-title. */
-  await review.waitFor({ timeout: 30000 });
-  assert.equal(await page.locator('[data-testid="research-budget"] a[href^="#"]').count(), 0, 'no fragment link inside the budget step');
-  /* $5 minimum (owner, 2026-10-19): the ladder starts at 50 credits, chosen by default; 49 is refused. */
-  assert.equal(await page.locator('[data-testid="research-budget"] [role="radio"]').first().getAttribute('data-testid'), 'rb-preset-50', 'the first rung is 50 credits');
-  assert.equal(await page.locator('[data-testid="rb-preset-50"]').getAttribute('aria-checked'), 'true', '50 credits is the default choice');
-  await page.click('[data-testid="rb-preset-custom"]');
-  await page.fill('[data-testid="rb-custom-input"]', '49');
-  assert.match(await page.locator('[data-testid="research-budget"] [role="alert"]').textContent(), /50/, 'below 50 credits is refused, naming the minimum');
-  await page.fill('[data-testid="rb-custom-input"]', '50');
-  assert.equal(await page.locator('[data-testid="research-budget"] [role="alert"]').count(), 0, 'exactly 50 credits is accepted');
-  await page.click('[data-testid="rb-preset-50"]');
-  await page.click('[data-testid="rb-review"]');
-  assert.equal(new URL(page.url()).hash, '', 'Review Budget does not touch the URL');
-  await page.keyboard.press('Escape');
-  await page.waitForSelector('[data-testid="rb-review"]', { state: 'detached', timeout: 10000 });
-  /* Page 2 of the results replaces the entry. */
-  await page.waitForSelector('[data-testid="fbx-lead-card"]', { timeout: 30000 });
-  await clickPage2(page);
-  await page.waitForFunction(() => new URLSearchParams(location.search).get('rp') === '2', null, { timeout: 10000 });
-  assert.equal(await page.evaluate(() => history.length), entries + 1, 'one entry for the results screen, none for the dialog or the page number');
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await shellBack(page).click();
-  await toPath(page, `/property/${P}/matches`);
-  assert.equal(path(page), `/property/${P}/matches`, 'Back changed the screen');
-});
-
-test('browser Back (Android hardware Back) lands where the in-app Back does', opts, async (t) => {
+/* The live results page and the Find Buyers dashboard were retired into the matching workspace
+   (owner, 2026-10-24). What still holds: their addresses REPLACE themselves (a redirect adds no
+   history), so Back from the workspace leaves for the screen before, never into a loop. */
+test('a retired results address redirects without adding history: Back returns to the property', opts, async (t) => {
   const { page } = await boot(t);
-  await page.goto(`${BASE}/property/${P}/matches`, { waitUntil: 'domcontentloaded' });
-  /* Any in-app link from the dashboard to the external results (its exact control is the dashboard's own business). */
-  const toResults = page.locator('main a[href*="/buyers/external"] >> visible=true').first();
-  await toResults.waitFor({ timeout: 30000 });
-  await toResults.click();
-  await toPath(page, `/property/${P}/buyers/external`);
-  await page.waitForSelector('[data-testid="fbx-lead-card"]', { timeout: 30000 });
-  await clickPage2(page);
-  await page.waitForFunction(() => new URLSearchParams(location.search).get('rp') === '2', null, { timeout: 10000 });
+  await page.goto(`${BASE}/property/${P}`, { waitUntil: 'domcontentloaded' });
+  await page.locator(`main a[href="/property/${P}/edit"]`).first().waitFor({ timeout: 30000 });
+  await page.evaluate((to) => { window.history.pushState({}, '', to); window.dispatchEvent(new PopStateEvent('popstate')); }, `/property/${P}/buyers/external?job=job1&start=1`);
+  await page.waitForURL((u) => new URL(u).pathname === `/property/${P}/matches`, { timeout: 30000 });
+  const u = new URL(page.url());
+  assert.equal(u.searchParams.get('product'), 'external');
+  assert.equal(u.searchParams.get('job'), null, 'one-shot campaign parameters do not survive');
   await page.goBack();
-  await toPath(page, `/property/${P}/matches`);
-  /* Forward again, then the in-app Back: the same destination. */
-  await page.goForward();
-  await toPath(page, `/property/${P}/buyers/external`);
-  await shellBack(page).click();
-  await toPath(page, `/property/${P}/matches`);
-});
-
-test('Edit search from the Find Buyers dashboard: Back returns to the dashboard', opts, async (t) => {
-  const { page } = await boot(t);
-  await page.goto(`${BASE}/property/${P}/matches`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('[data-testid="fbh-edit-search"]', { timeout: 30000 });
-  await page.click('[data-testid="fbh-edit-search"]');
-  await toPath(page, `/property/${P}/edit`);
-  assert.equal(await page.getByText('Back to portfolio').count(), 0, 'one Back control, the shell\'s');
-  await backTo(page, `/property/${P}/edit`, `/property/${P}/matches`);
-  /* A reload loses the in-memory history table; the opener's `from` still decides. */
-  await page.goForward();
-  await toPath(page, `/property/${P}/edit`);
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await backTo(page, `/property/${P}/edit`, `/property/${P}/matches`);
+  await toPath(page, `/property/${P}`);
 });
 
 test('a deep link to /property/P/edit: Back goes to the property, never the portfolio', opts, async (t) => {
@@ -250,19 +178,15 @@ test('Edit from the property page: Back returns to the property', opts, async (t
   await edit.waitFor({ timeout: 30000 });
   await edit.click();
   await toPath(page, `/property/${P}/edit`);
-  await shellBack(page).click();
-  await toPath(page, `/property/${P}`);
+  await backTo(page, `/property/${P}/edit`, `/property/${P}`);
 });
 
-test('a Find Buyers notification opens that search, even one stored with the old /matches link', opts, async (t) => {
+test('a Find Buyers notification still opens: the old link lands in the matching workspace (External)', opts, async (t) => {
   const { page } = await boot(t, { notifications: [OLD_NOTICE] });
   await page.goto(`${BASE}/notifications`, { waitUntil: 'domcontentloaded' });
   const row = page.getByText('Search finished: 2 new results').first();
   await row.waitFor({ timeout: 30000 });
   await row.click();
-  await page.waitForURL((u) => new URL(u).pathname === `/property/${P}/buyers/external` && new URL(u).searchParams.get('job') === 'job-old', { timeout: 30000 });
-  await page.waitForFunction(() => document.querySelector('[data-testid="fbx-results"]')?.getAttribute('data-job') === 'job-old', null, { timeout: 30000 });
-  /* The older search's own results, not the running one's. */
-  const people = await page.locator('[data-testid="fbx-lead-card"]').allInnerTexts();
-  assert.ok(people.length > 0 && people.every((txt) => /Person o\d/.test(txt)), `only job-old leads: ${people.length}`);
+  await page.waitForURL((u) => new URL(u).pathname === `/property/${P}/matches` && new URL(u).searchParams.get('product') === 'external', { timeout: 30000 });
+  await page.locator('[data-testid="mw-page"]').waitFor({ timeout: 30000 });
 });

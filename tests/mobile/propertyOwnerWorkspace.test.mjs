@@ -207,25 +207,22 @@ test('day 24: "მალე განაახლე" with a free renewal; a dou
   assert.match(await page.getByTestId('pow-freshness-panel').innerText(), /აქტიური/);
 });
 
-test('expired: discovery is paused (no start), matches kept, renewal restores it on the same property', opts, async (t) => {
+test('expired: renewal is offered, the matching entry stays, and nothing paid ever starts', opts, async (t) => {
   const { page, st } = await boot(t, { lang: 'ka', state: 'EXPIRED', imageWorks: true });
-  const blocked = page.getByTestId('pow-discovery-blocked');
-  await blocked.waitFor({ timeout: 20000 });
-  assert.match(await page.getByTestId('pow-freshness-panel').innerText(), /ვადაგასულია/);
-  assert.match(await page.getByTestId('pow-freshness-panel').innerText(), /ამ ქონების ინფორმაცია 30 დღეზე მეტია არ განახლებულა\. დაადასტურე, რომ განცხადება ისევ აქტიურია\./);
-  assert.match(await page.getByTestId('pow-freshness-panel').innerText(), /ინფორმაციის შეცვლა/);
-  assert.match(await page.getByTestId('pow-discovery-state').innerText(), /შეჩერებულია/);
-  assert.equal(await page.getByRole('button', { name: /მყიდველების|Find/ }).count(), 0, 'no start while expired');
-  /* The saved results are the Find Buyers searches' own; the 12 legacy matches stay reachable as earlier internal matches. */
-  assert.match(await page.getByTestId('pow-legacy-matches').innerText(), /12/, 'existing matches are kept and counted');
-  /* Where the old count is shown, clearing it is one visible tap away (owner, 2026-10-17). */
-  assert.equal(await page.getByTestId('pow-clear-open').isVisible(), true, 'clear old results is findable on the property page');
+  const panel = page.getByTestId('pow-freshness-panel');
+  await panel.waitFor({ timeout: 20000 });
+  assert.match(await panel.innerText(), /ვადაგასულია/);
+  assert.match(await panel.innerText(), /ამ ქონების ინფორმაცია 30 დღეზე მეტია არ განახლებულა\. დაადასტურე, რომ განცხადება ისევ აქტიურია\./);
+  assert.match(await panel.innerText(), /ინფორმაციის შეცვლა/);
+  /* Matching workspace (owner, 2026-10-24): the property page opens the workspace; it never launches
+     or prices the legacy paid external search. */
+  await page.getByTestId('pow-matching-entry').waitFor({ timeout: 20000 });
+  assert.equal(await page.getByTestId('fbx-language-chips').count(), 0, 'no paid launch dialog on the property page');
   await shot(page, 'detail-1440-ka-expired');
-  await blocked.getByRole('button').click();
-  await page.getByTestId('pow-discovery-blocked').waitFor({ state: 'detached', timeout: 15000 });
+  await page.locator('[data-action="pow-renew"]').first().click();
+  await page.getByTestId('pow-freshness-chip').first().and(page.locator('[data-state="ACTIVE"]')).waitFor({ timeout: 15000 });
   assert.equal(st.renews, 1);
   assert.equal(st.starts, 0, 'renewal never starts a paid search by itself');
-  assert.equal(await page.getByTestId('pow-freshness-chip').first().getAttribute('data-state'), 'ACTIVE');
 });
 
 test('source problem on an imported property: "წყაროზე პრობლემაა" with the source action, independent of freshness', opts, async (t) => {
@@ -246,12 +243,12 @@ test('Property Detail workspace at seven widths: no overflow, grid actions, full
   for (const width of WIDTHS) {
     await t.test(`${width}px`, async (tt) => {
       const { page } = await boot(tt, { width, lang: 'ka', imageWorks: true, state: 'EXPIRING_SOON' });
-      await page.getByTestId('pow-discovery').waitFor({ timeout: 20000 });
+      await page.getByTestId('pow-matching-entry').waitFor({ timeout: 20000 });
       assert.ok(await noOverflow(page), `no horizontal overflow at ${width}`);
       const m = await page.evaluate(() => {
         const box = (sel) => document.querySelector(sel)?.getBoundingClientRect();
         const ws = box('[data-testid="pow-workspace"]');
-        const disc = box('[data-testid="pow-discovery"]');
+        const disc = box('[data-testid="pow-matching-entry"]');
         const tiles = [...document.querySelectorAll('[data-testid="pow-quick-actions"] > button')].map((b) => b.getBoundingClientRect());
         const hero = document.querySelector('[data-testid="pow-hero"]');
         const cols = [...hero.children].map((c) => c.getBoundingClientRect());
@@ -289,7 +286,7 @@ test('six locales at 390 and 1440; ar/he right-to-left; no overflow', opts, asyn
     for (const width of [390, 1440]) {
       await t.test(`${lang} ${width}`, async (tt) => {
         const { page } = await boot(tt, { width, lang, state: 'EXPIRED', imageWorks: false });
-        await page.getByTestId('pow-discovery-blocked').waitFor({ timeout: 20000 });
+        await page.getByTestId('pow-matching-entry').waitFor({ timeout: 20000 });
         assert.ok(await noOverflow(page), `${lang} ${width} no overflow`);
         const dir = await page.evaluate(() => document.documentElement.dir || getComputedStyle(document.body).direction);
         assert.equal(dir, lang === 'ar' || lang === 'he' ? 'rtl' : 'ltr');
@@ -326,28 +323,15 @@ test('My Property card: normal photo, broken photo explained, freshness chip', o
   });
 });
 
-/* ── FIND BUYERS: the owner chooses the audience languages at launch ─────── */
+/* ── MATCHING: the property page opens the workspace (owner, 2026-10-24) ─── */
 
-test('launch: all six languages by default; tap to narrow (e.g. Georgian only); the last one cannot be removed', opts, async (t) => {
+test('the matching entry opens the workspace for this property; no paid launch, nothing charged', opts, async (t) => {
   for (const [lang, width] of [['ka', 390], ['ar', 1440]]) {
-    const { page } = await boot(t, { lang, width, height: width < 700 ? 844 : 900, imageWorks: true });
-    await page.getByTestId('pow-discovery').waitFor({ timeout: 20000 });
-    /* The start action is the panel's last button (after "view matches"). */
-    await page.getByTestId('pow-discovery').locator('button').last().click();
-    const chips = page.getByTestId('fbx-language-chips');
-    await chips.waitFor({ timeout: 20000 });
-    const pressed = () => chips.locator('button[aria-pressed="true"]').evaluateAll((els) => els.map((e) => e.textContent.trim().toLowerCase()));
-    assert.deepEqual(await pressed(), ['ka', 'ru', 'en', 'ar', 'he', 'tr'], `${lang}: all six by default`);
-    const hint = page.locator('#fbx-lang-hint');
-    const allHint = await hint.innerText();
-    for (const l of ['ru', 'en', 'ar', 'he', 'tr']) await page.getByTestId(`fbx-lang-${l}`).click();
-    assert.deepEqual(await pressed(), ['ka'], `${lang}: Georgian only`);
-    assert.notEqual(await hint.innerText(), allHint, 'the hint says the search is narrowed');
-    assert.match(await hint.innerText(), /KA/);
-    await page.getByTestId('fbx-lang-ka').click();
-    assert.deepEqual(await pressed(), ['ka'], 'the last language stays');
-    await page.getByTestId('fbx-lang-ar').click();
-    assert.deepEqual(await pressed(), ['ka', 'ar'], 'order stays the chips\' order');
+    const { page, st } = await boot(t, { lang, width, height: width < 700 ? 844 : 900, imageWorks: true });
+    await page.getByTestId('pow-matching-entry').waitFor({ timeout: 20000 });
     assert.ok(await noOverflow(page), `${lang}@${width}: no horizontal overflow`);
+    await page.getByTestId('pow-matching-open').click();
+    await page.waitForURL(/\/property\/[^/]+\/matches/, { timeout: 15000 });
+    assert.equal(st.starts, 0, 'opening the workspace never starts a paid search');
   }
 });

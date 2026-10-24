@@ -232,10 +232,12 @@ test('lifecycle truth migration: one state derivation, PAUSING polls, truthful n
 test('owner screens read the server lifecycle, never infer it from stored matches', () => {
   const PAGE = read('src/pages/property/MatchesPage.tsx');
   const DETAIL = read('src/pages/property/PropertyDetailPage.tsx');
-  for (const src of [PAGE, DETAIL]) {
-    assert.match(src, /useCampaignStatus\(/);
-    assert.doesNotMatch(src, /MatchingJobProgress/, 'the old client-derived progress widget is gone');
-  }
+  assert.match(PAGE, /useCampaignStatus\(/);
+  for (const src of [PAGE, DETAIL]) assert.doesNotMatch(src, /MatchingJobProgress/, 'the old client-derived progress widget is gone');
+  /* Matching workspace (owner, 2026-10-24): the property page no longer launches the legacy paid external campaign; it opens the workspace (MatchingEntryCard). */
+  assert.match(DETAIL, /<MatchingEntryCard propertyId=\{id\} \/>/);
+  const DETAIL_CODE = DETAIL.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(DETAIL_CODE, /CampaignLaunchPanel|startMatchingCampaign\(/, 'no paid campaign launch on the property page');
   assert.doesNotMatch(PAGE, /matches_load_more/, 'numbered pages, no "show more"');
   assert.match(PAGE, /getMatchesPaged\(propertyId, \{ page: matchPage/);
   assert.doesNotMatch(DETAIL, /initialActive=\{property\.matching_status === 'ACTIVE'\}/);

@@ -4,9 +4,12 @@
 // matched property, and the ladder Discovered → Qualified → Contactable → Email-eligible. The
 // owner can add a contact detail the person gave them; its origin is recorded, and a detail never
 // grants consent — that stays with the consent card below.
+//
+// For a contact unlocked from HOMATCH (External Leads Database or Internal Matches): which
+// product it was bought from, and that buying it did not buy consent.
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Fingerprint, Loader2, Save } from 'lucide-react';
+import { ExternalLink, Fingerprint, Loader2, Save, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,6 +30,8 @@ export function ContactSourceCard({ contact, onChanged }: { contact: CommContact
   const [origin, setOrigin] = useState<ContactDetailOrigin>((contact.contact_detail_origin as ContactDetailOrigin | null) ?? 'PERSON_PROVIDED');
   const [busy, setBusy] = useState(false);
   const fromFindBuyers = contact.source_kind === 'FIND_BUYERS';
+  /* Unlocked (paid for) from HOMATCH: the External Leads Database or Internal Matches. */
+  const purchased = contact.source_kind === 'CURATED_LEAD' || contact.source_kind === 'INTERNAL_MATCH';
   const dirty = email.trim() !== (contact.email ?? '') || phone.trim() !== (contact.phone ?? '') || origin !== (contact.contact_detail_origin ?? 'PERSON_PROVIDED');
 
   const save = async () => {
@@ -83,6 +88,20 @@ export function ContactSourceCard({ contact, onChanged }: { contact: CommContact
           </div>
           {contact.notes ? <p className="rounded-lg bg-muted/40 p-2.5 text-[13px] leading-snug" dir="auto">{contact.notes}</p> : null}
         </>
+      ) : purchased ? (
+        <div className="space-y-1.5">
+          <p className="inline-flex items-center gap-1.5 text-[13px] font-semibold">
+            <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+            {t(contact.source_kind === 'CURATED_LEAD' ? 'mwe_src_curated' : 'mwe_src_internal')}
+          </p>
+          <p className="text-[13px] leading-snug text-muted-foreground">
+            {t(contact.source_kind === 'CURATED_LEAD' ? 'mwe_src_curated_body' : 'mwe_src_internal_body')}
+          </p>
+          {/* Purchase is not consent: the consent card below decides who is emailed. */}
+          <p className="text-[13px] leading-snug text-muted-foreground">
+            {t(contact.consent_status === 'CONSENTED' ? 'mwe_src_consent_recorded' : 'mwe_src_consent_missing')}
+          </p>
+        </div>
       ) : (
         <p className="text-[13px] text-muted-foreground">{t(contact.source_kind === 'MANUAL' ? 'fbcrm_source_manual' : 'fbcrm_source_import')}</p>
       )}

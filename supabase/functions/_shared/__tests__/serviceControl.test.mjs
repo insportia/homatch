@@ -65,7 +65,8 @@ test('the refusal is a 503 SERVICE_DISABLED naming the service, never cached', a
 test('the six fail closed, the live products fail open — and an explicit OFF is honoured by both', async () => {
   const { PAUSED_BY_DEFAULT, LIVE_BY_DEFAULT, PAID_CLOSED_BY_DEFAULT } = await import('../serviceControl.ts');
   assert.equal(PAUSED_BY_DEFAULT.length, 6);
-  assert.deepEqual([...PAID_CLOSED_BY_DEFAULT], ['find_property_deep']);
+  /* find_buyers_external (legacy paid Find Buyers discovery) joined on 2026-10-24. */
+  assert.deepEqual([...PAID_CLOSED_BY_DEFAULT], ['find_property_deep', 'find_buyers_external']);
   assert.equal(new Set([...PAUSED_BY_DEFAULT, ...LIVE_BY_DEFAULT, ...PAID_CLOSED_BY_DEFAULT]).size, SERVICE_KEYS.length, 'every key is in exactly one mode');
   const quiet = console.error; console.error = () => {};
   try {

@@ -94,5 +94,6 @@ test('eacaf5a0: no official task outlives its job, and a failed cancel is seen',
   assert.match(ra, /event: 'cancel_tasks_failed'/);
   const at = ra.indexOf("const finished = await sb.from('research_jobs').update({ status: 'COMPLETE', stage: 'COMPLETE'");
   assert.ok(at > 0);
-  assert.match(ra.slice(at, at + 600), /if \(!finished\.error\) await cancelJobTasks\(sb, j\.id\);/);
+  const after = ra.slice(at, at + 1500);
+  assert.ok(after.indexOf('await cancelJobTasks(sb, j.id);') > after.indexOf('if (finished?.error) {'), 'only once the write succeeded');
 });

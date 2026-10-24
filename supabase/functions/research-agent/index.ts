@@ -4945,8 +4945,6 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string, code = false
   };
   result = applyEvidenceGate(result, i, o, reconciledIdentity);
   const finished = await sb.from('research_jobs').update({ status: 'COMPLETE', stage: 'COMPLETE', response_id: null, result_json: result, evidence_bundle: ev, progress: { phase: 'complete', percent: 100 }, completed_at: now(), updated_at: now(), error: null }).eq('id', j.id);
-  // No official task outlives its job: whatever is still queued or running for it stops here (eacaf5a0).
-  if (!finished.error) await cancelJobTasks(sb, j.id);
   // A refused write leaves the job where it was and the next tick runs this
   // again: say so, and do none of the bookkeeping below for a job that is
   // not complete (prod 12272abd repeated it every tick).
@@ -4957,6 +4955,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string, code = false
   // The report starts NOW, in parallel with the bookkeeping below, instead of
   // on the driver's next sweep (see startSynthesisNow).
   if (!finished?.error) await startSynthesisNow(sb, j.id);
+  await cancelJobTasks(sb, j.id); // no task outlives its job (eacaf5a0)
   // The job is already saved. Bookkeeping runs after it and separately, so a
   // failure here can cost us a number but never a customer's report.
   await recordVerificationCost(sb, { id: j.id, result_json: result });

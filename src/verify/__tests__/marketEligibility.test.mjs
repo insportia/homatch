@@ -69,7 +69,11 @@ test('61c1c38c as a development project: only its own new-build asks survive; ne
   const result = { ...LAND.RESULT, identity: { ...LAND.RESULT.identity, entity: { type: LAND.ENTITY_TYPE_WITH_BUILDINGS } } };
   const p = subjectMarketProfile({ result, seed: seedOf(result, '01.14.07.001.044'), registerLatest: LAND.REGISTER_LATEST });
   assert.equal(p.assetClass, 'DEVELOPMENT_PROJECT');
-  assert.equal(marketplaceSearchPlan(p).reason, 'PROPERTY_TYPE_NOT_SEARCHABLE');
+  // Owner 2026-10-24: a project is searched too — the area's new-build apartments, of every size.
+  assert.equal(marketplaceSearchPlan(p).reason, 'LOCATION_UNKNOWN', 'this fixture names no district: still no city-wide search');
+  const plan = marketplaceSearchPlan({ ...p, city: 'თბილისი', district: 'ვაკე' });
+  assert.equal(plan.reason, null);
+  assert.deepEqual([plan.request.propertyType, plan.request.areaSqm], ['APARTMENT', null]);
   const gate = applyMarketEligibility(LAND.COMPARABLES, p, { fx: FX });
   assert.deepEqual(gate.accepted.map((c) => c.project), ['მეტროპოლ ბაგები', 'მეტროპოლ ბაგები']);
   assert.ok(gate.accepted.every((c) => c.discoveryMethod !== 'MARKETPLACE_WORKER_SEARCH'));
@@ -197,7 +201,8 @@ test('missing attributes never widen the search: unknown type / area / district 
   assert.equal(marketplaceSearchPlan({ ...p, assetClass: 'UNKNOWN', assetClassBasis: null }).reason, 'PROPERTY_TYPE_UNKNOWN');
   assert.equal(marketplaceSearchPlan({ ...p, areaSqm: null }).reason, 'AREA_UNKNOWN');
   assert.equal(marketplaceSearchPlan({ ...p, district: null }).reason, 'LOCATION_UNKNOWN');
-  assert.equal(marketplaceSearchPlan({ ...p, assetClass: 'PARKING' }).reason, 'PROPERTY_TYPE_NOT_SEARCHABLE');
+  assert.equal(marketplaceSearchPlan({ ...p, assetClass: 'MIXED' }).reason, 'PROPERTY_TYPE_NOT_SEARCHABLE');
+  assert.equal(marketplaceSearchPlan({ ...p, assetClass: 'PARKING', areaSqm: 19.7 }).request.propertyType, 'PARKING', 'parking is searched (owner 2026-10-24)');
   const gate = applyMarketEligibility(FLAT.COMPARABLES, { ...p, areaSqm: null }, { fx: FX });
   assert.equal(gate.accepted.length, 0);
   assert.equal(gate.reason, 'AREA_UNKNOWN');
@@ -335,4 +340,32 @@ test('any Georgian city: no district name but a parcel centre → the search is 
   assert.equal(marketplaceSearchPlan({ ...base, city: 'x', district: null, latitude: 55.75, longitude: 37.6 }).reason, 'LOCATION_UNKNOWN', 'outside Georgia');
   const named = marketplaceSearchPlan({ ...base, city: 'თბილისი', district: 'ვაკე', latitude: null, longitude: null });
   assert.equal(named.request.latitude, undefined, 'a named district sends no centre');
+});
+
+test('owner 2026-10-24: every kind is searched — parking, storage, office, project — each against its own kind', async () => {
+  const { comparableKindOf, kindsCompatible: compat } = await import('../intelligence/marketHierarchy.ts');
+  const base = { assetClassBasis: 'REGISTRY', rooms: null, transactionType: 'BUY', city: 'თბილისი', district: 'მთაწმინდა', areaKey: 'MTATSMINDA', locality: null, latitude: null, longitude: null };
+  assert.equal(marketplaceSearchPlan({ ...base, assetClass: 'PARKING', areaSqm: 19.7 }).request.propertyType, 'PARKING');
+  assert.equal(marketplaceSearchPlan({ ...base, assetClass: 'STORAGE', areaSqm: 6 }).request.propertyType, 'STORAGE');
+  const office = marketplaceSearchPlan({ ...base, assetClass: 'COMMERCIAL', subKind: 'OFFICE', areaSqm: 120 }).request;
+  assert.deepEqual([office.propertyType, office.subKind], ['COMMERCIAL', 'OFFICE']);
+  assert.equal(comparableKindOf({ propertyType: 'STORAGE' }), 'STORAGE');
+  assert.equal(comparableKindOf({ url: 'https://ss.ge/ka/udzravi-qoneba/iyideba-satavso-mtatsmindaze' }), 'STORAGE');
+  assert.equal(compat('STORAGE', 'COMMERCIAL'), false, 'a shop never prices a storage room');
+  assert.equal(compat('PARKING', 'PARKING'), true);
+
+  // A parking subject accepts the worker's parking adverts and refuses its shops.
+  const subject = { ...base, assetClass: 'PARKING', areaSqm: 19.7 };
+  const ad = (i, type, area) => ({ url: `https://www.myhome.ge/pr/${i}`, sourcePropertyType: type, propertyType: 'COMMERCIAL', area: String(area), price: String(area * 900), currency: 'USD', comparableType: 'SAME_DISTRICT', district: 'მთაწმინდა', transactionType: 'BUY', discoveryMethod: 'MARKETPLACE_WORKER_SEARCH' });
+  const gate = applyMarketEligibility([ad(1, 'PARKING', 18), ad(2, 'PARKING', 22), ad(3, 'PARKING', 15), ad(4, 'COMMERCIAL', 20)], subject, { fx: FX });
+  assert.deepEqual(gate.accepted.map((c) => c.url).sort(), ['https://www.myhome.ge/pr/1', 'https://www.myhome.ge/pr/2', 'https://www.myhome.ge/pr/3']);
+});
+
+test('a whole project accepts measured-near new-build adverts as its area market, never old stock or far ones', () => {
+  const p = { assetClass: 'DEVELOPMENT_PROJECT', assetClassBasis: 'IDENTITY', areaSqm: null, rooms: null, transactionType: 'BUY', city: 'თბილისი', district: 'საბურთალო', areaKey: 'VASHLIJVARI', locality: null, latitude: 41.7194, longitude: 44.724, project: 'Archi Kavtaradze' };
+  const ad = (i, d, cond) => ({ url: `https://www.myhome.ge/pr/${i}`, sourcePropertyType: 'APARTMENT', area: '70', price: '91000', currency: 'USD', comparableType: d <= 600 ? 'MICRO_LOCATION' : 'SAME_DISTRICT', distanceM: d, condition: cond, transactionType: 'BUY' });
+  const gate = applyMarketEligibility([ad(1, 300, 'white frame'), ad(2, 450, 'black frame'), ad(3, 550, 'green frame'), ad(4, 400, 'old build renovated'), ad(5, 4000, 'white frame')], p, { fx: FX });
+  assert.deepEqual(gate.accepted.map((c) => c.url).sort(), ['https://www.myhome.ge/pr/1', 'https://www.myhome.ge/pr/2', 'https://www.myhome.ge/pr/3']);
+  assert.ok(gate.rejected.find((r) => r.url.endsWith('/4')).reasons.includes('NOT_NEW_BUILD'));
+  assert.ok(gate.rejected.find((r) => r.url.endsWith('/5')).reasons.includes('LOCATION_WIDER_MARKET'));
 });

@@ -58,7 +58,9 @@ export interface MarketProfileRequest {
   latitude?: number | null;
   longitude?: number | null;
   transactionType: 'BUY' | 'MONTHLY_RENT';
-  propertyType: 'APARTMENT' | 'HOUSE' | 'COMMERCIAL' | 'LAND';
+  propertyType: 'APARTMENT' | 'HOUSE' | 'COMMERCIAL' | 'LAND' | 'PARKING' | 'STORAGE';
+  /** An office: a commercial search that prefers office adverts. */
+  subKind?: 'OFFICE';
   areaSqm: number | null;
   rooms: number | null;
   priceUsd: number | null;
@@ -210,7 +212,7 @@ function tier(c: WorkerComparable, subject: MarketSubject): { type: ReportCompar
 }
 
 const residential = (t: string | null): ReportComparable['propertyType'] =>
-  t === 'APARTMENT' || t === 'HOUSE' ? 'RESIDENTIAL' : t === 'COMMERCIAL' ? 'COMMERCIAL' : t === 'LAND' ? 'LAND' : null;
+  t === 'APARTMENT' || t === 'HOUSE' ? 'RESIDENTIAL' : t === 'COMMERCIAL' || t === 'PARKING' || t === 'STORAGE' ? 'COMMERCIAL' : t === 'LAND' ? 'LAND' : null;
 const n2 = (v: number | null | undefined): string | null => (typeof v === 'number' && Number.isFinite(v) ? String(Math.round(v * 100) / 100) : null);
 
 const CONDITION: Record<string, string> = {

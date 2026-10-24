@@ -54,6 +54,9 @@ export const AREA_TOLERANCE: Record<SearchableKind, number> = {
   HOUSE: 0.4,
   COMMERCIAL: 0.5,
   LAND: 0.5,
+  /* A parking space or storage room is priced per unit more than per m²: a wide band. */
+  PARKING: 0.6,
+  STORAGE: 0.6,
 };
 
 /** Room counts may differ by at most this much (residential units, both sides known). */
@@ -68,6 +71,7 @@ export const ROOMS_TOLERANCE = 1;
 export const PLAUSIBLE_AREA_SQM = {
   APARTMENT: [10, 600],
   PARKING: [5, 100],
+  STORAGE: [1, 150],
   HOUSE: [20, 3000],
   COMMERCIAL: [5, 50000],
 } as const;
@@ -78,6 +82,8 @@ export const MAX_DISTANCE_M: Record<SearchableKind, number> = {
   HOUSE: 3000,
   COMMERCIAL: 1500,
   LAND: 5000,
+  PARKING: 1500,
+  STORAGE: 1500,
 };
 
 /** Below this many accepted, priced listings there is no range — mirrors the customer gate. */
@@ -98,12 +104,23 @@ export type SubjectAssetClass =
   /** A parcel carrying a named development's buildings: not a flat, not bare land. */
   | 'DEVELOPMENT_PROJECT'
   | 'PARKING'
-  /** Land with buildings and no project, storage, or a register that contradicts itself. */
+  /** A storage room (სათავსო). */
+  | 'STORAGE'
+  /** Land with buildings and no project, or a register that contradicts itself. */
   | 'MIXED'
   | 'UNKNOWN';
 
-type SearchableKind = 'APARTMENT' | 'HOUSE' | 'COMMERCIAL' | 'LAND';
-const SEARCHABLE: readonly SubjectAssetClass[] = ['APARTMENT', 'HOUSE', 'COMMERCIAL', 'LAND'];
+/*
+ * EVERY KIND IS SEARCHED (owner 2026-10-24: "not only parking — private house,
+ * commercial, office, penthouse, land plot and so on"). A parking space and a
+ * storage room are sold on the portals as commercial adverts; the worker reads
+ * that segment of the subject's district and keeps only the adverts that name
+ * the kind (VerifyMarketRuntime subKind). An office is a commercial search
+ * that prefers office adverts; a penthouse is an apartment; a whole-project
+ * code reads the area's new-build apartments (marketplaceSearchPlan).
+ */
+type SearchableKind = 'APARTMENT' | 'HOUSE' | 'COMMERCIAL' | 'LAND' | 'PARKING' | 'STORAGE';
+const SEARCHABLE: readonly SubjectAssetClass[] = ['APARTMENT', 'HOUSE', 'COMMERCIAL', 'LAND', 'PARKING', 'STORAGE'];
 
 /*
  * LAND IS PRICED BY WHAT MAY BE BUILT ON IT (prod 176264ba, 2026-10-23).
@@ -153,6 +170,8 @@ export interface SubjectMarketProfile {
   areaKey: AreaKey | null;
   /** COORDINATES: no district name was read; the parcel centre named it (areaNearPoint). */
   districtBasis?: 'COORDINATES';
+  /** OFFICE: a commercial subject the register calls an office (the search prefers office adverts). */
+  subKind?: 'OFFICE';
   /**
    * A settlement the address names that the neighbourhood vocabulary does not
    * know (a village such as წავკისი), lower-cased; null when areaKey resolved.
@@ -187,12 +206,12 @@ const REGISTER_TO_CLASS: Partial<Record<RegisterKind, SubjectAssetClass>> = {
   PARKING: 'PARKING',
   COMMERCIAL: 'COMMERCIAL',
   OFFICE: 'COMMERCIAL',
-  STORAGE: 'MIXED',
+  STORAGE: 'STORAGE',
   OTHER: 'MIXED',
   AMBIGUOUS: 'MIXED',
 };
 const TEXT_TO_CLASS: Record<PropertyKind, SubjectAssetClass> = {
-  APARTMENT: 'APARTMENT', HOUSE: 'HOUSE', LAND: 'LAND', PARKING: 'PARKING', COMMERCIAL: 'COMMERCIAL',
+  APARTMENT: 'APARTMENT', HOUSE: 'HOUSE', LAND: 'LAND', PARKING: 'PARKING', STORAGE: 'STORAGE', COMMERCIAL: 'COMMERCIAL',
 };
 
 /** "მიწის ნაკვეთი შენობა-ნაგებობებით": a plot with buildings on it. */
@@ -236,8 +255,10 @@ export function subjectMarketProfile(input: {
   /* ---- what kind of property ---- */
   let assetClass: SubjectAssetClass = 'UNKNOWN';
   let assetClassBasis: SubjectMarketProfile['assetClassBasis'] = null;
+  let subKind: SubjectMarketProfile['subKind'] = undefined;
   if (latest) {
     const reg = propertyKindFromRegister(latest, registeredAddressOf(r, txt(l.recordId), null));
+    if (reg.kind === 'OFFICE') subKind = 'OFFICE';
     const mapped = REGISTER_TO_CLASS[reg.kind];
     if (mapped) {
       assetClass = mapped;
@@ -285,7 +306,7 @@ export function subjectMarketProfile(input: {
   if (assetClass === 'LAND') {
     // A plot is compared on its own registered area, never a unit's.
     pick(pos(l.landAreaSqm), 'REGISTRY_LAND');
-  } else if (assetClass === 'APARTMENT' || assetClass === 'COMMERCIAL' || assetClass === 'PARKING') {
+  } else if (assetClass === 'APARTMENT' || assetClass === 'COMMERCIAL' || assetClass === 'PARKING' || assetClass === 'STORAGE') {
     pick(pos(l.unitAreaSqm), 'REGISTRY_UNIT');
     pick(pos(facts.area), 'OFFICIAL_TEXT');
     pick(seedArea, 'SEED');
@@ -328,6 +349,7 @@ export function subjectMarketProfile(input: {
     latitude,
     longitude,
     ...(near ? { districtBasis: 'COORDINATES' as const } : {}),
+    ...(subKind ? { subKind } : {}),
     project: project ?? txt(facts.project) ?? null,
     address,
     transactionType: seed.property?.transaction === 'RENT' ? 'MONTHLY_RENT' : 'BUY',
@@ -363,21 +385,24 @@ export interface MarketplaceSearchPlan {
 export function marketplaceSearchPlan(p: SubjectMarketProfile, opts: { requireRegistry?: boolean } = {}): MarketplaceSearchPlan {
   if (opts.requireRegistry && p.assetClassBasis !== 'REGISTRY') return { request: null, reason: 'AWAITING_REGISTRY' };
   if (p.assetClass === 'UNKNOWN') return { request: null, reason: 'PROPERTY_TYPE_UNKNOWN' };
-  if (!SEARCHABLE.includes(p.assetClass)) return { request: null, reason: 'PROPERTY_TYPE_NOT_SEARCHABLE' };
+  const project = p.assetClass === 'DEVELOPMENT_PROJECT';
+  if (!project && !SEARCHABLE.includes(p.assetClass)) return { request: null, reason: 'PROPERTY_TYPE_NOT_SEARCHABLE' };
   /* ANY CITY IN GEORGIA (owner 2026-10-24): with no district name read, the
      parcel centre is sent and the worker names the city and its localities.
      Still never a city-wide search: no centre and no district, no search. */
   const centre = p.latitude != null && p.longitude != null && p.latitude > 41 && p.latitude < 43.6 && p.longitude > 39.9 && p.longitude < 46.8;
   if (!(p.city && p.district) && !centre) return { request: null, reason: 'LOCATION_UNKNOWN' };
-  if (!p.areaSqm) return { request: null, reason: 'AREA_UNKNOWN' };
+  // A whole project has no unit area: its market is the area's new-build apartments, of every size.
+  if (!project && !p.areaSqm) return { request: null, reason: 'AREA_UNKNOWN' };
   return {
     request: {
       city: p.city ?? '',
       district: p.district,
       ...(centre ? { latitude: p.latitude, longitude: p.longitude } : {}),
+      ...(p.subKind ? { subKind: p.subKind } : {}),
       transactionType: p.transactionType,
-      propertyType: p.assetClass as SearchableKind,
-      areaSqm: p.areaSqm,
+      propertyType: project ? 'APARTMENT' : (p.assetClass as SearchableKind),
+      areaSqm: project ? null : p.areaSqm,
       rooms: p.rooms,
       priceUsd: null,
     },
@@ -450,7 +475,7 @@ function currencyOf(v: unknown): 'USD' | 'GEL' | 'OTHER' | null {
 
 function listingKind(c: AnyComparable): PropertyKind | null {
   const raw = String(c.sourcePropertyType ?? '').toUpperCase();
-  if (raw === 'APARTMENT' || raw === 'HOUSE' || raw === 'LAND' || raw === 'COMMERCIAL') return raw;
+  if (raw === 'APARTMENT' || raw === 'HOUSE' || raw === 'LAND' || raw === 'COMMERCIAL' || raw === 'PARKING' || raw === 'STORAGE') return raw;
   return comparableKindOf(c as never);
 }
 
@@ -523,7 +548,7 @@ export function applyMarketEligibility(
   // What the subject could not be described by — decided once, for every listing.
   const profileGap: InsufficientReason | null =
     kind === 'UNKNOWN' ? 'PROPERTY_TYPE_UNKNOWN'
-      : kind === 'MIXED' || kind === 'PARKING' ? 'PROPERTY_TYPE_NOT_SEARCHABLE'
+      : kind === 'MIXED' ? 'PROPERTY_TYPE_NOT_SEARCHABLE'
         : kind !== 'DEVELOPMENT_PROJECT' && !subject.areaSqm ? 'AREA_UNKNOWN'
           : !subject.areaKey && !subject.locality && (subject.latitude == null || subject.longitude == null) && kind !== 'DEVELOPMENT_PROJECT' ? 'LOCATION_UNKNOWN'
             : null;
@@ -580,6 +605,12 @@ export function applyMarketEligibility(
         const d = typeof c.distanceM === 'number' ? c.distanceM : parseNum(c.distanceM);
         const near = (d != null && maxDistance != null && d <= maxDistance) || (!!ca && !!subject.areaKey && (ca === subject.areaKey || areAdjacent(ca, subject.areaKey)));
         if (!near) reasons.push('LOCATION_WIDER_MARKET');
+      } else if (tier === 'MICRO_LOCATION' || tier === 'SAME_DISTRICT') {
+        // The area's new-build market (a whole-project code): measured close, and new-build by its own words.
+        const d = typeof c.distanceM === 'number' ? c.distanceM : parseNum(c.distanceM);
+        const cls0 = `${c.condition ?? ''} ${c.similarity ?? ''} ${c.buildingStatus ?? ''}`;
+        if (!(d != null && maxDistance != null && d <= maxDistance)) reasons.push('LOCATION_WIDER_MARKET');
+        else if (!NEW_BUILD.test(cls0)) reasons.push('NOT_NEW_BUILD');
       } else reasons.push('LOCATION_WIDER_MARKET');
       const cls = `${c.condition ?? ''} ${c.similarity ?? ''} ${c.buildingStatus ?? ''}`;
       if (OLD_BUILD.test(cls) && !NEW_BUILD.test(cls)) reasons.push('NOT_NEW_BUILD');

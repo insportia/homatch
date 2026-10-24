@@ -28,10 +28,30 @@ export interface VerifyMarketProfile {
   longitude?: number | null;
   transactionType: MarketplaceTransaction;
   propertyType: MarketplacePropertyType;
+  /*
+   * A kind the portals file inside commercial adverts (owner 2026-10-24: every
+   * property type is searched). PARKING/STORAGE keep only the adverts that name
+   * them; OFFICE prefers office adverts when there are enough of them.
+   */
+  subKind?: SubKind;
   areaSqm: number | null;
   rooms: number | null;
   /** The subject's own asking price, when known (USD). Only widens/centres the window. */
   priceUsd: number | null;
+}
+
+export type SubKind = 'PARKING' | 'STORAGE' | 'OFFICE';
+const SUBKIND_TEXT: Record<SubKind, RegExp> = {
+  PARKING: /ავტოსადგომ|პარკინგ|ავტოფარეხ|გარაჟ|parking|garage|паркинг|машино-?мест|гараж/iu,
+  STORAGE: /სათავს|სამარაგ|storage|кладов/iu,
+  OFFICE: /ოფის|საოფისე|office|офис/iu,
+};
+/** Below this many office adverts the search keeps every commercial advert of the district. */
+export const MIN_OFFICE_ADVERTS = 3;
+
+/** Whether a portal advert names the kind (title and description). */
+export function advertNames(kind: SubKind, l: any): boolean {
+  return SUBKIND_TEXT[kind].test(`${l?.title ?? ''} ${l?.description ?? ''} ${l?.retrievalMetadata?.title ?? ''}`);
 }
 
 export type SourceKey = 'MYHOME' | 'SSGE';
@@ -271,7 +291,12 @@ async function runSource(source: SourceKey, acquire: Acquirer, profile: VerifyMa
           const unresolved = !!result?.queryApplied?.districtFallback;
           if (unresolved && !error) error = 'DISTRICT_UNRESOLVED';
           for (const l of result?.listings ?? []) {
+            const sub = profile.subKind;
+            // A parking space or storage room: only the commercial adverts that name it.
+            if ((sub === 'PARKING' || sub === 'STORAGE') && !advertNames(sub, l)) continue;
             const v = toVerifyComparable(source, l, unresolved ? 'CITY' : scope);
+            if (v && sub && sub !== 'OFFICE') v.propertyType = sub;
+            if (v && sub === 'OFFICE' && advertNames('OFFICE', l)) (v as VerifyComparable & { office?: boolean }).office = true;
             if (v && !out.has(v.sourceListingId)) out.set(v.sourceListingId, v);
           }
           // Enough for a representative sample: stop politely.
@@ -288,7 +313,13 @@ async function runSource(source: SourceKey, acquire: Acquirer, profile: VerifyMa
     run.attempts.push({ scope, district, discovered, returned: out.size, status, error, durationMs: now() - started });
     if (out.size >= cap) break;
   }
-  const comparables = [...out.values()].slice(0, cap);
+  let kept = [...out.values()];
+  // An office prefers office adverts, when the district has enough of them.
+  if (profile.subKind === 'OFFICE') {
+    const offices = kept.filter((v) => (v as VerifyComparable & { office?: boolean }).office);
+    if (offices.length >= MIN_OFFICE_ADVERTS) kept = offices;
+  }
+  const comparables = kept.slice(0, cap);
   run.listings = comparables.length;
   const last = run.attempts[run.attempts.length - 1];
   run.status = comparables.length ? (run.attempts.every((a) => a.status === 'COMPLETE') ? 'COMPLETE' : 'PARTIAL') : last?.status === 'TIMED_OUT' ? 'TIMED_OUT' : last?.status === 'FAILED' || last?.status === 'BLOCKED' ? 'FAILED' : 'COMPLETE';
@@ -340,7 +371,7 @@ export class VerifyMarketRuntime {
 }
 
 const TX: MarketplaceTransaction[] = ['BUY', 'MONTHLY_RENT', 'DAILY_RENT'];
-const PT: MarketplacePropertyType[] = ['APARTMENT', 'HOUSE', 'PENTHOUSE', 'LAND', 'COMMERCIAL', 'OFFICE', 'VILLA', 'TOWNHOUSE', 'STUDIO', 'OTHER'];
+const PT: Array<MarketplacePropertyType | SubKind> = ['APARTMENT', 'HOUSE', 'PENTHOUSE', 'LAND', 'COMMERCIAL', 'OFFICE', 'VILLA', 'TOWNHOUSE', 'STUDIO', 'OTHER', 'PARKING', 'STORAGE'];
 
 /** Validate an untrusted HTTP body into a profile, or null. */
 export function parseVerifyMarketProfile(body: any): VerifyMarketProfile | null {
@@ -356,7 +387,9 @@ export function parseVerifyMarketProfile(body: any): VerifyMarketProfile | null 
   const tx = TX.includes(body?.transactionType) ? body.transactionType : 'BUY';
   const raw = PT.includes(body?.propertyType) ? body.propertyType : 'APARTMENT';
   // Both adapters support APARTMENT/HOUSE/LAND/COMMERCIAL; map the rest honestly.
-  const propertyType: MarketplacePropertyType = raw === 'PENTHOUSE' || raw === 'STUDIO' ? 'APARTMENT' : raw === 'VILLA' || raw === 'TOWNHOUSE' ? 'HOUSE' : raw === 'OFFICE' ? 'COMMERCIAL' : raw === 'OTHER' ? 'APARTMENT' : raw;
+  // Parking, storage and offices are read from the commercial segment (subKind).
+  const subKind: SubKind | undefined = raw === 'PARKING' || raw === 'STORAGE' || raw === 'OFFICE' ? raw : body?.subKind === 'OFFICE' ? 'OFFICE' : undefined;
+  const propertyType: MarketplacePropertyType = raw === 'PENTHOUSE' || raw === 'STUDIO' ? 'APARTMENT' : raw === 'VILLA' || raw === 'TOWNHOUSE' ? 'HOUSE' : subKind ? 'COMMERCIAL' : raw === 'OTHER' ? 'APARTMENT' : raw;
   return {
     city,
     district: typeof body?.district === 'string' && body.district.trim() ? body.district.trim().slice(0, 80) : null,
@@ -366,6 +399,7 @@ export function parseVerifyMarketProfile(body: any): VerifyMarketProfile | null 
     rooms: num(body?.rooms),
     priceUsd: num(body?.priceUsd),
     ...(alternates.length ? { districtAlternates: alternates } : {}),
+    ...(subKind ? { subKind } : {}),
     ...(inGeorgia(latitude, longitude) ? { latitude, longitude } : {}),
   };
 }

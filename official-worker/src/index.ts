@@ -137,9 +137,16 @@ const debugJobs = new Map<string, any>();
 // user session is NOT accepted — see http/workerAuth.ts (capacity audit P1 #1).
 const auth = createWorkerAuth(TOKEN);
 
+// Replicas share MyHome's one-run-at-a-time and the one Telegram session through the database (globalSemaphore.ts).
+const sharedSemaphore = workerSemaphore();
 // Telegram discovery (MTProto). One session, one queue — see telegram/TelegramGateway.ts.
-// Mounted before the routes below; token-only; inert until TELEGRAM_ENABLED.
-const telegram = mountTelegramRoutes(app, { token: TOKEN, driverFactory: createGramJsDriver });
+// Mounted before the routes below; token-only; inert until TELEGRAM_ENABLED. With several
+// replicas only the one holding the 'telegram' slot opens the session.
+const telegram = mountTelegramRoutes(app, {
+  token: TOKEN,
+  driverFactory: createGramJsDriver,
+  sessionLock: sharedSemaphore ? () => sharedSemaphore.acquire('telegram', 1, { deadlineAt: Date.now() + 10_000, ttlSeconds: 90 }) : undefined,
+});
 process.once('SIGTERM', () => { void telegram.shutdown(); });
 // Phase 2 discovery: one SSRF-guarded, address-pinned fetch hop for portal
 // jobs routed through the worker. Token-only; see discovery/routes.ts.
@@ -147,8 +154,6 @@ mountDiscoveryRoutes(app, { token: TOKEN });
 // Verify secure document viewer: ONE TAS attachment by attachedFileId, token-only
 // (research-agent `document_file` caches it privately and signs it). See verify/TasFileRoute.ts.
 mountTasFileRoutes(app, { token: TOKEN });
-// Replicas share MyHome's one-run-at-a-time through the database (globalSemaphore.ts).
-const sharedSemaphore = workerSemaphore();
 const myhome = startMyHomeRuntime(process.env, fetch, sharedSemaphore);
 const ssge = startSsgeRuntime();
 process.once('SIGTERM', () => ssge.shutdown());
@@ -160,7 +165,9 @@ if (ssge.status().enabled && ssge.status().configured) {
 app.get('/health/ssge', auth, (_q: any, r: any) => r.json(ssge.status()));
 // Find Property HTML portals (place.ge, home.ge, brokeri.ge, allhome.ge):
 // one runtime each on this worker; each idles until its own enable flag and token are set.
-const portals = PORTAL_ADAPTERS.map((adapter: any) => startPortalRuntime(adapter));
+// One replica leads each portal (its index crawler and searches); see portals/runtime.mjs.
+const portalLead = sharedSemaphore ? (key: string) => sharedSemaphore.acquire(key, 1, { deadlineAt: Date.now() + 1000, ttlSeconds: 120 }) : null;
+const portals = PORTAL_ADAPTERS.map((adapter: any) => startPortalRuntime(adapter, process.env, fetch, undefined, undefined, undefined, portalLead));
 process.once('SIGTERM', () => portals.forEach((p: any) => p.shutdown()));
 app.get('/health/portals', auth, (_q: any, r: any) => r.json(portals.map((p: any) => p.status())));
 process.once('SIGTERM', () => myhome.shutdown());

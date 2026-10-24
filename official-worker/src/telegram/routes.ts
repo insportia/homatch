@@ -16,11 +16,11 @@ const HEALTH_PROBE_TTL_MS = 60_000;
 
 export function mountTelegramRoutes(
   app: any,
-  options: { token: string; env?: TelegramEnv; driverFactory: (env: TelegramEnv) => TelegramDriver },
+  options: { token: string; env?: TelegramEnv; driverFactory: (env: TelegramEnv) => TelegramDriver; sessionLock?: () => Promise<{ release(): Promise<void> } | null> },
 ): TelegramGateway {
   const env = options.env ?? telegramEnvFromProcess();
   const secrets = [env.session, env.apiHash, options.token];
-  const gateway = new TelegramGateway({ env, driverFactory: options.driverFactory });
+  const gateway = new TelegramGateway({ env, driverFactory: options.driverFactory, sessionLock: options.sessionLock });
   let lastProbeAt = 0;
 
   const tokenOnly = (req: any, res: any, next: any) => {

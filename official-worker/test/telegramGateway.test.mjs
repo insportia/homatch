@@ -191,3 +191,21 @@ test('a hung Telegram call is bounded: it fails as NETWORK_ERROR, the queue move
   assert.ok(fake.calls.filter((c) => c === 'connect').length >= 2, 'the session was re-established after the timeout');
   clearInterval(alive);
 });
+
+test('several replicas: the session opens only under the cluster lock, and closing it frees the lock', async () => {
+  // A one-holder lock shared by two "replicas".
+  let holder = null;
+  const lockFor = (name) => async () => (holder && holder !== name ? null : (holder = name, { release: async () => { holder = null; } }));
+  const a = fakeDriver(), b = fakeDriver();
+  const gwA = gatewayWith(a, { sessionLock: lockFor('A') });
+  const gwB = gatewayWith(b, { sessionLock: lockFor('B') });
+  await gwA.history('tbilisikvartiri', { limit: 1 });
+  await assert.rejects(gwB.history('tbilisikvartiri', {}), (e) => e.kind === 'RATE_LIMITED' && e.message === 'TELEGRAM_SESSION_ON_ANOTHER_REPLICA');
+  assert.equal(b.calls.includes('connect'), false, 'B never opened the shared session');
+  assert.equal(gwB.status().lastErrorKind, null, 'a busy lock is not a session failure');
+  await gwA.shutdown();
+  assert.equal(holder, null, 'shutdown released the lock');
+  await gwB.history('tbilisikvartiri', { limit: 1 });
+  assert.equal(holder, 'B');
+  await gwB.shutdown();
+});

@@ -335,3 +335,46 @@ test('executor (rstax): the redacted answer is stored as evidence on EVERY outco
   // Five answers stored (the crash had none), each a JSON evidence object.
   assert.equal(gw.calls.upload.filter((u) => u.ct === 'application/json').length, 5);
 });
+
+test('prod eacaf5a0: a refused or unanswered hand-off is sent again as the minimal result — a finished source is never lost', async () => {
+  const { handoffMinimum, HANDOFF_MIN_BYTES, MAX_RESULT_BYTES, QUEUE_MAX_RESULT_CHARS } = await import('../.tstest-build/queue/evidence.js');
+  const { MAX_RESULT_STRING_CHARS } = await import('../.tstest-build/queue/evidence.js');
+  assert.ok(MAX_RESULT_STRING_CHARS < QUEUE_MAX_RESULT_CHARS, 'the worker trims below the queue character limit');
+  assert.ok(MAX_RESULT_BYTES <= 2_000_000);
+  const gw = fakeGateway({ queue: [mkTask()] });
+  let first = true;
+  const sent = [];
+  gw.complete = async (t, p) => {
+    sent.push(p);
+    if (first) { first = false; throw new Error('verify-queue complete: HTTP 413 RESULT_TOO_LARGE'); }
+    gw.calls.complete.push({ id: t.id, ...p });
+    return { ok: true };
+  };
+  const big = { status: 'SEARCH_CONFIRMED', resultConfirmed: true, traversal: { records: Array.from({ length: 400 }, (_, i) => ({ i, raw: 'x'.repeat(4000) })) }, documents: Array.from({ length: 30 }, (_, i) => ({ id: `d${i}`, complete: true, rawText: 'ტ'.repeat(8000), fullTextRef: { sha256: 'a'.repeat(64), path: 'p', chars: 9000 } })) };
+  const r = runner(gw, async () => ({ type: 'complete', result: big }));
+  r.start();
+  await until(() => gw.calls.complete.length === 1);
+  await r.stop(50);
+  assert.equal(sent.length, 2);
+  const minimal = sent[1].result;
+  assert.equal(minimal.handoffMinimum, true);
+  assert.equal(minimal.status, 'SEARCH_CONFIRMED');
+  assert.equal(minimal.documents.length, 30, 'every document stays, with its stored-text ref');
+  assert.ok(minimal.documents.every((d) => d.fullTextRef), 'every document keeps its stored full text');
+  assert.ok(minimal.documents.slice(0, 5).every((d) => d.rawText.length >= minimal.documents[29].rawText.length), 'the newest keep the most text');
+  assert.equal(minimal.traversal, undefined);
+  assert.ok(Buffer.byteLength(JSON.stringify(minimal)) <= HANDOFF_MIN_BYTES);
+  // Any size, any script: always under the guarantee.
+  const huge = { ...big, documents: Array.from({ length: 500 }, (_, i) => ({ id: `d${i}`, rawText: 'ტ'.repeat(20000) })) };
+  assert.ok(Buffer.byteLength(JSON.stringify(handoffMinimum(huge))) <= HANDOFF_MIN_BYTES);
+});
+
+test('prod eacaf5a0: a mostly-Latin result under 2 MB but over the queue character limit is trimmed before it is sent', async () => {
+  const { QUEUE_MAX_RESULT_CHARS } = await import('../.tstest-build/queue/evidence.js');
+  const uploads = [];
+  const upload = async (sha) => { uploads.push(sha); return `sha256/${sha}`; };
+  const r = { status: 'SEARCH_CONFIRMED', traversal: { records: Array.from({ length: 500 }, (_, i) => ({ i, raw: 'x'.repeat(3500) })) }, documents: [] };
+  const c = await compactResult(r, upload);
+  assert.ok(JSON.stringify(c.result).length < QUEUE_MAX_RESULT_CHARS, `${JSON.stringify(c.result).length} chars`);
+  assert.ok(c.result.fullResultRef, 'the complete result is stored first');
+});

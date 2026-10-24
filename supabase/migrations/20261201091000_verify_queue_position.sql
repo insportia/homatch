@@ -49,5 +49,11 @@ begin
 end;
 $function$;
 
+-- The throughput count above (and verify_scaling_metrics) reads finished tasks of the last 15 minutes;
+-- without this every waiting job's poll scanned the whole, ever-growing task table.
+create index if not exists verify_tasks_finished_recent_idx
+  on public.verify_tasks (lane, finished_at)
+  where state in ('SUCCEEDED', 'FAILED', 'DEAD');
+
 revoke all on function public.verify_queue_position(uuid) from public, anon, authenticated;
 grant execute on function public.verify_queue_position(uuid) to service_role;

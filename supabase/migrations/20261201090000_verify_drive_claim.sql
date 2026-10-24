@@ -40,6 +40,12 @@ begin
     select r.id
       from public.research_jobs r
       join candidates c on c.id = r.id
+     -- Re-checked on the row as it stands after the lock: a job another driver claimed and committed after
+     -- this statement's snapshot is not locked any more, so SKIP LOCKED alone would hand it out twice.
+     where r.status in ('CREATED', 'RUNNING')
+       and r.deleted_at is null
+       and r.cancelled_at is null
+       and (r.driver_claimed_at is null or r.driver_claimed_at < now() - make_interval(secs => greatest(p_claim_ttl_seconds, 10)))
      order by c.rn, c.updated_at
      limit greatest(least(p_limit, 50), 1)
      for update of r skip locked

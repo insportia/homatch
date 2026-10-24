@@ -67,6 +67,9 @@ const int = (v: unknown, lo: number, hi: number, d: number) => {
   return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : d;
 };
 
+/* Last proxy_usage_events prune by this isolate (see case 'proxy_usage'). */
+let proxyUsagePrunedAt = 0;
+
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);
   const baseUrl = Deno.env.get('SUPABASE_URL');
@@ -171,6 +174,11 @@ Deno.serve(async (req: Request) => {
         if (insert.length) {
           const { error } = await db.from('proxy_usage_events').insert(insert);
           if (error) throw error;
+        }
+        // Keep the ledger bounded (20261201094000): at most one prune an hour per isolate.
+        if (Date.now() - proxyUsagePrunedAt > 3_600_000) {
+          proxyUsagePrunedAt = Date.now();
+          await db.rpc('proxy_usage_prune', { p_days: 90 }).then(() => {}, () => {});
         }
         return json({ recorded: insert.length });
       }

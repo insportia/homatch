@@ -103,7 +103,7 @@ async function burst(jobs, replicas, { scaleDownAfterMs = null, keep = 1 } = {})
   const t0 = Date.now();
   runners.forEach((r) => r.start());
   if (scaleDownAfterMs !== null) {
-    setTimeout(() => { for (const r of runners.slice(keep)) void r.stop(5); }, scaleDownAfterMs);
+    setTimeout(() => { for (const r of runners.slice(keep)) void r.stop(0); }, scaleDownAfterMs); // no grace: whatever is running must be handed back
   }
   while (!q.done()) await new Promise((r) => setTimeout(r, 5));
   const ms = Date.now() - t0;

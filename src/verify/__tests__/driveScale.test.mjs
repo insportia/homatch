@@ -68,3 +68,12 @@ test('a waiting job shows its position and a measured estimate', () => {
   const rs = readFileSync(fileURLToPath(new URL('../../components/verify/ResearchStream.tsx', import.meta.url)), 'utf8');
   assert.match(rs, /t\('verify_queue_line_eta', \{ n: queue\.position, min:/);
 });
+
+test('the batch claim re-checks the claim on the locked row (two drivers never get one job)', () => {
+  const sql = readFileSync(fileURLToPath(new URL('../../../supabase/migrations/20261201090000_verify_drive_claim.sql', import.meta.url)), 'utf8');
+  const pick = sql.slice(sql.indexOf('pick as ('), sql.indexOf('for update of r skip locked'));
+  // Postgres re-evaluates the locking scan's own WHERE on the newest row version; the CTE's snapshot is not enough.
+  assert.match(pick, /where r\.status in \('CREATED', 'RUNNING'\)/);
+  assert.match(pick, /and \(r\.driver_claimed_at is null or r\.driver_claimed_at < now\(\)/);
+  assert.match(pick, /and r\.deleted_at is null\s+and r\.cancelled_at is null/);
+});

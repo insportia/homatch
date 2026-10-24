@@ -14,7 +14,7 @@ const db = new PGlite();
 await db.exec(`
   create role anon; create role authenticated; create role service_role;
   create table public.admin_settings (key text primary key, value jsonb not null, updated_at timestamptz);
-  create table public.research_jobs (id uuid primary key default gen_random_uuid(), status text, updated_at timestamptz default now(), completed_at timestamptz);
+  create table public.research_jobs (id uuid primary key default gen_random_uuid(), status text, updated_at timestamptz default now(), completed_at timestamptz, deleted_at timestamptz, cancelled_at timestamptz);
   create table public.verify_tasks (id uuid primary key default gen_random_uuid(), job_id uuid, source text, lane text, state text,
     run_after timestamptz default now(), created_at timestamptz default now(), started_at timestamptz, finished_at timestamptz);
   insert into public.admin_settings values ('verify_scaling', '{"mode":"AUTOMATIC","approvedMax":6}', now());
@@ -40,6 +40,7 @@ await db.exec(`
     ('tas', 'BROWSER', 'SUCCEEDED', now() - interval '70 seconds', now() - interval '10 seconds'),
     ('napr', 'HTTP', 'SUCCEEDED', now() - interval '12 seconds', now() - interval '2 seconds');
   insert into public.research_jobs (status, completed_at) values ('COMPLETE', now()), ('RUNNING', null), ('CREATED', null);
+  insert into public.research_jobs (status, deleted_at) values ('RUNNING', now());  -- deleted: never active
 `);
 const m = (await db.query('select public.verify_scaling_metrics() m')).rows[0].m;
 assert.equal(m.healthyReplicas, 2, 'fresh and not draining only');
@@ -51,6 +52,8 @@ assert.equal(m.completedLast15m, 2);
 assert.equal(m.activeJobs, 2);
 assert.ok(Number(m.taskP95Seconds) > 50 && Number(m.taskP95Seconds) <= 60);
 
+const evGrants = (await db.query(`select privilege_type from information_schema.role_table_grants where table_name = 'verify_scaling_events' and grantee = 'service_role'`)).rows.map((r) => r.privilege_type).sort();
+assert.deepEqual(evGrants, ['INSERT', 'SELECT'], 'the scaling ledger is append-only');
 const grants = (await db.query(`select grantee from information_schema.routine_privileges where routine_name = 'verify_scaling_metrics'`)).rows.map((r) => r.grantee);
 assert.ok(grants.includes('service_role') && !grants.includes('anon') && !grants.includes('authenticated'));
 console.log('scaling-metrics-db-check: OK');

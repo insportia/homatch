@@ -45,6 +45,8 @@ create table if not exists public.verify_scaling_events (
 alter table public.verify_scaling_events enable row level security;
 revoke all on table public.verify_scaling_events from public, anon, authenticated;
 grant select, insert on table public.verify_scaling_events to service_role;
+-- Append-only for real: Supabase's default privileges would otherwise leave update/delete with service_role.
+revoke update, delete, truncate on table public.verify_scaling_events from service_role;
 grant usage on sequence public.verify_scaling_events_id_seq to service_role;
 create index if not exists verify_scaling_events_created_idx on public.verify_scaling_events (created_at desc);
 
@@ -61,12 +63,12 @@ set search_path to ''
 as $function$
   select jsonb_build_object(
     'queued', (select count(*) from public.verify_tasks where state in ('QUEUED', 'WAITING_SHARED') and source <> 'rstax'),
-    'queuedByLane', (select coalesce(jsonb_object_agg(lane, n), '{}'::jsonb) from (select lane, count(*) n from public.verify_tasks where state = 'QUEUED' group by lane) q),
+    'queuedByLane', (select coalesce(jsonb_object_agg(lane, n), '{}'::jsonb) from (select lane, count(*) n from public.verify_tasks where state = 'QUEUED' and source <> 'rstax' group by lane) q),
     'running', (select count(*) from public.verify_tasks where state = 'RUNNING'),
     'oldestQueuedSeconds', coalesce((select extract(epoch from now() - min(greatest(created_at, run_after)))::integer from public.verify_tasks where state = 'QUEUED' and run_after <= now() and source <> 'rstax'), 0),
     'completedLast15m', (select count(*) from public.verify_tasks where state in ('SUCCEEDED', 'FAILED', 'DEAD') and finished_at > now() - interval '15 minutes'),
     'jobsPerMinute', round(((select count(*) from public.research_jobs where status = 'COMPLETE' and completed_at > now() - interval '60 minutes')::numeric / 60), 2),
-    'activeJobs', (select count(*) from public.research_jobs where status in ('CREATED', 'RUNNING') and updated_at > now() - interval '6 hours'),
+    'activeJobs', (select count(*) from public.research_jobs where status in ('CREATED', 'RUNNING') and deleted_at is null and cancelled_at is null and updated_at > now() - interval '6 hours'),
     'taskP95Seconds', (select round(percentile_cont(0.95) within group (order by extract(epoch from finished_at - started_at))::numeric, 1)
                          from public.verify_tasks where state = 'SUCCEEDED' and started_at is not null and finished_at > now() - interval '24 hours'),
     'healthyReplicas', (select count(*) from public.worker_replicas where last_seen > now() - interval '90 seconds' and not draining),

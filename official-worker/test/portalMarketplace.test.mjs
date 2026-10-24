@@ -115,6 +115,25 @@ test('portal runtimes idle until their own flag and token are set', async () => 
   assert.equal(calls, 0, 'no claim without the enable flag');
 });
 
+test('several replicas: only the replica holding portal:<workerId> claims searches; the other waits', async () => {
+  const env = { SUPABASE_URL: 'https://x.supabase.co', [`${placege.envPrefix}_WORKER_TOKEN`]: 'x'.repeat(40), [`${placege.envPrefix}_MARKETPLACE_ENABLED`]: 'true', PORTAL_INDEX_ENABLED: 'false' };
+  let holder = null;
+  const leadFor = (name) => async () => (holder && holder !== name ? null : (holder = name, { release: async () => { holder = null; } }));
+  const claims = { A: 0, B: 0 };
+  const fetcherFor = (name) => async () => { claims[name]++; return Response.json({ runs: [] }); };
+  const a = startPortalRuntime(placege, env, fetcherFor('A'), undefined, undefined, undefined, leadFor('A'));
+  const b = startPortalRuntime(placege, env, fetcherFor('B'), undefined, undefined, undefined, leadFor('B'));
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(a.status().leading, true);
+  assert.equal(b.status().leading, false);
+  assert.ok(claims.A >= 1);
+  assert.equal(claims.B, 0, 'the follower never claims');
+  a.shutdown();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(holder, null, 'stopping the leader frees the slot for the next replica');
+  b.shutdown();
+});
+
 test('switches: each portal has its own default-off switch; MyHome and SS.ge rules unchanged', async () => {
   const db = { from: () => ({ select: () => ({ in: async () => ({ data: [{ key: 'marketplace_search_enabled', value: true }, { key: 'provider_kill_switch', value: true }, { key: 'marketplace_myhome_enabled', value: true }, { key: 'marketplace_placege_enabled', value: true }] }) }) }) };
   const s = await loadMarketplaceSwitches(db);

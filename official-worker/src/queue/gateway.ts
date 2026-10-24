@@ -113,6 +113,10 @@ export class QueueGateway {
   delegate(t: QueueTask, scopeKey: string, input?: Record<string, unknown>) {
     return this.call<{ ok: boolean; outcome?: 'CACHE' | 'SHARED' | 'PRODUCE'; reason?: string }>('delegate', { id: t.id, token: t.fencingToken, scopeKey, input });
   }
+  /** A /verify/market run, kept in the database so any replica's poll finds it. */
+  marketPut(runId: string, status: 'RUNNING' | 'COMPLETE', payload: unknown) {
+    return this.call<{ ok: boolean }>('market_put', { runId, status, payload });
+  }
   captcha(events: Array<Record<string, unknown>>) {
     return this.call<{ recorded: number }>('captcha', { events });
   }

@@ -78,6 +78,8 @@ export interface ResearchStreamProps {
   onPlayingChange?: (playing: boolean) => void;
   /** The game's "view report" action once the report is ready. */
   onViewReport?: () => void;
+  /** Waiting its turn (Verify at scale): position among waiting checks and a measured estimate, when known. */
+  queue?: { position: number; etaSeconds: number | null } | null;
 }
 
 export function ResearchStream({
@@ -98,6 +100,7 @@ export function ResearchStream({
   onPlayingChange,
   onViewReport,
   stopping = false,
+  queue = null,
 }: ResearchStreamProps) {
   const { t } = useLanguage();
   const [, forceTick] = React.useState(0);
@@ -299,6 +302,14 @@ export function ResearchStream({
           />
         </Suspense>,
         document.body,
+      ) : null}
+
+      {queue && queue.position > 0 && !reportReady ? (
+        <p className="text-sm text-muted-foreground" role="status" aria-live="polite" data-testid="verify-queue-line">
+          {queue.etaSeconds != null && queue.etaSeconds > 0
+            ? t('verify_queue_line_eta', { n: queue.position, min: Math.max(1, Math.round(queue.etaSeconds / 60)) })
+            : t('verify_queue_line', { n: queue.position })}
+        </p>
       ) : null}
 
       {/*

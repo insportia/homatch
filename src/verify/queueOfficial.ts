@@ -352,6 +352,10 @@ export function queueWorkerView(rows: QueueTaskRow[]): {
    * the report sits ready.
    */
   stragglersRetrying: boolean;
+  /** Official tasks still waiting their turn (QUEUED / WAITING_SHARED): queue time is not execution time. */
+  waitingTasks: number;
+  /** The most recent start among tasks still running: each running task gets its own full execution window. */
+  latestRunningStartedAt: string | null;
 } {
   const sorted = [...rows].sort((a, b) =>
     (ORDER[a.source] ?? 10) - (ORDER[b.source] ?? 10) || String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')));
@@ -383,6 +387,8 @@ export function queueWorkerView(rows: QueueTaskRow[]): {
     sourceIndex: results.length,
     lastFinishedAt: finished[finished.length - 1] ?? null,
     stragglersRetrying: !terminal && gating.filter((r) => !TERMINAL_TASK_STATES.has(String(r.state))).every((r) => Number(r.attempts ?? 0) > 1),
+    waitingTasks: gating.filter((r) => r.state === 'QUEUED' || r.state === 'WAITING_SHARED').length,
+    latestRunningStartedAt: (gating.filter((r) => r.state === 'RUNNING' && r.started_at).map((r) => String(r.started_at)).sort().pop()) ?? null,
   };
 }
 

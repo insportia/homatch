@@ -352,6 +352,8 @@ export type SubjectValuationState =
   /** Nothing comparable was found; no market statement can be made at all. */
   | 'NO_COMPARABLE_BASIS';
 
+export type MarketAvailability = 'LOCATION_UNAVAILABLE' | 'NO_COMPARABLES' | 'COMPARABLES';
+
 export interface MarketIntelligence {
   currency: string;
   /** The subject's own asking price, when the research actually found one. */
@@ -394,6 +396,16 @@ export interface MarketIntelligence {
    */
   contextAvailable: boolean;
   subjectValuation: SubjectValuationState;
+  /*
+   * WHY THE MARKET LOOKS THE WAY IT DOES (prod 9f49e7e3, 2026-10-24). Three
+   * different situations used to read alike ("not enough local evidence"):
+   *   LOCATION_UNAVAILABLE  the subject's place was never established, so no
+   *                         portal search ran (eligibility LOCATION_UNKNOWN);
+   *   NO_COMPARABLES        the place was known and searched, nothing usable;
+   *   COMPARABLES           comparable listings exist (a range may still be
+   *                         withheld for too small a sample).
+   */
+  availability?: MarketAvailability;
 
   /** Present only when the subject's own price is known. */
   deltaFromMedianPct?: number;
@@ -1167,7 +1179,7 @@ export function buildMarketIntelligence(
    * When it set every listing aside, the market is still answered — as
    * EVIDENCE_LIMITED with the gate's reasons — instead of vanishing.
    */
-  gate: { state?: unknown; rejectedCounts?: Record<string, unknown> | null } | null = null
+  gate: { state?: unknown; reason?: unknown; rejectedCounts?: Record<string, unknown> | null } | null = null
 ): MarketIntelligence | null {
   /*
    * THE PROJECT'S OWN PRICE LEVEL, FOR THE PEER PRICE BAND.
@@ -1374,12 +1386,19 @@ export function buildMarketIntelligence(
     }
     hierarchy.excluded = ex;
   }
+  // No place, no search: say so instead of "too few comparables" (nothing was looked for).
+  const locationUnknown = gatedOut && gate?.reason === 'LOCATION_UNKNOWN';
+  if (locationUnknown && hierarchy.valuation.state === 'INSUFFICIENT_EVIDENCE') hierarchy.valuation.reasonCode = 'LOCATION_UNAVAILABLE';
+  const availability: MarketAvailability = hierarchy.comparables.length > 0 || scored.some((c) => c.headlineEligible)
+    ? 'COMPARABLES'
+    : locationUnknown ? 'LOCATION_UNAVAILABLE' : 'NO_COMPARABLES';
 
   const out: MarketIntelligence = {
     valuation: hierarchy.valuation,
     hierarchy,
     contextAvailable,
     subjectValuation,
+    availability,
     currency: chosen?.[0]?.currency ?? scored[0]?.currency ?? subject.currency ?? 'USD',
     subjectPricePerSqm: subject.pricePerSqm,
     subjectTotalPrice: subject.totalPrice,

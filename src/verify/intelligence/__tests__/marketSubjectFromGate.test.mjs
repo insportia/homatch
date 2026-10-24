@@ -39,3 +39,10 @@ test('without a register-based gate the text guess still decides (no new trust i
   const b = buildIntelligenceBundle(report, buildEvidencePackage(report));
   assert.notEqual(b.market?.hierarchy?.valuation?.subjectKind, 'APARTMENT');
 });
+
+test('f51a2908: a parking subject is priced from the garage adverts the gate accepted', async () => {
+  const { comparableKindOf, kindsCompatible } = await import('../marketHierarchy.ts');
+  const garage = { url: 'https://www.myhome.ge/udzravi-qoneba/iyideba-avtofarexi-komertsiuli-farti-isanshi-26447026', propertyType: 'COMMERCIAL', sourcePropertyType: 'PARKING' };
+  assert.equal(comparableKindOf(garage), 'PARKING');
+  assert.equal(kindsCompatible('PARKING', comparableKindOf(garage)), true);
+});

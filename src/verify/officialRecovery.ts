@@ -196,6 +196,11 @@ export async function recoverStalledOfficial(sb: Db, before: { id: string; updat
       now: Date.parse(nowIso),
     });
     if (decision !== 'RECOVER') return false;
+    // Queue time is not execution time: a queue-mode job whose official tasks still wait their turn is not stalled.
+    if (row.result_json?._worker?.queue) {
+      const { count } = await sb.from('verify_tasks').select('id', { count: 'exact', head: true }).eq('job_id', row.id).in('state', ['QUEUED', 'WAITING_SHARED']).neq('source', 'rstax');
+      if ((count ?? 0) > 0) return false;
+    }
     const p: Record<string, any> = { ...(row.result_json || {}) };
     p.browserOfficial = { ...(p.browserOfficial || {}), results: p.browserOfficial?.results || [], unavailable: true, recovered: 'STALLED' };
     p._recovery = { reason: 'OFFICIAL_STAGE_STALLED', workerJobId: p._worker?.jobId ?? null, stalledSince: row.updated_at, at: nowIso };

@@ -140,4 +140,21 @@ export const VERIFY_SCALE_STRINGS = {
   vh_state_paused: ['Paused — tap to resume', 'შეჩერებულია — შეეხეთ გასაგრძელებლად', 'Приостановлено — нажмите, чтобы продолжить', 'Duraklatıldı — devam etmek için dokunun', 'متوقف مؤقتًا — انقر للمتابعة', 'מושהה — הקישו כדי להמשיך'],
   verify_budget_eyebrow: ['Verification budget', 'ვერიფიკაციის ბიუჯეტი', 'Бюджет проверки', 'Doğrulama bütçesi', 'ميزانية التحقق', 'תקציב האימות'],
   verify_budget_unit: ['credits', 'კრედიტი', 'кредитов', 'kredi', 'رصيد', 'קרדיטים'],
+  /* The queue line on the live research screen (ResearchStream): position and a measured estimate. */
+  verify_queue_line: [
+    'Waiting for its turn in the official-source queue. Position: {{n}}.',
+    'ოფიციალური წყაროების რიგში ელოდება თავის ჯერს. ადგილი რიგში: {{n}}.',
+    'Ожидает своей очереди к официальным источникам. Позиция: {{n}}.',
+    'Resmi kaynak kuyruğunda sırasını bekliyor. Sıra: {{n}}.',
+    'في انتظار دوره في قائمة المصادر الرسمية. الترتيب: {{n}}.',
+    'ממתין לתורו בתור המקורות הרשמיים. מיקום: {{n}}.',
+  ],
+  verify_queue_line_eta: [
+    'Waiting for its turn in the official-source queue. Position: {{n}}, about {{min}} min to start.',
+    'ოფიციალური წყაროების რიგში ელოდება თავის ჯერს. ადგილი რიგში: {{n}}, დაწყებამდე დაახლოებით {{min}} წთ.',
+    'Ожидает своей очереди к официальным источникам. Позиция: {{n}}, до начала примерно {{min}} мин.',
+    'Resmi kaynak kuyruğunda sırasını bekliyor. Sıra: {{n}}, başlamasına yaklaşık {{min}} dk.',
+    'في انتظار دوره في قائمة المصادر الرسمية. الترتيب: {{n}}، حوالي {{min}} دقيقة حتى البدء.',
+    'ממתין לתורו בתור המקורות הרשמיים. מיקום: {{n}}, כ-{{min}} דקות עד ההתחלה.',
+  ],
 };

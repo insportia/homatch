@@ -313,9 +313,12 @@ test('the driver leaves a job alone while a client is polling it', () => {
 
 test('the driver never resurrects a cancelled or deleted job', () => {
   const agent = code('supabase/functions/research-agent/index.ts');
-  const sweep = agent.slice(agent.indexOf('driveLiveJobs'), agent.indexOf('driveLiveJobs') + 1400);
+  // Verify at scale: the claim is SQL (verify_drive_claim); the original sweep stays as its fallback.
+  const sweep = agent.slice(agent.indexOf("event: 'claim_rpc_unavailable'"), agent.indexOf("event: 'claim_rpc_unavailable'") + 1400);
   assert.ok(sweep.includes("is('cancelled_at', null)"), 'cancelled jobs are swept up again');
   assert.ok(sweep.includes("is('deleted_at', null)"), 'deleted jobs are swept up again');
+  const claim = code('supabase/migrations/20261205090000_verify_drive_claim.sql');
+  assert.ok(claim.includes('j.deleted_at is null') && claim.includes('j.cancelled_at is null'), 'the claim resurrects a cancelled or deleted job');
 });
 
 test('synthesis is requested by the server, not by the page', () => {

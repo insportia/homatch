@@ -20,6 +20,8 @@ import { compactOfficialContext } from '../../../src/verify/intelligence/officia
 import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/officialPromptContext.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 import { rsTaxpayerLegalStatus, withoutRsRaw } from '../../../src/verify/rsTaxpayer.ts';
+import { driveSettings, shouldFanOut, runPool } from '../../../src/verify/driveScale.ts';
+import { awaitOpenAIBudget, backoffMs, estimateTokens, limitsFor, retryAfterMs, RETRYABLE_STATUSES } from '../../../src/verify/openaiLimit.ts';
 import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, officialCodeNotFound, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
 import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
@@ -1856,15 +1858,31 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
 // persisted async research_jobs/status-poll architecture remains non-
 // blocking") and getOpenAIResponse polls it by id. Auth is a Bearer header
 // (OpenAI), not Gemini's x-goog-api-key header.
+/*
+ * OpenAI under load (src/verify/openaiLimit.ts): a POST that creates a model
+ * response first takes room in the shared per-model budget (when
+ * admin_settings.openai_limits sets one); 429/5xx honour Retry-After, else
+ * backoff with jitter. Exhaustion is an error the stage handles, never a
+ * silent success.
+ */
+let openaiLimitsCache: { at: number; value: unknown } | null = null;
 async function openaiFetch(url: string, init: any): Promise<any> {
+  if (init?.method === 'POST' && typeof init?.body === 'string') {
+    try {
+      const db = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
+      if (!openaiLimitsCache || Date.now() - openaiLimitsCache.at > 60_000) openaiLimitsCache = { at: Date.now(), value: await adminSettingJson(db, 'openai_limits') };
+      const model = String(JSON.parse(init.body)?.model ?? '');
+      await awaitOpenAIBudget(db, model, estimateTokens(init.body) + 8000, limitsFor(openaiLimitsCache.value, model), 60_000);
+    } catch { /* the budget is advisory; the provider's own limits still apply */ }
+  }
   let last = '';
   for (let i = 0; i < 4; i++) {
     const r = await fetch(url, { ...init, signal: AbortSignal.timeout(25000) });
     const t = await r.text();
     if (r.ok) return JSON.parse(t);
     last = `${r.status}: ${t.slice(0, 400)}`;
-    if (![429, 500, 502, 503, 504].includes(r.status)) throw new Error(last);
-    await new Promise((x) => setTimeout(x, 700 * 2 ** i));
+    if (!RETRYABLE_STATUSES.has(r.status)) throw new Error(last);
+    if (i < 3) await new Promise((x) => setTimeout(x, retryAfterMs(r.headers) ?? backoffMs(i)));
   }
   throw new Error(`OpenAI retry exhausted ${last}`);
 }
@@ -2563,12 +2581,28 @@ function marketSubjectNow(j: any, p: any, started: any): { project: string | nul
   }
 }
 
+/*
+ * A market run from whichever replica holds it (Verify at scale). The worker
+ * we reached may not be the one that started the run: it answers 404, and
+ * the run's own row (verify_market_runs, written by the worker) is read.
+ */
+async function marketRun(id: string): Promise<{ code: number; data: any }> {
+  const r = await wf(`/verify/market/${id}`);
+  if (r.code !== 404) return r;
+  try {
+    const db = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
+    const { data: row } = await db.from('verify_market_runs').select('status,payload').eq('id', id).maybeSingle();
+    if (row) return { code: 200, data: row.status === 'COMPLETE' ? row.payload : { ...(row.payload || {}), status: 'RUNNING' } };
+  } catch { /* the 404 stands */ }
+  return r;
+}
+
 /** Poll once; fold when finished. Returns true while still waiting. */
 async function pollVerifyMarketplace(p: any, j: any = null): Promise<boolean> {
   const m = p?._verifyMarket;
   if (!m || m.done || !m.jobId) return false;
   try {
-    const r = await wf(`/verify/market/${m.jobId}`);
+    const r = await marketRun(m.jobId);
     if (r.code === 200 && r.data?.status === 'COMPLETE') {
       const lane = Array.isArray(p._marketComparables) ? p._marketComparables : [];
       const folded = foldMarketplaceIntoLane(lane, r.data, marketSubjectNow(j, p, m.subject), now());
@@ -2736,7 +2770,7 @@ async function pollMarketRefreshes(sb: any): Promise<void> {
       const m = rj._marketRefresh ?? {};
       let next: any = null;
       try {
-        const r = await wf(`/verify/market/${m.workerJobId}`);
+        const r = await marketRun(m.workerJobId);
         if (r.code === 200 && r.data?.status === 'COMPLETE') {
           next = foldMarketRefresh(rj, r.data, marketSubjectNow(j, rj, null), now(), { subject: marketProfileNow(j, rj), fx: fxOfGate(rj._marketEligibility) ?? (await nbgUsdRate()) });
         } else if (r.code === 404) next = { ...rj, _marketRefresh: failedMarker(m, 'LOST', now()) };
@@ -3030,8 +3064,25 @@ const persistOfficialTransition = (sb: any, j: any, patch: Record<string, any>) 
  * a stuck queue still ends in a report built from the other sources.
  */
 const OFFICIAL_QUEUE_MAX_MS = 45 * 60 * 1000;
+/*
+ * QUEUE TIME IS NOT EXECUTION TIME (owner 2026-10-24, Verify at scale). In
+ * queue mode a job whose official tasks are still waiting their turn never
+ * expires for waiting: the execution window counts from the most recent
+ * start of a task still running, so every task gets its own full window. A
+ * long cap remains so a stuck queue still ends in a report.
+ */
+const OFFICIAL_QUEUE_WAIT_CAP_MS = 3 * 60 * 60 * 1000;
 function officialPastDeadline(j: any, w: any): boolean {
   const launched = Date.parse(j.result_json?._worker?.startedAt || '');
+  if (w?.view === 'queue' && Number(w?.waitingTasks) > 0) return Number.isFinite(launched) && Date.now() - launched > OFFICIAL_QUEUE_WAIT_CAP_MS;
+  if (w?.view === 'queue' && typeof w?.latestRunningStartedAt === 'string') {
+    const startedRun = Date.parse(w.latestRunningStartedAt);
+    if (w.stragglersRetrying) {
+      const last = Date.parse(w.lastFinishedAt || '');
+      if (Number.isFinite(last) && Date.now() - last > OFFICIAL_STRAGGLER_GRACE_MS) return true;
+    }
+    return Number.isFinite(startedRun) && Date.now() - startedRun > OFFICIAL_BROWSER_DEADLINE_MS;
+  }
   if (w?.status === 'QUEUED') return Number.isFinite(launched) && Date.now() - launched > OFFICIAL_QUEUE_MAX_MS;
   const started = Date.parse(w?.runStartedAt || '') || launched;
   if (w?.view === 'queue' && w.stragglersRetrying) {
@@ -3083,6 +3134,14 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     }
     w = queueWorkerView(rows);
     live = officialLiveOf(rows);
+    // Waiting its turn: where it stands and, from measured throughput, when it is likely to start.
+    if (w.status !== 'COMPLETE' && w.waitingTasks > 0) {
+      const { data: pos } = await sb.rpc('verify_queue_position', { p_job_id: j.id });
+      if (pos && typeof pos === 'object') {
+        (w as any).queuePosition = Number(pos.ahead) + 1;
+        (w as any).etaSeconds = typeof pos.etaSeconds === 'number' ? pos.etaSeconds : null;
+      }
+    }
     /*
      * THE CODE DOES NOT EXIST (owner 2026-10-24): every official source, for
      * the code and its parent parcel, confirmed there is no record. The run
@@ -3273,7 +3332,7 @@ function officialWaitProgress(w: any): Record<string, any> {
   const total = Array.isArray(w?.steps) && w.steps.length ? w.steps.length : null;
   const done = Array.isArray(w?.results) ? w.results.length : 0;
   const percent = total ? Math.min(43, 34 + Math.round((done / total) * 9)) : 34;
-  return { phase: 'official_browser', percent, provider: w?.view === 'queue' ? 'queue' : 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null, queuePosition: w?.status === 'QUEUED' && typeof w?.queuePosition === 'number' ? w.queuePosition : null };
+  return { phase: 'official_browser', percent, provider: w?.view === 'queue' ? 'queue' : 'playwright', sourcesCompleted: done, sourcesTotal: total, currentSource: currentOfficialSource(w), workerStatus: typeof w?.status === 'string' ? w.status : null, queuePosition: (w?.status === 'QUEUED' || Number(w?.waitingTasks) > 0) && typeof w?.queuePosition === 'number' ? w.queuePosition : null, etaSeconds: typeof w?.etaSeconds === 'number' ? w.etaSeconds : null };
 }
 
 // pickFinancialCandidate() / startFinancialEntity() / pollFinancialEntity() /
@@ -7084,7 +7143,37 @@ async function releaseUnattendedHumanWaits(sb: any): Promise<void> {
   }
 }
 
-async function driveLiveJobs(sb: any, key: string, model: string): Promise<void> {
+async function driveLiveJobs(sb: any, key: string, model: string, depth = 0, token = ''): Promise<void> {
+  /*
+   * VERIFY AT SCALE (driveScale.ts). An atomic, fair batch claim
+   * (verify_drive_claim) stepped concurrently; a full claim chains one more
+   * invocation, so a backlog spreads over many small invocations. Falls back
+   * to the original sweep while the migration is not applied.
+   */
+  const scale = driveSettings(await adminSettingJson(sb, 'verify_drive_scale'));
+  const { data: claimed, error: claimError } = await sb.rpc('verify_drive_claim', { p_limit: scale.batch });
+  if (!claimError) {
+    const ids: string[] = (claimed ?? []).map((r: any) => (typeof r === 'string' ? r : r?.verify_drive_claim ?? r?.id)).filter(Boolean);
+    if (token && shouldFanOut(ids.length, scale, depth)) {
+      // Fire and forget: the next invocation claims its own batch (SKIP LOCKED never hands out the same job).
+      EdgeRuntime.waitUntil(fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/research-agent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-cron-token': token },
+        body: JSON.stringify({ action: 'drive', depth: depth + 1 }),
+      }).then((r) => r.body?.cancel()).catch((e) => console.error(JSON.stringify({ scope: 'verify_drive', event: 'fanout_failed', depth, error: String(e?.message ?? e).slice(0, 160) }))));
+    }
+    if (depth === 0) await releaseUnattendedHumanWaits(sb);
+    await runPool(ids, scale.batch, (id) => driveJob(sb, key, model, id));
+    // The bookkeeping sweeps run once per tick, not once per chained invocation.
+    if (depth === 0) {
+      await driveSynthesis(sb);
+      await pollMarketRefreshes(sb);
+      await settleVerifyBudgets(sb);
+      await retireAbandonedJobs(sb);
+    }
+    return;
+  }
+  console.error(JSON.stringify({ scope: 'verify_drive', event: 'claim_rpc_unavailable', error: String(claimError?.message ?? claimError).slice(0, 160) }));
   // Unattended verifications first, so the jobs they release are stepped in this same sweep.
   await releaseUnattendedHumanWaits(sb);
   try {
@@ -7318,8 +7407,9 @@ Deno.serve(async (req) => {
       if (!dk) return json({ error: 'not configured' }, 503);
       // Return immediately and keep working: a tick that held the connection
       // open for a minute would be a tick that pg_cron reports as a timeout.
-      EdgeRuntime.waitUntil(driveLiveJobs(svc, dk, dm));
-      return json({ ok: true, started: true }, 202);
+      const depth = Math.max(0, Math.min(300, Math.trunc(Number(preAuthBody?.depth) || 0)));
+      EdgeRuntime.waitUntil(driveLiveJobs(svc, dk, dm, depth, expected));
+      return json({ ok: true, started: true, depth }, 202);
     }
 
     /*

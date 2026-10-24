@@ -30,6 +30,8 @@ import { classifySourceOutcome, lastCaptchaOutcome, SUCCESS_OUTCOMES, type Sourc
 import { rsDomOnlyNoResult } from '../workflows/financial/RsTaxpayerResponse.js';
 import type { EvidenceRef, QueueTask } from './gateway.js';
 import type { Executor, TaskOutcome } from './QueueRunner.js';
+import { withTraffic } from '../net/proxyGateway.js';
+import type { BrowserNetOptions } from '../browser/LocalBrowserRuntime.js';
 
 /** The orchestrator surface the executor needs (structural, so this module
  *  does not pull the browser-bound orchestrator into unit-test builds). */
@@ -42,7 +44,9 @@ export interface SourceRunner {
 
 export interface ExecutorDeps {
   orchestrator: SourceRunner;
-  launchBrowser: (id: string) => Promise<JobBrowser>;
+  launchBrowser: (id: string, net?: BrowserNetOptions) => Promise<JobBrowser>;
+  /** The source's network options for a browser task (proxy/metering); absent = direct, unmetered (as before). */
+  browserNet?: (task: QueueTask) => BrowserNetOptions | undefined;
   closeBrowser: (b: JobBrowser, reason: string) => Promise<void>;
   /** Test seams. */
   tas?: { probe: typeof probeTasResolvedCode; acquire: typeof acquireTasApi };
@@ -228,7 +232,8 @@ export function createVerifyExecutor(deps: ExecutorDeps): Executor {
   const tas = deps.tas ?? { probe: probeTasResolvedCode, acquire: acquireTasApi };
   const mygov = deps.mygov ?? runMyGovApiStep;
 
-  return async (task, ctx) => {
+  return async (task, ctx) => withTraffic({ jobId: task.jobId ?? null, worker: 'verify' }, () => runTask(task, ctx));
+  async function runTask(task: QueueTask, ctx: Parameters<Executor>[1]): Promise<TaskOutcome> {
     const upload = (sha: string, ct: any, body: any) => ctx.gateway.upload(sha, ct, body);
     const policy = parseCaptchaPolicy(task.input.captchaPolicy ?? null);
     const cadastral = String(task.input.cadastral ?? task.input.query ?? '');
@@ -306,7 +311,7 @@ export function createVerifyExecutor(deps: ExecutorDeps): Executor {
 
       const step = BROWSER_STEPS[task.source];
       if (!step) return { type: 'fail', error: `UNKNOWN_SOURCE ${task.source}`, retryable: false };
-      const browser = await deps.launchBrowser(task.id);
+      const browser = await deps.launchBrowser(task.id, deps.browserNet?.(task));
       try {
         const out = await deps.orchestrator.executeSource(browser, {
           id: task.id, query: task.input.query ?? cadastral, mode: task.input.mode === 'property' ? 'property' : 'cadastral',
@@ -321,5 +326,5 @@ export function createVerifyExecutor(deps: ExecutorDeps): Executor {
       stopAccounting();
       captchaService.forgetJob(task.id);
     }
-  };
+  }
 }

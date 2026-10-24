@@ -25,6 +25,8 @@ import { mkdtemp, rm, readFile, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { BLOCKABLE_RESOURCE_TYPES, TRACKER_HOSTS } from '../net/proxyGateway.js';
+import { URL as NodeURL } from 'node:url';
 
 /** Bundled, reviewed, in-repository extension. Never a developer profile,
  * never the Chrome Web Store, never a runtime download. */
@@ -406,7 +408,16 @@ const HEADED = String(process.env.VERIFY_BROWSER_HEADLESS || '').trim() !== '1';
  * reliably in headed mode, and the human CAPTCHA flow drives a real rendered
  * page. VERIFY_BROWSER_HEADLESS=1 exists only for constrained CI.
  */
-export async function launchJobBrowser(jobId: string): Promise<JobBrowser> {
+/** Network options for one job browser (Verify at scale): the shared proxy, asset blocking and byte metering. */
+export interface BrowserNetOptions {
+  proxy?: { server: string; username: string; password: string };
+  /** Abort images, media, fonts and trackers (bandwidth); scripts and documents always load. */
+  blockAssets?: boolean;
+  /** Called per finished request with its host and bytes. */
+  meter?: (host: string, up: number, down: number) => void;
+}
+
+export async function launchJobBrowser(jobId: string, net: BrowserNetOptions = {}): Promise<JobBrowser> {
   const extension = await validateBundledExtension();
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'homatch-verify-'));
 
@@ -427,7 +438,25 @@ export async function launchJobBrowser(jobId: string): Promise<JobBrowser> {
       locale: 'ka-GE',
       acceptDownloads: true,
       viewport: { width: 1440, height: 1000 },
+      ...(net.proxy ? { proxy: net.proxy } : {}),
     });
+    if (net.blockAssets) {
+      await context.route('**/*', (route: any) => {
+        const req = route.request();
+        let host = '';
+        try { host = new NodeURL(req.url()).hostname; } catch { /* keep */ }
+        return BLOCKABLE_RESOURCE_TYPES.has(req.resourceType()) || TRACKER_HOSTS.test(host) ? route.abort() : route.continue();
+      });
+    }
+    if (net.meter) {
+      context.on('requestfinished', (req: any) => {
+        void req.sizes().then((s: any) => {
+          let host = '';
+          try { host = new NodeURL(req.url()).hostname; } catch { /* keep */ }
+          net.meter!(host, (s.requestHeadersSize || 0) + (s.requestBodySize || 0), (s.responseHeadersSize || 0) + (s.responseBodySize || 0));
+        }).catch(() => {});
+      });
+    }
   } catch (e) {
     await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
     // The launch failure that matters most is the one that looks like

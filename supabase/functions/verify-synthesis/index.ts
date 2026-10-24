@@ -68,6 +68,7 @@ import { costOperationFor, priceVerification, reportConsumption, reportCostReque
 import { pricingStateForDerivedCost } from '../_shared/providerCost.ts';
 import { reportQualityFailures, reportRoutingFor } from '../../../src/verify/v2/researchRequest.ts';
 import { notify } from '../_shared/notify.ts';
+import { awaitOpenAIBudget, backoffMs, estimateTokens, limitsFor, retryAfterMs, RETRYABLE_STATUSES } from '../../../src/verify/openaiLimit.ts';
 
 /**
  * GEL/USD context from the National Bank of Georgia.
@@ -166,6 +167,16 @@ const TRANSLATION_MODEL = (Deno.env.get('OPENAI_TRANSLATION_MODEL') ?? '').trim(
  * the deterministic report than none.
  */
 const MODEL_UNAVAILABLE_STATUSES = new Set([400, 401, 403, 404]);
+
+/* admin_settings.openai_limits, read at most once a minute per isolate. */
+let openaiLimitsMemo: { at: number; value: unknown } | null = null;
+async function openaiLimits(db: any): Promise<unknown> {
+  if (openaiLimitsMemo && Date.now() - openaiLimitsMemo.at < 60_000) return openaiLimitsMemo.value;
+  let value: unknown = null;
+  try { const { data } = await db.from('admin_settings').select('value').eq('key', 'openai_limits').maybeSingle(); value = data?.value ?? null; } catch { /* unlimited */ }
+  openaiLimitsMemo = { at: Date.now(), value };
+  return value;
+}
 
 const json = (d: unknown, s = 200) =>
   new Response(JSON.stringify(d), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -867,17 +878,41 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     callReport = async (model: string) => {
       try {
         timing.modelStartedAt ??= new Date().toISOString();
-        const res = await fetch('https://api.openai.com/v1/responses', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model,
-            input: [
-              { role: 'system', content: system },
-              { role: 'user', content: user },
-            ],
-          }),
+        /*
+         * OpenAI under load (src/verify/openaiLimit.ts): room in the shared
+         * per-model budget first, then up to four tries honouring
+         * Retry-After. A report that still cannot be written is a FAILURE the
+         * driver retries (MAX_SYNTHESIS_ATTEMPTS, then released unbilled),
+         * never a quietly simplified report marked READY.
+         */
+        const body = JSON.stringify({
+          model,
+          input: [
+            { role: 'system', content: system },
+            { role: 'user', content: user },
+          ],
         });
+        await awaitOpenAIBudget(writer as any, model, estimateTokens(system, user) + 16000, limitsFor(await openaiLimits(writer), model), 90_000);
+        let res: Response | null = null;
+        for (let attempt = 0; attempt < 4; attempt++) {
+          try {
+            res = await fetch('https://api.openai.com/v1/responses', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+              body,
+            });
+          } catch (e) {
+            if (attempt === 3) throw new Error(`SYNTHESIS_TRANSIENT_UNAVAILABLE: ${model} transport: ${e instanceof Error ? e.message : String(e)}`);
+            await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+            continue;
+          }
+          if (res.ok || !RETRYABLE_STATUSES.has(res.status)) break;
+          if (attempt === 3) break;
+          const wait = retryAfterMs(res.headers) ?? backoffMs(attempt);
+          await res.body?.cancel();
+          await new Promise((r) => setTimeout(r, wait));
+        }
+        if (!res) throw new Error(`SYNTHESIS_TRANSIENT_UNAVAILABLE: ${model} no response`);
         timing.modelEndedAt = new Date().toISOString();
         if (res.ok) {
           const body = await res.json();
@@ -896,13 +931,13 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
         const detail = (await res.text()).slice(0, 500);
         const reason = `SYNTHESIS_MODEL_UNAVAILABLE: ${model} refused: HTTP ${res.status} ${detail}`;
         if (MODEL_UNAVAILABLE_STATUSES.has(res.status)) throw new Error(reason);
-        console.error(reason);
-        return null;
+        // Still 429/5xx after the retries: the report waits for the driver's next attempt.
+        throw new Error(`SYNTHESIS_TRANSIENT_UNAVAILABLE: ${model} HTTP ${res.status} ${detail}`);
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
-        // Re-throw the availability refusal raised just above; a transport
-        // failure is transient and degrades the prose, never the report.
-        if (reason.startsWith('SYNTHESIS_MODEL_UNAVAILABLE')) throw e;
+        // Both refusals and exhausted transient failures fail this build (the
+        // driver retries it); only an unparseable answer degrades the prose.
+        if (reason.startsWith('SYNTHESIS_MODEL_UNAVAILABLE') || reason.startsWith('SYNTHESIS_TRANSIENT_UNAVAILABLE')) throw e;
         console.error('synthesis model call failed', reason);
         return null;
       }
@@ -1420,6 +1455,8 @@ serve(async (req) => {
     if (reason.startsWith('SYNTHESIS_MODEL_UNAVAILABLE')) {
       return json({ error: 'synthesis_model_unavailable', detail: reason, model: MODEL }, 502);
     }
+    // The model stayed busy through every retry: the build is retried, never shipped half-written.
+    if (reason.startsWith('SYNTHESIS_TRANSIENT_UNAVAILABLE')) return json({ error: 'synthesis_model_busy', retryable: true }, 503);
     return json({ error: 'internal_error' }, 500);
   }
 });

@@ -40,7 +40,7 @@ export const BUILDER_PART_1 = {
   ems_b_resize_width: ['Resize — width', 'ზომის შეცვლა — სიგანე', 'Изменить размер — ширина', 'Yeniden boyutlandır — genişlik', 'تغيير الحجم — العرض', 'שינוי גודל — רוחב'],
   ems_b_resize_height: ['Resize — height', 'ზომის შეცვლა — სიმაღლე', 'Изменить размер — высота', 'Yeniden boyutlandır — yükseklik', 'تغيير الحجم — الارتفاع', 'שינוי גודל — גובה'],
   ems_b_hidden: ['Hidden — not sent', 'დამალულია — არ იგზავნება', 'Скрыто — не отправляется', 'Gizli — gönderilmez', 'مخفي — لا يُرسَل', 'מוסתר — לא נשלח'],
-  ems_b_locked: ['Locked', 'დაბლოკილია', 'Заблокировано', 'Kilitli', 'مقفل', 'נעול'],
+  ems_b_locked: ['Protected', 'დაცულია', 'Защищено', 'Korumalı', 'محمي', 'מוגן'],
   ems_b_html_empty: ['Write your HTML in the settings panel', 'დაწერეთ HTML პარამეტრების პანელში', 'Введите HTML на панели параметров', 'HTML’inizi ayarlar panelinde yazın', 'اكتب HTML في لوحة الإعدادات', 'כתבו את ה-HTML בחלונית ההגדרות'],
   ems_b_video_empty: ['Upload a video thumbnail', 'ატვირთეთ ვიდეოს მინიატურა', 'Загрузите превью видео', 'Bir video küçük resmi yükleyin', 'ارفع صورة مصغّرة للفيديو', 'העלו תמונה ממוזערת לווידאו'],
   ems_b_n_blocks: ['{{n}} elements', '{{n}} ელემენტი', 'Элементов: {{n}}', '{{n}} öğe', '{{n}} عناصر', '{{n}} רכיבים'],
@@ -65,9 +65,9 @@ export const BUILDER_PART_1 = {
   ems_b_group_rule: ['Group elements that sit next to each other at the top level of the email (not sections).', 'დააჯგუფეთ წერილის ზედა დონეზე ერთმანეთის გვერდით მდგომი ელემენტები (არა სექციები).', 'Группируйте соседние элементы верхнего уровня письма (не секции).', 'E-postanın üst düzeyinde yan yana duran öğeleri gruplayın (bölümler hariç).', 'جمّع العناصر المتجاورة في المستوى الأعلى من الرسالة (لا الأقسام).', 'קבצו רכיבים סמוכים ברמה העליונה של המייל (לא מקטעים).'],
   ems_b_hide: ['Hide (leave out of the email)', 'დამალვა (წერილში არ ჩაიწერება)', 'Скрыть (не включать в письмо)', 'Gizle (e-postaya dahil etme)', 'إخفاء (استبعاده من الرسالة)', 'הסתרה (להשאיר מחוץ למייל)'],
   ems_b_show: ['Show', 'ჩვენება', 'Показать', 'Göster', 'إظهار', 'הצגה'],
-  ems_b_lock: ['Lock', 'დაბლოკვა', 'Заблокировать', 'Kilitle', 'قفل', 'נעילה'],
-  ems_b_unlock: ['Unlock', 'განბლოკვა', 'Разблокировать', 'Kilidi aç', 'إلغاء القفل', 'ביטול נעילה'],
-  ems_b_locked_hint: ['This layer is locked: it cannot be edited, moved or deleted. Unlock it here or in Layers.', 'ეს ფენა დაბლოკილია: მისი შეცვლა, გადატანა ან წაშლა შეუძლებელია. განბლოკეთ აქ ან ფენებში.', 'Слой заблокирован: его нельзя изменить, переместить или удалить. Разблокируйте его здесь или в «Слоях».', 'Bu katman kilitli: düzenlenemez, taşınamaz veya silinemez. Kilidini burada ya da Katmanlar’da açın.', 'هذه الطبقة مقفلة: لا يمكن تعديلها أو نقلها أو حذفها. ألغِ القفل هنا أو في الطبقات.', 'השכבה נעולה: אי אפשר לערוך, להזיז או למחוק אותה. בטלו את הנעילה כאן או בשכבות.'],
+  ems_b_lock: ['Protect from changes', 'ცვლილებებისგან დაცვა', 'Защитить от изменений', 'Değişikliklere karşı koru', 'حماية من التغييرات', 'הגנה מפני שינויים'],
+  ems_b_unlock: ['Remove protection', 'დაცვის მოხსნა', 'Снять защиту', 'Korumayı kaldır', 'إزالة الحماية', 'הסרת ההגנה'],
+  ems_b_locked_hint: ['This layer is protected: it cannot be edited, moved or deleted. Remove the protection here or in Layers.', 'ეს ფენა დაცულია: მისი შეცვლა, გადატანა ან წაშლა შეუძლებელია. დაცვა აქ ან ფენებში მოხსენით.', 'Слой защищён: его нельзя изменить, переместить или удалить. Снимите защиту здесь или в «Слоях».', 'Bu katman korumalı: düzenlenemez, taşınamaz veya silinemez. Korumayı burada ya da Katmanlar’da kaldırın.', 'هذه الطبقة محمية: لا يمكن تعديلها أو نقلها أو حذفها. أزل الحماية هنا أو في الطبقات.', 'השכבה מוגנת: אי אפשר לערוך, להזיז או למחוק אותה. הסירו את ההגנה כאן או בשכבות.'],
 
   /* ready-made sections and custom blocks */
   ems_b_ready_sections: ['Ready-made sections', 'მზა სექციები', 'Готовые секции', 'Hazır bölümler', 'أقسام جاهزة', 'מקטעים מוכנים'],

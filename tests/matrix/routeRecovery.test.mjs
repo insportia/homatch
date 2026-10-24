@@ -30,13 +30,20 @@ import { isChunkLoadError } from '../../src/lib/lazyRoute.ts';
 test('route 1: the SPA rewrite does not answer for build output', () => {
   const cfg = JSON.parse(readFileSync('vercel.json', 'utf8'));
   const all = cfg.rewrites ?? [];
-  // Design Studio's public share viewer is its own page; it is the only
-  // other rewrite, and it names a fixed token path, never a catch-all.
+  // Design Studio's public share viewer is its own page, and Email Studio's links on the brand
+  // domain (images, unsubscribe; 2026-10-24 deliverability brief) proxy to their edge functions.
+  // Each names a fixed path, never a catch-all.
   const others = all.filter((r) => r.destination !== '/index.html');
+  const FN = 'https://ptxajsjhobhvsfhmutjn.supabase.co/functions/v1/';
   assert.deepEqual(others, [
     { source: '/w/:token', destination: '/share.html' },
     { source: '/d/:token', destination: '/share.html' },
+    { source: '/m/a/:id', destination: `${FN}email-webhook?ema=:id` },
+    { source: '/m/u', destination: `${FN}outreach-unsubscribe` },
+    { source: '/m/s', destination: `${FN}email-webhook` },
   ], 'an unexpected rewrite was added');
+  const spaAt = all.findIndex((r) => r.destination === '/index.html');
+  for (const r of others) assert.ok(all.indexOf(r) < spaAt, `${r.source} must come before the SPA rewrite`);
   const rewrites = all.filter((r) => r.destination === '/index.html');
   assert.equal(rewrites.length, 1, 'expected exactly one SPA rewrite');
 

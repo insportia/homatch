@@ -51,7 +51,7 @@ export function PreviewPanel({ doc, rtl, subject, previewText, senderName, langu
           <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
             className={cn('inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs', mode === m ? 'bg-[#0C1119] text-white' : 'text-muted-foreground hover:text-foreground')}>
             <I className="h-3.5 w-3.5" />{l}
-            {m === 'checks' && issues ? <span className="rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold text-white">{issues}</span> : null}
+            {m === 'checks' && issues ? <span className="rounded-full bg-amber-500 px-1.5 text-2xs font-semibold text-white">{issues}</span> : null}
           </button>
         ))}
       </div>
@@ -83,7 +83,7 @@ export function PreviewPanel({ doc, rtl, subject, previewText, senderName, langu
               <ClipboardCopy className="h-3.5 w-3.5" />{t('ems_b_copy_html')}
             </Button>
           </div>
-          <pre className="max-h-[32rem] overflow-auto rounded-xl border bg-[#0C1119] p-3 text-[11px] leading-relaxed text-[#E6E1D6]" dir="ltr"><code>{full}</code></pre>
+          <pre className="max-h-[32rem] overflow-auto rounded-xl border bg-[#0C1119] p-3 text-2xs leading-relaxed text-[#E6E1D6]" dir="ltr"><code>{full}</code></pre>
           <p className="text-2xs text-muted-foreground">{t('ems_b_html_note')}</p>
         </div>
       ) : null}

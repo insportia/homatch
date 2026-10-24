@@ -130,7 +130,7 @@ function BlockView({ ctx, dragIds, b }: { ctx: CanvasProps; dragIds: Set<string>
     >
       {body}
       {b.hidden || locked ? (
-        <span className="pointer-events-none absolute start-1.5 top-1.5 z-10 inline-flex items-center gap-1 rounded bg-[#0C1119]/80 px-1.5 py-0.5 text-[10px] text-white">
+        <span className="pointer-events-none absolute start-1.5 top-1.5 z-10 inline-flex items-center gap-1 rounded bg-[#0C1119]/80 px-1.5 py-0.5 text-2xs text-white">
           {b.hidden ? <><EyeOff className="h-3 w-3" aria-hidden="true" />{t('ems_b_hidden')}</> : null}
           {locked ? <><Lock className="h-3 w-3" aria-hidden="true" />{t('ems_b_locked')}</> : null}
         </span>
@@ -242,7 +242,7 @@ function Resize({ ctx, b, host }: { ctx: CanvasProps; b: Block; host: React.RefO
       />
       {live ? (
         <>
-          <span className="pointer-events-none absolute end-4 top-1 z-30 rounded bg-[#0C1119] px-1.5 py-0.5 font-mono text-[10px] text-white" dir="ltr">
+          <span className="pointer-events-none absolute end-4 top-1 z-30 rounded bg-[#0C1119] px-1.5 py-0.5 font-mono text-2xs text-white" dir="ltr">
             {live.value}px{live.guide ? ` · ${live.guide}` : ''}
           </span>
           {live.guide ? <span className="pointer-events-none absolute inset-y-0 end-0 z-20 border-e border-dashed border-[hsl(200_90%_45%)]" aria-hidden="true" /> : null}

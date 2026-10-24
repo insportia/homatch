@@ -68,7 +68,7 @@ export function LayersPanel({ blocks, selIds, label, onSelect, onPatch, onNudge,
                   className={cn('flex min-h-8 items-center gap-1 rounded-md pe-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_85%_52%)]',
                     sel ? 'bg-[hsl(38_90%_94%)] text-foreground' : 'hover:bg-muted', b.hidden && 'text-muted-foreground')}
                 >
-                  {r.col != null && r.index === 0 ? <span className="me-0.5 rounded bg-muted px-1 text-[9px] text-muted-foreground">{t('ems_b_column_n', { n: r.col + 1 })}</span> : null}
+                  {r.col != null && r.index === 0 ? <span className="me-0.5 rounded bg-muted px-1 text-2xs text-muted-foreground">{t('ems_b_column_n', { n: r.col + 1 })}</span> : null}
                   {renaming === b.id ? (
                     <Input autoFocus value={draft} maxLength={60} className="h-6 min-w-0 flex-1 px-1.5 text-xs" aria-label={t('ems_b_rename')}
                       onChange={(e) => setDraft(e.target.value)} onClick={(e) => e.stopPropagation()}

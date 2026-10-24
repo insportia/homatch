@@ -55,6 +55,7 @@ import { ConstructionResults } from '@/components/investment/results/Constructio
 import { RentalResults } from '@/components/investment/results/RentalResults';
 import { ValueResults } from '@/components/investment/results/ValueResults';
 import { STRATEGIES } from '@/investment/strategies/definitions';
+import { HomiInvestmentBar } from '@/components/investment/HomiInvestmentBar';
 
 export default function InvestmentPage() {
   const { t, isRTL } = useLanguage();
@@ -206,6 +207,8 @@ export default function InvestmentPage() {
                 missingLabels={missingLabels}
                 currency={currency}
               />
+
+              <HomiInvestmentBar run={run} />
 
               {evidenceOpen ? (
                 <EvidenceModule

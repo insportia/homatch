@@ -32,7 +32,19 @@ export function prioritiseNaprRecords<T extends {statusId?:unknown}>(records:T[]
 function newMyGovApiResult(query:string):LegacySourceResult {
  return {source:'mygov',sourceName:'Official Government Sources',sourceClass:'OFFICIAL_GOVERNMENT',sourceUrl:SOURCE_URL,startUrl:SOURCE_URL,finalUrl:'https://naprweb.reestri.gov.ge/_dea/#/search',frameUrls:[],adapter:'service176-public-api',searchControlUsed:'cadcode',queryEntered:typeof query==='string'?query.trim():null,submitAction:'POST /api/search',retrievalMethod:'PUBLIC_API',searched:false,resultContext:null,resultConfirmed:false,noResultConfirmed:false,resultValidated:false,status:'FAILED',traversal:null,retrievedAt:new Date().toISOString(),documents:[],discoveredEntities:[],error:null};
 }
-export type MyGovApiOptions=NaprOptions&{budgetMs?:number;parsePdf?:(bytes:Buffer)=>Promise<{text:string;numpages:number;info?:any}>;captcha?:CaptchaContext};
+export type MyGovApiOptions=NaprOptions&{budgetMs?:number;recordReserveMs?:number;recordConcurrency?:number;now?:()=>number;parsePdf?:(bytes:Buffer)=>Promise<{text:string;numpages:number;info?:any}>;captcha?:CaptchaContext};
+/*
+ * A PARCEL WITH MANY RECORDS MUST NOT COST THE WHOLE SOURCE (prod 1ff4b786,
+ * 2026-10-24). Code 88.20.21.767.117.2 has many NAPR records; each gated one
+ * costs a CAPTCHA solve (~30-40 s) plus a PDF. The loop opened them until the
+ * provider deadline aborted the run, and the abort threw away every document
+ * already read: the job got "provider unavailable" and no registry data at
+ * all. Now a record is only opened while at least RECORD_RESERVE_MS remain
+ * (the rest stay listed from the search, as unvisited), and a hard deadline
+ * that still hits keeps whatever was read.
+ */
+export const RECORD_RESERVE_MS=75000;
+export const MAX_RECORD_LANES=4;
 /*
  * A record gated by NAPR's reCAPTCHA (status 10/15) is continued with a token
  * from the shared CAPTCHA service, through the source's own continuation
@@ -62,6 +74,7 @@ async function resolveNaprCaptcha(gated:CaptchaRequired,cap:CaptchaContext|undef
 export async function runMyGovApiWorkflow(query:string,entities?:EntityQueue,options:MyGovApiOptions={}):Promise<LegacySourceResult>{
  const base=newMyGovApiResult(query);
  const budget=options.budgetMs??(options.captcha?.policy.enabled?420000:45000);const captchaLog:CaptchaResolution[]=[];if(!Number.isFinite(budget)||budget<=0)throw new Error('Invalid My.gov provider budget');
+ const now=options.now??Date.now;const reserve=Math.min(options.recordReserveMs??RECORD_RESERVE_MS,Math.floor(budget/2));const deadlineAt=now()+budget;const deferred:string[]=[];
  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),budget);const requests:any[]=[];const continuations:any[]=[];const references:DocumentReference[]=[];const records:any[]=[];const failures:any[]=[];
  const transport:typeof fetch=async(input,init)=>{
    if(controller.signal.aborted)throw new Error('Provider deadline');
@@ -77,44 +90,66 @@ export async function runMyGovApiWorkflow(query:string,entities?:EntityQueue,opt
    const result=await search(query,http);if(controller.signal.aborted)throw new Error('Provider deadline');base.searched=true;base.submitted=true;base.submissionConfirmed=true;
    base.traversal={providerState:'SEARCH_RETURNED',search:result,records,continuations,documentReferences:references,failures,requests};
    if(!result.records.length){if(result.pages.some(page=>Number(page.total)>0))throw new Error('Empty page contradicts source total');base.status='NO_RESULT_CONFIRMED';base.noResultConfirmed=true;base.resultValidated=true;return;}
-   for(const application of prioritiseNaprRecords(result.records as any[])){
-     if(controller.signal.aborted)throw new Error('Provider deadline');
-     try{
-       const selected=await selectRecord(result,application.appID,http);if(controller.signal.aborted)throw new Error('Provider deadline');
-       let opened:any=selected;
-       if(selected.state==='CAPTCHA_REQUIRED'){
-         const resumed=await resolveNaprCaptcha(selected,options.captcha,transport,http,captchaLog);if(controller.signal.aborted)throw new Error('Provider deadline');
-         if(!resumed){continuations.push(selected);continue;}
-         opened=resumed;
-       }
-       // Every boundary must agree: search appID/registration, record APP_ID,
-       // exact cadastral code and every returned source document association.
-       if(opened.info.CADCODE!==result.cadastralCode||opened.info.REG_NUMBER!==application.regNumber)throw new Error('Source record identity mismatch');
-       records.push(opened);references.push(...opened.documents);
-       for(const reference of opened.documents){
-         if(controller.signal.aborted)throw new Error('Provider deadline');
-         if(reference.documentType!=='pdf-document')continue;
-         const shell=newDocumentShell('mygov',reference.url,opened.recordId);shell.documentType='PDF_DOCUMENT';shell.title=String(reference.raw.DOC_NAME??reference.raw.STATUS_NAME??'')||null;
-         try{const downloaded=await downloadDocument(reference,opened.recordId,http);if(controller.signal.aborted)throw new Error('Provider deadline');if(downloaded.metadata.finalUrl!==reference.url)throw new Error('Document final URL identity mismatch');shell.sha256=createHash('sha256').update(bufferFromBytes(downloaded.bytes)).digest('hex');
-           const parsed=await (options.parsePdf??parseSourcePdf)(bufferFromBytes(downloaded.bytes));if(controller.signal.aborted)throw new Error('Provider deadline');shell.rawText=parsed.text??'';shell.pageCount=Number.isInteger(parsed.numpages)&&parsed.numpages>0?parsed.numpages:null;shell.pagesRead=shell.pageCount??0;
-           // Bytes/signature alone cannot satisfy HOMATCH's readable-evidence contract.
-           if(shell.rawText.trim().length>20)markComplete(shell);else shell.error='TEXT_EXTRACTION_UNAVAILABLE';
-           Object.assign(shell,{sourceReference:reference,contentMetadata:downloaded.metadata});
-         }catch(error){shell.error=error instanceof Error?error.message:'Document acquisition failed';}
-         base.documents.push(shell);if(!shell.complete)failures.push({recordId:opened.recordId,url:reference.url,error:shell.error??'Incomplete document'});
-       }
-     }catch(error){failures.push({recordId:String(application.appID),error:error instanceof Error?error.message:'Record acquisition failed'});}
-   }
+   // Records are opened in parallel lanes so CAPTCHA solves overlap: a parcel with many
+   // records is read in full inside the budget instead of one 40 s solve after another.
+   // Lanes never exceed maxAttemptsPerProvider, so in-flight solves never trip that cap.
+   const queue=prioritiseNaprRecords(result.records as any[]);
+   const lanes=Math.max(1,Math.min(options.recordConcurrency??(options.captcha?.policy.enabled?options.captcha.policy.maxAttemptsPerProvider:1),MAX_RECORD_LANES,queue.length));
+   const openRecord=async(application:any)=>{
+   if(controller.signal.aborted)throw new Error('Provider deadline');
+   // Not enough time left to open one more record properly: stop here, keep what was read.
+   if(deadlineAt-now()<reserve){deferred.push(String(application.appID));return;}
+   try{
+     const selected=await selectRecord(result,application.appID,http);if(controller.signal.aborted)throw new Error('Provider deadline');
+     let opened:any=selected;
+     if(selected.state==='CAPTCHA_REQUIRED'){
+       const resumed=await resolveNaprCaptcha(selected,options.captcha,transport,http,captchaLog);if(controller.signal.aborted)throw new Error('Provider deadline');
+       if(!resumed){continuations.push(selected);return;}
+       opened=resumed;
+     }
+     // Every boundary must agree: search appID/registration, record APP_ID,
+     // exact cadastral code and every returned source document association.
+     if(opened.info.CADCODE!==result.cadastralCode||opened.info.REG_NUMBER!==application.regNumber)throw new Error('Source record identity mismatch');
+     records.push(opened);references.push(...opened.documents);
+     for(const reference of opened.documents){
+       if(controller.signal.aborted)throw new Error('Provider deadline');
+       if(reference.documentType!=='pdf-document')continue;
+       const shell=newDocumentShell('mygov',reference.url,opened.recordId);shell.documentType='PDF_DOCUMENT';shell.title=String(reference.raw.DOC_NAME??reference.raw.STATUS_NAME??'')||null;
+       try{const downloaded=await downloadDocument(reference,opened.recordId,http);if(controller.signal.aborted)throw new Error('Provider deadline');if(downloaded.metadata.finalUrl!==reference.url)throw new Error('Document final URL identity mismatch');shell.sha256=createHash('sha256').update(bufferFromBytes(downloaded.bytes)).digest('hex');
+         const parsed=await (options.parsePdf??parseSourcePdf)(bufferFromBytes(downloaded.bytes));if(controller.signal.aborted)throw new Error('Provider deadline');shell.rawText=parsed.text??'';shell.pageCount=Number.isInteger(parsed.numpages)&&parsed.numpages>0?parsed.numpages:null;shell.pagesRead=shell.pageCount??0;
+         // Bytes/signature alone cannot satisfy HOMATCH's readable-evidence contract.
+         if(shell.rawText.trim().length>20)markComplete(shell);else shell.error='TEXT_EXTRACTION_UNAVAILABLE';
+         Object.assign(shell,{sourceReference:reference,contentMetadata:downloaded.metadata});
+       }catch(error){shell.error=error instanceof Error?error.message:'Document acquisition failed';}
+       base.documents.push(shell);if(!shell.complete)failures.push({recordId:opened.recordId,url:reference.url,error:shell.error??'Incomplete document'});
+     }
+   }catch(error){failures.push({recordId:String(application.appID),error:error instanceof Error?error.message:'Record acquisition failed'});}
+   };
+   let next=0;
+   await Promise.all(Array.from({length:lanes},async()=>{while(next<queue.length&&!controller.signal.aborted)await openRecord(queue[next++]);}));
+   if(controller.signal.aborted)throw new Error('Provider deadline');
+   (base as any).recordsDeferredForTime=deferred;
    const gated=continuations.length>0;const completeDocs=base.documents.filter(doc=>doc.complete);
-   base.status=gated?'BLOCKED':failures.length?'SUBMITTED_UNCONFIRMED':completeDocs.length?'SEARCH_CONFIRMED':'SUBMITTED_UNCONFIRMED';
-   base.captcha=gated;base.blocked=gated;base.authRequired=false;base.resultConfirmed=!gated&&!failures.length&&completeDocs.length>0;base.resultValidated=base.resultConfirmed;
-   base.error=gated?`CAPTCHA_REQUIRED: ${captchaLog.length?`automatic verification ${captchaLog[captchaLog.length-1].outcome}`:'legitimate human record continuation is unavailable in this automatic run'}`:failures.length?'Service 176 acquisition incomplete':!completeDocs.length?'No readable official document acquired':null;
+   // One gated or unreadable record among many must not void the documents the
+   // other records yielded (1ff4b786): readable official documents are the result,
+   // the incomplete records stay listed in failures/continuations.
+   const partial=completeDocs.length>0&&(gated||failures.length>0||deferred.length>0);(base as any).partial=partial;
+   base.status=completeDocs.length?'SEARCH_CONFIRMED':gated?'BLOCKED':'SUBMITTED_UNCONFIRMED';
+   base.captcha=gated;base.blocked=gated&&!completeDocs.length;base.authRequired=false;base.resultConfirmed=completeDocs.length>0;base.resultValidated=base.resultConfirmed;
+   base.error=completeDocs.length?null:gated?`CAPTCHA_REQUIRED: ${captchaLog.length?`automatic verification ${captchaLog[captchaLog.length-1].outcome}`:'legitimate human record continuation is unavailable in this automatic run'}`:failures.length?'Service 176 acquisition incomplete':!completeDocs.length?'No readable official document acquired':null;
    base.resultContext=base.resultConfirmed?completeDocs.map(doc=>doc.rawText).join('\n\n'):null;
  };
  try{
    // Finite provider deadline, even if an injected parser/transport hangs.
    await Promise.race([acquire(),new Promise<never>((_,reject)=>controller.signal.addEventListener('abort',()=>reject(new Error('Provider deadline')),{once:true}))]);
- }catch(error){base.status=controller.signal.aborted?'TIMEOUT':'FAILED';base.resultConfirmed=false;base.resultValidated=false;base.error=controller.signal.aborted?'Service 176 provider deadline exceeded':error instanceof Error?error.message:'Service 176 acquisition failed';}
+ }catch(error){
+   const read=base.documents.filter(doc=>doc.complete);
+   if(controller.signal.aborted&&read.length){
+     // The deadline cut the run short, but official documents were read: they are the result.
+     base.status='SEARCH_CONFIRMED';base.resultConfirmed=true;base.resultValidated=true;base.error=null;
+     base.resultContext=read.map(doc=>doc.rawText).join('\n\n');(base as any).truncatedByDeadline=true;
+   }else{base.status=controller.signal.aborted?'TIMEOUT':'FAILED';base.resultConfirmed=false;base.resultValidated=false;base.error=controller.signal.aborted?'Service 176 provider deadline exceeded':error instanceof Error?error.message:'Service 176 acquisition failed';}
+ }
  finally{clearTimeout(timer);}
  const completeDocs=base.documents.filter(doc=>doc.complete);
  (base as any).captchaResolution=captchaLog;

@@ -137,7 +137,7 @@ const MATCHING_STATE: Record<string, string> = {
 async function mirror(sb: Sb): Promise<{ mirrored: number; finished: number }> {
   const { data: live } = await sb
     .from('background_jobs')
-    .select('id,product_type,subject_type,subject_id,state,progress,current_stage,result_ref')
+    .select('id,user_id,product_type,subject_type,subject_id,state,progress,current_stage,result_ref')
     .not('state', 'in', '("COMPLETED","FAILED","CANCELLED")')
     .limit(200);
 
@@ -187,7 +187,8 @@ async function mirror(sb: Sb): Promise<{ mirrored: number; finished: number }> {
       errorKey = d.analysis_error === 'BILLING_REQUIRED'
         ? 'doc_error_billing'
         : DOC_ERROR_KEY[d.analysis_state] ?? null;
-      resultRef = `/verify/${d.deal_room_id}?tab=documents&doc=${d.id}`;
+      // The contract's own page: the old deal-room tab is no longer where a document is read.
+      resultRef = `/contracts/${d.id}`;
 
     } else if (job.subject_type === 'MATCHING_JOB') {
       const { data: mj } = await sb
@@ -218,6 +219,25 @@ async function mirror(sb: Sb): Promise<{ mirrored: number; finished: number }> {
         p_last_error: null,
       });
       finished++;
+      /* A task the person started has failed: tell them once, with a way back to it.
+         A refusal for payment is not a failure of ours and is not announced as one. */
+      if (nextState === 'FAILED' && errorKey !== 'doc_error_billing' && job.user_id) {
+        const { data: owner } = await sb.from('users').select('id').eq('auth_id', job.user_id).maybeSingle();
+        if (owner?.id) {
+          await notify(sb as never, {
+            userId: owner.id,
+            type: 'SERVICE_FAILED',
+            title: 'There was a problem completing your task',
+            body: null,
+            priority: 'HIGH',
+            deepLink: resultRef ?? job.result_ref ?? '/dashboard',
+            entityType: 'background_job',
+            entityId: job.id,
+            dedupeKey: `job-failed:${job.id}`,
+            metadata: { kind: 'SERVICE_FAILED', product_type: job.product_type, subject_type: job.subject_type },
+          });
+        }
+      }
     } else {
       await sb.rpc('background_job_progress', {
         p_job_id: job.id,

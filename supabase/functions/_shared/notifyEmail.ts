@@ -32,10 +32,18 @@ export async function sendNotificationEmail(sb: Sb, input: {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { await log('SKIPPED', { reason: 'NO_EMAIL' }); return { status: 'SKIPPED', reason: 'NO_EMAIL' }; }
   const key = Deno.env.get('RESEND_API_KEY');
   if (!key) { await log('SKIPPED', { reason: 'NO_PROVIDER' }); return { status: 'SKIPPED', reason: 'NO_PROVIDER' }; }
-  const res = await new ResendEmailAdapter(key).send({
-    to, subject: input.content.subject.slice(0, 200), html: input.content.html, text: input.content.text,
-    from_name: 'HOMATCH',
-  } as any);
+  /* Up to three attempts for a transient failure (network or a 5xx). A 4xx is the
+     request itself and is not retried. The delivery row is written once, after. */
+  const adapter = new ResendEmailAdapter(key);
+  let res: { success: boolean; error?: string; provider_message_id?: string } = { success: false };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    res = await adapter.send({
+      to, subject: input.content.subject.slice(0, 200), html: input.content.html, text: input.content.text,
+      from_name: 'HOMATCH',
+    } as any);
+    if (res.success || /HTTP 4\d\d/.test(String(res.error ?? ''))) break;
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 400 * 3 ** attempt));
+  }
   if (res.success) {
     await log('SENT', { provider: 'RESEND', provider_message_id: res.provider_message_id ?? null });
     return { status: 'SENT' };
@@ -58,7 +66,7 @@ export function renderNotificationEmail(o: {
   const html = `<!doctype html><html lang="${esc(o.lang)}" dir="${dir}"><body style="margin:0;background:#f5f5f2;font-family:Arial,Helvetica,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;text-align:${align}" dir="${dir}">
-<tr><td style="background:#0C1119;color:#E8B04B;padding:16px 24px;border-radius:12px 12px 0 0;font-weight:bold;letter-spacing:.08em">HOMATCH</td></tr>
+<tr><td style="background:#0C1119;color:#E8B04B;padding:16px 24px;border-radius:12px 12px 0 0;font-weight:bold;letter-spacing:.08em"><img src="https://homatch.live/images/logo/homatch-icon.png" width="28" height="28" alt="" style="vertical-align:middle;border:0;margin-${o.rtl ? 'left' : 'right'}:10px">HOMATCH</td></tr>
 <tr><td style="padding:24px">
 <h1 style="font-size:20px;margin:0 0 10px;color:#0C1119">${esc(o.title)}</h1>
 <p style="margin:0;font-size:15px;line-height:1.55;color:#222">${esc(o.body)}</p>

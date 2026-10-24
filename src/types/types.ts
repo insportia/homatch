@@ -112,7 +112,10 @@ export type NotificationType =
   | 'SEARCH_COMPLETE'
   | 'ANNOUNCEMENT'
   // Broker directory applications and verification decisions.
-  | 'BROKER_APPLICATION';
+  | 'BROKER_APPLICATION'
+  // A renewal that failed, and a service the person started that could not complete.
+  | 'PAYMENT_FAILED'
+  | 'SERVICE_FAILED';
 export type ConditionType = 'NEW' | 'GOOD' | 'NEEDS_RENOVATION' | 'UNDER_CONSTRUCTION';
 export type BuildingType = 'PANEL' | 'BRICK' | 'MONOLITH' | 'WOOD' | 'OTHER';
 export type HeatingType = 'CENTRAL' | 'GAS' | 'ELECTRIC' | 'NONE' | 'OTHER';

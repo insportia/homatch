@@ -23258,6 +23258,19 @@ const en = {
   ct_rev_revised: 'revised',
   ct_rev_added_heading: 'Added clauses',
   ct_rev_disclaimer: 'Proposals are a starting point for your conversation with the other side and a lawyer, not legal advice. Read the whole revised text before you send or sign it.',
+
+  /* ── HOMI ASSISTANT ── */
+  notif_payment_ok_title: 'Payment successful',
+  notif_payment_ok_body: 'Your credit balance has been updated.',
+  notif_payment_failed_title: 'Payment could not be completed',
+  notif_payment_failed_body: 'Check your payment method so your plan can renew.',
+  notif_service_failed_title: 'There was a problem completing your task',
+  notif_service_failed_body: 'You are not charged for what was not delivered. You can try again.',
+  notif_action_view_result: 'View the result',
+  notif_action_open_document: 'Open the document',
+  notif_action_payment_details: 'Payment details',
+  notif_action_retry: 'Try again',
+  notif_action_help: 'Get help',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -32761,10 +32774,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   notif_load_error_body: 'შეამოწმეთ ინტერნეტთან კავშირი და სცადეთ ხელახლა.',
   notif_all_loaded: 'მეტი შეტყობინება არ არის.',
   notif_empty_all_desc: 'როცა რამე თქვენს ყურადღებას მოითხოვს, აქ გამოჩნდება.',
-  notif_verify_complete_title: 'თქვენი შემოწმება მზადაა',
+  notif_verify_complete_title: 'ქონების შემოწმება დასრულდა',
   notif_verify_complete_body: 'ანგარიში დასრულდა — შეგიძლიათ გაეცნოთ.',
-  notif_document_analyzed_title: 'დოკუმენტის ანალიზი დასრულდა',
-  notif_document_analyzed_body: 'შედეგები მზადაა გასაცნობად.',
+  notif_document_analyzed_title: 'ხელშეკრულების ანალიზი დასრულდა',
+  notif_document_analyzed_body: 'შენი დოკუმენტი მზად არის.',
   notif_native_supply_title: 'Homatch-ის მომხმარებელი თქვენი ქონების მსგავსს ეძებს',
   notif_native_supply_many_title: '{{n}} მომხმარებელი ეძებს თქვენი ქონების მსგავსს',
   notif_native_supply_body: 'მათი მოთხოვნები ამ ქონებას შეესაბამება.',
@@ -46430,6 +46443,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ct_rev_revised: 'გასწორებული',
   ct_rev_added_heading: 'დამატებული პუნქტები',
   ct_rev_disclaimer: 'შემოთავაზებები მეორე მხარესთან და იურისტთან საუბრის საწყისი წერტილია და არა იურიდიული რჩევა. გაგზავნამდე ან ხელმოწერამდე გასწორებული ტექსტი მთლიანად წაიკითხე.',
+
+  /* ── HOMI ASSISTANT ── */
+  notif_payment_ok_title: 'გადახდა წარმატებით შესრულდა',
+  notif_payment_ok_body: 'შენი კრედიტების ბალანსი განახლდა.',
+  notif_payment_failed_title: 'გადახდის შესრულება ვერ მოხერხდა',
+  notif_payment_failed_body: 'შეამოწმე გადახდის მეთოდი, რომ გეგმა განახლდეს.',
+  notif_service_failed_title: 'დავალების შესრულებისას პრობლემა წარმოიშვა',
+  notif_service_failed_body: 'გამოუყენებელი თანხა არ ჩამოგეჭრება. შეგიძლია ხელახლა სცადო.',
+  notif_action_view_result: 'შედეგის ნახვა',
+  notif_action_open_document: 'დოკუმენტის გახსნა',
+  notif_action_payment_details: 'გადახდის დეტალები',
+  notif_action_retry: 'სცადე ხელახლა',
+  notif_action_help: 'დახმარების მიღება',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -69593,6 +69619,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ct_rev_revised: 'исправленный',
   ct_rev_added_heading: 'Добавленные пункты',
   ct_rev_disclaimer: 'Предложения, это отправная точка для разговора с другой стороной и юристом, а не юридическая консультация. Прочитай весь исправленный текст, прежде чем отправить или подписать.',
+
+  /* ── HOMI ASSISTANT ── */
+  notif_payment_ok_title: 'Оплата прошла успешно',
+  notif_payment_ok_body: 'Баланс кредитов обновлён.',
+  notif_payment_failed_title: 'Оплата не прошла',
+  notif_payment_failed_body: 'Проверь способ оплаты, чтобы план продлился.',
+  notif_service_failed_title: 'При выполнении задачи возникла проблема',
+  notif_service_failed_body: 'За невыполненное деньги не списываются. Можно попробовать снова.',
+  notif_action_view_result: 'Посмотреть результат',
+  notif_action_open_document: 'Открыть документ',
+  notif_action_payment_details: 'Детали оплаты',
+  notif_action_retry: 'Попробовать снова',
+  notif_action_help: 'Получить помощь',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -92754,6 +92793,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ct_rev_revised: 'düzeltilmiş',
   ct_rev_added_heading: 'Eklenen maddeler',
   ct_rev_disclaimer: 'Öneriler karşı tarafla ve bir avukatla konuşman için bir başlangıç noktasıdır, hukuki tavsiye değildir. Göndermeden veya imzalamadan önce düzeltilmiş metnin tamamını oku.',
+
+  /* ── HOMI ASSISTANT ── */
+  notif_payment_ok_title: 'Ödeme başarılı',
+  notif_payment_ok_body: 'Kredi bakiyen güncellendi.',
+  notif_payment_failed_title: 'Ödeme tamamlanamadı',
+  notif_payment_failed_body: 'Planının yenilenmesi için ödeme yöntemini kontrol et.',
+  notif_service_failed_title: 'Görev tamamlanırken bir sorun oluştu',
+  notif_service_failed_body: 'Verilmeyen hizmet için ücret alınmaz. Tekrar deneyebilirsin.',
+  notif_action_view_result: 'Sonucu gör',
+  notif_action_open_document: 'Belgeyi aç',
+  notif_action_payment_details: 'Ödeme ayrıntıları',
+  notif_action_retry: 'Tekrar dene',
+  notif_action_help: 'Yardım al',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -115915,6 +115967,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ct_rev_revised: 'معدل',
   ct_rev_added_heading: 'البنود المضافة',
   ct_rev_disclaimer: 'المقترحات نقطة بداية لحديثك مع الطرف الآخر ومع محامٍ، وليست استشارة قانونية. اقرأ النص المعدل كاملًا قبل إرساله أو توقيعه.',
+
+  /* ── HOMI ASSISTANT ── */
+  notif_payment_ok_title: 'تمت عملية الدفع بنجاح',
+  notif_payment_ok_body: 'تم تحديث رصيدك.',
+  notif_payment_failed_title: 'تعذر إتمام الدفع',
+  notif_payment_failed_body: 'تحقق من وسيلة الدفع حتى تتجدد خطتك.',
+  notif_service_failed_title: 'حدثت مشكلة أثناء تنفيذ المهمة',
+  notif_service_failed_body: 'لا تحتسب رسوم على ما لم يقدم. يمكنك المحاولة مرة أخرى.',
+  notif_action_view_result: 'عرض النتيجة',
+  notif_action_open_document: 'فتح المستند',
+  notif_action_payment_details: 'تفاصيل الدفع',
+  notif_action_retry: 'حاول مرة أخرى',
+  notif_action_help: 'الحصول على المساعدة',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -139076,6 +139141,19 @@ const he: Partial<Record<TranslationKey, string>> = {
   ct_rev_revised: 'מתוקן',
   ct_rev_added_heading: 'סעיפים שנוספו',
   ct_rev_disclaimer: 'ההצעות הן נקודת פתיחה לשיחה עם הצד השני ועם עורך דין, לא ייעוץ משפטי. קרא את כל הנוסח המתוקן לפני שתשלח או תחתום.',
+
+  /* ── HOMI ASSISTANT ── */
+  notif_payment_ok_title: 'התשלום בוצע בהצלחה',
+  notif_payment_ok_body: 'יתרת הקרדיטים שלך עודכנה.',
+  notif_payment_failed_title: 'התשלום לא הושלם',
+  notif_payment_failed_body: 'בדוק את אמצעי התשלום כדי שהתוכנית תתחדש.',
+  notif_service_failed_title: 'אירעה בעיה בביצוע המשימה',
+  notif_service_failed_body: 'לא תחויב על מה שלא סופק. אפשר לנסות שוב.',
+  notif_action_view_result: 'צפה בתוצאה',
+  notif_action_open_document: 'פתח את המסמך',
+  notif_action_payment_details: 'פרטי התשלום',
+  notif_action_retry: 'נסה שוב',
+  notif_action_help: 'קבל עזרה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -35,8 +35,12 @@
  * doing-it step would trade a real outcome for a missed message.
  */
 
+import { maybeEmailNotification } from './transactionalEmail.ts';
+
 interface Client {
   rpc(fn: string, args: Record<string, unknown>): Promise<{ data: unknown; error: unknown }>;
+  /** Present on every real client; the transactional email leg reads preferences through it. */
+  from?: (table: string) => unknown;
   functions: {
     invoke(
       name: string,
@@ -137,6 +141,16 @@ export async function notify(sb: Client, input: NotifyInput): Promise<string | n
       body: { action: 'deliver', notificationId: data },
       ...(serviceKey ? { headers: { Authorization: `Bearer ${serviceKey}` } } : {}),
     }).catch(() => { /* delivery is best effort; the in-app row is the record */ });
+
+    /*
+     * THE EMAIL LEG, FOR THE FEW EVENTS THAT EARN ONE.
+     *
+     * A finished verification or contract analysis, a payment, a service
+     * that failed: things the person started and would want to hear about
+     * even with the app closed. Decided in transactionalEmail.ts, idempotent
+     * per notification id, and it never throws: the in-app row stands.
+     */
+    await maybeEmailNotification(sb, { notificationId: data, userId: input.userId, type: input.type, deepLink: input.deepLink ?? null });
 
     return data;
   } catch (err) {

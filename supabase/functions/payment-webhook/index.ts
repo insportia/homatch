@@ -400,6 +400,13 @@ async function handleSubscriptionStatus(
     updated_at: new Date().toISOString(),
   }).eq('id', sub.id);
 
+  /* The customer hears about a failed renewal while the plan still works,
+     not when it stops. Deduped on the provider's event id like every billing event. */
+  if (eventType === 'invoice.payment_failed') {
+    await notify(sb, sub.user_id, 'PAYMENT_FAILED', 'Payment could not be completed',
+      'Your latest payment did not go through. Please check your payment method.', { eventId });
+  }
+
   return { received: true, processed: true, kind: 'SUBSCRIPTION_STATUS', status, eventId };
 }
 

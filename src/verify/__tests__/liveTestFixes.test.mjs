@@ -57,3 +57,33 @@ test('the V2 audit survives completion, internally only', () => {
   assert.match(ra, /_v2Decisions: prior\._v2Decisions \?\? null,\n\s+_searchLog: prior\._searchLog \?\? null,\n\s+_escalations: prior\._escalations \?\? null,/);
   assert.match(ra, /delete r\._v2Decisions;\n\s+delete r\._searchLog;\n\s+delete r\._escalations;/);
 });
+
+test('nothing found for the code → MyGov is asked once for the parent parcel; found or failed → never', async () => {
+  const { followUpTasks, parentRoundTask, officialCodeNotFound } = await import('../queueOfficial.ts');
+  const c = '88.20.21.767.117.2';
+  const row = (k, state, status) => ({ id: k, source: k === 'mygov_parent' ? 'mygov' : k, dedupe_key: k, state, input: { cadastral: k === 'mygov_parent' ? '88.20.21.767.117' : c }, result: status ? { status, resultConfirmed: status === 'SEARCH_CONFIRMED' } : null });
+  const absent = [row('TAS_MAP', 'SUCCEEDED', 'NO_RESULT_CONFIRMED'), row('tas', 'SUCCEEDED', 'NO_RESULT_CONFIRMED'), row('mygov', 'SUCCEEDED', 'NO_RESULT_CONFIRMED')];
+  const t = followUpTasks(absent).find((x) => x.dedupeKey === 'mygov_parent');
+  assert.equal(t.scopeKey, 'mygov:88.20.21.767.117');
+  assert.deepEqual([t.input.cadastral, t.input.parentOf], ['88.20.21.767.117', c]);
+  assert.equal(officialCodeNotFound(absent), false, 'not before the parent was asked');
+  assert.equal(officialCodeNotFound([...absent, row('mygov_parent', 'SUCCEEDED', 'NO_RESULT_CONFIRMED')]), true);
+  assert.equal(officialCodeNotFound([...absent, row('mygov_parent', 'SUCCEEDED', 'SEARCH_CONFIRMED')]), false);
+  assert.equal(officialCodeNotFound([...absent, row('mygov_parent', 'FAILED')]), false, 'a failed source is "unavailable", never "does not exist"');
+  assert.equal(parentRoundTask([...absent.slice(0, 2), row('mygov', 'FAILED')]), null, 'MyGov failing is no reason to call the code absent');
+  assert.equal(parentRoundTask([absent[0], absent[1], row('mygov', 'SUCCEEDED', 'SEARCH_CONFIRMED')]), null);
+  assert.equal(parentRoundTask([...absent, row('mygov_parent', 'QUEUED')]), null, 'asked once');
+  assert.equal(parentRoundTask([absent[0], row('tas', 'RUNNING'), absent[2]]), null, 'waits for every primary');
+  const parcel = absent.map((r) => ({ ...r, input: { cadastral: '01.18.06.014.080' } }));
+  assert.equal(parentRoundTask(parcel), null, 'a parcel has no parent');
+  assert.equal(officialCodeNotFound(parcel), true);
+});
+
+test('code-not-found ends the run before any AI stage, uncharged, with its own customer message', () => {
+  const ra = code('supabase/functions/research-agent/index.ts');
+  assert.match(ra, /if \(w\.status === 'COMPLETE' && officialCodeNotFound\(rows\)\) \{\n\s+return sb\.from\('research_jobs'\)\.update\(\{\n\s+status: 'FAILED',\n\s+stage: 'FAILED',\n\s+error: 'CADASTRAL_CODE_NOT_FOUND',/);
+  assert.match(ra, /marker === 'CADASTRAL_CODE_NOT_FOUND' \? 'CODE_NOT_FOUND'/);
+  assert.equal(settlementOutcome({ status: 'FAILED' }, { maxSynthesisAttempts: 4, synthesisGraceMs: 1 }), 'SYSTEM_FAILED');
+  assert.match(code('src/pages/VerifyPage.tsx'), /data\?\.terminalReason==='CODE_NOT_FOUND'\?'verify_err_code_not_found'/);
+  assert.equal((code('src/i18n/translations.ts').match(/verify_err_code_not_found:/g) || []).length, 6);
+});

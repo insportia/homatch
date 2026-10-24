@@ -21,6 +21,14 @@ export const VERIFY_CODE_CHECK_STRINGS = {
     'سيُبحث عنه بصيغة {{code}}.',
     'ייחפש כ-{{code}}.',
   ],
+  verify_err_code_not_found: [
+    'No cadastral code like this exists: the Public Registry has no record of it, nor of its parent parcel. Nothing was charged. Please check the code and try again.',
+    'ასეთი საკადასტრო კოდი არ არსებობს: საჯარო რეესტრში არ არის ჩანაწერი არც ამ კოდზე და არც მის დედა ნაკვეთზე. თანხა არ ჩამოგეჭრათ. გთხოვთ, გადაამოწმოთ კოდი და სცადოთ თავიდან.',
+    'Такого кадастрового кода не существует: в Публичном реестре нет записи ни о нём, ни о родительском участке. Средства не списаны. Проверьте код и попробуйте снова.',
+    'Böyle bir kadastro kodu yok: Tapu Sicilinde ne bu koda ne de ana parsele ait bir kayıt var. Ücret alınmadı. Lütfen kodu kontrol edip tekrar deneyin.',
+    'لا يوجد رمز مساحي كهذا: لا يحتوي السجل العام على أي قيد له ولا لقطعة الأرض الأم. لم يتم خصم أي مبلغ. يرجى التحقق من الرمز والمحاولة مرة أخرى.',
+    'קוד קדסטרי כזה אינו קיים: במרשם הציבורי אין רישום שלו וגם לא של חלקת האם. לא חויבת. אנא בדוק את הקוד ונסה שוב.',
+  ],
   verify_code_did_you_mean: [
     'Did you mean {{code}}?',
     'ხომ არ გულისხმობთ {{code}}-ს?',

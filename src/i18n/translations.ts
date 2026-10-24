@@ -22721,6 +22721,9 @@ const en = {
 
   /* ── VERIFY CODE CHECK ── */
   verify_code_normalized: 'Will be searched as {{code}}.',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_err_code_not_found: 'No cadastral code like this exists: the Public Registry has no record of it, nor of its parent parcel. Nothing was charged. Please check the code and try again.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -45356,6 +45359,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY CODE CHECK ── */
   verify_code_normalized: 'მოიძებნება როგორც {{code}}.',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_err_code_not_found: 'ასეთი საკადასტრო კოდი არ არსებობს: საჯარო რეესტრში არ არის ჩანაწერი არც ამ კოდზე და არც მის დედა ნაკვეთზე. თანხა არ ჩამოგეჭრათ. გთხოვთ, გადაამოწმოთ კოდი და სცადოთ თავიდან.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -67982,6 +67988,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY CODE CHECK ── */
   verify_code_normalized: 'Будет найдено как {{code}}.',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_err_code_not_found: 'Такого кадастрового кода не существует: в Публичном реестре нет записи ни о нём, ни о родительском участке. Средства не списаны. Проверьте код и попробуйте снова.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -90606,6 +90615,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY CODE CHECK ── */
   verify_code_normalized: '{{code}} olarak aranacak.',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_err_code_not_found: 'Böyle bir kadastro kodu yok: Tapu Sicilinde ne bu koda ne de ana parsele ait bir kayıt var. Ücret alınmadı. Lütfen kodu kontrol edip tekrar deneyin.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -113230,6 +113242,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY CODE CHECK ── */
   verify_code_normalized: 'سيُبحث عنه بصيغة {{code}}.',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_err_code_not_found: 'لا يوجد رمز مساحي كهذا: لا يحتوي السجل العام على أي قيد له ولا لقطعة الأرض الأم. لم يتم خصم أي مبلغ. يرجى التحقق من الرمز والمحاولة مرة أخرى.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -135854,6 +135869,9 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── VERIFY CODE CHECK ── */
   verify_code_normalized: 'ייחפש כ-{{code}}.',
+
+  /* ── VERIFY CODE CHECK ── */
+  verify_err_code_not_found: 'קוד קדסטרי כזה אינו קיים: במרשם הציבורי אין רישום שלו וגם לא של חלקת האם. לא חויבת. אנא בדוק את הקוד ונסה שוב.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

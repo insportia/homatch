@@ -143,3 +143,16 @@ test('route 5: the app scrolls new pages to the top, and leaves back alone', () 
   assert.ok(render.indexOf('<ScrollToTop/>') < render.indexOf('<Routes>'),
     'ScrollToTop must sit outside <Routes> so a route change cannot remount it');
 });
+
+test('brand-domain email pages are served as HTML with a tight policy', () => {
+  /* Supabase serves GET HTML from *.supabase.co as text/plain with a sandbox CSP, so the
+     unsubscribe confirmation would show as source code. The brand-domain paths correct both. */
+  const cfg = JSON.parse(readFileSync('vercel.json', 'utf8'));
+  const rule = (cfg.headers ?? []).find((h) => h.source === '/m/(u|s)');
+  assert.ok(rule, 'a header rule for /m/u and /m/s');
+  const get = (k) => rule.headers.find((h) => h.key === k)?.value;
+  assert.equal(get('Content-Type'), 'text/html; charset=utf-8');
+  assert.match(get('Content-Security-Policy'), /default-src 'none'/);
+  assert.doesNotMatch(get('Content-Security-Policy'), /script-src|unsafe-eval/, 'no script on these pages');
+  assert.ok(!(cfg.headers ?? []).some((h) => h.source === '/m/(.*)' && h.headers.some((x) => x.key === 'Content-Type')), 'images under /m/a keep their own type');
+});

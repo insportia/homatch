@@ -18,7 +18,7 @@ import React from 'react';
 import { ServiceGate } from '@/components/serviceControls/ServiceGate';
 import { serviceForPath } from '@/lib/serviceControls/routes';
 import { lazyRoute } from '@/lib/lazyRoute';
-import { loadAdminStrings, loadStudioStrings } from '@/i18n/bundles';
+import { loadAdminStrings, loadFeatureStrings, loadStudioStrings } from '@/i18n/bundles';
 import { Navigate } from 'react-router-dom';
 import { FEATURES } from '@/config/features';
 import HomePage from './pages/HomePage';
@@ -40,7 +40,10 @@ const AddPropertyPage = lazyRoute(() => import('./pages/property/AddPropertyPage
 const URLImportPage = lazyRoute(() => import('./pages/property/URLImportPage'));
 const PrivateListingPage = lazyRoute(() => import('./pages/property/PrivateListingPage'));
 const PropertyDetailPage = lazyRoute(() => import('./pages/property/PropertyDetailPage'));
-const MatchingWorkspacePage = lazyRoute(() => import('./pages/property/MatchingWorkspacePage'));
+/* Home Financing, Investment and For Expats strings are not in the entry (src/i18n/adminSplit.ts,
+   isFeatureOnlyKey): the routes that show them wait for them with their own chunk. */
+const withFeatureStrings = <T,>(load: () => Promise<T>) => () => Promise.all([load(), loadFeatureStrings()]).then(([mod]) => mod);
+const MatchingWorkspacePage = lazyRoute(withFeatureStrings(() => import('./pages/property/MatchingWorkspacePage')));
 const LegacyMatchingRedirect = lazyRoute(() => import('./pages/property/LegacyMatchingRedirect'));
 const LeadsCrmPage = lazyRoute(() => import('./pages/LeadsCrmPage'));
 const EmailStudioPage = lazyRoute(() => import('./pages/EmailStudioPage'));
@@ -53,15 +56,15 @@ const ActiveSearchPage = lazyRoute(() => import('./pages/ActiveSearchPage'));
 const DeveloperProfilePage = lazyRoute(() => import('./pages/DeveloperProfilePage'));
 const AIPage = lazyRoute(() => import('./pages/AIPage'));
 const VerifyPage = lazyRoute(() => import('./pages/VerifyPage'));
-const MortgagePage = lazyRoute(() => import('./pages/MortgagePage'));
-const ForExpatsPage = lazyRoute(() => import('./pages/ForExpatsPage'));
+const MortgagePage = lazyRoute(withFeatureStrings(() => import('./pages/MortgagePage')));
+const ForExpatsPage = lazyRoute(withFeatureStrings(() => import('./pages/ForExpatsPage')));
 /* HOMATCH Design Studio. Lazy, and the workspace separately from the
    launcher, because only the workspace pulls three.js. */
 const DesignStudioPage = lazyRoute(() => import('./pages/designStudio/DesignStudioPage'));
 const DesignStudioWorkspacePage = lazyRoute(() => import('./pages/designStudio/DesignStudioWorkspacePage'));
 const DesignStudioHomePage = lazyRoute(() => import('./pages/designStudio/DesignStudioHomePage'));
-const ExpatTopicPage = lazyRoute(() => import('./pages/ExpatTopicPage'));
-const ExpatPlanPage = lazyRoute(() => import('./pages/ExpatPlanPage'));
+const ExpatTopicPage = lazyRoute(withFeatureStrings(() => import('./pages/ExpatTopicPage')));
+const ExpatPlanPage = lazyRoute(withFeatureStrings(() => import('./pages/ExpatPlanPage')));
 /*
  * HOMATCH INVESTMENT INTELLIGENCE.
  *
@@ -71,7 +74,7 @@ const ExpatPlanPage = lazyRoute(() => import('./pages/ExpatPlanPage'));
  * only the AI Consultant and the market sweep need an account (both
  * enforce that server-side, not by gating this route).
  */
-const InvestmentPage = lazyRoute(() => import('./pages/InvestmentPage'));
+const InvestmentPage = lazyRoute(withFeatureStrings(() => import('./pages/InvestmentPage')));
 const BrokersPage = lazyRoute(() => import('./pages/BrokersPage'));
 const BrokerProfilePage = lazyRoute(() => import('./pages/BrokerProfilePage'));
 const BrokerCrmPage = lazyRoute(() => import('./pages/BrokerCrmPage'));

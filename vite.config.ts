@@ -4,7 +4,7 @@ import svgr from "vite-plugin-svgr";
 import path from "path";
 import fs from "fs";
 import { pathToFileURL } from "url";
-import { isAdminOnlyKey, isStudioOnlyKey } from "./src/i18n/adminSplit";
+import { isAdminOnlyKey, isStudioOnlyKey, isFeatureOnlyKey } from "./src/i18n/adminSplit";
 
 /**
  * THE DIGITAL TWIN’S DECODERS, SERVED FROM OUR OWN ORIGIN.
@@ -170,13 +170,17 @@ function i18nLanguageChunks(): Plugin {
       /* …and Email Studio's own strings (isStudioOnlyKey) go to studio-<lang>, loaded with the
          Email Studio screens. */
       const studio: Record<string, string> = {};
+      /* …and the route-only strings of Home Financing, Investment and For Expats
+         (isFeatureOnlyKey) go to feature-<lang>, loaded with those routes. */
+      const feature: Record<string, string> = {};
       for (const [k, v] of Object.entries(merged[lang])) {
         if (lang !== 'en' && v === en[k]) continue;
-        (isAdminOnlyKey(k) ? admin : isStudioOnlyKey(k) ? studio : own)[k] = v;
+        (isAdminOnlyKey(k) ? admin : isStudioOnlyKey(k) ? studio : isFeatureOnlyKey(k) ? feature : own)[k] = v;
       }
       out[lang] = own;
       out[`admin-${lang}`] = admin;
       out[`studio-${lang}`] = studio;
+      out[`feature-${lang}`] = feature;
     }
     cached = { mtimeMs, bundles: out };
     return out;
@@ -186,7 +190,7 @@ function i18nLanguageChunks(): Plugin {
     name: 'homatch:i18n-language-chunks',
     resolveId(id) {
       const name = id.startsWith(PREFIX) ? id.slice(PREFIX.length) : '';
-      if (LANGS.includes(name) || LANGS.includes(name.replace(/^(admin|studio)-/, ''))) return `\0${id}`;
+      if (LANGS.includes(name) || LANGS.includes(name.replace(/^(admin|studio|feature)-/, ''))) return `\0${id}`;
       return null;
     },
     async load(id) {
@@ -201,7 +205,7 @@ function i18nLanguageChunks(): Plugin {
     handleHotUpdate({ file, server }) {
       if (path.resolve(file) !== SOURCE) return;
       for (const lang of LANGS) {
-        for (const name of [lang, `admin-${lang}`, `studio-${lang}`]) {
+        for (const name of [lang, `admin-${lang}`, `studio-${lang}`, `feature-${lang}`]) {
           const mod = server.moduleGraph.getModuleById(`\0${PREFIX}${name}`);
           if (mod) server.moduleGraph.invalidateModule(mod);
         }

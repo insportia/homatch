@@ -35,6 +35,14 @@ function paymentAfterRise(offer: MortgageOffer, schedule: ReturnType<typeof buil
   return monthsLeft > 0 ? computeMonthlyPayment(balance, offer.nominalAnnualRatePercent + RATE_SHOCK_PP, monthsLeft) : null;
 }
 
+/** The cost a key names, in words a model can read (the brief); the key is what the screen shows. */
+export const MISSING_COST_NAME: Record<string, string> = {
+  mortgage_offer_missing_origination: 'origination fee',
+  mortgage_offer_missing_appraisal: 'appraisal fee',
+  mortgage_offer_missing_insurance: 'insurance',
+  mortgage_offer_missing_monthly_fee: 'monthly fee',
+};
+
 function missingCosts(offer: MortgageOffer): string[] {
   const out: string[] = [];
   if (offer.originationFeePercent === undefined && offer.originationFeeFlat === undefined) out.push('mortgage_offer_missing_origination');

@@ -43,6 +43,7 @@ import {
   runFullMortgageCalculation,
 } from './calculations/index.ts';
 import { buildRateBreakdown } from './calculations/rateBreakdown.ts';
+import { MISSING_COST_NAME } from './calculations/offerComparison.ts';
 import type {
   AffordabilityResult,
   LtvLimitRuleData,
@@ -315,7 +316,7 @@ export function buildConsultantBrief(args: BriefInputs): ConsultantBrief | null 
           rateType: row.offer.rateType ?? null,
           rateCanChangeFromMonth: row.rateCanChangeFromMonth,
           monthlyPaymentIfRateRises2pp: row.paymentAfterRateRise === null ? null : money(row.paymentAfterRateRise),
-          costsNotStatedInOffer: row.missingCostKeys.map((k) => k.replace('mortgage_offer_missing_', '')),
+          costsNotStatedInOffer: row.missingCostKeys.map((k) => MISSING_COST_NAME[k] ?? k),
           earlyRepaymentTerms: row.offer.earlyRepaymentTerms?.slice(0, 400) ?? null,
         })),
       };

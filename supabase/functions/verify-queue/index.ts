@@ -174,6 +174,26 @@ Deno.serve(async (req: Request) => {
         }
         return json({ recorded: insert.length });
       }
+      case 'replica_beat': {
+        // One worker process says it is alive (20261201096000): the honest healthy-replica count for Verify Scaling.
+        const replica = str(body.worker, 120);
+        if (!replica) return json({ error: 'BAD_REQUEST' }, 400);
+        const n = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.trunc(Number(v)) : null);
+        const { error } = await db.from('worker_replicas').upsert({
+          replica,
+          deployment: str(body.deployment, 80) || null,
+          started_at: typeof body.startedAt === 'string' && !Number.isNaN(Date.parse(body.startedAt)) ? body.startedAt : null,
+          last_seen: new Date().toISOString(),
+          draining: body.draining === true,
+          http_slots: n(body.httpSlots), browser_slots: n(body.browserSlots),
+          running: n(body.running) ?? 0, rss_mb: n(body.rssMb),
+          version: str(body.version, 60) || null,
+        });
+        if (error) throw error;
+        // Forget processes gone for a day.
+        await db.from('worker_replicas').delete().lt('last_seen', new Date(Date.now() - 86_400_000).toISOString());
+        return json({ ok: true });
+      }
       case 'market_put': {
         // A worker's /verify/market run, readable by research-agent from any replica (20261201092000).
         const runId = str(body.runId, 40);

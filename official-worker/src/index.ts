@@ -62,6 +62,34 @@ function startUsageFlush(gateway: QueueGateway | null): void {
   beforeShutdown(flush);
 }
 
+/*
+ * Replica heartbeat (Verify Scaling, 20261201096000): every 30 s this process
+ * says it is alive, how many queue slots it has, how busy it is and how much
+ * memory it holds. The Admin's "healthy replicas" is these beats, not
+ * Railway's own count; the last beat on shutdown says it is draining.
+ */
+function startReplicaBeat(gateway: QueueGateway | null): void {
+  if (!gateway) return;
+  const startedAt = new Date().toISOString();
+  let draining = false;
+  const beat = async () => {
+    const q = verifyQueue?.snapshot() as { running?: number; lanes?: { HTTP?: number; BROWSER?: number } } | undefined;
+    try {
+      await gateway.call('replica_beat', {
+        worker: `${process.env.RAILWAY_REPLICA_ID || 'local'}-${process.pid}`,
+        deployment: process.env.RAILWAY_DEPLOYMENT_ID || null,
+        startedAt, draining,
+        httpSlots: q?.lanes?.HTTP ?? 0, browserSlots: q?.lanes?.BROWSER ?? 0, running: q?.running ?? 0,
+        rssMb: Math.round(process.memoryUsage().rss / 1_048_576),
+        version: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 12) || null,
+      });
+    } catch { /* the next beat retries; a missed beat only shows the replica as unhealthy for a moment */ }
+  };
+  void beat();
+  setInterval(() => { void beat(); }, 30_000).unref?.();
+  beforeShutdown(async () => { draining = true; await beat(); });
+}
+
 /** The shared-slot coordinator, when the queue gateway is configured; null keeps the per-process limits (one replica). */
 function workerSemaphore(env: Record<string, string | undefined> = process.env): GlobalSemaphore | null {
   const url = env.VERIFY_QUEUE_URL || (env.SUPABASE_URL ? `${env.SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/verify-queue` : '');
@@ -943,10 +971,12 @@ app.get('/health/speech-selftest', async (_q: any, r: any) => {
 // Durable Verify queue (off unless VERIFY_QUEUE_ENABLED=1): claims tasks
 // from verify-queue alongside the legacy HTTP job API, which keeps working.
 const verifyQueue = startVerifyQueue({ orchestrator, launchJobBrowser, closeJobBrowser, beforeShutdown, browserNet: browserNetFor });
-startUsageFlush((() => {
+const ledgerGateway = (() => {
   const url = process.env.VERIFY_QUEUE_URL || (process.env.SUPABASE_URL ? `${process.env.SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/verify-queue` : '');
   return url && process.env.WORKER_TOKEN ? new QueueGateway({ url, token: process.env.WORKER_TOKEN, retries: 1 }) : null;
-})());
+})();
+startUsageFlush(ledgerGateway);
+startReplicaBeat(ledgerGateway);
 app.get('/health/queue', (_q: any, r: any) => r.json(verifyQueue ? verifyQueue.snapshot() : { enabled: false }));
 
 // Publishing browser automation (off unless PUBLISHING_AUTOMATION_ENABLED=1):

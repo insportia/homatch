@@ -20,6 +20,7 @@ import { compactOfficialContext } from '../../../src/verify/intelligence/officia
 import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/officialPromptContext.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 import { rsTaxpayerLegalStatus, withoutRsRaw } from '../../../src/verify/rsTaxpayer.ts';
+import { driveSettings, shouldFanOut, runPool } from '../../../src/verify/driveScale.ts';
 import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, officialCodeNotFound, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
 import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
@@ -7084,7 +7085,37 @@ async function releaseUnattendedHumanWaits(sb: any): Promise<void> {
   }
 }
 
-async function driveLiveJobs(sb: any, key: string, model: string): Promise<void> {
+async function driveLiveJobs(sb: any, key: string, model: string, depth = 0, token = ''): Promise<void> {
+  /*
+   * VERIFY AT SCALE (driveScale.ts). An atomic, fair batch claim
+   * (verify_drive_claim) stepped concurrently; a full claim chains one more
+   * invocation, so a backlog spreads over many small invocations. Falls back
+   * to the original sweep while the migration is not applied.
+   */
+  const scale = driveSettings(await adminSettingJson(sb, 'verify_drive_scale'));
+  const { data: claimed, error: claimError } = await sb.rpc('verify_drive_claim', { p_limit: scale.batch });
+  if (!claimError) {
+    const ids: string[] = (claimed ?? []).map((r: any) => (typeof r === 'string' ? r : r?.verify_drive_claim ?? r?.id)).filter(Boolean);
+    if (token && shouldFanOut(ids.length, scale, depth)) {
+      // Fire and forget: the next invocation claims its own batch (SKIP LOCKED never hands out the same job).
+      EdgeRuntime.waitUntil(fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/research-agent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-cron-token': token },
+        body: JSON.stringify({ action: 'drive', depth: depth + 1 }),
+      }).then((r) => r.body?.cancel()).catch((e) => console.error(JSON.stringify({ scope: 'verify_drive', event: 'fanout_failed', depth, error: String(e?.message ?? e).slice(0, 160) }))));
+    }
+    if (depth === 0) await releaseUnattendedHumanWaits(sb);
+    await runPool(ids, scale.batch, (id) => driveJob(sb, key, model, id));
+    // The bookkeeping sweeps run once per tick, not once per chained invocation.
+    if (depth === 0) {
+      await driveSynthesis(sb);
+      await pollMarketRefreshes(sb);
+      await settleVerifyBudgets(sb);
+      await retireAbandonedJobs(sb);
+    }
+    return;
+  }
+  console.error(JSON.stringify({ scope: 'verify_drive', event: 'claim_rpc_unavailable', error: String(claimError?.message ?? claimError).slice(0, 160) }));
   // Unattended verifications first, so the jobs they release are stepped in this same sweep.
   await releaseUnattendedHumanWaits(sb);
   try {
@@ -7318,8 +7349,9 @@ Deno.serve(async (req) => {
       if (!dk) return json({ error: 'not configured' }, 503);
       // Return immediately and keep working: a tick that held the connection
       // open for a minute would be a tick that pg_cron reports as a timeout.
-      EdgeRuntime.waitUntil(driveLiveJobs(svc, dk, dm));
-      return json({ ok: true, started: true }, 202);
+      const depth = Math.max(0, Math.min(300, Math.trunc(Number(preAuthBody?.depth) || 0)));
+      EdgeRuntime.waitUntil(driveLiveJobs(svc, dk, dm, depth, expected));
+      return json({ ok: true, started: true, depth }, 202);
     }
 
     /*

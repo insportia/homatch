@@ -15,7 +15,7 @@
 import { json, checkRateLimit, logEvent } from '../comm/auth.ts';
 import type { EmailSettings, Owner } from './core.ts';
 import { inspectLinks } from './linkInspector.ts';
-import { normalizeDoc } from '../../../../src/emailMarketing/designer/document.ts';
+import { normalizeDoc, walkBlocks } from '../../../../src/emailMarketing/designer/document.ts';
 import { renderDesignBody } from '../../../../src/emailMarketing/designer/render.ts';
 import { unfilledPlaceholders } from '../../../../src/emailMarketing/designer/templates.ts';
 import { buttonsMissingLink } from '../../../../src/emailMarketing/designer/checks.ts';
@@ -60,6 +60,12 @@ export async function handleStudioCampaignAction(action: string, ctx: Ctx): Prom
     case 'campaign_submit': return await submit(ctx);
     default: return json({ ok: false, error: 'UNKNOWN_ACTION' }, 400);
   }
+}
+
+/** Asked of the database with the caller's own token (is_admin()), never read from the request. */
+async function isAdminCaller(callerSb: Sb): Promise<boolean> {
+  const { data, error } = await callerSb.rpc('is_admin');
+  return !error && data === true;
 }
 
 /* ── save ─────────────────────────────────────────────────────────────────────────────────── */
@@ -116,6 +122,18 @@ async function save({ sb, callerSb, owner, body }: Ctx): Promise<Response> {
   if (has('audience_filter')) patch.audience_filter = sanitizeAudienceFilter(p.audience_filter);
   if (has('design')) {
     const doc = normalizeDoc(p.design);
+    /* The advanced HTML block is authorized use only (owner brief 2026-10-24): an admin may add or
+       change one; anyone may keep or remove one already in the design (e.g. from an admin template). */
+    const htmlOf = (d: unknown) => walkBlocks(normalizeDoc(d).blocks).flatMap((b) => (b.type === 'html' && b.html ? [b.html] : []));
+    const incoming = htmlOf(doc);
+    if (incoming.length && !(await isAdminCaller(callerSb))) {
+      let stored: string[] = [];
+      if (id) {
+        const { data: cur } = await callerSb.from('outreach_campaigns').select('design').eq('id', id).eq('campaign_type', 'EMAIL').maybeSingle();
+        stored = htmlOf((cur as { design?: unknown } | null)?.design);
+      }
+      if (incoming.some((h) => !stored.includes(h))) return json({ ok: false, error: 'HTML_BLOCK_NOT_ALLOWED' }, 403);
+    }
     const lang = String(patch.language ?? p.language ?? 'en');
     const rendered = renderDesignBody(doc, { rtl: lang === 'ar' || lang === 'he' });
     patch.design = doc;

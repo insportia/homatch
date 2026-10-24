@@ -83,12 +83,14 @@ const imageSlot = (w: number, h: number, radius = 0) =>
 
 function cellAttrs(b: Block, theme: Theme, extraClass = ''): string {
   const cls = [b.hideOnMobile ? 'hm-hide-mobile' : '', b.hideOnDesktop ? 'hm-hide-desktop' : '', extraClass].filter(Boolean).join(' ');
-  const bg = b.background ? `background-color:${b.background};` : '';
+  /* A section paints its colour on its own (rounded) box, not on the padded row around it. */
+  const rowBg = b.type === 'section' ? null : b.background;
+  const bg = rowBg ? `background-color:${rowBg};` : '';
   /* A card draws its own border around the card, not around the padded row. */
   const border = b.type !== 'card' && b.borderWidth && b.borderColor ? `border:${b.borderWidth}px solid ${b.borderColor};` : '';
   const desktopHidden = b.hideOnDesktop ? 'display:none;mso-hide:all;max-height:0;overflow:hidden;' : '';
   void theme;
-  return `${cls ? ` class="${cls}"` : ''} style="padding:${padCss(b.padding)};${bg}${border}${desktopHidden}"${b.background ? ` bgcolor="${b.background}"` : ''}`;
+  return `${cls ? ` class="${cls}"` : ''} style="padding:${padCss(b.padding)};${bg}${border}${desktopHidden}"${rowBg ? ` bgcolor="${rowBg}"` : ''}`;
 }
 
 function leafHtml(b: LeafBlock, theme: Theme, width: number, dirAlign: 'left' | 'right', draft = false): string {
@@ -288,7 +290,7 @@ function blockContent(b: Block, theme: Theme, width: number, dirAlign: 'left' | 
 export function renderBlockHtml(b: Block, theme: Theme, rtl = false, draft = true): string {
   const dirAlign = rtl ? 'right' : 'left';
   const inner = blockContent(b, theme, theme.width, dirAlign, draft);
-  const bg = b.background ? `background-color:${b.background};` : '';
+  const bg = b.background && b.type !== 'section' ? `background-color:${b.background};` : '';
   const border = b.borderWidth && b.borderColor ? `border:${b.borderWidth}px solid ${b.borderColor};` : '';
   return `<div style="padding:${padCss(b.padding)};${bg}${border}">${inner}</div>`;
 }

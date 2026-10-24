@@ -96,6 +96,7 @@ test('render: new blocks are tables and inline styles; hidden layers and play-ma
     { type: 'text', text: 'Spaced', margin: { t: 24, b: 0 } },
   ] });
   assert.match(html, /bgcolor="#0C1119" background="https:\/\/i\.test\/bg\.jpg"/);
+  assert.doesNotMatch(html, /<td style="padding:[^"]*background-color:#0C1119;"/, 'the row around a section is not painted');
   assert.match(html, /Inside/); assert.match(html, /width="\d+"[^>]*>.*L/s);
   assert.match(html, /text-transform:uppercase;[^"]*">New</);
   assert.match(html, /☎/);

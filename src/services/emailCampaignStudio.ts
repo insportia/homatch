@@ -8,6 +8,7 @@
 
 import { supabase } from '@/db/supabase';
 import type { CopilotProposal, CopilotTask } from '@/emailMarketing/copilot';
+import type { DomainAuthReport } from '@/emailMarketing/deliverability/dnsCheck';
 import type { EmailDoc } from '@/emailMarketing/designer/document';
 import type { RiskResult } from '@/emailMarketing/risk/engine';
 
@@ -114,6 +115,49 @@ export async function listDesignVersions(campaignId: string): Promise<DesignVers
     .eq('campaign_id', campaignId).order('created_at', { ascending: false }).limit(50);
   if (error) throw new StudioError('VERSIONS_FAILED');
   return (data ?? []) as DesignVersion[];
+}
+
+/* ── deliverability (email-marketing deliverability_check; owner-only tables) ──────────────── */
+export type CheckState = 'OK' | 'WARN' | 'BAD' | 'UNKNOWN';
+export interface DeliverabilityDomain {
+  domain: string; shared: boolean; providerStatus: string | null;
+  records: Array<{ record: string; name: string; type: string; status?: string }>;
+  tracking: { open: boolean | null; click: boolean | null };
+  dns: DomainAuthReport;
+}
+export interface DeliverabilityResult { checkedAt: string; domains: DeliverabilityDomain[]; providerKey: boolean }
+/** The live check: provider records + public DNS as receivers read it. Rate-limited server-side. */
+export async function runDeliverabilityCheck(): Promise<DeliverabilityResult> {
+  return edge<DeliverabilityResult>('deliverability_check', {});
+}
+/** The last stored check, or null if none was run yet. */
+export async function lastDeliverabilityCheck(): Promise<DeliverabilityResult | null> {
+  const { data, error } = await supabase.from('email_deliverability_checks').select('result, checked_at').order('checked_at', { ascending: false }).limit(1).maybeSingle();
+  if (error || !data) return null;
+  const r = data as { result: { domains?: DeliverabilityDomain[] }; checked_at: string };
+  return { checkedAt: r.checked_at, domains: r.result.domains ?? [], providerKey: true };
+}
+
+export type Mailbox = 'GMAIL' | 'OUTLOOK' | 'YAHOO' | 'APPLE' | 'OTHER';
+export type Placement = 'INBOX' | 'SPAM' | 'PROMOTIONS' | 'OTHER_TAB' | 'NOT_RECEIVED';
+/** What the owner saw in a real mailbox for a controlled test: the only source of an Inbox/Spam placement. */
+export interface PlacementTest { id: string; campaign_id: string | null; mailbox: Mailbox; placement: Placement; auth: Record<string, unknown> | null; note: string | null; observed_at: string }
+const PT_COLS = 'id, campaign_id, mailbox, placement, auth, note, observed_at';
+export async function listPlacementTests(): Promise<PlacementTest[]> {
+  const { data, error } = await supabase.from('email_placement_tests').select(PT_COLS).order('observed_at', { ascending: false }).limit(50);
+  if (error) throw new StudioError('PLACEMENT_FAILED');
+  return (data ?? []) as PlacementTest[];
+}
+export async function recordPlacementTest(p: { campaign_id?: string | null; mailbox: Mailbox; placement: Placement; auth?: Record<string, unknown> | null; note?: string | null }): Promise<PlacementTest> {
+  const { data, error } = await supabase.from('email_placement_tests')
+    .insert({ campaign_id: p.campaign_id ?? null, mailbox: p.mailbox, placement: p.placement, auth: p.auth ?? null, note: p.note?.slice(0, 500) || null })
+    .select(PT_COLS).single();
+  if (error) throw new StudioError('PLACEMENT_FAILED');
+  return data as PlacementTest;
+}
+export async function deletePlacementTest(id: string): Promise<void> {
+  const { error } = await supabase.from('email_placement_tests').delete().eq('id', id);
+  if (error) throw new StudioError('PLACEMENT_FAILED');
 }
 
 /** A new draft with the same content (never a copy of the approval, the schedule or the results). */

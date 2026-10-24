@@ -87,7 +87,7 @@ export function ResultHeadline({
           </summary>
           <p className="text-sm text-muted-foreground">{t('mortgage_rs_note', { rate: formatPercent(input.nominalAnnualRatePercent, locale, 2) })}</p>
           <div className="overflow-x-auto pb-4">
-            <table className="mt-3 w-full min-w-[18rem] text-sm">
+            <table className="mt-3 w-full text-sm">
               <thead>
                 <tr className="text-start text-xs text-muted-foreground">
                   <th scope="col" className="py-1.5 text-start font-medium">{t('mortgage_rs_rate')}</th>

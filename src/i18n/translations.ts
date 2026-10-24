@@ -23816,7 +23816,7 @@ const en = {
   mortgage_rd_check_costs_ok: 'You have counted the one time fees and insurance.',
   mortgage_rd_check_costs_attention: 'Fees and insurance are not counted yet. Add them under the bank’s costs to see the real price of the loan.',
   mortgage_rd_sc_with_co_borrower: 'With a co-borrower earning {{amount}} a month',
-  mortgage_rd_with_co_note: 'Their own debts would count too. This shows the smallest income that closes the gap.',
+  mortgage_rd_with_co_note: 'Their own debts would count too. This shows an income that would close the gap at your current limit.',
 
   /* ── HOMI ASSISTANT ── */
   mortgage_rs_title: 'What if the rate changes?',
@@ -23946,6 +23946,9 @@ const en = {
   admin_overview_cogs_sub: 'Provider costs',
   admin_overview_cogs_unpriced: '{{n}} cost records have no price',
   admin_overview_cogs_incomplete: 'Not every cost record could be read',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_bp_range: '{{from}} to {{to}}',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -47676,7 +47679,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mortgage_rd_check_costs_ok: 'ერთჯერადი საკომისიოები და დაზღვევა გათვლილი გაქვს.',
   mortgage_rd_check_costs_attention: 'საკომისიოები და დაზღვევა ჯერ არ გაქვს გათვლილი. დაამატე ბანკის ხარჯებში და სესხის რეალურ ფასს დაინახავ.',
   mortgage_rd_sc_with_co_borrower: 'თანამსესხებლით, რომელიც თვეში {{amount}}-ს გამოიმუშავებს',
-  mortgage_rd_with_co_note: 'მისი ვალებიც ჩაითვლება. აქ ჩანს ის მინიმალური შემოსავალი, რომელიც სხვაობას ფარავს.',
+  mortgage_rd_with_co_note: 'მისი ვალებიც ჩაითვლება. აქ ჩანს შემოსავალი, რომელიც სხვაობას შენი ამჟამინდელი ზღვრით დაფარავს.',
 
   /* ── HOMI ASSISTANT ── */
   mortgage_rs_title: 'რა მოხდება, თუ განაკვეთი შეიცვლება?',
@@ -47806,6 +47809,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_overview_cogs_sub: 'პროვაიდერების ხარჯები',
   admin_overview_cogs_unpriced: '{{n}} ხარჯის ჩანაწერს ფასი არ აქვს',
   admin_overview_cogs_incomplete: 'ყველა ხარჯის ჩანაწერის წაკითხვა ვერ მოხერხდა',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_bp_range: '{{from}}-დან {{to}}-მდე',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -71527,7 +71533,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mortgage_rd_check_costs_ok: 'Разовые комиссии и страховка учтены.',
   mortgage_rd_check_costs_attention: 'Комиссии и страховка ещё не учтены. Добавь их в расходы банка, чтобы увидеть реальную цену кредита.',
   mortgage_rd_sc_with_co_borrower: 'С созаёмщиком с доходом {{amount}} в месяц',
-  mortgage_rd_with_co_note: 'Его долги тоже будут учтены. Здесь показан минимальный доход, который закрывает разрыв.',
+  mortgage_rd_with_co_note: 'Его долги тоже будут учтены. Здесь показан доход, который закроет разрыв при твоём текущем лимите.',
 
   /* ── HOMI ASSISTANT ── */
   mortgage_rs_title: 'Что если ставка изменится?',
@@ -71657,6 +71663,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_overview_cogs_sub: 'Расходы на провайдеров',
   admin_overview_cogs_unpriced: 'У {{n}} записей о расходах нет цены',
   admin_overview_cogs_incomplete: 'Не все записи о расходах удалось прочитать',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_bp_range: 'от {{from}} до {{to}}',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -95376,7 +95385,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mortgage_rd_check_costs_ok: 'Tek seferlik ücretleri ve sigortayı hesaba kattın.',
   mortgage_rd_check_costs_attention: 'Ücretler ve sigorta henüz hesaba katılmadı. Kredinin gerçek maliyetini görmek için banka masraflarına ekle.',
   mortgage_rd_sc_with_co_borrower: 'Ayda {{amount}} kazanan bir ortak borçluyla',
-  mortgage_rd_with_co_note: 'Onun borçları da sayılır. Burada açığı kapatan en düşük gelir gösteriliyor.',
+  mortgage_rd_with_co_note: 'Onun borçları da sayılır. Burada mevcut sınırına göre açığı kapatacak bir gelir gösteriliyor.',
 
   /* ── HOMI ASSISTANT ── */
   mortgage_rs_title: 'Faiz değişirse ne olur?',
@@ -95506,6 +95515,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_overview_cogs_sub: 'Sağlayıcı maliyetleri',
   admin_overview_cogs_unpriced: '{{n}} maliyet kaydının fiyatı yok',
   admin_overview_cogs_incomplete: 'Tüm maliyet kayıtları okunamadı',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_bp_range: '{{from}} ile {{to}} arası',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -119225,7 +119237,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mortgage_rd_check_costs_ok: 'لقد احتسبت الرسوم لمرة واحدة والتأمين.',
   mortgage_rd_check_costs_attention: 'الرسوم والتأمين غير محتسبة بعد. أضفها إلى تكاليف البنك لترى السعر الحقيقي للقرض.',
   mortgage_rd_sc_with_co_borrower: 'مع مقترض مشارك يكسب {{amount}} شهريًا',
-  mortgage_rd_with_co_note: 'ستُحتسب ديونه أيضًا. يوضح هذا أقل دخل يسد الفجوة.',
+  mortgage_rd_with_co_note: 'ستُحتسب ديونه أيضًا. يوضح هذا دخلًا يسد الفجوة وفق حدك الحالي.',
 
   /* ── HOMI ASSISTANT ── */
   mortgage_rs_title: 'ماذا لو تغيّر سعر الفائدة؟',
@@ -119355,6 +119367,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_overview_cogs_sub: 'تكاليف المزوّدين',
   admin_overview_cogs_unpriced: '{{n}} من سجلات التكلفة بلا سعر',
   admin_overview_cogs_incomplete: 'تعذر قراءة كل سجلات التكلفة',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_bp_range: 'من {{from}} إلى {{to}}',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -143074,7 +143089,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   mortgage_rd_check_costs_ok: 'חישבת את העמלות החד פעמיות ואת הביטוח.',
   mortgage_rd_check_costs_attention: 'העמלות והביטוח עוד לא חושבו. הוסף אותם לעלויות הבנק כדי לראות את המחיר האמיתי של ההלוואה.',
   mortgage_rd_sc_with_co_borrower: 'עם לווה נוסף שמרוויח {{amount}} בחודש',
-  mortgage_rd_with_co_note: 'גם החובות שלו ייספרו. כאן מוצגת ההכנסה המינימלית שסוגרת את הפער.',
+  mortgage_rd_with_co_note: 'גם החובות שלו ייספרו. כאן מוצגת הכנסה שתסגור את הפער לפי המגבלה הנוכחית שלך.',
 
   /* ── HOMI ASSISTANT ── */
   mortgage_rs_title: 'מה אם הריבית תשתנה?',
@@ -143204,6 +143219,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_overview_cogs_sub: 'עלויות ספקים',
   admin_overview_cogs_unpriced: 'ל{{n}} רשומות עלות אין מחיר',
   admin_overview_cogs_incomplete: 'לא ניתן היה לקרוא את כל רשומות העלות',
+
+  /* ── HOMI ASSISTANT ── */
+  mortgage_bp_range: 'מ־{{from}} עד {{to}}',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

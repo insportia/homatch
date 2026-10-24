@@ -50,7 +50,7 @@ export function BankProductsPanel({ currency, loanAmount, termMonths, canAdd, on
 
   const date = (iso: string) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(iso));
   const range = (a: number | null, b: number | null) =>
-    a === null ? '' : b !== null && b !== a ? `${formatPercent(a, locale, 2)} ${t('mortgage_bp_to')} ${formatPercent(b, locale, 2)}` : formatPercent(a, locale, 2);
+    a === null ? '' : b !== null && b !== a ? t('mortgage_bp_range', { from: formatPercent(a, locale, 2), to: formatPercent(b, locale, 2) }) : formatPercent(a, locale, 2);
 
   return (
     <section aria-labelledby="bp-title" className="hm-workspace-panel p-5 sm:p-6" data-testid="mortgage-bank-products">

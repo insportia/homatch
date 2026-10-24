@@ -36,6 +36,7 @@ export const SUITE_CATALOGUE = {
   'mobile:meta-ads': { title: 'Mobile — Meta Ads builder', files: ['tests/mobile/metaAdsBuilder.test.mjs'] },
   'mobile:mortgage': { title: 'Mobile — mortgage', files: ['tests/mobile/mortgageConsultant.test.mjs', 'tests/mobile/mortgageHuman.test.mjs'] },
   'mobile:expats': { title: 'Mobile — For Expats', files: ['tests/mobile/expatsReadable.test.mjs'] },
+  'mobile:admin-mortgage': { title: 'Mobile — admin mortgage rules and bank products', files: ['tests/mobile/adminMortgageBankProducts.test.mjs'] },
   'mobile:discovery': { title: 'Mobile — admin Discovery', files: ['tests/mobile/adminDiscovery.test.mjs', 'tests/mobile/findPropertyAttribution.test.mjs', 'tests/mobile/findPropertyMarketplace.test.mjs', 'tests/mobile/findBuyersResults.test.mjs', 'tests/mobile/internalMatches.test.mjs', 'tests/mobile/findBuyersReport.test.mjs', 'tests/mobile/findBuyersUx.test.mjs', 'tests/mobile/findBuyersNavigation.test.mjs', 'tests/mobile/homatchLeads.test.mjs', 'tests/mobile/ownerDemoLead.test.mjs', 'tests/mobile/matchExpansion.test.mjs', 'tests/mobile/findPropertyCosts.test.mjs', 'tests/mobile/matchingWorkspace.test.mjs'] },
   'mobile:broker': { title: 'Mobile — broker lifecycle', files: ['tests/mobile/brokerLifecycle.test.mjs'] },
   'mobile:tasks': { title: 'Mobile — tasks and contracts', files: ['tests/mobile/tasksAndContracts.test.mjs', 'tests/mobile/leadEmailCampaigns.test.mjs'] },
@@ -158,7 +159,7 @@ export const COMPONENTS = {
     paths: [/^src\/pages\/(Verify|ContractResultPage|VerificationCasePage|ContractsHistoryPage|ContractsPage)/, /^src\/(verify|components\/verify|components\/contracts|components\/research)\//, /^src\/services\/(verifyResult|verifyDocumentFile|verifyReportPrefetch)\.ts$/, fn('research-agent', 'verify-synthesis', 'verify-queue', 'verification-handoff', 'browserbase-handoff', 'revalidate-evidence', 'homatch-research')],
     suites: ['mobile:verify', 'mobile:routes'],
   },
-  MORTGAGE: { paths: [/^src\/(pages\/MortgagePage|components\/mortgage|mortgage)/], suites: ['mobile:mortgage', 'mobile:routes'] },
+  MORTGAGE: { paths: [/^src\/(pages\/MortgagePage|components\/mortgage|mortgage)/], suites: ['mobile:mortgage', 'mobile:routes', 'mobile:admin-mortgage'] },
   EXPATS: { paths: [/^src\/(pages\/(ForExpatsPage|Expat)|components\/expats|expats)/, /^scripts\/expat-content\//], suites: ['mobile:expats'] },
   // PUBLISH TO PORTALS: the standalone listing-publishing workspace (/publishing),
   // its edge function and its publishing_* / publishing_engine_* objects.
@@ -182,7 +183,7 @@ export const COMPONENTS = {
     paths: [/^src\/pages\/(HomePage|AboutPage|PricingPage|PartnersPage|PrivacyPage|TermsPage|ProductEntryPage|ContactPage)/, /^src\/components\/home\//, /^public\//, /^scripts\/build-sitemap/],
     suites: ['mobile:shell', 'mobile:routes', 'a11y'],
   },
-  ADMIN: { paths: [/^src\/(pages\/admin|components\/admin|admin)\//], suites: ['mobile:routes', 'a11y'] },
+  ADMIN: { paths: [/^src\/(pages\/admin|components\/admin|admin)\//], suites: ['mobile:routes', 'a11y', 'mobile:admin-mortgage'] },
   // Customer product surfaces without a dedicated suite of their own: the
   // route sweeps, the shell and the tasks suite are what render them.
   PRODUCT: {

@@ -109,13 +109,16 @@ export default function MortgageBankProductsAdmin() {
   };
 
   const setField = (k: keyof BankProductForm, v: string) => setEditing((e) => (e ? { ...e, form: { ...e.form, [k]: v } } : e));
-  const err = (k: keyof BankProductForm) => (errors[k] ? <span role="alert" className="text-2xs text-destructive">{t(errors[k] as string)}</span> : null);
+  // The message sits outside the label and is linked by aria-describedby, so the field's name stays its label.
+  const err = (k: keyof BankProductForm) => (errors[k] ? <span id={`bp-err-${k}`} role="alert" className="text-2xs text-destructive">{t(errors[k] as string)}</span> : null);
   const input = (k: keyof BankProductForm, label: string, extra: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
-    <Field label={label}>
-      <input className={cn(inputClass, errors[k] && 'border-destructive')} value={editing?.form[k] ?? ''} aria-invalid={!!errors[k]}
-        onChange={(e) => setField(k, e.target.value)} {...extra} />
+    <div className="flex min-w-0 flex-col gap-1">
+      <Field label={label}>
+        <input className={cn(inputClass, errors[k] && 'border-destructive')} value={editing?.form[k] ?? ''} aria-invalid={!!errors[k]}
+          aria-describedby={errors[k] ? `bp-err-${k}` : undefined} onChange={(e) => setField(k, e.target.value)} {...extra} />
+      </Field>
       {err(k)}
-    </Field>
+    </div>
   );
 
   const rate = (r: BankProductRow) => {

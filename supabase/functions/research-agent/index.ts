@@ -25,6 +25,7 @@ import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/perfor
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
 import { engineForNewJob, engineOf, parseEngineSetting, VERIFY_ENGINE_SETTING_KEY } from '../../../src/verify/engine.ts';
 import { codeSynthesis } from '../../../src/verify/v2/codeSynthesis.ts';
+import { checkCadastralInput } from '../../../src/verify/cadastralInput.ts';
 import { budgetDecision, canonicalModel, escalationModelFor, marketCodeDecision, marketOfficialContext, parseResearchTuning, searchQueriesOf, stageOutputUsable, v2ResearchRequest, VERIFY_V2_RESEARCH_SETTING_KEY, withoutEmpty } from '../../../src/verify/v2/researchRequest.ts';
 // Developer Advertising Intelligence: the shared memo23 Apify client (the one
 // seam Verify shares; the file itself is unchanged) with Verify's OWN
@@ -4898,6 +4899,10 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string, code = false
     // The engine the job was created on (src/verify/engine.ts): kept on the
     // finished row so COGS and quality can be compared V1 vs V2.
     _engine: prior._engine ?? null,
+    // V2 audit, internal: why each stage spent what it did (stripped for customers).
+    _v2Decisions: prior._v2Decisions ?? null,
+    _searchLog: prior._searchLog ?? null,
+    _escalations: prior._escalations ?? null,
     _stageTimes: await stageTimesWithTasks(sb, j.id, prior._stageTimes),
     // Internal ledgers and official visual references (finish() replaces
     // result_json wholesale, so they are carried explicitly). Stripped from
@@ -4941,37 +4946,11 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string, code = false
   // And the person who asked is told it is ready, in case they left. After
   // everything above, and outside it: a notification is a side effect of a
   // saved report and can never fail one.
-  if (!finished?.error) await notifyVerificationReady(sb, j);
+  // The customer is told when the REPORT is ready (verify-synthesis), not here:
+  // a notification on research completion opened a page still writing it (prod 1ff4b786).
   return finished;
 }
 
-/*
- * A VERIFICATION TAKES MINUTES, AND PEOPLE LEAVE.
- *
- * VERIFY_COMPLETE was in the enum and rendered by the centre, and nothing ever
- * produced it: somebody who closed the tab learned their report was ready only
- * by coming back to look. This is the one place a verification becomes
- * COMPLETE, so it is the one place that says so.
- *
- * Only for a signed-in owner — an anonymous run has nobody to address. The
- * dedupe key is the job, so a re-finalised job tells nobody twice. No subject
- * text is copied: the code or address somebody verified stays on the job.
- */
-async function notifyVerificationReady(sb: any, j: any): Promise<void> {
-  if (!j?.user_id || !j?.id) return;
-  await notify(sb, {
-    userId: j.user_id,
-    type: 'VERIFY_COMPLETE',
-    title: 'Your verification is ready',
-    body: 'The report has finished and is ready to read.',
-    priority: 'HIGH',
-    deepLink: `/verify?job=${j.id}`,
-    entityType: 'research_job',
-    entityId: j.id,
-    dedupeKey: `verify-complete:${j.id}`,
-    metadata: { kind: 'VERIFY_COMPLETE', job_id: j.id },
-  });
-}
 
 /*
  * ONE ADVANCER PER JOB AT A TIME.
@@ -6481,7 +6460,7 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
  */
 function stripInternalInProgress(result: any): any {
   const r: any = { ...result };
-  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_marketEligibility', '_officialVisualsError', '_unattendedVerificationSkips', '_stageTimes', '_engine', '_developerAds']) delete r[k];
+  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_marketEligibility', '_officialVisualsError', '_unattendedVerificationSkips', '_stageTimes', '_engine', '_v2Decisions', '_searchLog', '_escalations', '_developerAds']) delete r[k];
   // Per-stage model names (COGS) are internal economics too.
   delete r._models;
   if (r.browserOfficial && typeof r.browserOfficial === 'object' && Array.isArray(r.browserOfficial.results)) {
@@ -6613,6 +6592,9 @@ function sanitizeForCustomer(job: any): any {
   // not a description of how cheaply we assembled it.
   delete r._reusePlan;
   delete r._engine;
+  delete r._v2Decisions;
+  delete r._searchLog;
+  delete r._escalations;
   delete r._stageTimes;
   delete r._worker;
   delete r._cost;
@@ -7137,11 +7119,11 @@ async function settleVerifyBudgets(sb: any): Promise<void> {
     const { data: open, error } = await sb.from('verify_billing').select('job_id').eq('state', 'ACTIVE').order('updated_at', { ascending: true }).limit(25);
     if (error || !open?.length) return;
     const ids = open.map((x: any) => x.job_id);
-    const { data: jobs } = await sb.from('research_jobs').select('id,status,synthesis_state,synthesis_attempts,completed_at,paused_at').in('id', ids);
+    const { data: jobs } = await sb.from('research_jobs').select('id,status,synthesis_state,synthesis_attempts,completed_at,paused_at,official_found:result_json->officialSourcesConfirmedFound').in('id', ids);
     const { data: sessions } = await sb.from('verify_billing_sessions').select('job_id,created_at').in('job_id', ids).eq('state', 'RESERVED');
     const openedAt = new Map((sessions ?? []).map((x: any) => [x.job_id, x.created_at]));
     for (const job of jobs ?? []) {
-      const outcome = settlementOutcome(job, { maxSynthesisAttempts: MAX_SYNTHESIS_ATTEMPTS, synthesisGraceMs: SYNTHESIS_SETTLE_GRACE_MS, openSessionAt: openedAt.get(job.id) ?? null });
+      const outcome = settlementOutcome(job, { maxSynthesisAttempts: MAX_SYNTHESIS_ATTEMPTS, synthesisGraceMs: SYNTHESIS_SETTLE_GRACE_MS, openSessionAt: openedAt.get(job.id) ?? null, officialFound: Array.isArray(job.official_found) ? job.official_found.length : null });
       if (outcome) await closeBilling(sb, job.id, outcome);
     }
   } catch (e) {
@@ -8022,7 +8004,11 @@ Deno.serve(async (req) => {
     const mode: Mode = b.type === 'cadastral' ? 'cadastral' : 'property';
     const q = mode === 'cadastral' ? String(b.query || '').trim().replace(/\s/g, '') : String(b.query || '').trim().replace(/\s+/g, ' ');
     if (!q) return json({ error: 'Query required' }, 400);
-    if (mode === 'cadastral' && !CAD.test(q)) return json({ error: 'Invalid cadastral code' }, 400);
+    // Canonical codes only (cadastralInput.ts): an invalid code never starts — or charges — a run.
+    if (mode === 'cadastral') {
+      const check = checkCadastralInput(q);
+      if (!check.ok) return json({ error: 'Invalid cadastral code', code: 'INVALID_CADASTRAL', suggestion: check.suggestion }, 400);
+    }
     /*
      * IDEMPOTENT START. The client sends one id per submission; a repeat of
      * the same submission (retry after a dropped response, double click)

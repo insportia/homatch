@@ -57,7 +57,7 @@ test('research-agent stamps the engine once at creation, keeps it on the finishe
   assert.match(src, /result_json: \{ _lang: lang, _engine: stamped,/);
   assert.match(src, /_engine: prior\._engine \?\? null,/);
   assert.match(src, /delete r\._engine;/);
-  assert.match(src, /'_engine', '_developerAds'\]\) delete r\[k\];/);
+  assert.match(src, /'_engine', '_v2Decisions', '_searchLog', '_escalations', '_developerAds'\]\) delete r\[k\];/);
   // Read once: the live setting is never consulted after creation.
   assert.equal((src.match(/VERIFY_ENGINE_SETTING_KEY/g) ?? []).length, 2, 'import + the single creation-time read');
 });

@@ -67,6 +67,7 @@ import { translateTexts } from './translate.ts';
 import { costOperationFor, priceVerification, reportConsumption, reportCostRequestId, REPORT_STAGE, type ReportUsage } from '../../../src/verify/cogs.ts';
 import { pricingStateForDerivedCost } from '../_shared/providerCost.ts';
 import { reportQualityFailures, reportRoutingFor } from '../../../src/verify/v2/researchRequest.ts';
+import { notify } from '../_shared/notify.ts';
 
 /**
  * GEL/USD context from the National Bank of Georgia.
@@ -1067,6 +1068,24 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   await persist(writer, jobId, payload);
   // After the report is saved: bookkeeping can cost us a number, never the report.
   await recordReportCost(writer, jobId, usage, job.synthesis_at ?? null);
+  /* The customer is told when the report exists (prod 1ff4b786: the old
+     notification fired at research completion and opened a page still
+     writing it). First build only — an upgrade or a forced rebuild is not
+     news — and never twice (dedupe key per job). */
+  if (!opts.autoUpgrade && !opts.forced && job.user_id) {
+    await notify(writer, {
+      userId: job.user_id,
+      type: 'VERIFY_COMPLETE',
+      title: 'Your verification is ready',
+      body: 'The report has finished and is ready to read.',
+      priority: 'HIGH',
+      deepLink: `/verify?job=${jobId}`,
+      entityType: 'research_job',
+      entityId: jobId,
+      dedupeKey: `verify-complete:${jobId}`,
+      metadata: { kind: 'VERIFY_COMPLETE', job_id: jobId },
+    }).catch((e: unknown) => console.error(`verify-synthesis: ready notification failed for ${jobId}`, e instanceof Error ? e.message : String(e)));
+  }
   completeNeighborhoodLater(writer, jobId, (payload as any)?.location?.neighborhood);
   console.log(JSON.stringify({ scope: 'verify_synthesis_timing', jobId, ...timing, persistMs: Date.now() - Date.parse(String(timing.persistAt)) }));
   return await forCustomer(writer, payload, jobId);

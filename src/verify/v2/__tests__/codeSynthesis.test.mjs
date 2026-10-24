@@ -29,14 +29,15 @@ test('items to verify put the skipped human step first and stay within four', ()
 });
 
 test('the summary counts confirmed (positive and adverse) against the matrix, in every language, with no braces left', () => {
+  // No subject prefix: the evidence gate redacted an unbacked one in production (1ff4b786).
   assert.equal(codeSynthesis(matrix, 'Subject', 'en').executiveSummary,
-    'Subject: 3 of 6 official checks returned a confirmed result; 3 still need confirmation.');
+    '3 of 6 official checks returned a confirmed result; 3 still need confirmation.');
   const all = Object.fromEntries(Object.entries(matrix).map(([k, e]) => [k, { ...e, status: 'CONFIRMED_POSITIVE' }]));
-  assert.equal(codeSynthesis(all, 'Subject', 'en').executiveSummary, 'Subject: all 6 official checks returned a confirmed result.');
+  assert.equal(codeSynthesis(all, 'Subject', 'en').executiveSummary, 'All 6 official checks returned a confirmed result.');
   for (const l of ['en', 'ka', 'ru', 'tr', 'ar', 'he']) {
     for (const m of [matrix, all]) {
       const s = codeSynthesis(m, 'Subject', l).executiveSummary;
-      assert.ok(s.startsWith('Subject') && !/[{}]/.test(s), `${l}: ${s}`);
+      assert.ok(s && !s.includes('Subject') && !/[{}]/.test(s), `${l}: ${s}`);
     }
   }
   assert.equal(codeSynthesis(matrix, 'Subject', 'xx').executiveSummary, codeSynthesis(matrix, 'Subject', 'en').executiveSummary);

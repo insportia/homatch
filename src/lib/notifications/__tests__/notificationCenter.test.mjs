@@ -38,7 +38,8 @@ const CHAT = read('src', 'pages', 'ChatPage.tsx');
 const API = read('src', 'services', 'api.ts');
 const PUSH = read('supabase', 'functions', 'push-send', 'index.ts');
 const NOTIFY = read('supabase', 'functions', '_shared', 'notify.ts');
-const RESEARCH = read('supabase', 'functions', 'research-agent', 'index.ts');
+// Verify's 'report ready' producer: verify-synthesis, once the report is saved (prod 1ff4b786).
+const RESEARCH = read('supabase', 'functions', 'verify-synthesis', 'index.ts');
 const DOCS = read('supabase', 'functions', 'deal-room-document-analyze', 'index.ts');
 const MIGRATIONS = fs.readdirSync(path.join(ROOT, 'supabase', 'migrations'))
   .filter((f) => f.endsWith('.sql')).sort();
@@ -68,7 +69,7 @@ test('a deep link is followed only when it is a path on this site', () => {
 });
 
 test('the new service-completion producers link to routes that exist', () => {
-  assert.match(RESEARCH, /deepLink: `\/verify\?job=\$\{j\.id\}`/);
+  assert.match(RESEARCH, /deepLink: `\/verify\?job=\$\{jobId\}`/);
   assert.match(DOCS, /deepLink: `\/verify\/\$\{doc\.deal_room_id\}\?tab=documents&doc=\$\{documentId\}`/);
   const routes = read('src', 'routes.tsx');
   assert.match(routes, /path: '\/verify',/);
@@ -79,7 +80,7 @@ test('the new service-completion producers link to routes that exist', () => {
 
 test('every new producer names the event it is, so a retry tells nobody twice', () => {
   assert.match(SEND_MESSAGE, /dedupeKey: `message:\$\{message\.id\}`/);
-  assert.match(RESEARCH, /dedupeKey: `verify-complete:\$\{j\.id\}`/);
+  assert.match(RESEARCH, /dedupeKey: `verify-complete:\$\{jobId\}`/);
   assert.match(DOCS, /dedupeKey: `document-analyzed:\$\{documentId\}:\$\{sha\}`/);
 });
 

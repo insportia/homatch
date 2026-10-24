@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Building2, Calculator, FileText, Mail, PhoneCall, Search, ShieldCheck, UserSearch,
+  ArrowUpRight, Building2, Calculator, FileText, Mail, Plane, Search, ShieldCheck, TrendingUp, UserSearch,
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { HomatchAsk } from '@/components/home/HomatchAsk';
@@ -60,16 +60,24 @@ export function AISection() {
   const look = (g: HomiGesture, dir = 1) => () => { setGesture(g); setPointTo(dir); };
   const rest = () => setGesture('idle');
 
+  /* What a question reaches — every tile opens the real product. AI Call
+     Center is deliberately not listed here (owner, 2026-10-24); Investment
+     and the expat services are. */
   const reach = [
-    { key: 'match', icon: UserSearch, label: sf('reach_match', 'mp_match_title') },
-    { key: 'find', icon: Search, label: sf('reach_find', 'mp_find_title') },
-    { key: 'verify', icon: ShieldCheck, label: sf('reach_verify', 'mp_verify_capability_title') },
-    { key: 'contract', icon: FileText, label: sf('reach_contract', 'mp_contract_title') },
-    { key: 'mortgage', icon: Calculator, label: sf('reach_mortgage', 'mp_mortgage_title') },
-    { key: 'calls', icon: PhoneCall, label: sf('reach_calls', 'call_center_title') },
-    { key: 'email', icon: Mail, label: sf('reach_email', 'mp_email_title') },
-    { key: 'dev', icon: Building2, label: sf('reach_dev', 'mp_dev_eyebrow') },
+    { key: 'find', icon: Search, to: '/find-property', label: sf('reach_find', 'mp_find_title') },
+    { key: 'verify', icon: ShieldCheck, to: '/verify', label: sf('reach_verify', 'mp_verify_capability_title') },
+    { key: 'mortgage', icon: Calculator, to: '/mortgage', label: sf('reach_mortgage', 'mp_mortgage_title') },
+    { key: 'investment', icon: TrendingUp, to: '/investment', label: sf('reach_investment', 'homi_reach_investment') },
+    { key: 'contract', icon: FileText, to: '/contracts', label: sf('reach_contract', 'mp_contract_title') },
+    { key: 'expats', icon: Plane, to: '/for-expats/georgia', label: sf('reach_expats', 'homi_reach_expats') },
+    { key: 'match', icon: UserSearch, to: '/property/add', label: sf('reach_match', 'mp_match_title') },
+    { key: 'email', icon: Mail, to: '/outreach/email', label: sf('reach_email', 'mp_email_title') },
+    { key: 'dev', icon: Building2, to: '/developers', label: sf('reach_dev', 'mp_dev_eyebrow') },
   ];
+  const [active, setActive] = useState<string | null>(null);
+  const activeItem = reach.find((r) => r.key === active) ?? null;
+  const focusTile = (key: string) => () => { setActive(key); setGesture('pointing'); setPointTo(1); };
+  const leaveTile = () => { setActive(null); setGesture('idle'); };
 
   return (
     <section ref={sectionRef} id="how" className={`${PAGE} scroll-mt-20 border-t border-border ${SECTION_Y}`}>
@@ -110,53 +118,94 @@ export function AISection() {
         </div>
       </div>
 
-      <div className="mt-8 grid gap-8 sm:mt-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,21rem)] lg:gap-12">
-        <div className="min-w-0" onMouseEnter={look('pointing', -1)} onMouseLeave={rest} onFocusCapture={look('pointing', -1)} onBlurCapture={rest}>
-          <HomatchAsk variant="console" placeholder={t('mp_hero_ai_placeholder')} actions={[]} />
+      <div className="mt-8 min-w-0 sm:mt-10" onMouseEnter={look('pointing', -1)} onMouseLeave={rest} onFocusCapture={look('pointing', -1)} onBlurCapture={rest}>
+        <HomatchAsk variant="console" placeholder={t('mp_hero_ai_placeholder')} actions={[]} />
 
-          <p className="mt-7 text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground" {...fp('intent_label')}>
-            {sf('intent_label', 'mp_intent_label')}
-          </p>
-          {/* Eight questions, eight fields. Keyed by the intent rather than
-              numbered, because the set is fixed here and an admin's rewrite
-              should follow the question it belongs to. */}
-          <IntentCards
-            className="mt-4"
-            text={intent => sf(`q_${intent.key}`, intent.prompt)}
-            mark={intent => fp(`q_${intent.key}`)}
-          />
-        </div>
-
-        {/* What a question reaches. Not decoration: this is the list that
-            separates an assistant from a chat window. */}
-        <div className="min-w-0 self-start">
-        <HomiHomeStage
-          gesture={gesture}
-          pointTo={pointTo}
-          className="mx-auto mb-4 h-[240px] w-[200px] sm:h-[300px] sm:w-[250px]"
+        <p className="mt-7 text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground" {...fp('intent_label')}>
+          {sf('intent_label', 'mp_intent_label')}
+        </p>
+        {/* Eight questions, eight fields. Keyed by the intent rather than
+            numbered, because the set is fixed here and an admin's rewrite
+            should follow the question it belongs to. */}
+        <IntentCards
+          className="mt-4"
+          text={intent => sf(`q_${intent.key}`, intent.prompt)}
+          mark={intent => fp(`q_${intent.key}`)}
         />
-        <div
-          id="homi-reach"
-          onMouseEnter={look('explaining')} onMouseLeave={rest}
-          className="min-w-0 scroll-mt-24 rounded-[1.1rem] border border-foreground/15 bg-secondary/60 p-5 sm:p-6"
-        >
-          <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground" {...fp('reach_label')}>
-            {sf('reach_label', 'mp_ai_reach_label')}
-          </p>
-          <ul className="mt-5 grid gap-2.5">
-            {reach.map(item => (
-              <li key={item.key} className="flex items-start gap-3">
-                <span
-                  className="mt-px grid h-7 w-7 shrink-0 place-items-center rounded-[0.45rem] border border-foreground/15 bg-card text-foreground"
-                  aria-hidden="true"
-                >
-                  <item.icon className="h-[15px] w-[15px]" strokeWidth={1.9} />
-                </span>
-                <span className="min-w-0 pt-1 text-[16px] leading-snug text-foreground" {...fp(`reach_${item.key}`)}>{item.label}</span>
-              </li>
-            ))}
+      </div>
+
+      {/*
+        * WHAT A QUESTION REACHES — the HOMI panel.
+        *
+        * The homepage's own black and gold. HOMI stands on the left and
+        * follows whichever service a visitor hovers or tabs to; the bubble
+        * beside HOMI says what that service does. Every tile is a real link
+        * to the product, never a decorative chip.
+        */}
+      <div
+        id="homi-reach"
+        className="relative mt-10 scroll-mt-24 overflow-hidden rounded-[1.5rem] border border-[hsl(38_92%_56%)]/25 bg-[#0C1119] p-5 text-white shadow-[0_30px_80px_-40px_rgba(0,0,0,0.6)] sm:mt-12 sm:p-8"
+      >
+        <div aria-hidden="true" className="pointer-events-none absolute -start-24 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(245,166,35,0.22),transparent_65%)]" />
+        <div aria-hidden="true" className="pointer-events-none absolute -bottom-32 end-0 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(79,178,255,0.14),transparent_65%)]" />
+        <div className="relative grid gap-6 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] lg:gap-10">
+          <div className="flex flex-col items-center lg:items-start">
+            <p className="self-stretch text-[14px] font-semibold uppercase tracking-[0.16em] text-[hsl(38_92%_62%)]" {...fp('reach_label')}>
+              {sf('reach_label', 'mp_ai_reach_label')}
+            </p>
+            <HomiHomeStage
+              gesture={gesture}
+              pointTo={pointTo}
+              className="mt-3 h-[220px] w-[180px] sm:h-[280px] sm:w-[230px]"
+            />
+            {/* HOMI's bubble: what the hovered service does, or how to use the panel. */}
+            <div
+              aria-live="polite"
+              className="relative mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] leading-snug text-white/90"
+            >
+              <span aria-hidden="true" className="absolute -top-1.5 start-10 h-3 w-3 rotate-45 border-s border-t border-white/10 bg-[#161d29]" />
+              {activeItem ? (
+                <>
+                  <span className="block font-semibold text-white">{activeItem.label}</span>
+                  <span className="mt-0.5 block text-white/75">{t(`homi_reach_${activeItem.key}_d`)}</span>
+                </>
+              ) : (
+                <span>{t('homi_reach_hint')}</span>
+              )}
+            </div>
+          </div>
+
+          <ul className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 xl:grid-cols-3">
+            {reach.map(item => {
+              const on = active === item.key;
+              return (
+                <li key={item.key} className="min-w-0">
+                  <Link
+                    to={item.to}
+                    onMouseEnter={focusTile(item.key)} onMouseLeave={leaveTile}
+                    onFocus={focusTile(item.key)} onBlur={leaveTile}
+                    className={`group relative flex h-full min-h-[5.5rem] flex-col justify-between gap-3 overflow-hidden rounded-2xl border p-4 transition-[transform,border-color,background-color,box-shadow] duration-300 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] ${
+                      on
+                        ? 'border-[hsl(38_92%_56%)]/70 bg-white/[0.08] shadow-[0_18px_40px_-24px_rgba(245,166,35,0.55)] motion-safe:-translate-y-0.5'
+                        : 'border-white/10 bg-white/[0.03] hover:border-white/25'
+                    }`}
+                  >
+                    <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 -start-1/2 w-1/2 -skew-x-12 bg-gradient-to-r from-transparent via-[rgba(245,166,35,0.14)] to-transparent opacity-0 transition-[inset-inline-start,opacity] duration-700 group-hover:start-full group-hover:opacity-100 motion-reduce:hidden" />
+                    <span className="flex items-start justify-between gap-3">
+                      <span aria-hidden="true" className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border transition-colors ${on ? 'border-[hsl(38_92%_56%)]/60 bg-[hsl(38_92%_56%)]/15 text-[hsl(38_92%_66%)]' : 'border-white/15 bg-white/[0.05] text-white/85'}`}>
+                        <item.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
+                      </span>
+                      <ArrowUpRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-[transform,color] duration-300 rtl:-scale-x-100 ${on ? 'text-[hsl(38_92%_66%)] motion-safe:-translate-y-0.5' : 'text-white/40'}`} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[15px] font-semibold leading-snug text-white" {...fp(`reach_${item.key}`)}>{item.label}</span>
+                      <span className="mt-1 block text-[13px] leading-snug text-white/60">{t(`homi_reach_${item.key}_d`)}</span>
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
-        </div>
         </div>
       </div>
     </section>

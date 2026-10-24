@@ -86,6 +86,18 @@ export const HOMI_STRINGS = {
 
   /* ── Homepage ──────────────────────────────────────────────────────── */
   homi_home_cta: ['Talk to HOMI', 'ესაუბრე HOMI-ს', 'Поговори с HOMI', 'HOMI ile konuş', 'تحدّث مع HOMI', 'דבר עם HOMI'],
+  homi_reach_investment: ['Investment consultant', 'ინვესტიციის კონსულტანტი', 'Инвестиционный консультант', 'Yatırım danışmanı', 'مستشار الاستثمار', 'יועץ השקעות'],
+  homi_reach_expats: ['Services for expats', 'ექსპატების სერვისები', 'Услуги для экспатов', 'Yabancılar için hizmetler', 'خدمات للمغتربين', 'שירותים לעולים ולזרים'],
+  homi_reach_match_d: ['People potentially interested in your property', 'შენი ქონებით პოტენციურად დაინტერესებული ადამიანები', 'Люди, потенциально заинтересованные в твоём объекте', 'Mülkünle potansiyel olarak ilgilenen kişiler', 'أشخاص قد يهتمون بعقارك', 'אנשים שעשויים להתעניין בנכס שלך'],
+  homi_reach_find_d: ['Describe it in plain words, HOMI builds the search', 'აღწერე ჩვეულებრივი სიტყვებით და HOMI მოძებნას ააწყობს', 'Опиши обычными словами, HOMI построит поиск', 'Kendi kelimelerinle anlat, HOMI aramayı kursun', 'صِف ما تريد بكلماتك وسيبني HOMI البحث', 'תאר במילים פשוטות ו-HOMI יבנה את החיפוש'],
+  homi_reach_verify_d: ['Owner, mortgage and restrictions from official sources', 'მესაკუთრე, იპოთეკა და შეზღუდვები ოფიციალური წყაროებიდან', 'Собственник, ипотека и ограничения из официальных источников', 'Resmî kaynaklardan malik, ipotek ve kısıtlamalar', 'المالك والرهن والقيود من مصادر رسمية', 'בעלים, משכנתא והגבלות ממקורות רשמיים'],
+  homi_reach_contract_d: ['Risky clauses and safer wording', 'რისკიანი მუხლები და უფრო უსაფრთხო ფორმულირებები', 'Рискованные пункты и более безопасные формулировки', 'Riskli maddeler ve daha güvenli ifadeler', 'البنود الخطرة وصياغات أكثر أمانًا', 'סעיפים מסוכנים וניסוחים בטוחים יותר'],
+  homi_reach_mortgage_d: ['Monthly payment and loan readiness', 'ყოველთვიური შენატანი და სესხისთვის მზადყოფნა', 'Ежемесячный платёж и готовность к кредиту', 'Aylık taksit ve krediye hazırlık', 'القسط الشهري والجاهزية للقرض', 'החזר חודשי ומוכנות להלוואה'],
+  homi_reach_investment_d: ['Income, expenses and return by scenario', 'შემოსავალი, ხარჯები და უკუგება სცენარების მიხედვით', 'Доход, расходы и доходность по сценариям', 'Senaryolara göre gelir, gider ve getiri', 'الدخل والمصاريف والعائد حسب السيناريو', 'הכנסה, הוצאות ותשואה לפי תרחישים'],
+  homi_reach_expats_d: ['A personal plan for moving to Georgia', 'პირადი გეგმა საქართველოში გადმოსასვლელად', 'Личный план переезда в Грузию', "Gürcistan'a taşınmak için kişisel plan", 'خطة شخصية للانتقال إلى جورجيا', 'תוכנית אישית למעבר לגאורגיה'],
+  homi_reach_email_d: ['Campaigns to your own contacts', 'კამპანიები შენი კონტაქტებისთვის', 'Кампании для твоих контактов', 'Kendi kişilerine kampanyalar', 'حملات لجهات اتصالك', 'קמפיינים לאנשי הקשר שלך'],
+  homi_reach_dev_d: ['Tools for developers and sales teams', 'ინსტრუმენტები დეველოპერებისა და გაყიდვების გუნდებისთვის', 'Инструменты для застройщиков и отделов продаж', 'Geliştiriciler ve satış ekipleri için araçlar', 'أدوات للمطورين وفرق المبيعات', 'כלים ליזמים ולצוותי מכירות'],
+  homi_reach_hint: ['Pick one and HOMI takes you there', 'აირჩიე და HOMI იქ მიგიყვანს', 'Выбери, и HOMI отведёт тебя туда', 'Birini seç, HOMI seni oraya götürsün', 'اختر واحدة وسيأخذك HOMI إليها', 'בחר אחד ו-HOMI ייקח אותך לשם'],
   homi_home_cta_secondary: ['See what it can help with', 'ნახე, რაში დაგეხმარება', 'Посмотри, в чём он поможет', 'Neler yapabildiğine bak', 'اكتشف فيمَ يساعدك', 'ראה במה הוא יכול לעזור'],
 };
 

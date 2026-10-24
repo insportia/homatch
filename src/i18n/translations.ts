@@ -22766,6 +22766,20 @@ const en = {
   /* ── HOMI ASSISTANT ── */
   homi_home_cta: 'Talk to HOMI',
   homi_home_cta_secondary: 'See what it can help with',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_reach_investment: 'Investment consultant',
+  homi_reach_expats: 'Services for expats',
+  homi_reach_match_d: 'People potentially interested in your property',
+  homi_reach_find_d: 'Describe it in plain words, HOMI builds the search',
+  homi_reach_verify_d: 'Owner, mortgage and restrictions from official sources',
+  homi_reach_contract_d: 'Risky clauses and safer wording',
+  homi_reach_mortgage_d: 'Monthly payment and loan readiness',
+  homi_reach_investment_d: 'Income, expenses and return by scenario',
+  homi_reach_expats_d: 'A personal plan for moving to Georgia',
+  homi_reach_email_d: 'Campaigns to your own contacts',
+  homi_reach_dev_d: 'Tools for developers and sales teams',
+  homi_reach_hint: 'Pick one and HOMI takes you there',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -45446,6 +45460,20 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── HOMI ASSISTANT ── */
   homi_home_cta: 'ესაუბრე HOMI-ს',
   homi_home_cta_secondary: 'ნახე, რაში დაგეხმარება',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_reach_investment: 'ინვესტიციის კონსულტანტი',
+  homi_reach_expats: 'ექსპატების სერვისები',
+  homi_reach_match_d: 'შენი ქონებით პოტენციურად დაინტერესებული ადამიანები',
+  homi_reach_find_d: 'აღწერე ჩვეულებრივი სიტყვებით და HOMI მოძებნას ააწყობს',
+  homi_reach_verify_d: 'მესაკუთრე, იპოთეკა და შეზღუდვები ოფიციალური წყაროებიდან',
+  homi_reach_contract_d: 'რისკიანი მუხლები და უფრო უსაფრთხო ფორმულირებები',
+  homi_reach_mortgage_d: 'ყოველთვიური შენატანი და სესხისთვის მზადყოფნა',
+  homi_reach_investment_d: 'შემოსავალი, ხარჯები და უკუგება სცენარების მიხედვით',
+  homi_reach_expats_d: 'პირადი გეგმა საქართველოში გადმოსასვლელად',
+  homi_reach_email_d: 'კამპანიები შენი კონტაქტებისთვის',
+  homi_reach_dev_d: 'ინსტრუმენტები დეველოპერებისა და გაყიდვების გუნდებისთვის',
+  homi_reach_hint: 'აირჩიე და HOMI იქ მიგიყვანს',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -68117,6 +68145,20 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── HOMI ASSISTANT ── */
   homi_home_cta: 'Поговори с HOMI',
   homi_home_cta_secondary: 'Посмотри, в чём он поможет',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_reach_investment: 'Инвестиционный консультант',
+  homi_reach_expats: 'Услуги для экспатов',
+  homi_reach_match_d: 'Люди, потенциально заинтересованные в твоём объекте',
+  homi_reach_find_d: 'Опиши обычными словами, HOMI построит поиск',
+  homi_reach_verify_d: 'Собственник, ипотека и ограничения из официальных источников',
+  homi_reach_contract_d: 'Рискованные пункты и более безопасные формулировки',
+  homi_reach_mortgage_d: 'Ежемесячный платёж и готовность к кредиту',
+  homi_reach_investment_d: 'Доход, расходы и доходность по сценариям',
+  homi_reach_expats_d: 'Личный план переезда в Грузию',
+  homi_reach_email_d: 'Кампании для твоих контактов',
+  homi_reach_dev_d: 'Инструменты для застройщиков и отделов продаж',
+  homi_reach_hint: 'Выбери, и HOMI отведёт тебя туда',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -90786,6 +90828,20 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── HOMI ASSISTANT ── */
   homi_home_cta: 'HOMI ile konuş',
   homi_home_cta_secondary: 'Neler yapabildiğine bak',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_reach_investment: 'Yatırım danışmanı',
+  homi_reach_expats: 'Yabancılar için hizmetler',
+  homi_reach_match_d: 'Mülkünle potansiyel olarak ilgilenen kişiler',
+  homi_reach_find_d: 'Kendi kelimelerinle anlat, HOMI aramayı kursun',
+  homi_reach_verify_d: 'Resmî kaynaklardan malik, ipotek ve kısıtlamalar',
+  homi_reach_contract_d: 'Riskli maddeler ve daha güvenli ifadeler',
+  homi_reach_mortgage_d: 'Aylık taksit ve krediye hazırlık',
+  homi_reach_investment_d: 'Senaryolara göre gelir, gider ve getiri',
+  homi_reach_expats_d: 'Gürcistan\'a taşınmak için kişisel plan',
+  homi_reach_email_d: 'Kendi kişilerine kampanyalar',
+  homi_reach_dev_d: 'Geliştiriciler ve satış ekipleri için araçlar',
+  homi_reach_hint: 'Birini seç, HOMI seni oraya götürsün',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -113455,6 +113511,20 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── HOMI ASSISTANT ── */
   homi_home_cta: 'تحدّث مع HOMI',
   homi_home_cta_secondary: 'اكتشف فيمَ يساعدك',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_reach_investment: 'مستشار الاستثمار',
+  homi_reach_expats: 'خدمات للمغتربين',
+  homi_reach_match_d: 'أشخاص قد يهتمون بعقارك',
+  homi_reach_find_d: 'صِف ما تريد بكلماتك وسيبني HOMI البحث',
+  homi_reach_verify_d: 'المالك والرهن والقيود من مصادر رسمية',
+  homi_reach_contract_d: 'البنود الخطرة وصياغات أكثر أمانًا',
+  homi_reach_mortgage_d: 'القسط الشهري والجاهزية للقرض',
+  homi_reach_investment_d: 'الدخل والمصاريف والعائد حسب السيناريو',
+  homi_reach_expats_d: 'خطة شخصية للانتقال إلى جورجيا',
+  homi_reach_email_d: 'حملات لجهات اتصالك',
+  homi_reach_dev_d: 'أدوات للمطورين وفرق المبيعات',
+  homi_reach_hint: 'اختر واحدة وسيأخذك HOMI إليها',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -136124,6 +136194,20 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── HOMI ASSISTANT ── */
   homi_home_cta: 'דבר עם HOMI',
   homi_home_cta_secondary: 'ראה במה הוא יכול לעזור',
+
+  /* ── HOMI ASSISTANT ── */
+  homi_reach_investment: 'יועץ השקעות',
+  homi_reach_expats: 'שירותים לעולים ולזרים',
+  homi_reach_match_d: 'אנשים שעשויים להתעניין בנכס שלך',
+  homi_reach_find_d: 'תאר במילים פשוטות ו-HOMI יבנה את החיפוש',
+  homi_reach_verify_d: 'בעלים, משכנתא והגבלות ממקורות רשמיים',
+  homi_reach_contract_d: 'סעיפים מסוכנים וניסוחים בטוחים יותר',
+  homi_reach_mortgage_d: 'החזר חודשי ומוכנות להלוואה',
+  homi_reach_investment_d: 'הכנסה, הוצאות ותשואה לפי תרחישים',
+  homi_reach_expats_d: 'תוכנית אישית למעבר לגאורגיה',
+  homi_reach_email_d: 'קמפיינים לאנשי הקשר שלך',
+  homi_reach_dev_d: 'כלים ליזמים ולצוותי מכירות',
+  homi_reach_hint: 'בחר אחד ו-HOMI ייקח אותך לשם',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

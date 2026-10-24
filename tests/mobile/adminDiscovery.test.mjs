@@ -295,7 +295,10 @@ test('switches write admin_settings; Stop and Retry reach the driver with the jo
   const { page, calls } = await boot(t);
   await page.goto(`${BASE}/admin/discovery`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[role="switch"]', { timeout: 20000 });
-  const first = page.locator('[role="switch"]').first();
+  /* By its label, not by position: which section renders first is not fixed (CI flake: the first
+     switch in the DOM was find_buyers_social_enabled). */
+  const first = page.locator('[role="switch"][aria-label="Telegram reading"]');
+  await first.waitFor({ timeout: 20000 });
   const before = await first.getAttribute('aria-checked');
   await first.click();
   await page.waitForTimeout(500);

@@ -114,3 +114,16 @@ test('wiring: admin-only and server-checked, confirmation required, every outcom
   const shared = code('supabase/functions/_shared/railwayScaling.ts');
   assert.doesNotMatch(shared, /serviceCreate|serviceDelete|serviceConnect/, 'it cannot create, delete or reconnect a service');
 });
+
+test('admin page: admin-only route, talks only to verify-scaling, confirms before changing, never names a credential', () => {
+  const page = code('src/pages/admin/AdminVerifyScalingPage.tsx');
+  const routes = code('src/routes.tsx');
+  assert.match(routes, /path: '\/admin\/verify-scaling', element: adminWrap\(<AdminVerifyScalingPage \/>\), adminOnly: true/);
+  assert.match(page, /supabase\.functions\.invoke\('verify-scaling'/);
+  assert.match(page, /action: 'scale', replicas: pending, confirm: true/);
+  assert.match(page, /saveSettings\(\{ mode: 'AUTOMATIC' \}, true\)/, 'automatic mode only through its own confirmation');
+  assert.doesNotMatch(page, /RAILWAY_|backboard\.railway|Project-Access-Token/);
+  assert.doesNotMatch(page, /\b(ml|mr|pl|pr|text-left|text-right)-/, 'logical spacing only, so AR/HE mirror correctly');
+  const nav = code('src/admin/navigation.ts');
+  assert.match(nav, /path: '\/admin\/verify-scaling', labelKey: 'admin_nav_verify_scaling'/);
+});

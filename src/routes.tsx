@@ -212,6 +212,7 @@ const AdminPaymentsPage = lazyRoute(() => import('./pages/admin/AdminPaymentsPag
 const AdminFinancePage = lazyRoute(() => import('./pages/admin/AdminFinancePage'));
 const AdminFindPropertyCostsPage = lazyRoute(() => import('./pages/admin/AdminFindPropertyCostsPage'));
 const AdminProvidersPage = lazyRoute(() => import('./pages/admin/AdminProvidersPage'));
+const AdminVerifyScalingPage = lazyRoute(() => import('./pages/admin/AdminVerifyScalingPage'));
 const AdminPropertyPortalsPage = lazyRoute(() => import('./pages/admin/AdminPropertyPortalsPage'));
 const AdminPropertyPortalPage = lazyRoute(() => import('./pages/admin/AdminPropertyPortalPage'));
 const AdminPublishingQueuePage = lazyRoute(() => import('./pages/admin/AdminPublishingQueuePage'));
@@ -692,6 +693,7 @@ const routeTable: RouteConfig[] = [
   { name: 'Admin Find Property Costs', path: '/admin/finance/find-property', element: adminWrap(<AdminFindPropertyCostsPage />), adminOnly: true },
   { name: 'Admin Live Chat Reports', path: '/admin/live-chat-reports', element: adminWrap(<AdminLiveChatReportsPage />), adminOnly: true },
   { name: 'Admin Providers',   path: '/admin/providers',          element: adminWrap(<AdminProvidersPage />),   adminOnly: true },
+  { name: 'Admin Verify Scaling', path: '/admin/verify-scaling', element: adminWrap(<AdminVerifyScalingPage />), adminOnly: true },
   /* Integrations → Property portals: the eight portals Publishing hands listings to.
      Every read and write is re-authorised by publishing-engine with is_admin(). */
   { name: 'Admin Property Portals', path: '/admin/integrations/portals', element: adminWrap(<AdminPropertyPortalsPage />), adminOnly: true },

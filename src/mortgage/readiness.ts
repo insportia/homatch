@@ -21,7 +21,7 @@
 // currency, and for a foreign-currency loan the income band question is asked
 // directly ("at least X GEL or equivalent?") instead of being computed.
 
-import type { LtvLimitRuleData, MortgageRule, PtiLimitRuleData } from './types';
+import type { LtvLimitRuleData, MortgageInput, MortgageRule, PtiLimitRuleData } from './types';
 import { calculateMortgage, computeMonthlyPayment, roundCurrency } from './calculations/amortization.ts';
 import { COMFORT_MARGIN_POINTS } from './calculations/financingPicture.ts';
 import { classifyCurrency, nextRuleChange, ptiCurrencyClass, selectActiveLtvRule, selectActivePtiRule } from './rules/ptiLtv.ts';
@@ -238,4 +238,43 @@ export function readinessScenarios(
   if (input.coBorrower) out.push(run('NO_CO_BORROWER', { ...input, coBorrower: null }));
   if ((input.additionalCollateralValue ?? 0) > 0) out.push(run('COLLATERAL', input, { value: input.additionalCollateralValue as number }));
   return out;
+}
+
+/* ── The guided questionnaire's answers (kept on the device) ───────────── */
+
+export interface ReadinessAnswers {
+  income: number | null;
+  incomeInLoanCurrency: boolean | null;
+  incomeAtLeastBand: boolean | null;
+  source: IncomeSource | null;
+  history: IncomeHistory | null;
+  hasDebt: boolean | null;
+  debt: number | null;
+  hasCoBorrower: boolean | null;
+  coIncome: number | null;
+  coDebt: number | null;
+  hasCollateral: boolean | null;
+  collateral: number | null;
+  credit: CreditHistory | null;
+}
+
+export const EMPTY_ANSWERS: ReadinessAnswers = {
+  income: null, incomeInLoanCurrency: null, incomeAtLeastBand: null, source: null, history: null,
+  hasDebt: null, debt: null, hasCoBorrower: null, coIncome: null, coDebt: null,
+  hasCollateral: null, collateral: null, credit: null,
+};
+
+/** Answers + the calculator's scenario → the assessment input. */
+export function toReadinessInput(a: ReadinessAnswers, input: MortgageInput): ReadinessInput {
+  return {
+    price: input.propertyPrice, currency: input.propertyCurrency, downPayment: input.downPayment,
+    termMonths: input.termMonths, ratePercent: input.nominalAnnualRatePercent,
+    netMonthlyIncome: a.income,
+    incomeInLoanCurrency: classifyCurrency(input.propertyCurrency) === 'LOCAL' ? true : a.incomeInLoanCurrency,
+    incomeAtLeastBand: a.incomeAtLeastBand,
+    existingMonthlyDebt: a.hasDebt ? a.debt ?? 0 : 0,
+    source: a.source, history: a.history, credit: a.credit,
+    coBorrower: a.hasCoBorrower && a.coIncome ? { netMonthlyIncome: a.coIncome, monthlyDebt: a.coDebt ?? 0 } : null,
+    additionalCollateralValue: a.hasCollateral ? a.collateral : null,
+  };
 }

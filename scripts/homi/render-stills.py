@@ -53,19 +53,21 @@ root = objs.get('HOMI_ROOT')
 if root: root.hide_render = True
 
 # Blender: character faces -Y; arms rotate about Y (frontal plane). L arm = +X side.
-def pose(head=(0, 0, 0), armL=0.0, armR=0.0, foreL=0.0, foreR=0.0, eye=(0, 0), fwd=0.0, foreFwd=0.0):
+def pose(head=(0, 0, 0), armL=0.0, armR=0.0, foreL=0.0, foreR=0.0, eye=(0, 0), fwd=0.0, foreFwd=0.0, twistL=0.0, twistR=0.0):
     empties['HEAD'].rotation_euler = Euler((math.radians(head[0]), math.radians(head[1]), math.radians(head[2])))
     # fwd / foreFwd swing the arms toward the viewer (about X), e.g. typing.
     empties['ARM_L'].rotation_euler = Euler((math.radians(-fwd), math.radians(-armL), 0))
     empties['ARM_R'].rotation_euler = Euler((math.radians(-fwd), math.radians(armR), 0))
-    empties['FOREARM_L'].rotation_euler = Euler((math.radians(-foreFwd), math.radians(-foreL), 0))
-    empties['FOREARM_R'].rotation_euler = Euler((math.radians(-foreFwd), math.radians(foreR), 0))
+    # twist (about the forearm's own axis, applied first) turns the palm: -90 R / +90 L faces the viewer.
+    for s in ('FOREARM_L', 'FOREARM_R'): empties[s].rotation_mode = 'ZXY'
+    empties['FOREARM_L'].rotation_euler = Euler((math.radians(-foreFwd), math.radians(-foreL), math.radians(twistL)), 'ZXY')
+    empties['FOREARM_R'].rotation_euler = Euler((math.radians(-foreFwd), math.radians(foreR), math.radians(twistR)), 'ZXY')
     for s in ('EYE_L', 'EYE_R'):
         e = empties[s]; e.location = e.location  # eyes follow head; offsets small and optional
 
 POSES = {
     'idle':        dict(),
-    'greeting':    dict(armR=100, foreR=65, head=(0, -6, 0)),
+    'greeting':    dict(armR=100, foreR=65, twistR=-90, head=(0, -6, 0)),
     'thinking':    dict(head=(8, 8, 0), armL=40, foreL=110),
     'searching':   dict(head=(0, 0, 18)),
     'explaining':  dict(armL=35, foreL=70),

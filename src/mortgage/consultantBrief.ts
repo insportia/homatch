@@ -69,6 +69,8 @@ export interface BriefScenario {
 
 export interface ConsultantBrief {
   currency: string;
+  /** The guided readiness check, when the person has done it (see MortgagePage). */
+  readiness?: unknown;
   /** What the person actually entered, as entered. */
   scenario: {
     propertyPrice: number;

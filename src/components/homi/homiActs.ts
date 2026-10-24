@@ -29,13 +29,15 @@ export interface HomiPose {
   mouthW: number; mouthH: number;
   armL: number; armR: number; foreL: number; foreR: number;
   fwdL: number; fwdR: number; foreFwdL: number; foreFwdR: number;
+  /** Forearm twist about its own axis; ±π/2 turns the palm to face the viewer (a real wave). */
+  twistL: number; twistR: number;
   lean: number; lift: number; turn: number;
 }
 
 export const REST: HomiPose = {
   headX: 0, headY: 0, headZ: 0, eyeX: 0, eyeY: 0, eyeScale: 1, squint: 0,
   browUp: 0, browTilt: 0, browAsym: 0, mouthW: 1, mouthH: 1,
-  armL: 0.08, armR: -0.08, foreL: 0, foreR: 0, fwdL: 0, fwdR: 0, foreFwdL: 0, foreFwdR: 0,
+  armL: 0.08, armR: -0.08, foreL: 0, foreR: 0, fwdL: 0, fwdR: 0, foreFwdL: 0, foreFwdR: 0, twistL: 0, twistR: 0,
   lean: 0, lift: 0, turn: 0,
 };
 
@@ -51,6 +53,9 @@ const O_MOUTH = { mouthW: 0.5, mouthH: 0.55 };
 /* The LED mouth is a smile arc: flipping it vertically makes it a frown. */
 const FROWN = { mouthW: 0.8, mouthH: -0.7 };
 const SMALL = { mouthW: 0.75, mouthH: 0.7 };
+/* Palm toward the viewer: the right forearm turns one way, the left the other. */
+const PALM_R = { twistR: -PI / 2 };
+const PALM_L = { twistL: PI / 2 };
 
 const ACTS: Record<HomiState, Act[]> = {
   idle: [
@@ -59,9 +64,9 @@ const ACTS: Record<HomiState, Act[]> = {
     (s) => ({ headZ: 0.12 * sin(s * 0.8), lean: 0.02 * sin(s * 0.8), eyeX: -0.5 + sin(s * 2.1) * 0.3 }),
   ],
   greeting: [
-    (s) => ({ armR: -1.75, foreR: -1.13 + sin(s * 9) * 0.3, headZ: 0.08, headX: -0.05, ...BIG_SMILE, browUp: 0.6 }),
-    (s) => ({ armL: 2.3, armR: -2.3, foreL: 0.4 + sin(s * 8) * 0.25, foreR: -0.4 - sin(s * 8) * 0.25, lift: Math.abs(sin(s * 5)) * 0.03, ...BIG_SMILE, browUp: 0.8 }),
-    (s) => ({ headX: 0.25 * pulse(s, 0, 0.9), lean: 0.08 * pulse(s, 0, 0.9), armR: -1.6 * ease(s - 0.8), foreR: (-1.1 + sin(s * 9) * 0.3) * ease(s - 0.8), ...SMILE }),
+    (s) => ({ armR: -1.75, foreR: -1.13 + sin(s * 9) * 0.3, ...PALM_R, headZ: 0.08, headX: -0.05, ...BIG_SMILE, browUp: 0.6 }),
+    (s) => ({ armL: 2.3, armR: -2.3, foreL: 0.4 + sin(s * 8) * 0.25, foreR: -0.4 - sin(s * 8) * 0.25, ...PALM_L, ...PALM_R, lift: Math.abs(sin(s * 5)) * 0.03, ...BIG_SMILE, browUp: 0.8 }),
+    (s) => ({ headX: 0.25 * pulse(s, 0, 0.9), lean: 0.08 * pulse(s, 0, 0.9), armR: -1.6 * ease(s - 0.8), foreR: (-1.1 + sin(s * 9) * 0.3) * ease(s - 0.8), twistR: -PI / 2 * ease(s - 0.8), ...SMILE }),
   ],
   listening: [
     (s) => ({ headZ: 0.16, headX: 0.04 * sin(s * 2.2), eyeY: -0.2, browUp: 0.3, ...SMALL }),
@@ -134,7 +139,7 @@ const ACTS: Record<HomiState, Act[]> = {
     (s) => ({ fwdL: 0.7, foreFwdL: 1.3, armL: 0.3, foreL: 0.4, armR: -2.3, foreR: -0.5, ...BIG_SMILE, squint: 0.45 }),
   ],
   goodbye: [
-    (s) => ({ armR: -1.75, foreR: -1.13 + sin(s * 8) * 0.3, headZ: 0.1, ...SMILE, squint: 0.3 }),
+    (s) => ({ armR: -1.75, foreR: -1.13 + sin(s * 8) * 0.3, ...PALM_R, headZ: 0.1, ...SMILE, squint: 0.3 }),
   ],
   pointing: [() => ({ ...SMILE })],
 };

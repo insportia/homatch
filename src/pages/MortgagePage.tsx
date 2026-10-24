@@ -44,6 +44,8 @@ import { buildConsultantBrief } from '@/mortgage/consultantBrief';
 import { useFinancingSession, type FinancingPrefill } from '@/components/mortgage/useFinancingSession';
 import { SimpleCalculator } from '@/components/mortgage/SimpleCalculator';
 import { ResultHeadline } from '@/components/mortgage/ResultHeadline';
+import { ReadinessAssessment, type ReadinessAnswers } from '@/components/mortgage/ReadinessAssessment';
+import type { ReadinessResult } from '@/mortgage/readiness';
 import { ConsultantPanel } from '@/components/mortgage/ConsultantPanel';
 import { MortgageAskProvider } from '@/components/mortgage/askConsultant';
 import { ToolShelf } from '@/components/mortgage/ToolShelf';
@@ -61,6 +63,23 @@ interface MortgagePrefillState extends FinancingPrefill {
   propertyId?: string;
   price?: number;
   currency?: string;
+}
+
+/** What HOMI is told about the readiness check: the person's own answers and the engine's findings, never a probability. */
+function summariseReadiness({ answers, result }: { answers: ReadinessAnswers; result: ReadinessResult }) {
+  return {
+    tier: result.tier,
+    incomeSource: answers.source, incomeHistory: answers.history, creditHistory: answers.credit,
+    netMonthlyIncome: answers.income, otherMonthlyDebt: answers.hasDebt ? answers.debt : 0,
+    coBorrower: answers.hasCoBorrower ? { netMonthlyIncome: answers.coIncome, monthlyDebt: answers.coDebt } : null,
+    additionalCollateralValue: answers.hasCollateral ? answers.collateral : null,
+    ptiPercent: result.ptiPercent, ptiLimit: result.ptiLimit, ltvPercent: result.ltvPercent, ltvLimit: result.ltvLimit,
+    ltvWithCollateralPercent: result.ltvWithCollateralPercent,
+    maxMonthlyPaymentAllowed: result.maxPayment, maxLoanAtTheseTerms: result.maxLoan,
+    checks: result.checks.map((c) => ({ check: c.key, status: c.status })),
+    gaps: result.gaps,
+    note: 'Readiness against published National Bank of Georgia limits only. Not a bank decision and not an approval probability.',
+  };
 }
 
 export default function MortgagePage() {
@@ -149,6 +168,8 @@ export default function MortgagePage() {
    * the what-if ladders. The model is asked to explain them, never to
    * produce them. See src/mortgage/consultantBrief.ts.
    */
+  /* The guided readiness result, shared with HOMI so it can explain it. */
+  const [readiness, setReadiness] = useState<{ answers: ReadinessAnswers; result: ReadinessResult } | null>(null);
   const brief = useMemo(
     () =>
       input
@@ -243,7 +264,10 @@ export default function MortgagePage() {
                 <ResultHeadline result={result} currency={currency} />
 
                 {/* ── D. The consultant ── */}
-                <ConsultantPanel brief={brief} />
+                {/* ── C2. Readiness, optional and collapsed ── */}
+                <ReadinessAssessment input={input} ptiRules={ptiRules} ltvRules={ltvRules} onResult={setReadiness} />
+
+                <ConsultantPanel brief={brief ? { ...brief, readiness: readiness ? summariseReadiness(readiness) : null } : null} />
 
                 {/* ── E. Optional tools ── */}
                 <ToolShelf open={topic} onOpen={selectTopic} state={workspaceState}>

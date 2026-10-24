@@ -113,6 +113,8 @@ export default function HomiStage3D({ gesture, pointTo = 1, target = null, frami
       root.traverse((o) => {
         if (PART.test(o.name)) {
           parts[o.name] = o;
+          /* Forearms twist about their own axis first (palm direction), then bend. */
+          if (/FOREARM/.test(o.name)) o.rotation.order = 'ZXY';
           rest.set(o, { r: o.rotation.clone(), p: o.position.clone(), s: o.scale.clone() });
         }
         const mesh = o as THREE.Mesh;
@@ -229,9 +231,9 @@ export default function HomiStage3D({ gesture, pointTo = 1, target = null, frami
       }
       apply('HOMI_MOUTH', (o, b) => { o.scale.set(b.s.x * cur.mouthW, b.s.y * cur.mouthH, b.s.z); });
       apply('HOMI_ARM_R', (o, b) => { o.rotation.set(b.r.x - cur.fwdR, b.r.y, b.r.z + cur.armR); });
-      apply('HOMI_FOREARM_R', (o, b) => { o.rotation.set(b.r.x - cur.foreFwdR, b.r.y, b.r.z + cur.foreR); });
+      apply('HOMI_FOREARM_R', (o, b) => { o.rotation.set(b.r.x - cur.foreFwdR, b.r.y + cur.twistR, b.r.z + cur.foreR, 'ZXY'); });
       apply('HOMI_ARM_L', (o, b) => { o.rotation.set(b.r.x - cur.fwdL, b.r.y, b.r.z + cur.armL); });
-      apply('HOMI_FOREARM_L', (o, b) => { o.rotation.set(b.r.x - cur.foreFwdL, b.r.y, b.r.z + cur.foreL); });
+      apply('HOMI_FOREARM_L', (o, b) => { o.rotation.set(b.r.x - cur.foreFwdL, b.r.y + cur.twistL, b.r.z + cur.foreL, 'ZXY'); });
       if (root) {
         root.position.y = breath * 0.008 + cur.lift;
         root.rotation.set(cur.lean, cur.turn, 0);

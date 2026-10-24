@@ -11,7 +11,10 @@
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HOMI_STRINGS, HOMI_REBRAND_STRINGS } from './homi-i18n-data.mjs';
+import { HOMI_STRINGS as HOMI_CORE_STRINGS, HOMI_REBRAND_STRINGS } from './homi-i18n-data.mjs';
+import { HOMI_MORTGAGE_STRINGS } from './homi-mortgage-i18n-data.mjs';
+
+const HOMI_STRINGS = { ...HOMI_CORE_STRINGS, ...HOMI_MORTGAGE_STRINGS };
 import { splice, validate } from './lib/i18nSplice.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));

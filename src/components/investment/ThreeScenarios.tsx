@@ -22,11 +22,14 @@ const STRESS: Record<Case, { rent: number; vacancyDelta: number; costs: number }
   CAUTIOUS: { rent: 0.85, vacancyDelta: 2, costs: 1.2 },
 };
 
+/* Fields that are not amounts of money: a share of rent and a count of new tenancies. */
+const NOT_MONEY = new Set(['managementPercentOfCollectedRent', 'tenanciesPerYear']);
+
 function scaleCosts(costs: InvestmentOperatingCosts | undefined, k: number): InvestmentOperatingCosts | undefined {
   if (!costs || k === 1) return costs;
   const out: InvestmentOperatingCosts = { ...costs };
   for (const [key, value] of Object.entries(costs)) {
-    if (typeof value === 'number' && key !== 'managementPercentOfCollectedRent') (out as Record<string, number>)[key] = value * k;
+    if (typeof value === 'number' && !NOT_MONEY.has(key)) (out as Record<string, number>)[key] = value * k;
   }
   return out;
 }
@@ -58,17 +61,34 @@ export function ThreeScenariosModule({ model }: { model: InvestmentModel }) {
 
   return (
     <Module id="three-scenarios" titleKey="inv_three_title" subtitleKey="inv_three_sub">
+      {/* The money the investor puts in, from the same model: the base every return below is measured against. */}
+      <p className="mb-3 text-sm text-foreground" data-testid="inv-three-budget">
+        <span className="text-muted-foreground">{t('inv_three_budget')}:</span>{' '}
+        <span className="font-semibold">{money(model.capital.investorCashInvested)}</span>
+      </p>
       <div className="grid gap-3 md:grid-cols-3">
         {cases.map(({ c, m }) => {
           const noi = m?.income.netOperatingIncome.value ?? null;
+          const egi = m?.income.effectiveGrossIncome.value ?? null;
+          /* With a loan, what is left for the investor is after the loan payments, not before. */
+          const debt = m?.leverage.financed ? (m.leverage.annualDebtService.value ?? null) : 0;
+          const net = noi === null || debt === null ? null : noi - debt;
           return (
             <div key={c} className={cn('rounded-2xl border p-4', c === 'BASE' ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]/40' : 'border-border bg-background')}>
               <p className="text-sm font-semibold text-foreground">{t(`inv_three_${c.toLowerCase()}`)}</p>
               <p className="mt-0.5 text-xs text-muted-foreground">{t(`inv_three_${c.toLowerCase()}_how`)}</p>
               <dl className="mt-3 grid gap-2 text-sm">
                 <div className="flex items-baseline justify-between gap-2">
-                  <dt className="text-muted-foreground">{t('inv_three_net_monthly')}</dt>
-                  <dd className="font-semibold text-foreground">{money(noi === null ? null : noi / 12)}</dd>
+                  <dt className="text-muted-foreground">{t('inv_three_income_monthly')}</dt>
+                  <dd className="font-medium text-foreground">{money(egi === null ? null : egi / 12)}</dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-2">
+                  <dt className="text-muted-foreground">{t('inv_three_costs_monthly')}</dt>
+                  <dd className="font-medium text-foreground">{money(egi === null || noi === null ? null : (egi - noi) / 12)}</dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-2">
+                  <dt className="text-muted-foreground">{t(m?.leverage.financed ? 'inv_three_net_after_loan' : 'inv_three_net_monthly')}</dt>
+                  <dd className="font-semibold text-foreground">{money(net === null ? null : net / 12)}</dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-2">
                   <dt className="text-muted-foreground">{t('inv_three_net_yield')}</dt>

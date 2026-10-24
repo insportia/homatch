@@ -56,6 +56,7 @@ import { RentalResults } from '@/components/investment/results/RentalResults';
 import { ValueResults } from '@/components/investment/results/ValueResults';
 import { STRATEGIES } from '@/investment/strategies/definitions';
 import { HomiInvestmentBar } from '@/components/investment/HomiInvestmentBar';
+import { SaveResultBar, SavedResultsList } from '@/components/investment/SavedResults';
 
 export default function InvestmentPage() {
   const { t, isRTL } = useLanguage();
@@ -121,6 +122,10 @@ export default function InvestmentPage() {
       <AppLayout noPadding>
         <PageMeta title={t('inv_page_title')} description={t('inv_page_description')} />
         <div className="hm-invest hm-invest-canvas min-h-[calc(100vh-4rem)]">
+          {/* Saved results first: somebody coming back usually wants one of them. */}
+          <div className="mx-auto w-full max-w-[72rem] px-5 pt-8">
+            <SavedResultsList onOpen={(r) => { session.setFields(r.context as Parameters<typeof session.setFields>[0]); selectStrategy(r.strategy); }} />
+          </div>
           <StrategyHome onSelect={selectStrategy} resumable={resumable} />
         </div>
       </AppLayout>
@@ -209,6 +214,7 @@ export default function InvestmentPage() {
               />
 
               <HomiInvestmentBar run={run} />
+              <SaveResultBar run={run} strategy={strategy} context={context} />
 
               {evidenceOpen ? (
                 <EvidenceModule

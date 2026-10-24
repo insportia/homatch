@@ -12,13 +12,14 @@ import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { HomiAvatar } from '@/components/homi/HomiAvatar';
-import type { ExpatIntent, ExpatProfile, Household, HousingPlan } from '@/expats/types';
+import type { ExpatProfile, Household } from '@/expats/types';
 import type { TaskCategory } from '@/expats/plan/roadmap';
 import type { PlanTask } from '@/expats/plan/tasks';
 
-type Reason = 'LIVE' | 'WORK' | 'STUDY' | 'INVEST' | 'BROWSING';
-type When = 'MONTH' | 'QUARTER' | 'HALF_YEAR' | 'LATER' | 'HERE';
-type Housing = 'RENT' | 'BUY' | 'CHOSEN' | 'SEARCH';
+import {
+  HOUSING_PLAN, arrivalFor, housingFromPlan, intentsFor, reasonFromIntents, whenFromArrival,
+  type Housing, type Reason, type When,
+} from '@/expats/journeyAnswers';
 export type Focus = 'HOUSING' | 'DOCUMENTS' | 'BANKING' | 'FAMILY' | 'BUSINESS';
 
 const REASONS: Reason[] = ['LIVE', 'WORK', 'STUDY', 'INVEST', 'BROWSING'];
@@ -26,11 +27,6 @@ const WHENS: When[] = ['MONTH', 'QUARTER', 'HALF_YEAR', 'LATER', 'HERE'];
 const HOUSINGS: Housing[] = ['SEARCH', 'RENT', 'BUY', 'CHOSEN'];
 const FOCUSES: Focus[] = ['HOUSING', 'DOCUMENTS', 'BANKING', 'FAMILY', 'BUSINESS'];
 
-const INTENTS: Record<Reason, ExpatIntent[]> = {
-  LIVE: ['MOVE', 'LIVE'], WORK: ['MOVE', 'BUSINESS'], STUDY: ['MOVE', 'STUDY'], INVEST: ['INVEST', 'BUY'], BROWSING: ['LIVE'],
-};
-const OFFSET_DAYS: Record<When, number> = { MONTH: 21, QUARTER: 60, HALF_YEAR: 135, LATER: 240, HERE: 0 };
-const HOUSING_PLAN: Record<Housing, HousingPlan> = { SEARCH: 'RENT', RENT: 'RENT', BUY: 'BUY', CHOSEN: 'UNDECIDED' };
 export const FOCUS_CATEGORIES: Record<Focus, TaskCategory[]> = {
   HOUSING: ['HOUSING', 'PROPERTY', 'UTILITIES'],
   DOCUMENTS: ['DOCUMENTS', 'RESIDENCY'],
@@ -62,10 +58,11 @@ export function ExpatJourney({ profile, saving, onDone, onCancel }: {
 }) {
   const { t } = useLanguage();
   const [step, setStep] = useState(0);
-  const [reason, setReason] = useState<Reason | null>(null);
-  const [when, setWhen] = useState<When | null>(null);
+  /* Starting from the saved plan, so "change my answers" never resets what is there. */
+  const [reason, setReason] = useState<Reason | null>(() => reasonFromIntents(profile.intents ?? []));
+  const [when, setWhen] = useState<When | null>(() => whenFromArrival(profile.arrivalDate));
   const [household, setHousehold] = useState<Household | null>(profile.household);
-  const [housing, setHousing] = useState<Housing | null>(null);
+  const [housing, setHousing] = useState<Housing | null>(() => housingFromPlan(profile.housingPlan));
   const [focus, setFocus] = useState<Focus | null>(loadFocus());
 
   const steps = [
@@ -78,9 +75,9 @@ export function ExpatJourney({ profile, saving, onDone, onCancel }: {
 
   const finish = () => {
     if (!reason || !when || !household || !housing || !focus) return;
-    const arrival = new Date(Date.now() + OFFSET_DAYS[when] * 86_400_000).toISOString().slice(0, 10);
+    const arrival = arrivalFor(when, profile.arrivalDate);
     try { localStorage.setItem(FOCUS_KEY, focus); } catch { /* storage unavailable */ }
-    onDone({ ...profile, intents: INTENTS[reason], arrivalDate: arrival, household, housingPlan: HOUSING_PLAN[housing] }, focus);
+    onDone({ ...profile, intents: intentsFor(reason, profile.intents ?? []), arrivalDate: arrival, household, housingPlan: HOUSING_PLAN[housing] }, focus);
   };
 
   return (

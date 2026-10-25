@@ -292,11 +292,11 @@ function WorkspaceContent() {
       } else {
         const ids = selection.mode === 'ids' ? [...selection.ids] : [];
         const r = await quoteInternal(ids);
-        const newCount = r.standardCount + r.exactCount + r.premiumCount + r.mortgageCount + r.mortgageMatchCount;
+        const newCount = r.standardCount + r.exactCount + r.premiumCount + r.mortgageCount + r.mortgageMatchCount + r.expatCount;
         const lines = ([
-          ['MORTGAGE', r.mortgageCount, r.mortgageCredits], ['MORTGAGE_MATCH', r.mortgageMatchCount, r.mortgageMatchCredits],
+          ['EXPAT', r.expatCount, r.expatCredits], ['MORTGAGE', r.mortgageCount, r.mortgageCredits], ['MORTGAGE_MATCH', r.mortgageMatchCount, r.mortgageMatchCredits],
           ['STANDARD', r.standardCount, r.standardCredits], ['EXACT', r.exactCount, r.exactCredits], ['PREMIUM', r.premiumCount, r.premiumCredits],
-        ] as const).map(([key, count, credits]) => ({ key, count, credits, unit: r.prices[key] }));
+        ] as const).map(([key, count, credits]) => ({ key, count, credits, unit: r.prices[key] ?? 5 }));
         q = { selected: r.requested, alreadyUnlocked: r.alreadyUnlocked, newCount, totalCredits: r.totalCredits, balance: r.balance, active: true, usd: null, lines };
       }
       if (mine === quoteSeq.current) setQuote(q);
@@ -493,9 +493,10 @@ function WorkspaceContent() {
                     {/* Home Financing opt-ins: their own price, listed with the others (absent from an older server). */}
                     {([['EXACT', internalPrices.EXACT], ['NEARBY_SIMILAR', internalPrices.STANDARD], ['VIP', internalPrices.PREMIUM],
                       ...(internalPrices.MORTGAGE ? [['MORTGAGE', internalPrices.MORTGAGE] as const] : []),
-                      ...(internalPrices.MORTGAGE_MATCH ? [['MORTGAGE_MATCH', internalPrices.MORTGAGE_MATCH] as const] : [])] as const).map(([cat, n]) => (
+                      ...(internalPrices.MORTGAGE_MATCH ? [['MORTGAGE_MATCH', internalPrices.MORTGAGE_MATCH] as const] : []),
+                      ...(internalPrices.EXPAT ? [['EXPAT', internalPrices.EXPAT] as const] : [])] as const).map(([cat, n]) => (
                       <div key={cat} className={cn('flex min-w-0 items-center justify-between gap-3 rounded-xl px-3 py-2 sm:block', cat === 'VIP' ? 'bg-[#0C1119] text-white' : 'border border-[hsl(var(--border))] bg-white')} data-price={cat}>
-                        <dt className={cn('min-w-0 text-xs font-semibold leading-snug', cat === 'VIP' ? 'text-[hsl(38_92%_62%)]' : 'text-[hsl(224_10%_40%)]')}>{t(cat === 'MORTGAGE' ? 'hl_price_mortgage' : cat === 'MORTGAGE_MATCH' ? 'hl_price_mortgage_match' : `hl_cat_${cat}`)}</dt>
+                        <dt className={cn('min-w-0 text-xs font-semibold leading-snug', cat === 'VIP' ? 'text-[hsl(38_92%_62%)]' : 'text-[hsl(224_10%_40%)]')}>{t(cat === 'MORTGAGE' ? 'hl_price_mortgage' : cat === 'MORTGAGE_MATCH' ? 'hl_price_mortgage_match' : cat === 'EXPAT' ? 'hl_price_expat' : `hl_cat_${cat}`)}</dt>
                         <dd className="shrink-0 whitespace-nowrap font-display text-base font-bold sm:mt-0.5" dir="ltr">{t(n === 1 ? 'mw_credit_one' : 'mw_credits_n', { n: formatCredits(n, lang) })}</dd>
                       </div>
                     ))}

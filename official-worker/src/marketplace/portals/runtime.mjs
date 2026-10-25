@@ -15,21 +15,32 @@ import { createIndexPersistence } from './index/snapshotStore.mjs';
  *                                  portal is enabled and configured (index/PortalIndex.mjs)
  *   PORTAL_INDEX_PERSIST           'false' stops saving/restoring the index in HOMATCH's R2
  *                                  (default on; index/snapshotStore.mjs)
+ *
+ * Several replicas (Verify at scale): `lead(key)` takes a cluster-wide slot
+ * (official-worker queue/globalSemaphore.ts) and only the replica holding
+ * `portal:<workerId>` crawls the index and claims searches — the same one
+ * reader per site as a single replica, never N crawlers. The others retry
+ * every 30 s and take over when the holder stops. Without `lead` (one
+ * replica, or no coordinator) the runtime starts at once, as before.
  */
-export function startPortalRuntime(adapter, env = process.env, fetcher = fetch, acquire = acquirePortal, createIndex = createPortalIndex, createPersistence = createIndexPersistence) {
+export function startPortalRuntime(adapter, env = process.env, fetcher = fetch, acquire = acquirePortal, createIndex = createPortalIndex, createPersistence = createIndexPersistence, lead = null) {
   const token = env[`${adapter.envPrefix}_WORKER_TOKEN`] ?? '', base = env.SUPABASE_URL ?? '';
   const enabled = env[`${adapter.envPrefix}_MARKETPLACE_ENABLED`] === 'true';
   const configured = token.length >= 32 && /^https:\/\/[^/]+$/.test(base);
   const controller = new AbortController();
   let active = 0, lastClaimAt = null, lastError = null, lastRun = null;
+  let leading = !lead, slot = null, index = null, persistence = null;
   const log = (event, facts) => console.log(JSON.stringify({ service: adapter.workerId, event, ...facts }));
   const indexOn = adapter.indexed === true && enabled && configured && env.PORTAL_INDEX_ENABLED !== 'false';
-  const index = indexOn ? createIndex(adapter, { log }) : null;
-  index?.start();
-  /* The index survives a redeploy: newest snapshot restored at start, saved while it learns. */
-  const persistence = index && env.PORTAL_INDEX_PERSIST !== 'false'
-    ? createPersistence({ index, ingest, fetcher, log, signal: controller.signal }) : null;
-  void persistence?.start().catch(() => {});
+  function startIndex() {
+    index = indexOn ? createIndex(adapter, { log }) : null;
+    index?.start();
+    /* The index survives a redeploy: newest snapshot restored at start, saved while it learns. */
+    persistence = index && env.PORTAL_INDEX_PERSIST !== 'false'
+      ? createPersistence({ index, ingest, fetcher, log, signal: controller.signal }) : null;
+    void persistence?.start().catch(() => {});
+  }
+  if (leading) startIndex();
   async function ingest(body) {
     const response = await fetcher(`${base}/functions/v1/marketplace-worker-ingest`, { method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'x-homatch-worker': adapter.workerId },
@@ -56,6 +67,11 @@ export function startPortalRuntime(adapter, env = process.env, fetcher = fetch, 
   }
   async function loop() {
     if (!enabled || !configured) return;
+    while (!leading && !controller.signal.aborted) {
+      slot = await lead(`portal:${adapter.workerId}`).catch(() => null);
+      if (slot) { leading = true; log('leading', {}); startIndex(); break; }
+      await delay(30000, undefined, { signal: controller.signal }).catch(() => {});
+    }
     while (!controller.signal.aborted) {
       try {
         if (!active) {
@@ -68,6 +84,6 @@ export function startPortalRuntime(adapter, env = process.env, fetcher = fetch, 
     }
   }
   void loop().catch(() => { lastError = 'RUNTIME_FAILED'; });
-  return { status: () => ({ workerId: adapter.workerId, enabled, configured, active, lastClaimAt, lastRun, lastError, index: index ? { ...index.stats(), persistence: persistence?.status() ?? null } : { enabled: false } }),
-    shutdown: () => { controller.abort(); index?.stop(); persistence?.stop(); } };
+  return { status: () => ({ workerId: adapter.workerId, enabled, configured, leading, active, lastClaimAt, lastRun, lastError, index: index ? { ...index.stats(), persistence: persistence?.status() ?? null } : { enabled: false } }),
+    shutdown: () => { controller.abort(); index?.stop(); persistence?.stop(); void slot?.release(); } };
 }

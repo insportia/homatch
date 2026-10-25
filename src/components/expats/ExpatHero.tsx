@@ -53,14 +53,15 @@ const PATHWAY_ICON: Record<ExpatPathway, typeof Compass> = {
  * three siblings, and no such routes exist — all four landed on "We do not
  * have this page". The fix is not to build four pages: this page already
  * IS the four pathways, in order, and each row describes a section of it.
- * MOVE is the entry and residence topics, LIVE is the month's cost, BUY is
- * what the budget reaches, and INVEST is the analysis tools its own line
- * promises. The ids live on the sections in ForExpatsPage.
+ * MOVE is the plan HOMI builds with you, LIVE is the guides to living here,
+ * BUY is the step by step for buying, and INVEST is the analysis tools its
+ * own line promises. The ids live on the sections in ForExpatsPage (the
+ * monthly cost and budget sections were removed on 2026-10-24).
  */
 const PATHWAY_ANCHOR: Record<ExpatPathway, string> = {
-  MOVE: '#topics',
-  LIVE: '#cost-of-living',
-  BUY: '#budget',
+  MOVE: '#plan',
+  LIVE: '#topics',
+  BUY: '#needs',
   INVEST: '#tools',
 };
 

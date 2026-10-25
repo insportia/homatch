@@ -89,6 +89,13 @@ export interface GatewayOptions {
   callTimeoutMs?: number;
   /** How long a resolved username is trusted before it is resolved again. */
   resolveTtlMs?: number;
+  /**
+   * Cluster-wide hold on the one MTProto session (Verify at scale: several
+   * replicas). Two replicas opening the same session at once is what makes
+   * Telegram revoke it, so the session opens only while this replica holds the
+   * lock; null means another replica has it right now.
+   */
+  sessionLock?: () => Promise<{ release(): Promise<void> } | null>;
 }
 
 export interface TelegramStatus {
@@ -128,6 +135,8 @@ export class TelegramGateway {
   private readonly maxQueue: number;
   private readonly callTimeoutMs: number;
   private readonly resolveTtlMs: number;
+  private readonly sessionLock: GatewayOptions['sessionLock'];
+  private lock: { release(): Promise<void> } | null = null;
 
   private driver: TelegramDriver | null = null;
   private connected = false;
@@ -158,6 +167,7 @@ export class TelegramGateway {
     this.maxQueue = options.maxQueue ?? 16;
     this.callTimeoutMs = options.callTimeoutMs ?? 60_000;
     this.resolveTtlMs = options.resolveTtlMs ?? 6 * 3_600_000;
+    this.sessionLock = options.sessionLock;
   }
 
   status(): TelegramStatus {
@@ -245,6 +255,9 @@ export class TelegramGateway {
     this.driver = null;
     this.connected = false;
     if (driver) await driver.disconnect().catch(() => undefined);
+    const lock = this.lock;
+    this.lock = null;
+    if (lock) await lock.release().catch(() => undefined);
   }
 
   private page(chat: TelegramChat, raw: RawMessage[], limit: number): HistoryPage {
@@ -335,6 +348,11 @@ export class TelegramGateway {
 
   private async ensureConnected(): Promise<TelegramDriver> {
     if (this.driver && this.connected) return this.driver;
+    if (this.sessionLock && !this.lock) {
+      this.lock = await this.sessionLock().catch(() => null);
+      // Not recorded as a failure: the session is healthy, just open elsewhere.
+      if (!this.lock) throw new WorkerTelegramError('RATE_LIMITED', 'TELEGRAM_SESSION_ON_ANOTHER_REPLICA', 15);
+    }
     try {
       this.driver = this.driver ?? this.factory(this.env);
       await this.driver.connect();

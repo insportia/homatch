@@ -1,0 +1,38 @@
+{
+  "$comment": [
+    "Sanitized regression fixture from production Verify job 9f49e7e3 (2026-10-24), cadastral code 01.19.19.004.008.",
+    "storedTasMap: the TAS_MAP entry exactly as research_jobs.result_json.browserOfficial stored it after the worker's",
+    "complete was refused (HTTP 413 RESULT_TOO_LARGE) and handoffMinimum cut it: only the map's default start view",
+    "survived, the parcel's own map views (frameUrls) did not. Document bodies are omitted (20 NAPR registration",
+    "references, no owner data kept); the full-result reference is replaced by a placeholder.",
+    "workerFrameUrls: the views the TAS_MAP worker records after the cadastral search. The real job's views were lost",
+    "with the trimmed hand-off, so this ONE value is SYNTHETIC (a point near Varketili, Tbilisi, in the worker's own",
+    "#C=<lng>-<lat>@Z=19 format). It is never production evidence; it exercises the propagation path.",
+    "registerLatest / address / city / eligibility*: copied from the job's stored register parse, location and gate."
+  ],
+  "jobId": "9f49e7e3",
+  "cadastralCode": "01.19.19.004.008",
+  "storedTasMap": {
+    "source": "TAS_MAP",
+    "status": "SEARCH_CONFIRMED",
+    "queryEntered": "01.19.19.004.008",
+    "startUrl": "https://ms.gov.ge/msmap/#C=44.7433554-41.7850526@Z=19",
+    "finalUrl": "http://abstract.reestri.gov.ge/abstract/cad_amo.php?cad_code=01.19.19.004.008",
+    "retrievedAt": "2026-10-24T20:45:51.009Z",
+    "handoffMinimum": true,
+    "fullResultRef": { "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "path": "fixture/placeholder.json", "chars": 1600000 },
+    "documents": [
+      { "id": "doc_fixture_1", "title": "NAPR registration", "source": "TAS_MAP_NAPR_REGISTRATION", "rawText": "", "complete": true, "documentType": "PDF_DOCUMENT" }
+    ]
+  },
+  "workerFrameUrls": ["https://ms.gov.ge/msmap/#C=44.8960000-41.6995000@Z=19"],
+  "registerLatest": { "landAreaSqm": 14313, "landFunction": "არასასოფლო სამეურნეო", "unitAreaSqm": null, "buildingsText": null, "buildingsTotalAreaSqm": null },
+  "tasCaseAddress": "ქალაქი თბილისი , ქუჩა აბაშვილი , N 7",
+  "city": "თბილისი",
+  "street": "გიორგი აბაშვილის ქუჩა N7",
+  "eligibilitySubject": { "rooms": null, "areaSqm": 14313, "district": null, "areaBasis": "REGISTRY_LAND", "assetClass": "LAND", "assetClassBasis": "REGISTRY", "transactionType": "BUY" },
+  "eligibilityReason": "LOCATION_UNKNOWN",
+  "storedValuation": { "state": "INSUFFICIENT_EVIDENCE", "reasonCode": "TOO_FEW_DEFENSIBLE_COMPARABLES", "subjectKind": "LAND" },
+  "storedPhotos": "NO_LOCATION",
+  "storedNeighborhood": "NO_LOCATION"
+}

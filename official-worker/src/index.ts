@@ -18,7 +18,94 @@ import { probeSsgePublicPage } from './marketplace/ssge/probe.mjs';
 import { acquireSsge } from './marketplace/ssge/acquire.mjs';
 import { startPortalRuntime } from './marketplace/portals/runtime.mjs';
 import { PORTAL_ADAPTERS } from './marketplace/portals/adapters.mjs';
-import { VerifyMarketRuntime, parseVerifyMarketProfile, type SourceKey } from './verify/VerifyMarketRuntime.js';
+import { VerifyMarketRuntime, parseVerifyMarketProfile, type SourceKey, type VerifyMarketJob } from './verify/VerifyMarketRuntime.js';
+import { QueueGateway } from './queue/gateway.js';
+import { GlobalSemaphore, semaphoreGateway } from './queue/globalSemaphore.js';
+import { parseProxyConfig, browserProxyFor, routeFor, withTraffic, type UsageRow } from './net/proxyGateway.js';
+import { installNetworkLayer } from './net/routingDispatcher.js';
+import type { BrowserNetOptions } from './browser/LocalBrowserRuntime.js';
+import type { QueueTask } from './queue/gateway.js';
+
+/*
+ * THE SHARED NETWORK LAYER (net/proxyGateway.ts). Off unless PROXY_METERING=1 (measure only) or a
+ * proxy is configured (PROXY_ENABLED + credentials + PROXY_ROUTES). Usage is flushed every 30 s to
+ * verify-queue (proxy_usage → proxy_usage_events), so traffic per Verify is measured, not assumed.
+ */
+const proxyConfig = parseProxyConfig();
+const network = installNetworkLayer(proxyConfig);
+/** Where each official browser source starts: its proxy route and its metering domain. */
+const SOURCE_START: Record<string, string> = {
+  TAS_MAP: 'https://ms.gov.ge/', tas_legacy: 'https://tas.ge/', enreg: 'https://my.gov.ge/', debtor: 'https://my.gov.ge/', rstax: 'https://www.rs.ge/',
+};
+function browserNetFor(task: QueueTask): BrowserNetOptions | undefined {
+  if (!network) return undefined;
+  const start = SOURCE_START[task.source] ?? '';
+  const proxy = start ? browserProxyFor(proxyConfig, start, task.jobId ?? task.id) : undefined;
+  let host = '';
+  try { host = new URL(start).hostname; } catch { /* none */ }
+  const route = host ? routeFor(host, proxyConfig) : null;
+  return {
+    proxy,
+    blockAssets: !!proxy && route?.route.blockAssets !== false,
+    meter: (h, up, down) => network.meter.record({ jobId: task.jobId ?? null, worker: 'verify' }, h.split('.').slice(-2).join('.') || h, proxy ? 'proxy' : 'direct', proxy ? 'sticky' : null, up, down),
+  };
+}
+function startUsageFlush(gateway: QueueGateway | null): void {
+  if (!network || !gateway) return;
+  const flush = async () => {
+    const rows: UsageRow[] = network.meter.drain();
+    if (!rows.length) return;
+    try { await gateway.call('proxy_usage', { rows: rows.slice(0, 500), worker: process.env.RAILWAY_REPLICA_ID || 'local' }); }
+    catch (e) { console.error(JSON.stringify({ level: 'warn', scope: 'net', event: 'usage_flush_failed', rows: rows.length, error: String((e as Error)?.message ?? e).slice(0, 160) })); }
+  };
+  setInterval(() => { void flush(); }, 30_000).unref?.();
+  beforeShutdown(flush);
+}
+
+/*
+ * Replica heartbeat (Verify Scaling, 20261205096000): every 30 s this process
+ * says it is alive, how many queue slots it has, how busy it is and how much
+ * memory it holds. The Admin's "healthy replicas" is these beats, not
+ * Railway's own count; the last beat on shutdown says it is draining.
+ */
+function startReplicaBeat(gateway: QueueGateway | null): void {
+  if (!gateway) return;
+  const startedAt = new Date().toISOString();
+  let draining = false;
+  const beat = async () => {
+    const q = verifyQueue?.snapshot() as { running?: number; lanes?: { HTTP?: number; BROWSER?: number } } | undefined;
+    try {
+      await gateway.call('replica_beat', {
+        worker: `${process.env.RAILWAY_REPLICA_ID || 'local'}-${process.pid}`,
+        deployment: process.env.RAILWAY_DEPLOYMENT_ID || null,
+        startedAt, draining,
+        httpSlots: q?.lanes?.HTTP ?? 0, browserSlots: q?.lanes?.BROWSER ?? 0, running: q?.running ?? 0,
+        rssMb: Math.round(process.memoryUsage().rss / 1_048_576),
+        version: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 12) || null,
+      });
+    } catch { /* the next beat retries; a missed beat only shows the replica as unhealthy for a moment */ }
+  };
+  void beat();
+  setInterval(() => { void beat(); }, 30_000).unref?.();
+  beforeShutdown(async () => { draining = true; await beat(); });
+}
+
+/** The shared-slot coordinator, when the queue gateway is configured; null keeps the per-process limits (one replica). */
+function workerSemaphore(env: Record<string, string | undefined> = process.env): GlobalSemaphore | null {
+  const url = env.VERIFY_QUEUE_URL || (env.SUPABASE_URL ? `${env.SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/verify-queue` : '');
+  if (!url || !env.WORKER_TOKEN || env.WORKER_GLOBAL_LIMITS === 'off') return null;
+  return new GlobalSemaphore(semaphoreGateway(new QueueGateway({ url, token: env.WORKER_TOKEN, retries: 1 })), `${env.RAILWAY_REPLICA_ID || 'local'}-${process.pid}`);
+}
+
+/** verify-queue's market_put, when the queue gateway is configured; otherwise in-memory only (one replica). */
+function marketRunStore(env: Record<string, string | undefined> = process.env): ((job: VerifyMarketJob) => Promise<void>) | undefined {
+  const url = env.VERIFY_QUEUE_URL || (env.SUPABASE_URL ? `${env.SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/verify-queue` : '');
+  if (!url || !env.WORKER_TOKEN) return undefined;
+  const gateway = new QueueGateway({ url, token: env.WORKER_TOKEN, retries: 1 });
+  return async (job) => {
+    await gateway.marketPut(job.id, job.status === 'COMPLETE' ? 'COMPLETE' : 'RUNNING', job.status === 'COMPLETE' ? job : { ...job, comparables: [] });
+  };
+}
 import { korterStatusCache } from './verify/korter/index.js';
 import { chromium } from 'playwright';
 import { randomUUID } from 'node:crypto';
@@ -78,9 +165,16 @@ const debugJobs = new Map<string, any>();
 // user session is NOT accepted — see http/workerAuth.ts (capacity audit P1 #1).
 const auth = createWorkerAuth(TOKEN);
 
+// Replicas share MyHome's one-run-at-a-time and the one Telegram session through the database (globalSemaphore.ts).
+const sharedSemaphore = workerSemaphore();
 // Telegram discovery (MTProto). One session, one queue — see telegram/TelegramGateway.ts.
-// Mounted before the routes below; token-only; inert until TELEGRAM_ENABLED.
-const telegram = mountTelegramRoutes(app, { token: TOKEN, driverFactory: createGramJsDriver });
+// Mounted before the routes below; token-only; inert until TELEGRAM_ENABLED. With several
+// replicas only the one holding the 'telegram' slot opens the session.
+const telegram = mountTelegramRoutes(app, {
+  token: TOKEN,
+  driverFactory: createGramJsDriver,
+  sessionLock: sharedSemaphore ? () => sharedSemaphore.acquire('telegram', 1, { deadlineAt: Date.now() + 10_000, ttlSeconds: 90 }) : undefined,
+});
 process.once('SIGTERM', () => { void telegram.shutdown(); });
 // Phase 2 discovery: one SSRF-guarded, address-pinned fetch hop for portal
 // jobs routed through the worker. Token-only; see discovery/routes.ts.
@@ -88,7 +182,7 @@ mountDiscoveryRoutes(app, { token: TOKEN });
 // Verify secure document viewer: ONE TAS attachment by attachedFileId, token-only
 // (research-agent `document_file` caches it privately and signs it). See verify/TasFileRoute.ts.
 mountTasFileRoutes(app, { token: TOKEN });
-const myhome = startMyHomeRuntime();
+const myhome = startMyHomeRuntime(process.env, fetch, sharedSemaphore);
 const ssge = startSsgeRuntime();
 process.once('SIGTERM', () => ssge.shutdown());
 /* One public-page check at start: whether SS.ge answers this worker (status and server only). */
@@ -99,7 +193,9 @@ if (ssge.status().enabled && ssge.status().configured) {
 app.get('/health/ssge', auth, (_q: any, r: any) => r.json(ssge.status()));
 // Find Property HTML portals (place.ge, home.ge, brokeri.ge, allhome.ge):
 // one runtime each on this worker; each idles until its own enable flag and token are set.
-const portals = PORTAL_ADAPTERS.map((adapter: any) => startPortalRuntime(adapter));
+// One replica leads each portal (its index crawler and searches); see portals/runtime.mjs.
+const portalLead = sharedSemaphore ? (key: string) => sharedSemaphore.acquire(key, 1, { deadlineAt: Date.now() + 1000, ttlSeconds: 120 }) : null;
+const portals = PORTAL_ADAPTERS.map((adapter: any) => startPortalRuntime(adapter, process.env, fetch, undefined, undefined, undefined, portalLead));
 process.once('SIGTERM', () => portals.forEach((p: any) => p.shutdown()));
 app.get('/health/portals', auth, (_q: any, r: any) => r.json(portals.map((p: any) => p.status())));
 process.once('SIGTERM', () => myhome.shutdown());
@@ -247,6 +343,8 @@ const verifyMarket = new VerifyMarketRuntime({
   acquireSsge: (request, options) => acquireSsge(request, options as any),
   maxPerSource: Number(process.env.VERIFY_MARKET_MAX_PER_SOURCE) || 300,
   sourceBudgetMs: Number(process.env.VERIFY_MARKET_SOURCE_BUDGET_MS) || 300000,
+  /* Replicas: the run is written to the database (verify_market_runs) so any replica answers its poll. */
+  persist: marketRunStore(),
 });
 app.post('/verify/market', auth, (req: any, res: any) => {
   if (process.env.VERIFY_MARKET_ENABLED === 'false') return res.status(503).json({ error: 'verify market disabled' });
@@ -872,7 +970,13 @@ app.get('/health/speech-selftest', async (_q: any, r: any) => {
 
 // Durable Verify queue (off unless VERIFY_QUEUE_ENABLED=1): claims tasks
 // from verify-queue alongside the legacy HTTP job API, which keeps working.
-const verifyQueue = startVerifyQueue({ orchestrator, launchJobBrowser, closeJobBrowser, beforeShutdown });
+const verifyQueue = startVerifyQueue({ orchestrator, launchJobBrowser, closeJobBrowser, beforeShutdown, browserNet: browserNetFor });
+const ledgerGateway = (() => {
+  const url = process.env.VERIFY_QUEUE_URL || (process.env.SUPABASE_URL ? `${process.env.SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/verify-queue` : '');
+  return url && process.env.WORKER_TOKEN ? new QueueGateway({ url, token: process.env.WORKER_TOKEN, retries: 1 }) : null;
+})();
+startUsageFlush(ledgerGateway);
+startReplicaBeat(ledgerGateway);
 app.get('/health/queue', (_q: any, r: any) => r.json(verifyQueue ? verifyQueue.snapshot() : { enabled: false }));
 
 // Publishing browser automation (off unless PUBLISHING_AUTOMATION_ENABLED=1):

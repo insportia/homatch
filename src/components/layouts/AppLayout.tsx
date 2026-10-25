@@ -1,7 +1,6 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { AssistantProvider } from '@/components/assistant/AssistantContext';
-import { AIFloatingButton } from '@/components/common/AIFloatingButton';
 import { SmartBack } from '@/components/common/SmartBack';
 import { LiveNotifications } from '@/components/notifications/LiveNotifications';
 import { useAuth } from '@/contexts/AuthContext';
@@ -210,7 +209,8 @@ export function AppLayout({
           {body}
         </HomatchShell>
         <MobileBottomNav />
-        <AIFloatingButton />
+        {/* The floating "Ask AI" button and its drawer were removed on the owner's
+            instruction (2026-10-24): HOMI is reached from the page itself and /ai. */}
         {/* The other half of the bell. It has counted live since it was written; this is
             what makes the count something somebody notices. Renders nothing itself. */}
         <LiveNotifications />

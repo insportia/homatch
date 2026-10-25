@@ -153,14 +153,13 @@ export const JobIndicator: React.FC = () => {
           /*
            * PHONE: A 44px BADGE IN THE ASSISTANT'S COLUMN, NEVER A PILL ACROSS
            * THE CONTENT. The wide pill sat over cards and text on every phone.
-           * Below md it is a round spinner with the running count, stacked
-           * directly above the assistant button (AIFloatingButton: the bottom
-           * nav's 3.75rem + safe-area + 0.75rem) with the same edge inset, so
-           * the two controls form one narrow column at the screen edge. The
-           * full sentence stays as the accessible name.
-           * DESKTOP (md+): the compact pill, above the assistant button.
+           * Below md it is a round spinner with the running count, just above
+           * the bottom nav (its 3.75rem + safe-area + 0.75rem), at the screen
+           * edge. The full sentence stays as the accessible name. (The floating
+           * assistant button it used to sit on was removed on 2026-10-24.)
+           * DESKTOP (md+): the compact pill in the corner.
            */
-          className="fixed bottom-[calc(7.75rem+env(safe-area-inset-bottom,0px))] end-4 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card/95 shadow-lg backdrop-blur transition-colors hover:bg-accent md:bottom-24 md:end-6 md:h-auto md:w-auto md:max-w-[calc(100vw-3rem)] md:gap-2 md:px-4 md:py-2.5"
+          className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] end-4 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card/95 shadow-lg backdrop-blur transition-colors hover:bg-accent md:bottom-6 md:end-6 md:h-auto md:w-auto md:max-w-[calc(100vw-3rem)] md:gap-2 md:px-4 md:py-2.5"
           aria-label={active.length === 1
             ? t('job_indicator_one')
             : t('job_indicator_many').replace('{n}', String(active.length))}

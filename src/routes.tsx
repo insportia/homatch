@@ -64,7 +64,8 @@ const DesignStudioPage = lazyRoute(() => import('./pages/designStudio/DesignStud
 const DesignStudioWorkspacePage = lazyRoute(() => import('./pages/designStudio/DesignStudioWorkspacePage'));
 const DesignStudioHomePage = lazyRoute(() => import('./pages/designStudio/DesignStudioHomePage'));
 const ExpatTopicPage = lazyRoute(withFeatureStrings(() => import('./pages/ExpatTopicPage')));
-const ExpatPlanPage = lazyRoute(withFeatureStrings(() => import('./pages/ExpatPlanPage')));
+const MyGeorgiaPage = lazyRoute(withFeatureStrings(() => import('./pages/MyGeorgiaPage')));
+const MyGeorgiaStartPage = lazyRoute(withFeatureStrings(() => import('./pages/MyGeorgiaStartPage')));
 /*
  * HOMATCH INVESTMENT INTELLIGENCE.
  *
@@ -215,6 +216,7 @@ const AdminPaymentsPage = lazyRoute(() => import('./pages/admin/AdminPaymentsPag
 const AdminFinancePage = lazyRoute(() => import('./pages/admin/AdminFinancePage'));
 const AdminFindPropertyCostsPage = lazyRoute(() => import('./pages/admin/AdminFindPropertyCostsPage'));
 const AdminProvidersPage = lazyRoute(() => import('./pages/admin/AdminProvidersPage'));
+const AdminVerifyScalingPage = lazyRoute(() => import('./pages/admin/AdminVerifyScalingPage'));
 const AdminPropertyPortalsPage = lazyRoute(() => import('./pages/admin/AdminPropertyPortalsPage'));
 const AdminPropertyPortalPage = lazyRoute(() => import('./pages/admin/AdminPropertyPortalPage'));
 const AdminPublishingQueuePage = lazyRoute(() => import('./pages/admin/AdminPublishingQueuePage'));
@@ -379,7 +381,10 @@ const routeTable: RouteConfig[] = [
    */
   { name: 'For Expats',        path: '/for-expats',               element: <Navigate to="/for-expats/georgia" replace />, public: true },
   { name: 'For Expats',        path: '/for-expats/georgia',       element: <ForExpatsPage />,     public: true },
-  { name: 'My Expat Plan',     path: '/for-expats/plan',          element: <ExpatPlanPage />,     public: false },
+  /* The plan now lives in My Georgia by HOMI (2026-10-24): one place for the profile, the plan and the guides. */
+  { name: 'My Expat Plan',     path: '/for-expats/plan',          element: <Navigate to="/my-georgia" replace />, public: true, visible: false },
+  { name: 'My Georgia',        path: '/my-georgia',               element: <MyGeorgiaPage />,     public: false },
+  { name: 'My Georgia start',  path: '/my-georgia/start',         element: <MyGeorgiaStartPage />, public: true },
   { name: 'For Expats topic',  path: '/for-expats/georgia/:slug', element: <ExpatTopicPage />,    public: true },
   /*
    * HOMATCH DESIGN STUDIO — "now that I have THIS space, let me design it".
@@ -696,6 +701,7 @@ const routeTable: RouteConfig[] = [
   { name: 'Admin Find Property Costs', path: '/admin/finance/find-property', element: adminWrap(<AdminFindPropertyCostsPage />), adminOnly: true },
   { name: 'Admin Live Chat Reports', path: '/admin/live-chat-reports', element: adminWrap(<AdminLiveChatReportsPage />), adminOnly: true },
   { name: 'Admin Providers',   path: '/admin/providers',          element: adminWrap(<AdminProvidersPage />),   adminOnly: true },
+  { name: 'Admin Verify Scaling', path: '/admin/verify-scaling', element: adminWrap(<AdminVerifyScalingPage />), adminOnly: true },
   /* Integrations → Property portals: the eight portals Publishing hands listings to.
      Every read and write is re-authorised by publishing-engine with is_admin(). */
   { name: 'Admin Property Portals', path: '/admin/integrations/portals', element: adminWrap(<AdminPropertyPortalsPage />), adminOnly: true },

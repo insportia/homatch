@@ -5,6 +5,24 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## My Georgia by HOMI + For Expats fixes (branch claude/my-georgia-by-homi, follow-up to #325, 2026-10-25) — PR OPEN, NOT MERGED, AWAITING OWNER APPROVAL
+
+- Owner-approved Georgian onboarding copy used verbatim (mg_* keys, scripts/homi-mygeorgia-i18n-data.mjs); five steps at /my-georgia/start (autosave to expat_profiles, resume, account prefill, conditional rent/purchase budget and arrival); dashboard /my-georgia (plan = existing roadmap/PlanBoard, guides = GuideHub, HOMI). /for-expats/plan redirects there.
+- Matching: a completed profile with buy/rent/invest and a city is one EXPAT search (server-only link, trigger-guarded); EXPAT lead 5 credits (INTERNAL_LEAD_EXPAT), PREMIUM stays 10; seller sees country, arrival month, stay only. HOMI (homatch-ai) reads the owner's profile as internal.myGeorgia.
+- Guides: documents-and-legalisation, tax-residency + 8 living guides (topics-guide.mjs, sources-guide.mjs, every source read 2026-10-24).
+- Removed (owner): floating AI button + drawer; Expats monthly cost, budget and rental-group sections.
+- Migrations (append-only, apply in order after merge): 20261203090000 docs+tax, 20261203091000 My Georgia profile + expat leads, 20261203092000..095000 guide content. Owed edge: homatch-ai.
+
+## HOMI experience and platform intelligence (PR #325, merged 4cbfddf1, 2026-10-24) — DEPLOYED: 7 migrations applied, 26 edge functions PROVEN_EXACT, Vercel READY at 4cbfddf1
+## Verify at scale + dynamic Railway scaling (PR #329, branch claude/verify-scale, 2026-10-24) — PR OPEN, NOT MERGED/MIGRATED/DEPLOYED, AWAITING OWNER APPROVAL
+
+Release package, measured latency, costs, checklist, rollback: `docs/infra/VERIFY_SCALING_RELEASE.md`.
+- 7 additive migrations 20261205090000…096000 (renumbered: #327 and HOMI #325 use 20261201…). Not applied; audited against prod.
+- Rollout: 1 replica first → health proof → scale to 3 on separate approval. Railway plan verified HOBBY (6 replicas max, 8 vCPU/8 GB each).
+- Scaling MANUAL, ceiling 3 (owner-only: approvedMax/plan not changeable via admin API), autoscaler off; needs RAILWAY_PROJECT_TOKEN (owner) + RAILWAY_DEPLOYMENT_DRAINING_SECONDS=200.
+- Measured: total p50 14.1 min (official 8.0, tail 3.3). Simulated 200 burst: 3 replicas ~101 min, 6 ~84 min, bound by RS cap 4 (government caps NOT raised).
+- HOMI #325 merged with its migrations renumbered to 20261202*; no clash with these 20261205*.
+
 ## HOMI experience and platform intelligence (PR #325, branch claude/homi-experience, 2026-10-24) — PR OPEN, NOT DEPLOYED, AWAITING OWNER RELEASE APPROVAL
 
 - Scope: HOMI assistant (internal-first routing, deterministic answers with no model, free streamed chat,

@@ -374,6 +374,12 @@ export const ADMIN_GROUPS: AdminGroup[] = [
         keywords: ['health', 'status', 'uptime', 'system'],
       },
       {
+        /* Replicas of the one Verify worker on Railway, with live queue and cost numbers;
+           the owner's "Infrastructure → Verify Scaling" (2026-10-24). */
+        path: '/admin/verify-scaling', labelKey: 'admin_nav_verify_scaling', icon: Gauge,
+        keywords: ['infrastructure', 'scaling', 'replicas', 'railway', 'worker', 'autoscale', 'capacity', 'queue', 'verify'],
+      },
+      {
         path: '/admin/providers', labelKey: 'admin_nav_providers', icon: Server,
         keywords: [
           'provider', 'routing', 'credential', 'kill switch', 'api key',

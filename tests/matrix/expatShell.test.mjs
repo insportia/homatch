@@ -16,7 +16,8 @@ import { readFileSync } from 'node:fs';
 const PAGES = [
   'src/pages/ForExpatsPage.tsx',
   'src/pages/ExpatTopicPage.tsx',
-  'src/pages/ExpatPlanPage.tsx',
+  'src/pages/MyGeorgiaPage.tsx',
+  'src/pages/MyGeorgiaStartPage.tsx',
 ];
 
 test('expat 1: every Expat page renders inside the shared shell', () => {
@@ -39,7 +40,8 @@ test('expat 1: every Expat page renders inside the shared shell', () => {
 test('expat 2: the loading and missing states keep the shell too', () => {
   /* A skeleton with no chrome is how the mobile sweep once recorded
      "rendered nothing" at 320px. Every early return wears the layout. */
-  for (const page of ['src/pages/ExpatPlanPage.tsx', 'src/pages/ExpatTopicPage.tsx']) {
+  /* The plan page moved into My Georgia, whose early returns are a redirect or a skeleton inside the layout. */
+  for (const page of ['src/pages/ExpatTopicPage.tsx']) {
     const src = readFileSync(page, 'utf8');
     const returns = src.split('return (').length - 1;
     const shells = src.split('<AppLayout noPadding>').length - 1;
@@ -48,10 +50,12 @@ test('expat 2: the loading and missing states keep the shell too', () => {
 });
 
 test('expat 3: the long page says where you are inside it', () => {
-  /* Four sections, and the hero's own pathway rows point at all four. */
+  /* Four sections, and the hero's own pathway rows point at all four.
+     (2026-10-24: the cost and budget sections were removed; the HOMI plan
+     and the needs guide took their places.) */
   const src = readFileSync('src/pages/ForExpatsPage.tsx', 'utf8');
   assert.match(src, /<LocalSectionNav/);
-  for (const id of ['cost-of-living', 'budget', 'topics', 'tools']) {
+  for (const id of ['plan', 'needs', 'topics', 'tools']) {
     assert.ok(src.includes(`id: '${id}'`), `${id} is missing from the page navigation`);
     assert.ok(src.includes(`id="${id}"`), `${id} is navigated to but never rendered`);
   }

@@ -26,10 +26,10 @@ export interface WsQuote {
   /** Curated only: the USD the customer pays, from the server's cents. */
   usd: number | null;
   /** Internal only: one line per price, so the customer sees what each price is for. */
-  lines?: { key: 'STANDARD' | 'EXACT' | 'PREMIUM' | 'MORTGAGE' | 'MORTGAGE_MATCH'; count: number; unit: number; credits: number }[];
+  lines?: { key: 'STANDARD' | 'EXACT' | 'PREMIUM' | 'MORTGAGE' | 'MORTGAGE_MATCH' | 'EXPAT'; count: number; unit: number; credits: number }[];
 }
 
-const LINE_KEY = { STANDARD: 'hl_bulk_standard', EXACT: 'hl_bulk_exact', PREMIUM: 'hl_bulk_premium', MORTGAGE: 'hl_bulk_mortgage', MORTGAGE_MATCH: 'hl_bulk_mortgage_match' } as const;
+const LINE_KEY = { STANDARD: 'hl_bulk_standard', EXACT: 'hl_bulk_exact', PREMIUM: 'hl_bulk_premium', MORTGAGE: 'hl_bulk_mortgage', MORTGAGE_MATCH: 'hl_bulk_mortgage_match', EXPAT: 'hl_bulk_expat' } as const;
 
 export function quoteUsd(q: WsQuote): number {
   return q.usd ?? creditsToUsd(q.totalCredits);

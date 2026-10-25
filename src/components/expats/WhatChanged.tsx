@@ -15,6 +15,7 @@
 import React from 'react';
 import { ExternalLink } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatExpatDate, keepSuffix } from '@/expats/display';
 import type { ExpatUpdate } from '@/services/expats';
 
 const CHANGE_KEY: Record<string, string> = {
@@ -70,7 +71,7 @@ export function WhatChanged({
                 </span>
                 {u.effectiveFrom ? (
                   <span className="text-2xs text-muted-foreground">
-                    {t('expat_changed_effective', { date: u.effectiveFrom })}
+                    {keepSuffix(t('expat_changed_effective', { date: formatExpatDate(u.effectiveFrom, lang) }))}
                   </span>
                 ) : null}
               </div>

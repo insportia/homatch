@@ -67,6 +67,9 @@ const int = (v: unknown, lo: number, hi: number, d: number) => {
   return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : d;
 };
 
+/* Last proxy_usage_events prune by this isolate (see case 'proxy_usage'). */
+let proxyUsagePrunedAt = 0;
+
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);
   const baseUrl = Deno.env.get('SUPABASE_URL');
@@ -132,6 +135,83 @@ Deno.serve(async (req: Request) => {
         });
         if (error) throw error;
         return json(data);
+      }
+      case 'sem_acquire': {
+        // A limit shared by every worker replica (20261205093000).
+        const key = str(body.key, 120), holder = str(body.holder, 120);
+        if (!key || !holder) return json({ error: 'BAD_REQUEST' }, 400);
+        const max = Number(body.max);
+        const { data, error } = await db.rpc('worker_semaphore_acquire', {
+          p_key: key, p_holder: holder,
+          p_max: Number.isFinite(max) && max >= 1 ? Math.min(Math.trunc(max), 2147483647) : 1,
+          p_ttl_seconds: int(body.ttlSeconds, 5, 3600, 120),
+        });
+        if (error) throw error;
+        return json({ acquired: data === true });
+      }
+      case 'sem_release': {
+        const key = str(body.key, 120), holder = str(body.holder, 120);
+        if (!key || !holder) return json({ error: 'BAD_REQUEST' }, 400);
+        const { data, error } = await db.rpc('worker_semaphore_release', { p_key: key, p_holder: holder });
+        if (error) throw error;
+        return json({ released: data === true });
+      }
+      case 'proxy_usage': {
+        // The worker network layer's traffic ledger (20261205094000): aggregates only, never URLs or content.
+        const rows = (Array.isArray(body.rows) ? body.rows : []).slice(0, 500);
+        const n = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.trunc(Number(v)) : 0);
+        const insert = rows.map((r: any) => ({
+          replica: str(body.worker, 120) || null,
+          job_id: UUID.test(str(r?.jobId, 40)) ? r.jobId : null,
+          worker: str(r?.worker, 40) || 'other',
+          domain: str(r?.domain, 120) || 'unknown',
+          via: r?.via === 'proxy' ? 'proxy' : 'direct',
+          provider: str(r?.provider, 40) || null,
+          session: r?.session === 'sticky' || r?.session === 'rotating' ? r.session : null,
+          requests: n(r?.requests), retries: n(r?.retries), bytes_up: n(r?.bytesUp), bytes_down: n(r?.bytesDown), blocked: n(r?.blocked),
+          est_cost_usd: r?.estCostUsd != null && Number.isFinite(Number(r.estCostUsd)) && Number(r.estCostUsd) >= 0 ? Number(r.estCostUsd) : null,
+        }));
+        if (insert.length) {
+          const { error } = await db.from('proxy_usage_events').insert(insert);
+          if (error) throw error;
+        }
+        // Keep the ledger bounded (20261205094000): at most one prune an hour per isolate.
+        if (Date.now() - proxyUsagePrunedAt > 3_600_000) {
+          proxyUsagePrunedAt = Date.now();
+          await db.rpc('proxy_usage_prune', { p_days: 90 }).then(() => {}, () => {});
+        }
+        return json({ recorded: insert.length });
+      }
+      case 'replica_beat': {
+        // One worker process says it is alive (20261205096000): the honest healthy-replica count for Verify Scaling.
+        const replica = str(body.worker, 120);
+        if (!replica) return json({ error: 'BAD_REQUEST' }, 400);
+        const n = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.trunc(Number(v)) : null);
+        const { error } = await db.from('worker_replicas').upsert({
+          replica,
+          deployment: str(body.deployment, 80) || null,
+          started_at: typeof body.startedAt === 'string' && !Number.isNaN(Date.parse(body.startedAt)) ? body.startedAt : null,
+          last_seen: new Date().toISOString(),
+          draining: body.draining === true,
+          http_slots: n(body.httpSlots), browser_slots: n(body.browserSlots),
+          running: n(body.running) ?? 0, rss_mb: n(body.rssMb),
+          version: str(body.version, 60) || null,
+        });
+        if (error) throw error;
+        // Forget processes gone for a day.
+        await db.from('worker_replicas').delete().lt('last_seen', new Date(Date.now() - 86_400_000).toISOString());
+        return json({ ok: true });
+      }
+      case 'market_put': {
+        // A worker's /verify/market run, readable by research-agent from any replica (20261205092000).
+        const runId = str(body.runId, 40);
+        const status = str(body.status, 20);
+        if (!UUID.test(runId) || !['RUNNING', 'COMPLETE'].includes(status)) return json({ error: 'BAD_REQUEST' }, 400);
+        const payload = body.payload && typeof body.payload === 'object' ? body.payload : {};
+        if (JSON.stringify(payload).length > MAX_RESULT_BYTES) return json({ error: 'RESULT_TOO_LARGE' }, 413);
+        const { error } = await db.from('verify_market_runs').upsert({ id: runId, status, payload, updated_at: new Date().toISOString() });
+        if (error) throw error;
+        return json({ ok: true });
       }
       case 'release': {
         if (!needTask()) return json({ error: 'BAD_REQUEST' }, 400);

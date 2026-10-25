@@ -897,6 +897,12 @@ jobs:
             # time) and answers anything else with 401. Inert until the worker
             # runs with VERIFY_QUEUE_ENABLED=1.
             "verify-queue"
+            # Verify Scaling (Admin → Infrastructure): replica count of the one
+            # worker service through the Railway API. Two callers, both checked
+            # in code: an admin's session (users.is_admin, re-read server-side)
+            # for status/scale/settings, and the private verify_driver_token for
+            # the autoscaler tick, which does nothing until the owner enables it.
+            "verify-scaling"
             # PUBLISHING: the Railway browser worker's door to the publishing
             # operations queue. Same shape as verify-queue: no user JWT, it
             # authenticates the WORKER_TOKEN itself (constant-time) and answers

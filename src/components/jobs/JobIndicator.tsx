@@ -18,10 +18,66 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useJobs } from '@/contexts/JobsContext';
 import { JobCenter } from './JobCenter';
-import { Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileText, Loader2, ShieldCheck, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { isTerminal } from '@/jobs/jobState';
 import { resolveJobDestination } from '@/jobs/destination';
+import { claimAnnouncement, jobAnnouncementKeys } from '@/lib/notifications/announced';
+import { pushPermission, subscribeToPush } from '@/lib/push';
+import { ToastCard } from '@/components/notifications/ToastCard';
+import type { BackgroundJob } from '@/services/backgroundJobs';
+
+/* The one line under the title: what is waiting for the person. */
+const RESULT_LINE: Record<string, string> = {
+  VERIFY: 'jobdone_verify_body',
+  DOCUMENT_ANALYSIS: 'jobdone_document_body',
+  CONTRACT_ANALYSIS: 'jobdone_document_body',
+  FIND_CLIENTS: 'jobdone_search_body',
+};
+
+const PRODUCT_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  VERIFY: ShieldCheck,
+  DOCUMENT_ANALYSIS: FileText,
+  CONTRACT_ANALYSIS: FileText,
+  FIND_CLIENTS: Users,
+};
+
+/**
+ * Offer phone notifications inside the card, only while this device has never
+ * been asked (or saw the soft offer and did not answer): the moment a task
+ * finishes is the moment "tell me next time" makes sense. Never after "not now",
+ * never after a browser refusal, never when already on.
+ */
+function PushOffer({ t, onDone }: { t: (k: string) => string; onDone: () => void }) {
+  const [busy, setBusy] = React.useState(false);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">{t('jobdone_push_offer')}</p>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          const r = await subscribeToPush();
+          setBusy(false);
+          onDone();
+          if (r.ok) toast.success(t('jobdone_push_enabled'));
+          else if (r.reason === 'denied') toast.info(t('notif_push_denied'));
+          else if (r.reason === 'no-key') toast.info(t('notif_push_unavailable'));
+        }}
+        className="inline-flex min-h-9 items-center rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-3 text-xs font-semibold text-[hsl(var(--gold-ink))] transition-colors hover:bg-[hsl(var(--gold-soft))]/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-60"
+      >
+        {busy ? <Loader2 className="me-1.5 h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}
+        {t('jobdone_push_enable')}
+      </button>
+    </div>
+  );
+}
+
+function offerPush(): boolean {
+  const p = pushPermission();
+  return p === 'NOT_ASKED' || p === 'SOFT_PROMPT_SHOWN';
+}
 
 const COMPLETION_KEY: Record<string, string> = {
   VERIFY: 'job_done_verify',
@@ -81,6 +137,43 @@ export const JobIndicator: React.FC = () => {
    * resultRef, so this and the job centre land on the same screen.
    */
   const announced = useRef<Set<string>>(new Set());
+
+  /*
+   * THE CARD (owner, 2026-10-25: "no nice popup when a job finishes").
+   *
+   * It was sonner's default one-liner. Now it is the shared premium card: a
+   * mark for the product, a real title, what it is about, one line of what is
+   * waiting, and one Open button through the SAME resolver the drawer uses.
+   * That resolver matters: this toast once navigated to `job.resultRef`
+   * directly, so the two surfaces could disagree about where one task goes
+   * and both could follow a stored path that is not a route (destination.ts).
+   */
+  const showCompletion = (job: BackgroundJob) => {
+    const failed = job.state === 'FAILED';
+    const destination = resolveJobDestination(job);
+    const withOffer = !failed && offerPush();
+    toast.custom((id) => (
+      <ToastCard
+        icon={failed ? AlertTriangle : PRODUCT_ICON[job.productType] ?? CheckCircle2}
+        tone={failed ? 'alert' : 'accent'}
+        title={failed
+          ? t(job.userSafeError ?? 'job_failed_generic')
+          : t(COMPLETION_KEY[job.productType] ?? 'job_done_generic')}
+        subject={job.subjectLabel}
+        body={failed ? t('jobdone_failed_body') : t(RESULT_LINE[job.productType] ?? 'jobdone_generic_body')}
+        actionLabel={destination ? t(destination.labelKey) : null}
+        onOpen={destination ? () => { toast.dismiss(id); navigate(destination.to); } : undefined}
+        onDismiss={() => toast.dismiss(id)}
+        dismissLabel={t('notif_dismiss')}
+        footer={withOffer ? <PushOffer t={t} onDone={() => toast.dismiss(id)} /> : null}
+      />
+    ), {
+      /* Long enough to read and act on; a failure stays a little longer. */
+      duration: failed ? 12000 : withOffer ? 14000 : 9000,
+      id: `job-${job.id}`,
+    });
+  };
+
   useEffect(() => {
     for (const c of completions) {
       if (announced.current.has(c.job.id)) continue;
@@ -114,31 +207,14 @@ export const JobIndicator: React.FC = () => {
         continue;
       }
 
-      const label = job.subjectLabel ?? '';
-      /*
-       * The SAME resolver the drawer uses.
-       *
-       * This toast used to navigate to `job.resultRef` directly with its own
-       * hardcoded 'Open result' label, so the two surfaces could disagree
-       * about where one task goes — and both followed a stored path that
-       * might not be a registered route (see jobs/destination.ts).
-       */
-      const destination = resolveJobDestination(job);
-      const action = destination
-        ? { label: t(destination.labelKey), onClick: () => navigate(destination.to) }
-        : undefined;
-
-      if (job.state === 'FAILED') {
-        toast.error(t(job.userSafeError ?? 'job_failed_generic'), {
-          description: label || undefined,
-          action,
-        });
-      } else {
-        toast.success(t(COMPLETION_KEY[job.productType] ?? 'job_done_generic'), {
-          description: label || undefined,
-          action,
-        });
+      /* The live notification for this same task may have arrived first
+         (lib/notifications/announced.ts): one card per finished thing. */
+      if (!claimAnnouncement(jobAnnouncementKeys(job))) {
+        dismissCompletion(job.id);
+        continue;
       }
+
+      showCompletion(job);
       dismissCompletion(job.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -12,6 +12,13 @@ test('only person-initiated outcomes earn an email', () => {
   assert.equal(emailEventFor('PAYMENT_FAILED'), 'PAYMENT_FAILED');
   assert.equal(emailEventFor('SERVICE_FAILED'), 'SERVICE_FAILED');
   for (const t of ['NEW_MESSAGE', 'MATCH_AVAILABLE', 'ANNOUNCEMENT', 'META_LEAD', 'EXPAT_TASK_DUE']) assert.equal(emailEventFor(t), null, t);
+  /* A Find Buyers / Tenants search the person ran earns one; a saved search noticing a listing does not. */
+  assert.equal(emailEventFor('SEARCH_COMPLETE', 'FIND_CLIENTS_DONE'), 'SEARCH_DONE');
+  assert.equal(emailEventFor('SEARCH_COMPLETE'), null);
+  for (const lang of ['ka', 'en', 'ru', 'tr', 'ar', 'he']) {
+    const e = buildTransactionalEmail('SEARCH_DONE', lang, '/property/p/buyers/external?job=m');
+    assert.ok(!/confirmed buyer|[–—]/i.test(e.text), `${lang}: never "confirmed buyer", no dashes`);
+  }
 });
 
 test('the person\'s stored language, Georgian when none', () => {

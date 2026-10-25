@@ -185,17 +185,27 @@ export async function subscribeToPush(): Promise<SubscribeResult> {
       applicationServerKey: urlBase64ToBytes(key),
     });
 
+    if (!(await storeSubscription(sub))) return { ok: false, reason: 'failed' };
+
+    void recordPwaEvent('PUSH_SUBSCRIPTION_CREATED', 'CONFIRMED', { source: 'opt-in' });
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'failed' };
+  }
+}
+
+/** Save the browser's subscription against the signed-in account. */
+async function storeSubscription(sub: PushSubscription): Promise<boolean> {
+  try {
     const json = sub.toJSON();
-    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
-      return { ok: false, reason: 'failed' };
-    }
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false;
 
     const { data } = await supabase.auth.getSession();
     const authId = data.session?.user?.id;
-    if (!authId) return { ok: false, reason: 'failed' };
+    if (!authId) return false;
     const { data: profile } = await supabase
       .from('users').select('id').eq('auth_id', authId).maybeSingle();
-    if (!profile?.id) return { ok: false, reason: 'failed' };
+    if (!profile?.id) return false;
 
     /* Upsert on the endpoint. The endpoint IS the device: without this, every
        sign-in on the same browser adds a row and the same person gets the
@@ -214,12 +224,34 @@ export async function subscribeToPush(): Promise<SubscribeResult> {
       failure_count: 0,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'endpoint' });
-    if (error) return { ok: false, reason: 'failed' };
-
-    void recordPwaEvent('PUSH_SUBSCRIPTION_CREATED', 'CONFIRMED', { source: 'opt-in' });
-    return { ok: true };
+    return !error;
   } catch {
-    return { ok: false, reason: 'failed' };
+    return false;
+  }
+}
+
+let resynced = false;
+
+/**
+ * A browser that granted permission and still holds a subscription is put
+ * back on record, once per page load.
+ *
+ * push-send retires a device after a 404/410 or ten failures in a row, and
+ * nothing ever re-registered it: the browser kept its subscription, the
+ * permission stayed granted, the settings switch looked on, and no push ever
+ * arrived again (production, 2026-10-25: the only subscription on record was
+ * revoked). This never asks for permission and never creates a subscription;
+ * it only re-saves the one the browser already has.
+ */
+export async function resyncPushSubscription(): Promise<boolean> {
+  if (resynced || !pushSupported() || Notification.permission !== 'granted') return false;
+  resynced = true;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const sub = await registration.pushManager.getSubscription();
+    return sub ? await storeSubscription(sub) : false;
+  } catch {
+    return false;
   }
 }
 

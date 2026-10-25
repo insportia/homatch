@@ -146,7 +146,9 @@ test('the global indicator does not announce a completion for the screen in view
   assert.match(code, /if \(presentedHere\(job\)\) \{\s*dismissCompletion\(job\.id\);\s*continue;\s*\}/);
   // And the pill uses the same rule, so one concept governs both.
   assert.match(code, /const active = jobs\.filter\(\(j\) => !isTerminal\(j\.state\) && !presentedHere\(j\)\)/);
-  // Everything running elsewhere is still announced: the toast call survives.
-  assert.match(code, /toast\.success\(/);
-  assert.match(code, /toast\.error\(/);
+  // Everything running elsewhere is still announced: the toast call survives,
+  // now as the shared premium card (2026-10-25), with a distinct failure tone.
+  assert.match(code, /toast\.custom\(/);
+  assert.match(code, /<ToastCard/);
+  assert.match(code, /tone=\{failed \? 'alert' : 'accent'\}/);
 });

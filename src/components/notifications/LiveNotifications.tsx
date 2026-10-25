@@ -39,14 +39,16 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
-import { cn } from '@/lib/utils';
 import type { Notification } from '@/types/types';
 import { categoryOf, isMessageFor } from '@/lib/notifications/feed';
 import { getActiveConversation } from '@/lib/notifications/signals';
+import { claimAnnouncement, notificationAnnouncementKeys } from '@/lib/notifications/announced';
+import { resyncPushSubscription } from '@/lib/push';
 import { markNotificationRead } from '@/services/api';
 import { notificationActionKey, notificationHref, notificationMark, notificationText } from './presentation';
+import { ToastCard } from './ToastCard';
 
-/** The card itself. Premium, compact, and one action. */
+/** The card itself: the shared premium popup (ToastCard), one action. */
 function LiveCard({
   notif,
   onOpen,
@@ -58,53 +60,21 @@ function LiveCard({
 }) {
   const { t, lang } = useLanguage();
   const { title, body } = notificationText(notif, t, lang);
-  const { icon: Icon, tone } = notificationMark(notif);
+  const { icon, tone } = notificationMark(notif);
+  const subject = (notif.metadata as Record<string, unknown> | null)?.subject_label;
 
   return (
-    <div
-      className={cn(
-        'pointer-events-auto flex w-[min(22rem,calc(100vw-2rem))] items-start gap-3',
-        'rounded-2xl border border-border bg-card p-3.5 shadow-[var(--shadow-hover)]',
-      )}
-      role="status"
-    >
-      <span
-        className={cn(
-          'grid h-8 w-8 shrink-0 place-items-center rounded-full ring-1 ring-inset',
-          tone === 'accent'
-            ? 'bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))] ring-[hsl(var(--gold-border))]'
-            : tone === 'alert'
-              ? 'bg-[hsl(var(--destructive))]/10 text-[hsl(var(--destructive))] ring-[hsl(var(--destructive))]/25'
-              : 'bg-[hsl(var(--secondary))] text-muted-foreground ring-border',
-        )}
-        aria-hidden="true"
-      >
-        <Icon className="h-4 w-4" />
-      </span>
-
-      <div className="min-w-0 flex-1 space-y-0.5">
-        <p className="break-words font-display text-2xs font-semibold text-foreground">{title}</p>
-        {body ? (
-          <p className="line-clamp-2 break-words text-2xs text-muted-foreground">{body}</p>
-        ) : null}
-        <div className="flex items-center gap-2 pt-1.5">
-          <button
-            type="button"
-            onClick={onOpen}
-            className="inline-flex min-h-8 items-center rounded-lg bg-[hsl(var(--primary))] px-2.5 text-2xs font-semibold text-[hsl(var(--primary-foreground))] transition-colors hover:bg-[hsl(var(--primary))]/88 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-          >
-            {t(notificationActionKey(notif))}
-          </button>
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="inline-flex min-h-8 items-center rounded-lg px-2 text-2xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-          >
-            {t('notif_dismiss')}
-          </button>
-        </div>
-      </div>
-    </div>
+    <ToastCard
+      icon={icon}
+      tone={tone}
+      title={title}
+      body={body}
+      subject={typeof subject === 'string' ? subject : null}
+      actionLabel={t(notificationActionKey(notif))}
+      onOpen={onOpen}
+      onDismiss={onDismiss}
+      dismissLabel={t('notif_dismiss')}
+    />
   );
 }
 
@@ -125,6 +95,13 @@ export function LiveNotifications() {
   where.current = location;
 
   const userId = homatchUser?.id ?? null;
+
+  /* A browser that already said yes keeps receiving: if the server retired this
+     device (a 410 once, ten failures in a row), re-register the subscription the
+     browser still holds. Never asks for permission. */
+  useEffect(() => {
+    if (userId) void resyncPushSubscription();
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -182,7 +159,22 @@ export function LiveNotifications() {
           if (where.current.pathname.startsWith('/verify') && jobId && here === String(jobId)) return;
         }
 
+        /* The job centre may already have shown this finished task (or this
+           arrives second for a verification announced by both): one card only. */
+        const keys = notificationAnnouncementKeys(notif);
+        if (!claimAnnouncement(keys)) return;
+
         const href = notificationHref(notif);
+        /* A finished task whose own page is the one on screen: the page already
+           shows the result, the same rule the job centre keeps (presentedHere).
+           The row still waits in the bell. */
+        if (keys.length > 1 && href) {
+          const query = new URLSearchParams(href.includes('?') ? href.slice(href.indexOf('?')) : '');
+          const now = new URLSearchParams(where.current.search);
+          const samePage = href.split('?')[0] === where.current.pathname
+            && [...query.entries()].every(([k, v]) => now.get(k) === v);
+          if (samePage) return;
+        }
         toast.custom((id) => (
           <LiveCard
             notif={notif}

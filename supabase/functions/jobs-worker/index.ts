@@ -38,6 +38,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { notify } from '../_shared/notify.ts';
+import { dispatchJobNotifications } from '../_shared/jobNotify.ts';
 /*
  * FOR EXPATS reminders are computed by the same functions the plan screen
  * uses, imported rather than reimplemented. A second copy of "which
@@ -219,48 +220,10 @@ async function mirror(sb: Sb): Promise<{ mirrored: number; finished: number }> {
         p_last_error: null,
       });
       finished++;
-      /* A task the person started has failed: tell them once, with a way back to it.
-         A refusal for payment is not a failure of ours and is not announced as one. */
-      /* A scanned document (no text layer) or an unsupported file is an expected
-         outcome, not a service failure: it gets an in-app notice that says what to
-         do, and no "something went wrong" email. */
-      const unreadableDoc = errorKey === 'doc_error_requires_ocr' || errorKey === 'doc_error_unsupported';
-      if (nextState === 'FAILED' && unreadableDoc && job.user_id) {
-        const { data: owner } = await sb.from('users').select('id').eq('auth_id', job.user_id).maybeSingle();
-        if (owner?.id) {
-          await notify(sb as never, {
-            userId: owner.id,
-            type: 'SERVICE_FAILED',
-            title: 'We could not read this document',
-            body: errorKey === 'doc_error_requires_ocr'
-              ? 'This document is a scan with no text layer. A version exported as text would work.'
-              : 'We can read PDF and Word (.docx) documents. This one is a different format.',
-            priority: 'NORMAL',
-            deepLink: resultRef ?? job.result_ref ?? '/contracts',
-            entityType: 'background_job',
-            entityId: job.id,
-            dedupeKey: `job-failed:${job.id}`,
-            email: false,
-            metadata: { kind: 'DOCUMENT_UNREADABLE', reason: errorKey, product_type: job.product_type, subject_type: job.subject_type },
-          });
-        }
-      } else if (nextState === 'FAILED' && errorKey !== 'doc_error_billing' && job.user_id) {
-        const { data: owner } = await sb.from('users').select('id').eq('auth_id', job.user_id).maybeSingle();
-        if (owner?.id) {
-          await notify(sb as never, {
-            userId: owner.id,
-            type: 'SERVICE_FAILED',
-            title: 'There was a problem completing your task',
-            body: null,
-            priority: 'HIGH',
-            deepLink: resultRef ?? job.result_ref ?? '/dashboard',
-            entityType: 'background_job',
-            entityId: job.id,
-            dedupeKey: `job-failed:${job.id}`,
-            metadata: { kind: 'SERVICE_FAILED', product_type: job.product_type, subject_type: job.subject_type },
-          });
-        }
-      }
+      /* Telling the person (done, failed, unreadable document; a refusal for
+         payment is not announced) is no longer decided here: the terminal write
+         above enqueues one outbox row by trigger, and step 7 below drains it
+         through _shared/jobNotify.ts, the same for every product. */
     } else {
       await sb.rpc('background_job_progress', {
         p_job_id: job.id,
@@ -868,8 +831,13 @@ serve(async (req) => {
       }),
     ]);
 
+    /* 7. TELL. After the mirror, so a job it just finished is announced this
+       tick rather than the next. The outbox is written by trigger; this only
+       drains it (_shared/jobNotify.ts), and never throws. */
+    const jobNotices = await dispatchJobNotifications(sb, 25);
+
     return json({
-      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, emailMaintenance, expatReminders, studioSchedules, reservations,
+      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, emailMaintenance, expatReminders, studioSchedules, reservations, jobNotices,
     });
   } catch (e) {
     console.error('[jobs-worker] tick failed', e instanceof Error ? e.message : String(e));

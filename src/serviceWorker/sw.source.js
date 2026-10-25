@@ -282,6 +282,32 @@ const PUSH_COPY = {
       "ניתוח המסמך הושלם",
       "התוצאות מוכנות לקריאה."
     ]
+  },
+  "FIND_CLIENTS_DONE": {
+    "en": [
+      "Your search for interested people has finished",
+      "The results are ready. See who may be interested in your property."
+    ],
+    "ka": [
+      "დაინტერესებული ადამიანების ძებნა დასრულდა",
+      "შედეგები მზად არის. ნახე, ვინ შეიძლება დაინტერესდეს შენი ქონებით."
+    ],
+    "ru": [
+      "Поиск заинтересованных людей завершён",
+      "Результаты готовы. Посмотри, кого может заинтересовать твой объект."
+    ],
+    "tr": [
+      "İlgilenebilecek kişi araması bitti",
+      "Sonuçlar hazır. Mülkünle kimlerin ilgilenebileceğini gör."
+    ],
+    "ar": [
+      "انتهى البحث عن الأشخاص المهتمين",
+      "النتائج جاهزة. شاهد من قد يهتم بعقارك."
+    ],
+    "he": [
+      "החיפוש אחר אנשים מתעניינים הסתיים",
+      "התוצאות מוכנות. ראה מי עשוי להתעניין בנכס שלך."
+    ]
   }
 };
 /* </push-copy> */
@@ -340,7 +366,11 @@ self.addEventListener('push', (event) => {
     : '/';
 
   event.waitUntil(siteLanguage().then((lang) => {
-  const copy = lang && typeof payload.type === 'string' && PUSH_COPY[payload.type] ? PUSH_COPY[payload.type][lang] : null;
+  /* The kind first where it has copy of its own (one type, several meanings), then the type. */
+  const copyKey = typeof payload.kind === 'string' && PUSH_COPY[payload.kind]
+    ? payload.kind
+    : typeof payload.type === 'string' && PUSH_COPY[payload.type] ? payload.type : null;
+  const copy = lang && copyKey ? PUSH_COPY[copyKey][lang] : null;
   const title = copy ? copy[0] : storedTitle;
   const body = copy ? copy[1] : storedBody;
   return self.registration.showNotification(title, {

@@ -24427,6 +24427,18 @@ const en = {
   hl_stay_m3_12: '3–12 months',
   hl_stay_long_term: 'Long term',
   hl_stay_undecided: 'Not decided yet',
+
+  /* ── UX ROUND · FINISHED JOB NOTIFICATIONS ── */
+  notif_find_clients_done_title: 'Your search for interested people has finished',
+  notif_find_clients_done_body: 'The results are ready. See who may be interested in your property.',
+  jobdone_verify_body: 'The report is ready to read.',
+  jobdone_document_body: 'See which clauses need your attention.',
+  jobdone_search_body: 'See who may be interested in your property.',
+  jobdone_generic_body: 'Everything is ready for you.',
+  jobdone_failed_body: 'You are not charged for what was not done. You can try again.',
+  jobdone_push_offer: 'Want this on your phone next time, even with the site closed?',
+  jobdone_push_enable: 'Turn on',
+  jobdone_push_enabled: 'Done. This device will now get notifications.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -48768,6 +48780,18 @@ const ka: Partial<Record<TranslationKey, string>> = {
   hl_stay_m3_12: '3–12 თვე',
   hl_stay_long_term: 'გრძელვადიანად',
   hl_stay_undecided: 'ჯერ არ გადამიწყვეტია',
+
+  /* ── UX ROUND · FINISHED JOB NOTIFICATIONS ── */
+  notif_find_clients_done_title: 'დაინტერესებული ადამიანების ძებნა დასრულდა',
+  notif_find_clients_done_body: 'შედეგები მზად არის. ნახე, ვინ შეიძლება დაინტერესდეს შენი ქონებით.',
+  jobdone_verify_body: 'ანგარიში მზად არის, შეგიძლია წაიკითხო.',
+  jobdone_document_body: 'ნახე, რომელ პუნქტებს სჭირდება შენი ყურადღება.',
+  jobdone_search_body: 'ნახე, ვინ შეიძლება დაინტერესდეს შენი ქონებით.',
+  jobdone_generic_body: 'ყველაფერი მზად არის.',
+  jobdone_failed_body: 'რაც ვერ შესრულდა, იმაში თანხა არ ჩამოგეჭრება. შეგიძლია ხელახლა სცადო.',
+  jobdone_push_offer: 'გინდა შემდეგ ჯერზე ეს ტელეფონზეც მოგივიდეს, საიტი დახურულიც რომ იყოს?',
+  jobdone_push_enable: 'ჩართვა',
+  jobdone_push_enabled: 'მზადაა. ამ მოწყობილობაზე შეტყობინებები მოვა.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -73100,6 +73124,18 @@ const ru: Partial<Record<TranslationKey, string>> = {
   hl_stay_m3_12: '3–12 месяцев',
   hl_stay_long_term: 'Надолго',
   hl_stay_undecided: 'Пока не решил(а)',
+
+  /* ── UX ROUND · FINISHED JOB NOTIFICATIONS ── */
+  notif_find_clients_done_title: 'Поиск заинтересованных людей завершён',
+  notif_find_clients_done_body: 'Результаты готовы. Посмотри, кого может заинтересовать твой объект.',
+  jobdone_verify_body: 'Отчёт готов, можно читать.',
+  jobdone_document_body: 'Посмотри, какие пункты требуют внимания.',
+  jobdone_search_body: 'Посмотри, кого может заинтересовать твой объект.',
+  jobdone_generic_body: 'Всё готово.',
+  jobdone_failed_body: 'За то, что не сделано, деньги не списываются. Можно попробовать снова.',
+  jobdone_push_offer: 'Хочешь в следующий раз получать это на телефон, даже когда сайт закрыт?',
+  jobdone_push_enable: 'Включить',
+  jobdone_push_enabled: 'Готово. На это устройство будут приходить уведомления.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -97430,6 +97466,18 @@ const tr: Partial<Record<TranslationKey, string>> = {
   hl_stay_m3_12: '3–12 ay',
   hl_stay_long_term: 'Uzun vadeli',
   hl_stay_undecided: 'Henüz karar vermedim',
+
+  /* ── UX ROUND · FINISHED JOB NOTIFICATIONS ── */
+  notif_find_clients_done_title: 'İlgilenebilecek kişi araması bitti',
+  notif_find_clients_done_body: 'Sonuçlar hazır. Mülkünle kimlerin ilgilenebileceğini gör.',
+  jobdone_verify_body: 'Rapor hazır, okuyabilirsin.',
+  jobdone_document_body: 'Hangi maddelerin dikkat istediğini gör.',
+  jobdone_search_body: 'Mülkünle kimlerin ilgilenebileceğini gör.',
+  jobdone_generic_body: 'Her şey hazır.',
+  jobdone_failed_body: 'Yapılmayan iş için ücret alınmaz. Tekrar deneyebilirsin.',
+  jobdone_push_offer: 'Bir dahaki sefere site kapalıyken bile telefonuna gelsin mi?',
+  jobdone_push_enable: 'Aç',
+  jobdone_push_enabled: 'Tamam. Bu cihaza artık bildirim gelecek.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -121760,6 +121808,18 @@ const ar: Partial<Record<TranslationKey, string>> = {
   hl_stay_m3_12: '3–12 شهرًا',
   hl_stay_long_term: 'لمدة طويلة',
   hl_stay_undecided: 'لم أقرر بعد',
+
+  /* ── UX ROUND · FINISHED JOB NOTIFICATIONS ── */
+  notif_find_clients_done_title: 'انتهى البحث عن الأشخاص المهتمين',
+  notif_find_clients_done_body: 'النتائج جاهزة. شاهد من قد يهتم بعقارك.',
+  jobdone_verify_body: 'التقرير جاهز للقراءة.',
+  jobdone_document_body: 'اطلع على البنود التي تحتاج إلى انتباهك.',
+  jobdone_search_body: 'شاهد من قد يهتم بعقارك.',
+  jobdone_generic_body: 'كل شيء جاهز.',
+  jobdone_failed_body: 'لا تُحتسب رسوم على ما لم يُنجز. يمكنك المحاولة مرة أخرى.',
+  jobdone_push_offer: 'هل تريد أن يصلك هذا على هاتفك في المرة القادمة حتى لو كان الموقع مغلقًا؟',
+  jobdone_push_enable: 'تفعيل',
+  jobdone_push_enabled: 'تم. سيصل الإشعار إلى هذا الجهاز من الآن.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -146090,6 +146150,18 @@ const he: Partial<Record<TranslationKey, string>> = {
   hl_stay_m3_12: '3–12 חודשים',
   hl_stay_long_term: 'לטווח ארוך',
   hl_stay_undecided: 'עוד לא החלטתי',
+
+  /* ── UX ROUND · FINISHED JOB NOTIFICATIONS ── */
+  notif_find_clients_done_title: 'החיפוש אחר אנשים מתעניינים הסתיים',
+  notif_find_clients_done_body: 'התוצאות מוכנות. ראה מי עשוי להתעניין בנכס שלך.',
+  jobdone_verify_body: 'הדוח מוכן לקריאה.',
+  jobdone_document_body: 'ראה אילו סעיפים דורשים את תשומת לבך.',
+  jobdone_search_body: 'ראה מי עשוי להתעניין בנכס שלך.',
+  jobdone_generic_body: 'הכול מוכן.',
+  jobdone_failed_body: 'לא תחויב על מה שלא בוצע. אפשר לנסות שוב.',
+  jobdone_push_offer: 'רוצה לקבל את זה בטלפון בפעם הבאה, גם כשהאתר סגור?',
+  jobdone_push_enable: 'הפעל',
+  jobdone_push_enabled: 'מוכן. המכשיר הזה יקבל מעכשיו התראות.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

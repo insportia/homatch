@@ -127,13 +127,19 @@ export function routeForAction(
   return action.route;
 }
 
-export const SERVICE_ACTIONS_INSTRUCTION = [
-  'SERVICE ACTIONS',
-  'In the same JSON block, also return "suggested_actions": an array of 0 to 3 service IDs, ONLY',
-  `from this exact list: ${IDS.join(', ')}.`,
-  'Include one ONLY when that product is the obvious next step for what the user just asked —',
-  'the same judgement as the service-mention rule above, expressed as IDs instead of prose. A',
-  'reply that recommends a service in its text should carry the matching ID; a reply that',
-  'recommends nothing returns []. Most replies return []. Never invent an ID, never repeat one,',
-  'never exceed three.',
-].join('\n');
+/** The actions contract, offering only `ids` (the services customers can currently see). */
+export function serviceActionsInstruction(ids: readonly string[] = IDS): string {
+  const offered = IDS.filter((id) => ids.includes(id));
+  return [
+    'SERVICE ACTIONS',
+    'In the same JSON block, also return "suggested_actions": an array of 0 to 3 service IDs, ONLY',
+    `from this exact list: ${offered.join(', ')}.`,
+    'Include one ONLY when that product is the obvious next step for what the user just asked —',
+    'the same judgement as the service-mention rule above, expressed as IDs instead of prose. A',
+    'reply that recommends a service in its text should carry the matching ID; a reply that',
+    'recommends nothing returns []. Most replies return []. Never invent an ID, never repeat one,',
+    'never exceed three.',
+  ].join('\n');
+}
+
+export const SERVICE_ACTIONS_INSTRUCTION = serviceActionsInstruction(IDS);

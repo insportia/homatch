@@ -35,7 +35,7 @@ test('all four routing modes exist and web stays available when the turn needs i
   // offered at all (src/lib/homi/webPolicy.ts, unit-tested there): it is only
   // in the request when the policy opened the web.
   assert.match(edge, /type: 'web_search'/);
-  assert.ok(edge.includes('const policy = decideTurnPolicy('), 'the turn policy is decided in code');
+  assert.ok(edge.includes('decideTurnPolicy(last, { marketplace: marketplaceScope })'), 'the turn policy is decided in code');
   assert.ok(edge.includes("const webAllowed = policy.web === 'ON'"));
   assert.match(edge, /\.\.\.\(webAllowed\s*\?\s*\{ tools: \[\{ type: 'web_search'/, 'the search tool is offered only when allowed');
   assert.ok(edge.includes('${turnPolicyPrompt(policy)}'), 'the model is told the policy');

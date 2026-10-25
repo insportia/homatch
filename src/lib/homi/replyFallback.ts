@@ -14,6 +14,7 @@
 import { pick, type L6 } from './content.ts';
 import { parseSuggestedReplies, type SuggestedReply } from '../ai/suggestedReplies.ts';
 import type { ServiceActionId } from '../ai/serviceActions.ts';
+import { ALL_VISIBLE, filterReplies, type ServiceVisibility } from './serviceVisibility.ts';
 
 const l = (ka: string, en: string, ru: string, tr: string, ar: string, he: string): L6 => ({ ka, en, ru, tr, ar, he });
 
@@ -70,14 +71,18 @@ const BY_SERVICE: Partial<Record<ServiceActionId, L6[]>> = {
 };
 
 /** The deterministic chips for a turn about `service` (or a general turn). */
-export function fallbackReplies(locale: string, service: ServiceActionId | null): SuggestedReply[] {
-  const set = (service && BY_SERVICE[service]) || GENERIC;
-  return parseSuggestedReplies(set.map((t) => pick(t, locale))).map((r, i) => ({ ...r, id: `f${i + 1}` }));
+export function fallbackReplies(locale: string, service: ServiceActionId | null, vis: ServiceVisibility = ALL_VISIBLE): SuggestedReply[] {
+  /* A hidden service gets no chips of its own, and no chip may lead to one. */
+  const set = (service && vis.isVisible(service) && BY_SERVICE[service]) || GENERIC;
+  const chips = filterReplies(parseSuggestedReplies(set.map((t) => pick(t, locale))), vis);
+  const out = chips.length >= 2 ? chips : filterReplies(parseSuggestedReplies(GENERIC.map((t) => pick(t, locale))), vis);
+  return out.map((r, i) => ({ ...r, id: `f${i + 1}` }));
 }
 
 /** The model's chips when there are enough of them, otherwise the fallback. */
-export function ensureReplies(replies: SuggestedReply[], locale: string, service: ServiceActionId | null): SuggestedReply[] {
-  return replies.length >= 2 ? replies : fallbackReplies(locale, service);
+export function ensureReplies(replies: SuggestedReply[], locale: string, service: ServiceActionId | null, vis: ServiceVisibility = ALL_VISIBLE): SuggestedReply[] {
+  const allowed = filterReplies(replies, vis);
+  return allowed.length >= 2 ? allowed : fallbackReplies(locale, service, vis);
 }
 
 /** Overrides the shared "may return an empty array" for HOMI's own chat. */

@@ -55,11 +55,18 @@ export function parsePitchHistory(raw: unknown): Array<string | null> {
   return raw.slice(-40).map((v) => (isPitchable(v) ? String(v).trim().toUpperCase() : null));
 }
 
-export const HOMI_PITCH_INSTRUCTION = [
-  'A WORD ABOUT HOMATCH, SOMETIMES',
-  `In the same JSON block you may return "pitch_service": one ID from ${PITCHABLE_SERVICES.join(', ')}, or null.`,
-  'Choose one only when that service is genuinely the right help for what this person is dealing with right now and they',
-  'have not used it in this conversation. HOMATCH shows a short, reviewed note about it under your answer, so do NOT praise',
-  'or advertise the service in your own prose. Most turns return null; never when somebody is upset or the topic is not a',
-  'property decision.',
-].join('\n');
+/** The pitch instruction, offering only `allowed` (the visible pitchable services). */
+export function homiPitchInstruction(allowed: readonly string[]): string {
+  const ids = PITCHABLE_SERVICES.filter((id) => allowed.includes(id));
+  if (!ids.length) return 'A WORD ABOUT HOMATCH: return "pitch_service": null this turn.';
+  return [
+    'A WORD ABOUT HOMATCH, SOMETIMES',
+    `In the same JSON block you may return "pitch_service": one ID from ${ids.join(', ')}, or null.`,
+    'Choose one only when that service is genuinely the right help for what this person is dealing with right now and they',
+    'have not used it in this conversation. HOMATCH shows a short, reviewed note about it under your answer, so do NOT praise',
+    'or advertise the service in your own prose. Most turns return null; never when somebody is upset or the topic is not a',
+    'property decision.',
+  ].join('\n');
+}
+
+export const HOMI_PITCH_INSTRUCTION = homiPitchInstruction(PITCHABLE_SERVICES);

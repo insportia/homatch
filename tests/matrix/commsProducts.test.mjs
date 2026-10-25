@@ -109,7 +109,9 @@ const AI_FN = read('supabase', 'functions', 'homatch-ai', 'index.ts');
 test('service actions go through the catalogue validator on the server', () => {
   assert.match(AI_FN, /parseServiceActions\(lead\?\.suggested_actions\)/,
     'the envelope no longer validates model-proposed actions');
-  assert.match(AI_FN, /SERVICE_ACTIONS_INSTRUCTION/,
+  // The contract is built per turn from the catalogue, offering only the services
+  // Admin has not hidden (serviceActionsInstruction, src/lib/ai/serviceActions.ts).
+  assert.match(AI_FN, /serviceActionsInstruction\(visibility\.visible\)/,
     'the model is no longer told the actions contract');
 });
 

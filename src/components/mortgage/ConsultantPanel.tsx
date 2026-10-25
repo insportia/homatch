@@ -165,6 +165,7 @@ export function ConsultantPanel({ brief }: { brief: ConsultantBrief | null }) {
           {messages.map((message) => (
             <div
               key={message.id}
+              data-consultant-message={message.role}
               className={cn(
                 'prose-block max-w-[46ch] break-words rounded-2xl px-4 py-3 text-sm leading-relaxed',
                 message.role === 'user'
@@ -178,7 +179,7 @@ export function ConsultantPanel({ brief }: { brief: ConsultantBrief | null }) {
             </div>
           ))}
           {streaming ? (
-            <div className="prose-block max-w-[46ch] break-words rounded-2xl bg-[hsl(var(--secondary))] px-4 py-3 text-sm leading-relaxed text-foreground">
+            <div data-consultant-message="assistant" className="prose-block max-w-[46ch] break-words rounded-2xl bg-[hsl(var(--secondary))] px-4 py-3 text-sm leading-relaxed text-foreground">
               {streamContent
                 ? <Streamdown parseIncompleteMarkdown isAnimating>{customerMessage(streamContent).text}</Streamdown>
                 : t('mortgage_consultant_thinking')}

@@ -513,7 +513,7 @@ export default function EditPropertyPage() {
           validation rule, photo control and save path is untouched — what changes is
           that a customer editing a property no longer crosses a theme boundary.
         */}
-        <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6">
+        <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 pb-[calc(11rem+env(safe-area-inset-bottom))] md:pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6">
           <div className="flex items-start justify-between gap-2 flex-wrap">
             <div className="min-w-0 space-y-1">
               <h1 className="text-xl font-bold text-foreground break-words">
@@ -967,7 +967,7 @@ export default function EditPropertyPage() {
           it is a button somebody has to go looking for after every edit.
         */}
         <div
-          className="fixed bottom-0 inset-x-0 z-40 border-t border-border bg-card/95 backdrop-blur md:bottom-0"
+          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] inset-x-0 z-40 border-t border-border bg-card/95 backdrop-blur md:bottom-0"
           style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
         >
           <div className="max-w-2xl mx-auto flex items-center gap-2 px-4 pt-3 flex-wrap">

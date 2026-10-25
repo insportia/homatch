@@ -1,0 +1,23 @@
+// Email editor UX rebuild (2026-10-24): phone editing bar and sheets, selection rail, tips, fit
+// zoom, button width. Shape: key → [en, ka, ru, tr, ar, he].
+export const EDITOR_UX = {
+  ems_b_nav_edit: ['Edit', 'რედაქტირება', 'Правка', 'Düzenle', 'تحرير', 'עריכה'],
+  ems_b_nav_add: ['Add', 'დამატება', 'Добавить', 'Ekle', 'إضافة', 'הוספה'],
+  ems_b_add_element: ['Add element', 'ელემენტის დამატება', 'Добавить элемент', 'Öğe ekle', 'إضافة عنصر', 'הוספת רכיב'],
+  ems_b_add_after: ['Adds after: {{name}}', 'დაემატება შემდეგ: {{name}}', 'Добавится после: {{name}}', 'Şundan sonra eklenir: {{name}}', 'يُضاف بعد: {{name}}', 'יתווסף אחרי: {{name}}'],
+  ems_b_add_at_end: ['Adds at the end of the email', 'დაემატება წერილის ბოლოს', 'Добавится в конец письма', 'E-postanın sonuna eklenir', 'يُضاف في نهاية الرسالة', 'יתווסף בסוף המייל'],
+  ems_b_elements_hint_touch: ['Tap an element to add it after the selected one; it opens ready to edit.', 'შეეხეთ ელემენტს და მონიშნულის შემდეგ დაემატება — მაშინვე რედაქტირებისთვის გაიხსნება.', 'Нажмите элемент — он добавится после выбранного и сразу откроется для правки.', 'Seçilenden sonra eklemek için bir öğeye dokunun; düzenlemeye hazır açılır.', 'المس عنصرًا لإضافته بعد العنصر المحدد؛ يُفتح جاهزًا للتحرير.', 'הקישו על רכיב כדי להוסיף אותו אחרי הנבחר; הוא נפתח מוכן לעריכה.'],
+  ems_b_block_actions: ['Actions for {{name}}', 'მოქმედებები: {{name}}', 'Действия: {{name}}', '{{name}} için işlemler', 'إجراءات {{name}}', 'פעולות עבור {{name}}'],
+  ems_b_drag_hint: ['Move element (drag)', 'ელემენტის გადატანა (გადაათრიეთ)', 'Переместить элемент (перетащите)', 'Öğeyi taşı (sürükleyin)', 'نقل العنصر (اسحب)', 'הזזת הרכיב (גררו)'],
+  ems_b_tap_to_add_photo: ['Add photo — select this block', 'ფოტოს დამატება — მონიშნეთ ეს ბლოკი', 'Добавить фото — выберите этот блок', 'Fotoğraf ekle — bu bloğu seçin', 'إضافة صورة — حدد هذه الكتلة', 'הוספת תמונה — בחרו את הבלוק'],
+  ems_b_tip_desktop: ['Click any part of the email to edit it on the right. Drag from Elements to add; drag the ⠿ handle beside a selected block to move it.', 'დააჭირეთ წერილის ნებისმიერ ნაწილს და მარჯვნივ შეცვლით. დასამატებლად გადმოათრიეთ ელემენტებიდან; გადასატანად მონიშნული ბლოკის გვერდით ⠿ სახელური გამოიყენეთ.', 'Нажмите на любую часть письма — настройки откроются справа. Перетащите из «Элементов», чтобы добавить; ручкой ⠿ рядом с блоком — чтобы переместить.', 'Düzenlemek için e-postanın herhangi bir yerine tıklayın, ayarlar sağda açılır. Eklemek için Öğeler’den sürükleyin; taşımak için seçili bloğun yanındaki ⠿ tutamacını kullanın.', 'انقر أي جزء من الرسالة لتحريره على اليمين. اسحب من العناصر للإضافة، واسحب المقبض ⠿ بجانب الكتلة المحددة لنقلها.', 'לחצו על כל חלק במייל כדי לערוך אותו מימין. גררו מ"רכיבים" כדי להוסיף; גררו את הידית ⠿ ליד בלוק נבחר כדי להזיז.'],
+  ems_b_tip_touch: ['Tap any part of the email to edit it. Use Add for new elements; drag the ⠿ handle, or Move up/down, to reorder.', 'შეეხეთ წერილის ნებისმიერ ნაწილს რედაქტირებისთვის. ახალი ელემენტისთვის „დამატება“; თანმიმდევრობის შესაცვლელად ⠿ სახელური ან ზემოთ/ქვემოთ გადატანა.', 'Нажмите на любую часть письма, чтобы изменить. «Добавить» — новые элементы; порядок — ручкой ⠿ или кнопками вверх/вниз.', 'Düzenlemek için e-postanın herhangi bir yerine dokunun. Yeni öğe için Ekle; sırayı ⠿ tutamacıyla veya Yukarı/Aşağı ile değiştirin.', 'المس أي جزء من الرسالة لتحريره. استخدم «إضافة» للعناصر الجديدة، واسحب المقبض ⠿ أو استخدم أعلى/أسفل لإعادة الترتيب.', 'הקישו על כל חלק במייל כדי לערוך. "הוספה" לרכיבים חדשים; גררו את הידית ⠿ או השתמשו בלמעלה/למטה כדי לשנות סדר.'],
+  ems_b_tip_dismiss: ['Hide tip', 'რჩევის დამალვა', 'Скрыть подсказку', 'İpucunu gizle', 'إخفاء التلميح', 'הסתרת הטיפ'],
+  ems_b_more_actions: ['More actions', 'მეტი მოქმედება', 'Другие действия', 'Diğer işlemler', 'المزيد من الإجراءات', 'פעולות נוספות'],
+  ems_b_sheet_expand: ['Expand settings', 'პარამეტრების გაშლა', 'Развернуть настройки', 'Ayarları genişlet', 'توسيع الإعدادات', 'הרחבת ההגדרות'],
+  ems_b_sheet_collapse: ['Show more of the email', 'წერილის მეტი ნაწილის ჩვენება', 'Показать больше письма', 'E-postanın daha fazlasını göster', 'عرض المزيد من الرسالة', 'הצגת יותר מהמייל'],
+  ems_b_zoom_fit: ['Fit the email to the screen', 'წერილის ეკრანზე მორგება', 'Вписать письмо в экран', 'E-postayı ekrana sığdır', 'ملاءمة الرسالة للشاشة', 'התאמת המייל למסך'],
+  ems_b_zoom_fit_short: ['Fit', 'მორგება', 'Вписать', 'Sığdır', 'ملاءمة', 'התאמה'],
+  ems_b_button_width: ['Button width', 'ღილაკის სიგანე', 'Ширина кнопки', 'Düğme genişliği', 'عرض الزر', 'רוחב הכפתור'],
+  ems_b_width_auto: ['Fit the text', 'ტექსტზე მორგებული', 'По тексту', 'Metne göre', 'بحسب النص', 'לפי הטקסט'],
+};

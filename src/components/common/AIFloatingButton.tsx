@@ -1,8 +1,7 @@
 import React from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Bot } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useAssistant } from '@/components/assistant/AssistantContext';
 import { shouldShowFloatingAiShortcut } from '@/lib/floatingAiShortcut';
 import { useServiceVisible } from '@/lib/serviceControls';
 
@@ -14,13 +13,15 @@ import { useServiceVisible } from '@/lib/serviceControls';
  * product, none over a screen's own composer), tested directly. This file
  * owns only presentation.
  *
- * IT OPENS, IT DOES NOT NAVIGATE.
+ * IT OPENS THE FULL ASSISTANT, DIRECTLY (owner, 2026-10-24).
  *
- * This used to call navigate('/ai'). Inside the agent wizard or the campaign
- * builder that unmounted the route, so asking a question threw away every
- * unsaved field and reset the step — which made the button something to avoid
- * precisely where it was most useful. It now opens the assistant over the
- * current page, which stays mounted and therefore stays filled in.
+ * For a while it opened a small drawer over the page with an "open the full
+ * version" link — an empty intermediate step people had to click through, and
+ * one that did not behave well on phones. The owner asked for the full HOMI
+ * assistant (/ai) straight away. Conversations live on the server
+ * (ai_conversations), so /ai shows the person's history; screens with long
+ * unsaved work either autosave (Email Studio) or do not show this shortcut
+ * (lib/floatingAiShortcut.ts).
  *
  * POSITIONING CONTRACT (mobile): the bottom offset is derived from the
  * MobileBottomNav's real geometry — its 3.75rem bar plus the safe-area
@@ -31,7 +32,7 @@ import { useServiceVisible } from '@/lib/serviceControls';
 export function AIFloatingButton() {
   const location = useLocation();
   const { t, isRTL } = useLanguage();
-  const { setOpen } = useAssistant();
+  const navigate = useNavigate();
   // Not offered while the assistant is paused (Admin → Service Control Center).
   const assistantVisible = useServiceVisible('ai_assistant');
 
@@ -41,7 +42,7 @@ export function AIFloatingButton() {
     <button
       type="button"
       aria-label={t('ai_floating_label')}
-      onClick={() => setOpen(true)}
+      onClick={() => navigate('/ai')}
       className={[
         'fixed z-40 flex items-center gap-2',
         'bg-primary text-primary-foreground shadow-hover',

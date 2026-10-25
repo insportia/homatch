@@ -23,6 +23,8 @@ import { richToEmailHtml, richToText } from './richText.ts';
 
 export const DESIGN_MARKER = '<!--homatch-designer:v1';
 
+/* Long words (a URL, a long Georgian compound) wrap inside their block instead of widening it. */
+const WRAP = 'word-break:break-word;overflow-wrap:break-word;';
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 const attrUrl = (u: string) => esc(u);
 const padCss = (p?: Pad) => (p ? `${p.t}px ${p.r}px ${p.b}px ${p.l}px` : '8px 32px');
@@ -72,8 +74,8 @@ function buttonHtml(b: Pick<ButtonBlock, 'id' | 'label' | 'href' | 'align' | 'bu
   const py = b.paddingY ?? py0, px = b.paddingX ?? px0, fs = b.fontSize ?? fs0;
   const stroke = b.strokeWidth && b.strokeColor ? `border:${b.strokeWidth}px solid ${b.strokeColor};` : '';
   const hover = b.hoverColor ? ` class="hm-btn-${b.id}"` : '';
-  const a = `<a ${b.href ? `href="${attrUrl(b.href)}" target="_blank"` : 'data-hm-nolink="1"'}${hover} style="display:${b.fullWidth ? 'block' : 'inline-block'};padding:${py}px ${px}px;font-family:${font};font-size:${fs}px;font-weight:${b.fontWeight ?? 700};line-height:1.2;color:${b.textColor};text-decoration:none;border-radius:${b.radius}px;text-align:center;">${esc(b.label)}</a>`;
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" ${b.fullWidth ? 'width="100%"' : ''} align="${b.fullWidth ? 'center' : al}" style="${b.fullWidth ? 'width:100%;' : ''}border-collapse:separate;${al === 'center' && !b.fullWidth ? 'margin:0 auto;' : ''}"><tr><td bgcolor="${b.buttonColor}"${hover} style="background-color:${b.buttonColor};border-radius:${b.radius}px;text-align:center;mso-padding-alt:${py}px ${px}px;${stroke}">${a}</td></tr></table>`;
+  const a = `<a ${b.href ? `href="${attrUrl(b.href)}" target="_blank"` : 'data-hm-nolink="1"'}${hover} style="display:${b.fullWidth ? 'block' : 'inline-block'};padding:${py}px ${px}px;font-family:${font};font-size:${fs}px;font-weight:${b.fontWeight ?? 700};line-height:1.25;color:${b.textColor};text-decoration:none;border-radius:${b.radius}px;text-align:center;${WRAP}">${esc(b.label)}</a>`;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" ${b.fullWidth ? 'width="100%"' : ''} align="${b.fullWidth ? 'center' : al}" style="${b.fullWidth ? 'width:100%;' : ''}max-width:100%;border-collapse:separate;${al === 'center' && !b.fullWidth ? 'margin:0 auto;' : ''}"><tr><td bgcolor="${b.buttonColor}"${hover} style="background-color:${b.buttonColor};border-radius:${b.radius}px;text-align:center;mso-padding-alt:${py}px ${px}px;${stroke}">${a}</td></tr></table>`;
 }
 
 /* Draft only (designer canvas, template previews): where an image will go, at its proportions.
@@ -101,11 +103,11 @@ function leafHtml(b: LeafBlock, theme: Theme, width: number, dirAlign: 'left' | 
       const size = b.fontSize ?? (b.level === 1 ? 28 : b.level === 2 ? 22 : 18);
       const ls = b.letterSpacing ? `letter-spacing:${b.letterSpacing / 100}em;` : '';
       const body = b.rich ? richToEmailHtml(b.rich, b.color ?? theme.link) : inlineMarkup(b.text, theme.link);
-      return `<h${b.level} style="margin:0;font-family:${font};font-size:${size}px;line-height:1.3;font-weight:${b.fontWeight ?? 700};color:${b.color ?? theme.text};text-align:${al(b.align)};${ls}">${body}</h${b.level}>`;
+      return `<h${b.level} style="margin:0;font-family:${font};font-size:${size}px;line-height:1.3;font-weight:${b.fontWeight ?? 700};color:${b.color ?? theme.text};text-align:${al(b.align)};${ls}${WRAP}">${body}</h${b.level}>`;
     }
     case 'text': {
       const body = b.rich ? richToEmailHtml(b.rich, theme.link) : inlineMarkup(b.text, theme.link);
-      return `<div style="margin:0;font-family:${font};font-size:${b.fontSize ?? 16}px;line-height:${b.lineHeight ?? 1.65};font-weight:${b.fontWeight ?? 400};color:${b.color ?? theme.text};text-align:${al(b.align)};">${body}</div>`;
+      return `<div style="margin:0;font-family:${font};font-size:${b.fontSize ?? 16}px;line-height:${b.lineHeight ?? 1.65};font-weight:${b.fontWeight ?? 400};color:${b.color ?? theme.text};text-align:${al(b.align)};${WRAP}">${body}</div>`;
     }
     case 'image': {
       if (!b.src) return draft ? imageSlot(Math.min(b.width, width), Math.round(Math.min(b.width, width) * 0.56), b.radius ?? 0) : '';

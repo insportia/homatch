@@ -1,7 +1,6 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { AssistantProvider } from '@/components/assistant/AssistantContext';
-import { AssistantDrawer } from '@/components/assistant/AssistantDrawer';
 import { AIFloatingButton } from '@/components/common/AIFloatingButton';
 import { SmartBack } from '@/components/common/SmartBack';
 import { LiveNotifications } from '@/components/notifications/LiveNotifications';
@@ -212,7 +211,6 @@ export function AppLayout({
         </HomatchShell>
         <MobileBottomNav />
         <AIFloatingButton />
-        <AssistantDrawer />
         {/* The other half of the bell. It has counted live since it was written; this is
             what makes the count something somebody notices. Renders nothing itself. */}
         <LiveNotifications />

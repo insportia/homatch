@@ -24179,6 +24179,27 @@ const en = {
   terms_s2_body3: 'People shown in HOMATCH Matching are potentially interested, based on what they stated and what our matching found. Nobody is presented as a guaranteed buyer or tenant, and opening someone’s contact details does not mean a bank has approved anyone for a loan.',
   terms_s4_body3: 'HOMATCH Matching: opening a person’s contact details costs the price shown on their card and in the confirmation, together with the reasons for that price. You pay for the same person only once per account: anyone you have already opened stays accessible without a new charge, whatever the listing, search or later price. If the price rises before you confirm, nothing is charged and you are shown the new price.',
   terms_s5_item8: 'Use contact details obtained in HOMATCH Matching for anything other than offers about relevant properties, pass them to others, or contact people who have withdrawn their permission or blocked you',
+
+  /* ── EMAIL STUDIO · EDITOR UX REBUILD ── */
+  ems_b_nav_edit: 'Edit',
+  ems_b_nav_add: 'Add',
+  ems_b_add_element: 'Add element',
+  ems_b_add_after: 'Adds after: {{name}}',
+  ems_b_add_at_end: 'Adds at the end of the email',
+  ems_b_elements_hint_touch: 'Tap an element to add it after the selected one; it opens ready to edit.',
+  ems_b_block_actions: 'Actions for {{name}}',
+  ems_b_drag_hint: 'Move element (drag)',
+  ems_b_tap_to_add_photo: 'Add photo — select this block',
+  ems_b_tip_desktop: 'Click any part of the email to edit it on the right. Drag from Elements to add; drag the ⠿ handle beside a selected block to move it.',
+  ems_b_tip_touch: 'Tap any part of the email to edit it. Use Add for new elements; drag the ⠿ handle, or Move up/down, to reorder.',
+  ems_b_tip_dismiss: 'Hide tip',
+  ems_b_more_actions: 'More actions',
+  ems_b_sheet_expand: 'Expand settings',
+  ems_b_sheet_collapse: 'Show more of the email',
+  ems_b_zoom_fit: 'Fit the email to the screen',
+  ems_b_zoom_fit_short: 'Fit',
+  ems_b_button_width: 'Button width',
+  ems_b_width_auto: 'Fit the text',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -48272,6 +48293,27 @@ const ka: Partial<Record<TranslationKey, string>> = {
   terms_s2_body3: 'HOMATCH-ის დამთხვევებში ნაჩვენები ადამიანები პოტენციურად დაინტერესებულები არიან, მათ მიერ მითითებულისა და ჩვენი დამთხვევის საფუძველზე. არავინ არ არის წარმოდგენილი, როგორც გარანტირებული მყიდველი ან მოიჯარე, და კონტაქტის გახსნა არ ნიშნავს, რომ ბანკმა ვინმეს სესხი დაუმტკიცა.',
   terms_s4_body3: 'HOMATCH-ის დამთხვევები: ადამიანის საკონტაქტო მონაცემების გახსნა ღირს იმ ფასად, რომელიც მის ბარათზე და დადასტურებისას ჩანს, ამ ფასის მიზეზებთან ერთად. ერთსა და იმავე ადამიანზე ერთ ანგარიშზე მხოლოდ ერთხელ იხდით: ვისაც უკვე გახსენით, ხელმისაწვდომი რჩება ახალი გადასახადის გარეშე, განცხადების, ძიების ან შემდგომი ფასის მიუხედავად. თუ ფასი დადასტურებამდე გაიზარდა, არაფერი ჩამოგეჭრებათ და ახალ ფასს ნახავთ.',
   terms_s5_item8: 'HOMATCH-ის დამთხვევებში მიღებული საკონტაქტო მონაცემები გამოიყენოთ შესაბამისი ქონების შეთავაზების გარდა სხვა მიზნით, გადასცეთ სხვებს ან დაუკავშირდეთ პირებს, რომლებმაც ნებართვა გააუქმეს ან დაგბლოკეს',
+
+  /* ── EMAIL STUDIO · EDITOR UX REBUILD ── */
+  ems_b_nav_edit: 'რედაქტირება',
+  ems_b_nav_add: 'დამატება',
+  ems_b_add_element: 'ელემენტის დამატება',
+  ems_b_add_after: 'დაემატება შემდეგ: {{name}}',
+  ems_b_add_at_end: 'დაემატება წერილის ბოლოს',
+  ems_b_elements_hint_touch: 'შეეხეთ ელემენტს და მონიშნულის შემდეგ დაემატება — მაშინვე რედაქტირებისთვის გაიხსნება.',
+  ems_b_block_actions: 'მოქმედებები: {{name}}',
+  ems_b_drag_hint: 'ელემენტის გადატანა (გადაათრიეთ)',
+  ems_b_tap_to_add_photo: 'ფოტოს დამატება — მონიშნეთ ეს ბლოკი',
+  ems_b_tip_desktop: 'დააჭირეთ წერილის ნებისმიერ ნაწილს და მარჯვნივ შეცვლით. დასამატებლად გადმოათრიეთ ელემენტებიდან; გადასატანად მონიშნული ბლოკის გვერდით ⠿ სახელური გამოიყენეთ.',
+  ems_b_tip_touch: 'შეეხეთ წერილის ნებისმიერ ნაწილს რედაქტირებისთვის. ახალი ელემენტისთვის „დამატება“; თანმიმდევრობის შესაცვლელად ⠿ სახელური ან ზემოთ/ქვემოთ გადატანა.',
+  ems_b_tip_dismiss: 'რჩევის დამალვა',
+  ems_b_more_actions: 'მეტი მოქმედება',
+  ems_b_sheet_expand: 'პარამეტრების გაშლა',
+  ems_b_sheet_collapse: 'წერილის მეტი ნაწილის ჩვენება',
+  ems_b_zoom_fit: 'წერილის ეკრანზე მორგება',
+  ems_b_zoom_fit_short: 'მორგება',
+  ems_b_button_width: 'ღილაკის სიგანე',
+  ems_b_width_auto: 'ტექსტზე მორგებული',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -72356,6 +72398,27 @@ const ru: Partial<Record<TranslationKey, string>> = {
   terms_s2_body3: 'Люди в подборе HOMATCH потенциально заинтересованы, исходя из того, что они указали, и того, что нашёл подбор. Никто не представлен как гарантированный покупатель или арендатор, а открытие контакта не означает, что банк кому-то одобрил кредит.',
   terms_s4_body3: 'Подбор HOMATCH: открытие контактов человека стоит цену, указанную на его карточке и при подтверждении, вместе с причинами этой цены. За одного и того же человека вы платите на один аккаунт только один раз: те, кого вы уже открыли, остаются доступными без новой оплаты, независимо от объявления, поиска или более поздней цены. Если цена выросла до подтверждения, ничего не списывается и вы видите новую цену.',
   terms_s5_item8: 'Использовать контакты, полученные в подборе HOMATCH, для чего-либо кроме предложений подходящей недвижимости, передавать их другим или связываться с людьми, отозвавшими разрешение или заблокировавшими вас',
+
+  /* ── EMAIL STUDIO · EDITOR UX REBUILD ── */
+  ems_b_nav_edit: 'Правка',
+  ems_b_nav_add: 'Добавить',
+  ems_b_add_element: 'Добавить элемент',
+  ems_b_add_after: 'Добавится после: {{name}}',
+  ems_b_add_at_end: 'Добавится в конец письма',
+  ems_b_elements_hint_touch: 'Нажмите элемент — он добавится после выбранного и сразу откроется для правки.',
+  ems_b_block_actions: 'Действия: {{name}}',
+  ems_b_drag_hint: 'Переместить элемент (перетащите)',
+  ems_b_tap_to_add_photo: 'Добавить фото — выберите этот блок',
+  ems_b_tip_desktop: 'Нажмите на любую часть письма — настройки откроются справа. Перетащите из «Элементов», чтобы добавить; ручкой ⠿ рядом с блоком — чтобы переместить.',
+  ems_b_tip_touch: 'Нажмите на любую часть письма, чтобы изменить. «Добавить» — новые элементы; порядок — ручкой ⠿ или кнопками вверх/вниз.',
+  ems_b_tip_dismiss: 'Скрыть подсказку',
+  ems_b_more_actions: 'Другие действия',
+  ems_b_sheet_expand: 'Развернуть настройки',
+  ems_b_sheet_collapse: 'Показать больше письма',
+  ems_b_zoom_fit: 'Вписать письмо в экран',
+  ems_b_zoom_fit_short: 'Вписать',
+  ems_b_button_width: 'Ширина кнопки',
+  ems_b_width_auto: 'По тексту',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -96438,6 +96501,27 @@ const tr: Partial<Record<TranslationKey, string>> = {
   terms_s2_body3: 'HOMATCH eşleştirmesinde gösterilen kişiler, belirttikleri ve eşleştirmemizin bulduğu bilgilere göre potansiyel olarak ilgilidir. Hiç kimse garantili alıcı ya da kiracı olarak sunulmaz; iletişim bilgilerini açmak bir bankanın kimseye kredi onayladığı anlamına gelmez.',
   terms_s4_body3: 'HOMATCH eşleştirmesi: bir kişinin iletişim bilgilerini açmak, kartında ve onay ekranında gösterilen fiyata ve o fiyatın gerekçelerine tabidir. Aynı kişi için hesap başına yalnızca bir kez ödersiniz: zaten açtığınız herkes, ilan, arama ya da sonraki fiyat ne olursa olsun yeni bir ücret olmadan erişilebilir kalır. Onaylamadan önce fiyat yükselirse hiçbir ücret alınmaz ve yeni fiyat size gösterilir.',
   terms_s5_item8: 'HOMATCH eşleştirmesinde elde edilen iletişim bilgilerini ilgili mülk teklifleri dışında bir amaçla kullanmak, başkalarına vermek ya da iznini geri almış veya sizi engellemiş kişilerle iletişime geçmek',
+
+  /* ── EMAIL STUDIO · EDITOR UX REBUILD ── */
+  ems_b_nav_edit: 'Düzenle',
+  ems_b_nav_add: 'Ekle',
+  ems_b_add_element: 'Öğe ekle',
+  ems_b_add_after: 'Şundan sonra eklenir: {{name}}',
+  ems_b_add_at_end: 'E-postanın sonuna eklenir',
+  ems_b_elements_hint_touch: 'Seçilenden sonra eklemek için bir öğeye dokunun; düzenlemeye hazır açılır.',
+  ems_b_block_actions: '{{name}} için işlemler',
+  ems_b_drag_hint: 'Öğeyi taşı (sürükleyin)',
+  ems_b_tap_to_add_photo: 'Fotoğraf ekle — bu bloğu seçin',
+  ems_b_tip_desktop: 'Düzenlemek için e-postanın herhangi bir yerine tıklayın, ayarlar sağda açılır. Eklemek için Öğeler’den sürükleyin; taşımak için seçili bloğun yanındaki ⠿ tutamacını kullanın.',
+  ems_b_tip_touch: 'Düzenlemek için e-postanın herhangi bir yerine dokunun. Yeni öğe için Ekle; sırayı ⠿ tutamacıyla veya Yukarı/Aşağı ile değiştirin.',
+  ems_b_tip_dismiss: 'İpucunu gizle',
+  ems_b_more_actions: 'Diğer işlemler',
+  ems_b_sheet_expand: 'Ayarları genişlet',
+  ems_b_sheet_collapse: 'E-postanın daha fazlasını göster',
+  ems_b_zoom_fit: 'E-postayı ekrana sığdır',
+  ems_b_zoom_fit_short: 'Sığdır',
+  ems_b_button_width: 'Düğme genişliği',
+  ems_b_width_auto: 'Metne göre',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -120520,6 +120604,27 @@ const ar: Partial<Record<TranslationKey, string>> = {
   terms_s2_body3: 'الأشخاص الذين يظهرون في مطابقة HOMATCH مهتمون محتملون بناءً على ما ذكروه وما وجدته المطابقة. لا يُقدَّم أحد كمشترٍ أو مستأجر مضمون، وفتح جهة الاتصال لا يعني أن بنكًا وافق على قرض لأحد.',
   terms_s4_body3: 'مطابقة HOMATCH: فتح بيانات اتصال شخص يكلّف السعر المعروض على بطاقته وفي التأكيد، مع أسباب هذا السعر. تدفع مقابل الشخص نفسه مرة واحدة فقط لكل حساب: من فتحته سابقًا يبقى متاحًا دون رسوم جديدة مهما كان الإعلان أو البحث أو السعر اللاحق. إذا ارتفع السعر قبل أن تؤكد، لا يُخصم شيء ويُعرض عليك السعر الجديد.',
   terms_s5_item8: 'استخدام بيانات الاتصال التي تم الحصول عليها في مطابقة HOMATCH لأي غرض غير عروض العقارات المناسبة، أو تمريرها للآخرين، أو التواصل مع أشخاص سحبوا إذنهم أو حظروك',
+
+  /* ── EMAIL STUDIO · EDITOR UX REBUILD ── */
+  ems_b_nav_edit: 'تحرير',
+  ems_b_nav_add: 'إضافة',
+  ems_b_add_element: 'إضافة عنصر',
+  ems_b_add_after: 'يُضاف بعد: {{name}}',
+  ems_b_add_at_end: 'يُضاف في نهاية الرسالة',
+  ems_b_elements_hint_touch: 'المس عنصرًا لإضافته بعد العنصر المحدد؛ يُفتح جاهزًا للتحرير.',
+  ems_b_block_actions: 'إجراءات {{name}}',
+  ems_b_drag_hint: 'نقل العنصر (اسحب)',
+  ems_b_tap_to_add_photo: 'إضافة صورة — حدد هذه الكتلة',
+  ems_b_tip_desktop: 'انقر أي جزء من الرسالة لتحريره على اليمين. اسحب من العناصر للإضافة، واسحب المقبض ⠿ بجانب الكتلة المحددة لنقلها.',
+  ems_b_tip_touch: 'المس أي جزء من الرسالة لتحريره. استخدم «إضافة» للعناصر الجديدة، واسحب المقبض ⠿ أو استخدم أعلى/أسفل لإعادة الترتيب.',
+  ems_b_tip_dismiss: 'إخفاء التلميح',
+  ems_b_more_actions: 'المزيد من الإجراءات',
+  ems_b_sheet_expand: 'توسيع الإعدادات',
+  ems_b_sheet_collapse: 'عرض المزيد من الرسالة',
+  ems_b_zoom_fit: 'ملاءمة الرسالة للشاشة',
+  ems_b_zoom_fit_short: 'ملاءمة',
+  ems_b_button_width: 'عرض الزر',
+  ems_b_width_auto: 'بحسب النص',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -144602,6 +144707,27 @@ const he: Partial<Record<TranslationKey, string>> = {
   terms_s2_body3: 'האנשים שמוצגים בהתאמות של HOMATCH מתעניינים פוטנציאליים, לפי מה שציינו ומה שההתאמה מצאה. אף אחד לא מוצג כקונה או שוכר מובטח, ופתיחת איש קשר אינה אומרת שבנק אישר למישהו הלוואה.',
   terms_s4_body3: 'ההתאמות של HOMATCH: פתיחת פרטי הקשר של אדם עולה את המחיר שמוצג בכרטיס שלו ובאישור, יחד עם הסיבות למחיר. על אותו אדם משלמים רק פעם אחת לכל חשבון: מי שכבר פתחת נשאר נגיש בלי חיוב חדש, בלי קשר למודעה, לחיפוש או למחיר מאוחר יותר. אם המחיר עלה לפני שאישרת, לא מחויב דבר ומוצג לך המחיר החדש.',
   terms_s5_item8: 'להשתמש בפרטי קשר שהתקבלו בהתאמות של HOMATCH לכל דבר מלבד הצעות על נכסים רלוונטיים, להעביר אותם לאחרים או ליצור קשר עם מי שביטל את ההרשאה או חסם אותך',
+
+  /* ── EMAIL STUDIO · EDITOR UX REBUILD ── */
+  ems_b_nav_edit: 'עריכה',
+  ems_b_nav_add: 'הוספה',
+  ems_b_add_element: 'הוספת רכיב',
+  ems_b_add_after: 'יתווסף אחרי: {{name}}',
+  ems_b_add_at_end: 'יתווסף בסוף המייל',
+  ems_b_elements_hint_touch: 'הקישו על רכיב כדי להוסיף אותו אחרי הנבחר; הוא נפתח מוכן לעריכה.',
+  ems_b_block_actions: 'פעולות עבור {{name}}',
+  ems_b_drag_hint: 'הזזת הרכיב (גררו)',
+  ems_b_tap_to_add_photo: 'הוספת תמונה — בחרו את הבלוק',
+  ems_b_tip_desktop: 'לחצו על כל חלק במייל כדי לערוך אותו מימין. גררו מ"רכיבים" כדי להוסיף; גררו את הידית ⠿ ליד בלוק נבחר כדי להזיז.',
+  ems_b_tip_touch: 'הקישו על כל חלק במייל כדי לערוך. "הוספה" לרכיבים חדשים; גררו את הידית ⠿ או השתמשו בלמעלה/למטה כדי לשנות סדר.',
+  ems_b_tip_dismiss: 'הסתרת הטיפ',
+  ems_b_more_actions: 'פעולות נוספות',
+  ems_b_sheet_expand: 'הרחבת ההגדרות',
+  ems_b_sheet_collapse: 'הצגת יותר מהמייל',
+  ems_b_zoom_fit: 'התאמת המייל למסך',
+  ems_b_zoom_fit_short: 'התאמה',
+  ems_b_button_width: 'רוחב הכפתור',
+  ems_b_width_auto: 'לפי הטקסט',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

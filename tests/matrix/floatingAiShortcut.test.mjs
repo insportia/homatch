@@ -8,7 +8,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -39,6 +39,9 @@ test('the shortcut never renders inside the AI product or over a composer', () =
     /* Subpaths are the same screen with the same composer. */
     '/chat/thread-123',
     '/outreach/whatsapp/inbox/conv-9',
+    /* Email Studio: the editor fills the screen and Email Studio has its own HOMI entry. */
+    '/outreach/email',
+    '/outreach/email/campaigns/c4',
   ]) {
     assert.equal(shouldShow(path), false, `${path} must not show the floating AI shortcut`);
   }
@@ -49,9 +52,18 @@ test('ordinary customer screens keep the shortcut', () => {
   for (const path of ['/dashboard', '/property', '/property/123456/matches',
     '/verify', '/mortgage', '/investment', '/find-property', '/credits',
     /* Prefix rules must not overreach: WhatsApp CAMPAIGNS has no composer. */
-    '/outreach/whatsapp']) {
+    '/outreach/whatsapp', '/outreach/meta']) {
     assert.equal(shouldShow(path), true, `${path} lost the floating AI shortcut`);
   }
+});
+
+test('the shortcut opens the FULL assistant directly — no intermediate panel', () => {
+  const body = read('src', 'components', 'common', 'AIFloatingButton.tsx');
+  assert.match(body, /navigate\('\/ai'\)/, 'the shortcut must open /ai itself');
+  assert.doesNotMatch(body, /useAssistant|setOpen\(/, 'an intermediate drawer is being opened again');
+  assert.ok(!existsSync(join(root, 'src', 'components', 'assistant', 'AssistantDrawer.tsx')), 'the intermediate mini-chat came back');
+  const layout = read('src', 'components', 'layouts', 'AppLayout.tsx');
+  assert.doesNotMatch(layout, /AssistantDrawer/, 'the app shell mounts the intermediate panel again');
 });
 
 test('the component defers to the rule and clears the bottom nav', () => {

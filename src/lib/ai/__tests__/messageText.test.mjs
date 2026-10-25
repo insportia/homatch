@@ -76,11 +76,9 @@ test('the matcher does not carry state between calls', () => {
 
 test('every surface that renders an assistant message goes through this', () => {
   const consultant = read('src/components/mortgage/ConsultantPanel.tsx');
-  const drawer = read('src/components/assistant/AssistantDrawer.tsx');
   const ai = read('src/pages/AIPage.tsx');
 
   assert.ok(consultant.includes('customerMessage('), 'the Mortgage consultant prints it raw again');
-  assert.ok(drawer.includes('customerMessage('), 'the assistant drawer prints it raw again');
   /* /ai does its own extraction because it also DRAWS the card from the
      block. It is the one surface allowed to parse rather than strip. */
   assert.ok(ai.includes('RESEARCH_JSON'), '/ai must still parse the block it renders a card from');

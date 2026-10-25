@@ -29,6 +29,9 @@ const COMPOSER_ROUTES = [
   // bottom edge (the shortcut sat exactly on Continue at desktop width), and
   // the builder carries HOMATCH AI inline for the ad copy it is writing.
   '/outreach/meta/create',
+  // Email Studio: the campaign editor fills the screen (on a phone the shortcut sat on the email
+  // canvas, on a desktop over the element settings), and Email Studio has its own HOMI entry.
+  '/outreach/email',
 ] as const;
 
 export function shouldShowFloatingAiShortcut(pathname: string): boolean {

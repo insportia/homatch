@@ -29,7 +29,7 @@ const HOOK = 'src/hooks/useAIChat.ts';
 const SURFACES = [
   'src/pages/AIPage.tsx',
   'src/components/mortgage/ConsultantPanel.tsx',
-  'src/components/assistant/AssistantDrawer.tsx',
+  /* The floating launcher opens /ai directly (owner, 2026-10-24); the drawer surface is gone. */
 ];
 
 /* ── One personality ────────────────────────────────────────────── */

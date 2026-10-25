@@ -1,11 +1,18 @@
 /*
  * THE WAITING SCREEN FOR A CONTRACT BEING READ.
  *
- * The analyser reports STATES, not a percentage, so the screen shows the
- * states: uploaded, waiting its turn, being read, ready. Each step is lit
- * only when the server has actually reached it. The elapsed time is real.
- * There is no percentage: nothing server-side knows what fraction of a
- * contract has been read, and a number nobody measured is decoration.
+ * The owner asked for this to feel like being inside the document while it
+ * is read. So the screen is the document: a page under a moving light, its
+ * lines lighting up, the topics HOMI reads for sliding out beside it, and
+ * HOMI (the 3D model) at work next to it (DocumentReader, ContractHomiGuide).
+ *
+ * NOTHING HERE IS FAKE PROGRESS. The analyser reports STATES, not a
+ * percentage, so the rail shows the states: uploaded, waiting its turn, being
+ * read, ready. Each step is lit only when the server has actually reached it,
+ * and the motion itself follows the state (a calm pulse while queued, the
+ * reading beam while RUNNING). The elapsed time is real. There is no
+ * percentage: nothing server-side knows what fraction of a contract has been
+ * read, and a number nobody measured is decoration.
  *
  * The optional Snake game is a separate component in its own chunk. It
  * shares nothing with the analysis: closing it, losing at it or never
@@ -14,13 +21,15 @@
  * longer exists after a deploy, closes the game and leaves this page alone.
  */
 import React, { Suspense, lazy, useEffect, useState } from 'react';
-import { Check, FileText, Gamepad2 } from 'lucide-react';
+import { CalendarClock, Check, Coins, Gamepad2, Scale, ShieldAlert, Users } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import type { AnalysisState } from '@/services/dealRoomDocuments';
 import { formatElapsed } from './progressEstimate';
 import { isChunkLoadError } from '@/lib/lazyRoute';
 import { reportError } from '@/lib/errorReporting';
+import { DocumentReader, type ReaderMode, type ReaderPull } from './DocumentReader';
+import { ContractHomiGuide } from './ContractHomiGuide';
 
 /* One retry for a chunk the network or a deploy lost; anything else reaches the boundary. */
 const SnakeGame = lazy(() => import('./SnakeGame').catch((e: unknown) => {
@@ -56,6 +65,26 @@ export function reachedStage(state: AnalysisState): Stage {
   return 'UPLOADED';
 }
 
+/** The reader's motion for a real server state. */
+export function readerModeFor(state: AnalysisState): ReaderMode {
+  if (state === 'DONE') return 'done';
+  if (state === 'RUNNING') return 'reading';
+  return 'queued';
+}
+
+/** The topics every contract is read for. Shared with the entry page. */
+export function useReaderPulls(): ReaderPull[] {
+  const { t } = useLanguage();
+  const i = 'h-3.5 w-3.5';
+  return [
+    { key: 'parties', label: t('ux_ct_pull_parties'), icon: <Users className={i} /> },
+    { key: 'money', label: t('ux_ct_pull_money'), icon: <Coins className={i} /> },
+    { key: 'dates', label: t('ux_ct_pull_dates'), icon: <CalendarClock className={i} /> },
+    { key: 'duties', label: t('ux_ct_pull_duties'), icon: <Scale className={i} /> },
+    { key: 'risks', label: t('ux_ct_pull_risks'), icon: <ShieldAlert className={i} /> },
+  ];
+}
+
 export function ContractProgress({
   state,
   startedAt,
@@ -65,6 +94,7 @@ export function ContractProgress({
   startedAt: number;
 }) {
   const { t } = useLanguage();
+  const pulls = useReaderPulls();
   const [now, setNow] = useState(() => Date.now());
   const [playing, setPlaying] = useState(false);
 
@@ -78,48 +108,57 @@ export function ContractProgress({
   const reached = STAGES.indexOf(reachedStage(state));
 
   return (
-    <div className="min-w-0 space-y-4 overflow-hidden rounded-2xl bg-[#0C1119] p-5 text-white shadow-hover sm:p-6" data-testid="contract-progress" data-stage={STAGES[reached]}>
-      <div className="flex items-center gap-4">
-        <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-white/20 bg-white/5" aria-hidden="true">
-          <FileText className="absolute inset-0 m-auto h-6 w-6 text-white/60" />
-          {state !== 'DONE' ? <span className="hm-doc-scan absolute inset-x-0 h-[2px] bg-[hsl(38_92%_60%)] shadow-[0_0_12px_hsl(38_92%_60%)]" /> : null}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-display text-base font-semibold">{t(state === 'DONE' ? 'ct_progress_done' : state === 'RUNNING' ? 'ct_progress_reading' : 'ct_progress_queued')}</p>
-          <p className="mt-0.5 text-sm tabular-nums text-white/70">{t('ct_stage_elapsed', { time: formatElapsed(elapsed) })}</p>
+    <div className="min-w-0 space-y-4" data-testid="contract-progress" data-stage={STAGES[reached]}>
+      <div className="relative min-w-0 overflow-hidden rounded-3xl bg-[#0C1119] p-5 text-white shadow-hover ring-1 ring-white/10 sm:p-7">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_70%_at_20%_0%,hsl(38_92%_56%/0.14),transparent_60%)]" aria-hidden="true" />
+        <div className="relative">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <p className="min-w-0 break-words font-display text-lg font-semibold sm:text-xl" aria-live="polite">
+              {t(state === 'DONE' ? 'ct_progress_done' : state === 'RUNNING' ? 'ct_progress_reading' : 'ct_progress_queued')}
+            </p>
+            <p className="shrink-0 text-sm tabular-nums text-white/70">{t('ct_stage_elapsed', { time: formatElapsed(elapsed) })}</p>
+          </div>
+
+          <DocumentReader mode={readerModeFor(state)} pulls={pulls} pullsTitle={t('ux_ct_pull_title')} className="mt-5" />
+
+          {/* The real states, on a rail that only moves when the server does. */}
+          <ol className="mt-6 grid grid-cols-4 gap-1.5" aria-label={t('ct_stage_list')}>
+            {STAGES.map((stage, i) => {
+              const done = i < reached || (i === reached && stage === 'DONE');
+              const current = i === reached && stage !== 'DONE';
+              return (
+                <li key={stage} aria-current={current ? 'step' : undefined} className="min-w-0">
+                  <span className="relative block h-1 overflow-hidden rounded-full bg-white/10">
+                    <span className={cn('ct-rail-fill absolute inset-0 rounded-full bg-[hsl(38_92%_56%)]', done ? 'scale-x-100' : current ? 'scale-x-50 animate-pulse motion-reduce:animate-none' : 'scale-x-0')} />
+                  </span>
+                  <span className={cn('mt-2 flex min-w-0 items-start gap-1 text-xs leading-snug sm:text-sm',
+                    done ? 'text-white' : current ? 'font-semibold text-[hsl(38_92%_70%)]' : 'text-white/45')}>
+                    {done ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(38_92%_60%)]" aria-hidden="true" /> : null}
+                    <span className="min-w-0 break-words">{t(`ct_stage_${stage.toLowerCase()}`)}</span>
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+
+          <p className="mt-4 text-sm leading-relaxed text-white/70">{state === 'DONE' ? t('ct_progress_done_hint') : t('ct_stage_hint')}</p>
         </div>
       </div>
 
-      <ol className="grid gap-2 sm:grid-cols-4" aria-label={t('ct_stage_list')}>
-        {STAGES.map((stage, i) => {
-          const done = i < reached || (i === reached && stage === 'DONE');
-          const current = i === reached && stage !== 'DONE';
-          return (
-            <li key={stage} aria-current={current ? 'step' : undefined}
-              className={cn('flex items-center gap-2 rounded-xl px-3 py-2 text-sm',
-                done ? 'bg-white/10 text-white' : current ? 'bg-[hsl(38_92%_56%)]/15 text-[hsl(38_92%_70%)]' : 'text-white/40')}>
-              <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
-                done ? 'border-[hsl(38_92%_56%)] bg-[hsl(38_92%_56%)] text-[#0C1119]' : current ? 'border-[hsl(38_92%_60%)]' : 'border-white/25')}>
-                {done ? <Check className="h-3 w-3" aria-hidden="true" /> : current ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[hsl(38_92%_60%)] motion-reduce:animate-none" /> : null}
-              </span>
-              {t(`ct_stage_${stage.toLowerCase()}`)}
-            </li>
-          );
-        })}
-      </ol>
-
-      <p className="text-2xs leading-relaxed text-white/60">{state === 'DONE' ? t('ct_progress_done_hint') : t('ct_stage_hint')}</p>
+      {state !== 'DONE' ? <ContractHomiGuide mode="reading" /> : null}
 
       {state !== 'DONE' ? (
         playing ? (
-          <SnakeBoundary onFailed={() => setPlaying(false)}>
-            <Suspense fallback={null}>
-              <SnakeGame onClose={() => setPlaying(false)} />
-            </Suspense>
-          </SnakeBoundary>
+          <div className="rounded-2xl bg-[#0C1119] p-3 text-white shadow-hover">
+            <SnakeBoundary onFailed={() => setPlaying(false)}>
+              <Suspense fallback={null}>
+                <SnakeGame onClose={() => setPlaying(false)} />
+              </Suspense>
+            </SnakeBoundary>
+          </div>
         ) : (
           <button type="button" onClick={() => setPlaying(true)}
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 px-4 text-sm font-medium text-white/90 hover:border-[hsl(38_92%_56%)]">
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-medium text-foreground shadow-card hover:border-[hsl(var(--gold-border))]">
             <Gamepad2 className="h-4 w-4" aria-hidden="true" />{t('ct_snake_invite')}
           </button>
         )

@@ -447,7 +447,7 @@ test('the prompt names the field names inside every item, not just the keys', ()
   // field something else. Validating against an unstated schema is the bug.
   const { system } = buildAnalysisPrompt(CONTRACT, { interestingFactTypes: [] });
   for (const shape of [
-    '"clauses":    [{"label","plain","quote","page","attention","review":{"risk","why","favours","suggestion","tradeoffs"}}]',
+    '"clauses":    [{"label","plain","quote","page","attention","review":{"risk","why","favours","suggestion","tradeoffs","benefit"}}]',
     '"obligations":[{"party","label","plain","quote","page"}]',
     '"deadlines":  [{"label","value","quote","page"}]',
     '"financial":  [{"label","value","quote","page"}]',
@@ -548,5 +548,18 @@ test('the prompt asks for reviews in the document\'s own language and for the si
   const { system } = buildAnalysisPrompt(CONTRACT, { interestingFactTypes: [] });
   assert.match(system, /SAME LANGUAGE as the\s+'?\s*document|SAME LANGUAGE as the/);
   assert.match(system, /interests\s+of the person who will sign first|of the person who will sign first/);
-  assert.match(system, /"review":\{"risk","why","favours","suggestion","tradeoffs"\}/);
+  assert.match(system, /"review":\{"risk","why","favours","suggestion","tradeoffs","benefit"\}/);
+});
+
+test('a review may say what the new wording changes for the signer, and it passes the same gates', () => {
+  const benefit = 'You can leave the deal if the handover is late.';
+  const ok = parseAnalysis(analysisJson({ clauses: [flagged({ ...goodReview, benefit })] }), CONTRACT);
+  assert.equal(ok.clauses[0].review.benefit, benefit);
+  // Optional: an older-style review without it is unchanged.
+  const old = parseAnalysis(analysisJson({ clauses: [flagged(goodReview)] }), CONTRACT);
+  assert.equal('benefit' in old.clauses[0].review, false);
+  // A benefit with an invented number is dropped; the review itself stands.
+  const bad = parseAnalysis(analysisJson({ clauses: [flagged({ ...goodReview, benefit: 'You get 45 extra days.' })] }), CONTRACT);
+  assert.ok(bad.clauses[0].review);
+  assert.equal('benefit' in bad.clauses[0].review, false);
 });

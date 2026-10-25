@@ -11,6 +11,13 @@
  * is stored in still exists underneath (see services/contracts.ts for why it
  * must), and the customer is never shown it or asked about it.
  *
+ * THE START IS THE PRODUCT'S FIRST IMPRESSION. The owner asked for premium:
+ * the hero is a page being read under a moving light with HOMI (the live 3D
+ * model) beside it, then what the reading gives you, then the upload with its
+ * price said BEFORE anything starts: "this month's free analysis" while the
+ * monthly included analysis is unused, otherwise the fixed price from the
+ * server (contract_fixed_price). A price that cannot be read is not guessed.
+ *
  * THE TYPE SELECTOR IS OPTIONAL AND SAYS SO. The analyser identifies the
  * document type on its own and is good at it. Asking first would be a
  * required question with a guessable answer, which is the worst kind. So the
@@ -20,16 +27,20 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FileSignature, ArrowRight, ShieldCheck } from 'lucide-react';
+import { FileSignature, ArrowRight, ShieldCheck, GitCompare, FileCheck2, ListChecks, Gift, Coins } from 'lucide-react';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useEntitlements } from '@/hooks/useEntitlements';
 import { DropZone } from '@/components/documents/DropZone';
 import { ContractList } from '@/components/contracts/ContractList';
+import { DocumentReader } from '@/components/contracts/DocumentReader';
+import { useReaderPulls } from '@/components/contracts/ContractProgress';
+import { HomiHomeStage } from '@/components/homi/HomiHomeStage';
 import { CONTRACT_TYPES, type ContractTypeId } from '@/components/contracts/contractTypes';
 import { ALLOWED_MIME } from '@/services/dealRoomDocuments';
-import { listContracts, startContractAnalysis, type ContractSummary } from '@/services/contracts';
+import { getContractPrice, listContracts, startContractAnalysis, type ContractSummary } from '@/services/contracts';
 import { rememberPendingPath } from '@/services/returnTo';
 
 /** How many of a customer's contracts the entry page shows before "see all". */
@@ -38,8 +49,10 @@ export const RECENT_LIMIT = 6;
 export default function ContractsPage() {
   const { t, lang } = useLanguage();
   const { homatchUser } = useAuth();
+  const ent = useEntitlements();
   const navigate = useNavigate();
   const location = useLocation();
+  const pulls = useReaderPulls();
 
   /*
    * Arriving from a finished verification.
@@ -60,6 +73,7 @@ export default function ContractsPage() {
   const [type, setType] = useState<ContractTypeId>('AUTO');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [price, setPrice] = useState<{ credits: number; usd: number } | null>(null);
 
   useEffect(() => {
     if (!homatchUser) { setRecent([]); return; }
@@ -67,8 +81,22 @@ export default function ContractsPage() {
     listContracts(RECENT_LIMIT)
       .then((r) => { if (alive) setRecent(r); })
       .catch(() => { if (alive) setRecent([]); });
+    getContractPrice()
+      .then((p) => { if (alive) setPrice(p); })
+      .catch(() => { /* no number rather than a guessed one */ });
     return () => { alive = false; };
   }, [homatchUser]);
+
+  /* What the next analysis costs this customer, said before they start. */
+  const included = !!homatchUser && !ent.loading && ent.includedRemaining('CONTRACT_INTELLIGENCE') > 0;
+  const priceLabel = included
+    ? t('ux_ct_price_free')
+    : price
+      ? t('ux_ct_price_paid', {
+          credits: price.credits.toLocaleString(lang, { maximumFractionDigits: 2 }),
+          usd: price.usd.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }),
+        })
+      : null;
 
   const onFile = useCallback(
     async (file: File) => {
@@ -103,24 +131,46 @@ export default function ContractsPage() {
     [handoff.roomId, homatchUser, lang, navigate, t, type]
   );
 
+  const gains: Array<{ icon: React.ReactNode; title: string; body: string }> = [
+    { icon: <ListChecks className="h-5 w-5" />, title: t('ux_ct_gain1_t'), body: t('ux_ct_gain1_b') },
+    { icon: <GitCompare className="h-5 w-5" />, title: t('ux_ct_gain2_t'), body: t('ux_ct_gain2_b') },
+    { icon: <FileCheck2 className="h-5 w-5" />, title: t('ux_ct_gain3_t'), body: t('ux_ct_gain3_b') },
+  ];
+
   return (
     <AppLayout noPadding>
       <div className="hm-invest hm-invest-canvas min-h-[calc(100vh-4rem)]">
-        <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 pb-24 sm:px-6 lg:px-8">
-          {/* The document product's navy identity band; the upload and the
-              analysis below it read on white. */}
-          <header className="overflow-hidden rounded-2xl bg-[#0C1119] px-5 py-6 text-white shadow-hover sm:px-7">
-            <div className="flex items-center gap-2.5">
-              <FileSignature className="h-5 w-5 shrink-0 text-[hsl(38_92%_60%)] sm:h-6 sm:w-6" aria-hidden="true" />
-              <h1 className="min-w-0 break-words font-display text-xl font-bold text-white sm:text-3xl">
-                {t('ct_page_title')}
-              </h1>
+        <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8">
+          {/* The document product's navy identity band: a page being read, HOMI beside it. */}
+          <header className="relative overflow-hidden rounded-3xl bg-[#0C1119] px-5 pb-6 pt-6 text-white shadow-hover sm:px-8 sm:pt-8">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(100%_70%_at_0%_0%,hsl(38_92%_56%/0.16),transparent_60%),radial-gradient(70%_60%_at_100%_100%,hsl(215_70%_45%/0.18),transparent_60%)]" aria-hidden="true" />
+            <div className="relative flex min-w-0 items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2.5">
+                  <FileSignature className="h-5 w-5 shrink-0 text-[hsl(38_92%_60%)] sm:h-6 sm:w-6" aria-hidden="true" />
+                  <h1 className="min-w-0 break-words font-display text-2xl font-bold text-white sm:text-4xl">
+                    {t('ct_page_title')}
+                  </h1>
+                </div>
+                <p className="measure mt-2 min-w-0 break-words text-[15px] leading-relaxed text-white/80 sm:text-base">
+                  {t('ux_ct_hero_sub')}
+                </p>
+              </div>
+              <HomiHomeStage gesture="greeting" framing="upper" className="-me-1 h-24 w-20 shrink-0 sm:h-32 sm:w-28" />
             </div>
-            <p className="measure mt-2 min-w-0 break-words text-[15px] leading-relaxed text-white/80">
-              {t('ct_page_subtitle')}
-            </p>
-            <span className="mt-4 block h-[3px] w-14 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
+            <DocumentReader mode="idle" pulls={pulls} pullsTitle={t('ux_ct_pull_title')} className="relative mt-6" />
           </header>
+
+          {/* What the reading gives you, before you give it anything. */}
+          <section aria-label={t('ux_ct_gains_label')} className="grid gap-3 sm:grid-cols-3">
+            {gains.map((g, i) => (
+              <div key={i} className="ct-rise min-w-0 rounded-2xl border border-border bg-card p-4 shadow-card" style={{ ['--i' as string]: i } as React.CSSProperties}>
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))] ring-1 ring-[hsl(var(--gold-border))]/50" aria-hidden="true">{g.icon}</span>
+                <p className="mt-3 min-w-0 break-words font-semibold text-foreground">{g.title}</p>
+                <p className="mt-1 min-w-0 break-words text-sm leading-relaxed text-ink-soft">{g.body}</p>
+              </div>
+            ))}
+          </section>
 
           {linkedProperty ? (
             <p className="flex min-w-0 flex-wrap items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
@@ -131,63 +181,82 @@ export default function ContractsPage() {
             </p>
           ) : null}
 
-          {/* Optional, and visibly optional: the default is already chosen. */}
-          <section className="space-y-2">
-            <p className="text-sm font-medium text-foreground">{t('ct_type_label')}</p>
-            <div className="flex flex-wrap gap-2">
-              {CONTRACT_TYPES.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  aria-pressed={type === opt.id}
-                  onClick={() => setType(opt.id)}
-                  className={`min-h-9 min-w-0 rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
-                    type === opt.id
-                      /* Selected must be unmistakable: solid navy with white
-                         text, never a pale tint that reads as disabled. */
-                      ? 'border-[#0C1119] bg-[#0C1119] font-semibold text-white shadow-card'
-                      : 'border-border bg-card text-foreground/80 hover:border-[hsl(var(--gold-border))] hover:text-foreground'
-                  }`}
+          <section className="space-y-4 rounded-3xl border border-border bg-card p-4 shadow-card sm:p-6" aria-labelledby="ct-upload-title">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 id="ct-upload-title" className="min-w-0 break-words font-display text-lg font-semibold text-foreground">{t('ux_ct_upload_title')}</h2>
+              {priceLabel ? (
+                <span
+                  data-testid="contract-price"
+                  className={included
+                    ? 'inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-200'
+                    : 'inline-flex items-center gap-1.5 rounded-full bg-[#0C1119] px-3 py-1 text-sm font-semibold text-white'}
                 >
-                  <span className="break-words">{t(opt.labelKey)}</span>
-                </button>
-              ))}
+                  {included ? <Gift className="h-4 w-4" aria-hidden="true" /> : <Coins className="h-4 w-4 text-[hsl(38_92%_60%)]" aria-hidden="true" />}
+                  {priceLabel}
+                </span>
+              ) : null}
             </div>
-            <p className="min-w-0 break-words text-2xs leading-relaxed text-muted-foreground">
-              {t('ct_type_hint')}
-            </p>
-          </section>
+            {priceLabel ? (
+              <p className="-mt-2 text-sm leading-relaxed text-ink-soft">{included ? t('ux_ct_price_free_hint') : t('ux_ct_price_paid_hint')}</p>
+            ) : null}
 
-          <DropZone
-            onFile={(f) => { void onFile(f); }}
-            busy={busy}
-            accept={ALLOWED_MIME.join(',')}
-            error={error}
-          />
+            {/* Optional, and visibly optional: the default is already chosen. */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">{t('ct_type_label')}</p>
+              <div className="flex flex-wrap gap-2">
+                {CONTRACT_TYPES.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    aria-pressed={type === opt.id}
+                    onClick={() => setType(opt.id)}
+                    className={`min-h-9 min-w-0 rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+                      type === opt.id
+                        /* Selected must be unmistakable: solid navy with white
+                           text, never a pale tint that reads as disabled. */
+                        ? 'border-[#0C1119] bg-[#0C1119] font-semibold text-white shadow-card'
+                        : 'border-border bg-card text-foreground/80 hover:border-[hsl(var(--gold-border))] hover:text-foreground'
+                    }`}
+                  >
+                    <span className="break-words">{t(opt.labelKey)}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="min-w-0 break-words text-xs leading-relaxed text-muted-foreground">
+                {t('ct_type_hint')}
+              </p>
+            </div>
+
+            <DropZone
+              onFile={(f) => { void onFile(f); }}
+              busy={busy}
+              accept={ALLOWED_MIME.join(',')}
+              error={error}
+            />
+          </section>
 
           {homatchUser ? (
             <section className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+                <h2 className="min-w-0 break-words font-display text-lg font-semibold tracking-tight">
                   {t('ct_recent_title')}
                 </h2>
-                {recent && recent.length >= RECENT_LIMIT ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="shrink-0"
-                    onClick={() => navigate('/contracts/history')}
-                  >
-                    {t('ct_see_all')}
-                    <ArrowRight className="ms-1.5 h-3.5 w-3.5" aria-hidden="true" />
-                  </Button>
-                ) : null}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => navigate('/contracts/history')}
+                >
+                  {t('ux_ct_open_history')}
+                  <ArrowRight className="ms-1.5 h-3.5 w-3.5 rtl:rotate-180" aria-hidden="true" />
+                </Button>
               </div>
 
               <ContractList
                 items={recent}
                 emptyTitle={t('ct_empty_title')}
                 emptyHint={t('ct_empty_hint')}
+                onDeleted={(id) => setRecent((cur) => (cur ? cur.filter((c) => c.id !== id) : cur))}
               />
             </section>
           ) : null}

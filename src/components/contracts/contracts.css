@@ -1,0 +1,217 @@
+/*
+ * CONTRACTS — motion for "reading the document".
+ *
+ * Kept beside the components that use it (not in index.css) so the Contracts
+ * workstream owns its own motion. Every animation here is decoration over
+ * real state: the components decide WHICH mode is shown from the server's
+ * analysis_state; nothing here invents progress. Under reduced motion every
+ * animation stops and the page shows a still, fully legible frame.
+ */
+
+.ct-stage {
+  --ct-gold: 38 92% 58%;
+  --ct-ink: 216 35% 7%;
+  perspective: 900px;
+}
+
+/* The paper, gently tilted and floating, as if held up to be read. */
+.ct-paper {
+  transform: rotateX(8deg) rotateY(-12deg) rotateZ(1deg);
+  transform-style: preserve-3d;
+  animation: ct-float 7s ease-in-out infinite;
+  box-shadow:
+    0 30px 60px -20px rgb(0 0 0 / 0.65),
+    0 0 0 1px rgb(255 255 255 / 0.06),
+    0 0 50px -10px hsl(var(--ct-gold) / 0.25);
+}
+[dir='rtl'] .ct-paper { transform: rotateX(8deg) rotateY(12deg) rotateZ(-1deg); }
+@keyframes ct-float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -6px; }
+}
+
+/* A second sheet behind, for depth. */
+.ct-paper-back {
+  transform: rotateX(8deg) rotateY(-12deg) rotateZ(-4deg) translateZ(-30px);
+}
+[dir='rtl'] .ct-paper-back { transform: rotateX(8deg) rotateY(12deg) rotateZ(4deg) translateZ(-30px); }
+
+/* Text lines on the paper. */
+.ct-line {
+  position: relative;
+  height: 5px;
+  border-radius: 999px;
+  background: rgb(15 23 42 / 0.16);
+  overflow: hidden;
+}
+.ct-line::after {
+  content: '';
+  position: absolute;
+  inset: -2px 0;
+  border-radius: inherit;
+  background: hsl(var(--ct-gold) / 0.85);
+  opacity: 0;
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+[dir='rtl'] .ct-line::after { transform-origin: right center; }
+
+/* READING: a line lights up as the light passes it; marked lines keep a trace. */
+.ct-reading .ct-line::after {
+  animation: ct-line-read var(--ct-cycle, 4.2s) ease-out infinite;
+  animation-delay: calc(var(--i) * (var(--ct-cycle, 4.2s) / 14));
+}
+.ct-reading .ct-line[data-mark='1']::after {
+  animation-name: ct-line-mark;
+}
+@keyframes ct-line-read {
+  0% { opacity: 0; transform: scaleX(0); }
+  8% { opacity: 0.9; transform: scaleX(1); }
+  22% { opacity: 0; transform: scaleX(1); }
+  100% { opacity: 0; transform: scaleX(1); }
+}
+@keyframes ct-line-mark {
+  0% { opacity: 0; transform: scaleX(0); }
+  8% { opacity: 1; transform: scaleX(1); }
+  70% { opacity: 0.55; transform: scaleX(1); }
+  100% { opacity: 0; transform: scaleX(1); }
+}
+
+/* IDLE (upload page): a slow, calm pass. */
+.ct-idle { --ct-cycle: 7s; }
+.ct-idle .ct-line::after {
+  animation: ct-line-read var(--ct-cycle) ease-out infinite;
+  animation-delay: calc(var(--i) * (var(--ct-cycle) / 14));
+}
+
+/* DONE: the marked lines stay lit. */
+.ct-done .ct-line[data-mark='1']::after { opacity: 0.6; transform: scaleX(1); }
+
+/* The scanning light. */
+.ct-beam {
+  position: absolute;
+  inset-inline: -8%;
+  height: 34px;
+  top: -10%;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, hsl(var(--ct-gold) / 0.28) 45%, hsl(var(--ct-gold) / 0.95) 50%, hsl(var(--ct-gold) / 0.28) 55%, transparent);
+  filter: blur(0.3px);
+  mix-blend-mode: multiply;
+  animation: ct-beam var(--ct-cycle, 4.2s) cubic-bezier(.45, .05, .55, .95) infinite;
+}
+.ct-beam::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  height: 2px;
+  background: hsl(var(--ct-gold));
+  box-shadow: 0 0 18px 4px hsl(var(--ct-gold) / 0.7);
+}
+@keyframes ct-beam {
+  0% { top: -10%; opacity: 0; }
+  6% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+.ct-queued .ct-beam { animation: ct-beam-wait 2.4s ease-in-out infinite; top: 6%; }
+@keyframes ct-beam-wait {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.9; }
+}
+
+/* Findings being pulled out of the page, one after another. */
+.ct-pull {
+  opacity: 0;
+  animation: ct-pull var(--ct-pull-cycle, 9s) cubic-bezier(.2, .8, .2, 1) infinite;
+  animation-delay: calc(var(--i) * 1.1s);
+}
+@keyframes ct-pull {
+  0% { opacity: 0; transform: translateX(-28px) scale(0.85); filter: blur(3px); }
+  8% { opacity: 1; transform: translateX(0) scale(1); filter: blur(0); }
+  80% { opacity: 1; transform: translateX(0) scale(1); }
+  92%, 100% { opacity: 0; transform: translateX(6px) scale(0.98); }
+}
+[dir='rtl'] .ct-pull { animation-name: ct-pull-rtl; }
+@keyframes ct-pull-rtl {
+  0% { opacity: 0; transform: translateX(28px) scale(0.85); filter: blur(3px); }
+  8% { opacity: 1; transform: translateX(0) scale(1); filter: blur(0); }
+  80% { opacity: 1; transform: translateX(0) scale(1); }
+  92%, 100% { opacity: 0; transform: translateX(-6px) scale(0.98); }
+}
+.ct-pull-static { opacity: 1; }
+
+/* A soft gold halo breathing behind HOMI and the paper. */
+.ct-halo {
+  background: radial-gradient(closest-side, hsl(var(--ct-gold) / 0.22), transparent 70%);
+  animation: ct-halo 5s ease-in-out infinite;
+}
+@keyframes ct-halo {
+  0%, 100% { opacity: 0.55; transform: scale(0.96); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+
+/* Floating particles of light over the stage. */
+.ct-mote {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: hsl(var(--ct-gold));
+  box-shadow: 0 0 8px 2px hsl(var(--ct-gold) / 0.6);
+  opacity: 0;
+  animation: ct-mote 6s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 0.9s);
+}
+@keyframes ct-mote {
+  0% { opacity: 0; transform: translateY(10px); }
+  30% { opacity: 0.9; }
+  100% { opacity: 0; transform: translateY(-46px); }
+}
+
+/* Stage dots on the progress rail. */
+.ct-rail-fill {
+  transform-origin: left center;
+  transition: transform 900ms cubic-bezier(.2, .8, .2, 1);
+}
+[dir='rtl'] .ct-rail-fill { transform-origin: right center; }
+
+/* Cards arriving in the result. */
+.ct-rise { animation: ct-rise 600ms cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--i, 0) * 70ms); }
+@keyframes ct-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Word-level diff marks. */
+.ct-del {
+  background: hsl(0 84% 60% / 0.14);
+  color: hsl(0 60% 34%);
+  text-decoration: line-through;
+  text-decoration-color: hsl(0 70% 45% / 0.7);
+  text-decoration-thickness: 1.5px;
+  border-radius: 4px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.ct-ins {
+  background: hsl(142 70% 40% / 0.16);
+  color: hsl(142 64% 22%);
+  border-bottom: 2px solid hsl(142 60% 38% / 0.55);
+  border-radius: 4px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ct-paper, .ct-beam, .ct-pull, .ct-halo, .ct-mote, .ct-rise,
+  .ct-reading .ct-line::after, .ct-idle .ct-line::after { animation: none !important; }
+  .ct-pull { opacity: 1; transform: none; filter: none; }
+  .ct-beam { top: 40%; opacity: 0.8; }
+  .ct-mote { display: none; }
+  .ct-rise { opacity: 1; transform: none; }
+  .ct-reading .ct-line[data-mark='1']::after { opacity: 0.55; transform: scaleX(1); }
+  .ct-rail-fill { transition: none; }
+}

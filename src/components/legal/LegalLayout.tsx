@@ -245,7 +245,7 @@ export function LegalContactCard({ show }: { show: Array<'legal' | 'privacy' | '
         </React.Fragment>
       ))}
       <dt className="text-muted-foreground">{t('legal_contact_website')}</dt>
-      <dd><a href={LEGAL_OPERATOR.website} dir="ltr">www.homatch.live</a></dd>
+      <dd><a href={LEGAL_OPERATOR.website} dir="ltr">{LEGAL_OPERATOR.website.replace(/^https?:\/\//, '')}</a></dd>
     </dl>
   );
 }

@@ -88,6 +88,26 @@ async function sha256Hex(buf: ArrayBuffer): Promise<string> {
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * The product's fixed price in credits, or null when it is not fixed-priced.
+ * Read from billable_products (billing_mode FIXED, standard_retail_cents), so
+ * an admin price change needs no redeploy. 10 credits = $1, so credits =
+ * cents / 10. Any read failure answers null: the run then falls back to the
+ * cost-based path rather than charging a guessed amount.
+ */
+async function fixedPriceCredits(svc: any, productCode: string): Promise<number | null> {
+  try {
+    const { data } = await svc.from('billable_products')
+      .select('billing_mode, standard_retail_cents').eq('code', productCode).maybeSingle();
+    if (data?.billing_mode !== 'FIXED') return null;
+    const cents = Number(data.standard_retail_cents);
+    if (!Number.isFinite(cents) || cents <= 0) return null;
+    return Math.round(cents) / 10;
+  } catch {
+    return null;
+  }
+}
+
 /** Trust the bytes, never the filename or the declared MIME. */
 
 serve(async (req) => {
@@ -95,6 +115,12 @@ serve(async (req) => {
 
   let supabase: any = null;
   let documentId = '';
+  /* The hold this run placed, and whether it was settled or released. Any
+   * exception after the hold gives the money back in the catch below instead
+   * of leaving it reserved until the sweeper finds it. */
+  let heldGrant: Awaited<ReturnType<typeof beginExecution>> | null = null;
+  let billingClosed = false;
+  let svcForRelease: any = null;
 
   try {
     const authHeader = req.headers.get('Authorization') ?? '';
@@ -357,10 +383,17 @@ serve(async (req) => {
      * whether the legal reading is correct: a Standard analysis says the same
      * true things about the same clauses as a Maximum one. */
     const svc = serviceClient();
+    svcForRelease = svc;
     const { data: hmUser } = await svc.from('users').select('id').eq('auth_id', userId).maybeSingle();
     if (!hmUser?.id) return json({ error: 'unauthorized' }, 401);
 
     const analysisStartedAt = Date.now();
+    /* THE PRICE IS FIXED when billable_products says so (owner decision
+     * 2026-10-25: 3 credits = $0.30, migration 20261204100100). The hold is
+     * exactly that price, never shrunk to a smaller balance, and success
+     * settles exactly that price below. The monthly included analysis is
+     * untouched: beginExecution still funds it from the allowance first. */
+    const fixedCredits = await fixedPriceCredits(svc, 'CONTRACT_INTELLIGENCE');
     const grant = await beginExecution(svc, {
       userId: hmUser.id,
       productCode: 'CONTRACT_INTELLIGENCE',
@@ -368,8 +401,12 @@ serve(async (req) => {
       // after a transient failure reuses the hold rather than placing another.
       idempotencyKey: `contract:${hmUser.id}:${sha}`,
       jobRef: documentId,
-      metadata: { pages },
+      metadata: { pages, ...(fixedCredits != null ? { fixed_price_credits: fixedCredits } : {}) },
+      ...(fixedCredits != null
+        ? { authorizedMaxCredits: fixedCredits, budgetIsCeiling: true, requireFullBudget: true }
+        : {}),
     });
+    heldGrant = grant.ok ? grant : null;
 
     if (!grant.ok) {
       const { data: ent } = await svc.rpc('billing_entitlements', { p_user_id: hmUser.id });
@@ -446,6 +483,7 @@ serve(async (req) => {
     // An empty model response is our failure, not the customer's. Charge
     // nothing and give an included slot back.
     if (!modelText) {
+      billingClosed = true;
       await releaseExecution(svc, grant, 'model_returned_nothing');
     }
 
@@ -530,8 +568,12 @@ serve(async (req) => {
         p_output_tokens: Number(modelUsage?.output_tokens ?? 0),
         p_web_search_calls: 0,
       });
+      billingClosed = true;
       try {
         const settled = await settleExecution(svc, grant, {
+          // Fixed price: exactly that, whatever the measured cost (which is
+          // still recorded as COGS). Absent: the cost-based quote as before.
+          ...(fixedCredits != null ? { priceCredits: fixedCredits } : {}),
           provider: 'openai',
           providerOperation: 'contract_analysis',
           model: modelId ?? MODEL,
@@ -622,6 +664,11 @@ serve(async (req) => {
   } catch (e) {
     // Never log document text. The message is ours, not the document's.
     console.error('deal-room-document-analyze failed', e instanceof Error ? e.message : 'unknown');
+    // Failed after the hold and before settlement: charge nothing.
+    if (heldGrant && !billingClosed && svcForRelease) {
+      billingClosed = true;
+      await releaseExecution(svcForRelease, heldGrant, 'analysis_failed').catch(() => {});
+    }
     if (supabase && documentId) {
       await supabase
         .from('deal_room_documents')

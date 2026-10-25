@@ -80,11 +80,6 @@ export default function MortgageTermPage() {
       <PageMeta title={title} description={t(pageSummaryKey(term))} />
       <div className="hm-customer hm-customer-canvas min-h-[calc(100vh-4rem)]">
         <article className="mx-auto w-full max-w-[48rem] space-y-5 px-4 py-6 sm:space-y-6 sm:px-6 sm:py-10">
-          <Link to={TERMS_INDEX_PATH} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-medium text-foreground shadow-card transition-colors hover:border-[hsl(var(--gold-border))]">
-            <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
-            {t('mortgage_tp_all_terms')}
-          </Link>
-
           <TermHero
             eyebrow={<span className="inline-flex items-center gap-2.5"><CategoryGlyph category={page.category} className="h-9 w-9 rounded-xl" />{t(categoryKey(page.category))}</span>}
             title={title}

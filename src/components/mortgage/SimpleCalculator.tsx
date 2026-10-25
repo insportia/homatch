@@ -49,9 +49,12 @@ function Field({
   hint,
   error,
   term,
+  aside,
   children,
 }: {
   id: string;
+  /** A small control at the end of the label row. */
+  aside?: React.ReactNode;
   label: string;
   /** A financial term worth explaining beside the label. */
   term?: GlossaryTerm;
@@ -66,6 +69,7 @@ function Field({
           {label}
         </label>
         {term ? <TermInfo term={term} /> : null}
+        {aside ? <div className="ms-auto">{aside}</div> : null}
       </div>
       {children}
       {error ? (
@@ -230,35 +234,8 @@ export function SimpleCalculator({
           id="mtg-down"
           label={t('mortgage_label_down_payment')}
           term="DOWN_PAYMENT"
-          error={errorFor('downPayment')}
-          hint={
-            downMode === 'AMOUNT'
-              ? downPercent !== null
-                ? t('mortgage_calc_down_is_percent', { pct: downPercent })
-                : null
-              : draft.downPayment !== null
-                ? t('mortgage_calc_down_is_amount', {
-                    amount: formatMoney(draft.downPayment, currency, locale),
-                  })
-                : null
-          }
-        >
-          <div className="flex items-start gap-2">
-            <div className="min-w-0 flex-1">
-              {downMode === 'AMOUNT' ? (
-                <MoneyField
-                  id="mtg-down"
-                  persistKey="downPayment"
-                  loanCurrency={currency}
-                  value={draft.downPayment}
-                  onChange={(v) => { setProblem(null); set('downPayment', v); }}
-                  inputRef={refs.downPayment}
-                >
-                  {downInput}
-                </MoneyField>
-              ) : downInput}
-            </div>
-            <div className="flex min-h-12 shrink-0 rounded-xl border border-border bg-[hsl(var(--secondary))] p-1" role="group" aria-label={t('mortgage_label_down_payment')}>
+          aside={(
+            <div className="flex shrink-0 rounded-xl border border-border bg-[hsl(var(--secondary))] p-1" role="group" aria-label={t('mortgage_label_down_payment')}>
               {(['AMOUNT', 'PERCENT'] as const).map((mode) => (
                 <button
                   key={mode}
@@ -276,6 +253,35 @@ export function SimpleCalculator({
                   {mode === 'AMOUNT' ? <Banknote className="h-4 w-4" aria-hidden="true" /> : '%'}
                 </button>
               ))}
+            </div>
+          )}
+          error={errorFor('downPayment')}
+          hint={
+            downMode === 'AMOUNT'
+              ? downPercent !== null
+                ? t('mortgage_calc_down_is_percent', { pct: downPercent })
+                : null
+              : draft.downPayment !== null
+                ? t('mortgage_calc_down_is_amount', {
+                    amount: formatMoney(draft.downPayment, currency, locale),
+                  })
+                : null
+          }
+        >
+          <div>
+            <div className="min-w-0">
+              {downMode === 'AMOUNT' ? (
+                <MoneyField
+                  id="mtg-down"
+                  persistKey="downPayment"
+                  loanCurrency={currency}
+                  value={draft.downPayment}
+                  onChange={(v) => { setProblem(null); set('downPayment', v); }}
+                  inputRef={refs.downPayment}
+                >
+                  {downInput}
+                </MoneyField>
+              ) : downInput}
             </div>
           </div>
         </Field>

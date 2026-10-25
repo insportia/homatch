@@ -29,6 +29,8 @@ import type { HomiState } from '@/components/homi/homiStates';
 import { HomiHomeStage } from '@/components/homi/HomiHomeStage';
 import { HomiCards, HomiStartCard, type HomiChipHandler } from '@/components/homi/HomiCards';
 import { HOMI_INTRO, pick } from '@/lib/homi/content';
+import { VoiceMessageButton } from '@/components/ai/VoiceMessageButton';
+import { VoiceMessageBubble, type VoiceNote } from '@/components/ai/VoiceMessageBubble';
 
 /*
  * The composer sits at the bottom of the window, which on a modern phone
@@ -267,10 +269,12 @@ function MessageBubble({
 
 function AIPageInner() {
   const { session } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const location = useLocation();
   const navigate = useNavigate();
   const [input, setInput] = useState('');
+  /* Voice messages sent this session, by the text they became. */
+  const [voiceNotes, setVoiceNotes] = useState<Record<string, VoiceNote>>({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -560,8 +564,9 @@ function AIPageInner() {
             <EmptyState onChip={onChip} />
           ) : (
             <div className="max-w-2xl mx-auto space-y-4">
-              {messages.map((m, i) => (
-                <MessageBubble
+              {messages.map((m, i) => (m.role === 'user' && voiceNotes[m.content]
+                ? <VoiceMessageBubble key={m.id} note={voiceNotes[m.content]} transcript={m.content} />
+                : <MessageBubble
                   key={m.id} role={m.role} content={m.content} onNavigate={navigate} meta={m.meta}
                   serviceContext={m.role === 'assistant' ? {
                     /* The question this answer was about: Find Property starts from it. */
@@ -673,7 +678,7 @@ function AIPageInner() {
             white conversation is framed by structure top and bottom and
             the crisp white field is unmissable inside it. */}
         <div className={`shrink-0 bg-[#0C1119] px-5 pt-3 sm:px-4 ${session ? NAV_CLEARANCE : BOTTOM_INSET}`}>
-          <div className="mx-auto flex max-w-2xl items-end gap-2">
+          <div className="relative mx-auto flex max-w-2xl items-end gap-2">
             {/* HOMI in the corner, standing on the edge of the conversation:
                 one live 3D HOMI that reacts to the whole exchange (listening,
                 the mood of what was written, writing, the answer's mood). */}
@@ -713,9 +718,16 @@ function AIPageInner() {
                 + 'focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] disabled:opacity-60'
               }
             />
-            {/* VOICE SLOT. The microphone button (voice messages, a separate
-                workstream) mounts HERE, between the field and send: an
-                h-11 w-11 shrink-0 round control, like the send button. */}
+            {/* Voice messages need a wallet, so an account. */}
+            {session && !streaming && (
+              <VoiceMessageButton
+                locale={lang}
+                onTranscript={(text, note) => {
+                  setVoiceNotes(prev => ({ ...prev, [text.trim()]: note }));
+                  void sendMessage(text);
+                }}
+              />
+            )}
             {streaming ? (
               <Button
                 variant="ghost" onClick={cancelStream}

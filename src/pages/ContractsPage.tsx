@@ -144,19 +144,18 @@ export default function ContractsPage() {
           {/* The document product's navy identity band: a page being read, HOMI beside it. */}
           <header className="relative overflow-hidden rounded-3xl bg-[#0C1119] px-5 pb-6 pt-6 text-white shadow-hover sm:px-8 sm:pt-8">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(100%_70%_at_0%_0%,hsl(38_92%_56%/0.16),transparent_60%),radial-gradient(70%_60%_at_100%_100%,hsl(215_70%_45%/0.18),transparent_60%)]" aria-hidden="true" />
-            <div className="relative flex min-w-0 items-start gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2.5">
-                  <FileSignature className="h-5 w-5 shrink-0 text-[hsl(38_92%_60%)] sm:h-6 sm:w-6" aria-hidden="true" />
-                  <h1 className="min-w-0 break-words font-display text-2xl font-bold text-white sm:text-4xl">
-                    {t('ct_page_title')}
-                  </h1>
-                </div>
-                <p className="measure mt-2 min-w-0 break-words text-[15px] leading-relaxed text-white/80 sm:text-base">
-                  {t('ux_ct_hero_sub')}
-                </p>
-              </div>
-              <HomiHomeStage gesture="greeting" framing="upper" className="-me-1 h-24 w-20 shrink-0 sm:h-32 sm:w-28" />
+            {/* The title gets the full width: a long Georgian word must never break mid-word. */}
+            <div className="relative flex items-center gap-2.5">
+              <FileSignature className="h-5 w-5 shrink-0 text-[hsl(38_92%_60%)] sm:h-6 sm:w-6" aria-hidden="true" />
+              <h1 className="min-w-0 font-display text-2xl font-bold text-white [overflow-wrap:normal] sm:text-4xl">
+                {t('ct_page_title')}
+              </h1>
+            </div>
+            <div className="relative mt-2 flex min-w-0 items-start gap-3">
+              <p className="measure min-w-0 flex-1 break-words text-[15px] leading-relaxed text-white/80 sm:text-base">
+                {t('ux_ct_hero_sub')}
+              </p>
+              <HomiHomeStage gesture="greeting" framing="upper" className="-me-1 -mt-2 h-24 w-20 shrink-0 sm:h-32 sm:w-28" />
             </div>
             <DocumentReader mode="idle" pulls={pulls} pullsTitle={t('ux_ct_pull_title')} className="relative mt-6" />
           </header>

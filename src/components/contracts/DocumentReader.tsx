@@ -43,12 +43,12 @@ export function DocumentReader({
   const live = mode === 'reading' || mode === 'idle';
   return (
     <div
-      className={cn('ct-stage relative grid min-w-0 grid-cols-[minmax(0,9.5rem)_minmax(0,1fr)] items-center gap-4 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)] sm:gap-6', className)}
+      className={cn('ct-stage relative grid min-w-0 grid-cols-1 items-center gap-5 min-[480px]:grid-cols-[minmax(0,9.5rem)_minmax(0,1fr)] min-[480px]:gap-4 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)] sm:gap-6', className)}
       data-reader-mode={mode}
       aria-hidden="true"
     >
       {/* The page. */}
-      <div className="relative mx-auto aspect-[3/4] w-full max-w-[12rem]">
+      <div className="relative mx-auto aspect-[3/4] w-full max-w-[10rem] min-[480px]:max-w-[12rem]">
         <span className="ct-halo pointer-events-none absolute -inset-6 rounded-full" />
         <div className="ct-paper-back absolute inset-0 rounded-xl bg-white/10 ring-1 ring-white/10" />
         <div className={cn(
@@ -83,7 +83,7 @@ export function DocumentReader({
       {/* What HOMI reads for, sliding out of the page. */}
       <div className="min-w-0">
         <p className="mb-2 text-xs font-semibold text-[hsl(38_92%_70%)]">{pullsTitle}</p>
-        <ul className="space-y-1.5">
+        <ul className="flex flex-wrap gap-1.5 min-[480px]:block min-[480px]:space-y-1.5">
           {pulls.map((p, i) => (
             <li
               key={p.key}
@@ -96,7 +96,7 @@ export function DocumentReader({
               style={v(i)}
             >
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[hsl(38_92%_56%)]/15 text-[hsl(38_92%_66%)]">{p.icon}</span>
-              <span className="min-w-0 truncate">{p.label}</span>
+              <span className="min-w-0 leading-snug [overflow-wrap:normal]">{p.label}</span>
             </li>
           ))}
         </ul>

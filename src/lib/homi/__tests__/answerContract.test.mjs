@@ -60,6 +60,25 @@ test('service note: once per service per conversation, never on the first answer
   assert.deepEqual(pitchKeys('FIND_PROPERTY'), { title: 'homi_pitch_find_property_title', body: 'homi_pitch_find_property_body' });
 });
 
+test('every customer service has its own reviewed note, and Verify says it plainly', async () => {
+  const { UX_HOMICHAT_STRINGS: S } = await import('../../../../scripts/ux-homichat-i18n-data.mjs');
+  const expected = ['VERIFY', 'FIND_PROPERTY', 'FIND_BUYERS_TENANTS', 'CONTRACT_INTELLIGENCE', 'MORTGAGE', 'INVESTMENT', 'FOR_EXPATS', 'BROKERS', 'META_ADS'];
+  assert.deepEqual([...PITCHABLE_SERVICES].sort(), [...expected].sort());
+  for (const id of PITCHABLE_SERVICES) {
+    const { title, body } = pitchKeys(id);
+    for (const key of [title, body]) {
+      assert.equal(S[key]?.length, 6, key);
+      for (const v of S[key]) {
+        assert.doesNotMatch(v, /[–—]/, `${key}: no dashes`);
+        assert.doesNotMatch(v, /confirmed buyer|დადასტურებული მყიდველი|შესატყვისი/i, `${key}: forbidden wording`);
+      }
+    }
+  }
+  assert.match(S.homi_pitch_verify_body[1], /საქართველოში პირველია და მხოლოდ HOMATCH-ზე/);
+  assert.match(S.homi_pitch_verify_body[0], /first service of its kind in Georgia.*only find it on HOMATCH/);
+  assert.match(S.homi_pitch_contract_intelligence_body[0], /first analysis each month is free, after that it is 3 credits/);
+});
+
 test('stored meta is re-validated on read', () => {
   const meta = parseMessageMeta({ blocks: [{ type: 'steps', items: ['a', 'b'] }], services: ['VERIFY', 'NOPE', 'VERIFY'], pitch: 'MORTGAGE' });
   assert.deepEqual(meta.services, ['VERIFY']);

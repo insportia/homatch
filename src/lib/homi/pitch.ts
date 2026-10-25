@@ -20,6 +20,7 @@ import type { ServiceActionId } from '../ai/serviceActions.ts';
 /** Services that have reviewed pitch copy. Anything else is never pitched. */
 export const PITCHABLE_SERVICES = [
   'VERIFY', 'FIND_PROPERTY', 'FIND_BUYERS_TENANTS', 'CONTRACT_INTELLIGENCE', 'MORTGAGE', 'INVESTMENT', 'FOR_EXPATS',
+  'BROKERS', 'META_ADS',
 ] as const;
 export type PitchableService = typeof PITCHABLE_SERVICES[number] & ServiceActionId;
 

@@ -172,11 +172,13 @@ const PARENTS: ReadonlyArray<readonly [RegExp, string | ((m: RegExpMatchArray) =
   [/^\/outreach\/(calls|whatsapp|email)\/[^/]+$/, (m) => `/outreach/${m[1]}`],
   [/^\/outreach\/[^/]+$/, '/outreach'],
   [/^\/developer\/[^/]+$/, '/dashboard'],
-  [/^\/for-expats\/georgia\/[^/]+$/, '/for-expats/georgia'],
+  /* A guide topic belongs to the guide tab of My Georgia, which For Expats opens (2026-10-25). */
+  [/^\/for-expats\/georgia\/[^/]+$/, '/my-georgia?tab=guide'],
+  [/^\/for-expats\/plan$/, '/my-georgia'],
+  [/^\/my-georgia\/start$/, '/my-georgia'],
   /* The mortgage glossary: a term returns to the index, the index to the calculator. */
   [/^\/mortgage\/terms\/[^/]+$/, '/mortgage/terms'],
   [/^\/mortgage\/terms$/, '/mortgage'],
-  [/^\/for-expats\/plan$/, '/for-expats/georgia'],
   /* A design project, a version inside it and its walkthrough all return to
      the Design Studio launcher; the launcher itself belongs to the dashboard. */
   [/^\/design-studio\/[^/]+(?:\/.*)?$/, '/design-studio'],

@@ -380,6 +380,11 @@ const routeTable: RouteConfig[] = [
    * Only the plan requires an account, and it requires one because it
    * stores somebody's citizenship and family — not to gate the value.
    *
+   * Since 2026-10-25 For Expats opens My Georgia (owner): /for-expats/georgia
+   * sends a visitor without a finished profile to the welcome, and an owner
+   * with one to their dashboard. /my-georgia is public: its guide and places
+   * tabs are for everyone, its personal sections render only for the owner.
+   *
    * The topic route is LAST of the three so that /for-expats/georgia/plan
    * could never be swallowed by :slug. It cannot today — the plan lives at
    * /for-expats/plan — and the ordering keeps it true if that ever moves.
@@ -388,7 +393,7 @@ const routeTable: RouteConfig[] = [
   { name: 'For Expats',        path: '/for-expats/georgia',       element: <ForExpatsPage />,     public: true },
   /* The plan now lives in My Georgia by HOMI (2026-10-24): one place for the profile, the plan and the guides. */
   { name: 'My Expat Plan',     path: '/for-expats/plan',          element: <Navigate to="/my-georgia" replace />, public: true, visible: false },
-  { name: 'My Georgia',        path: '/my-georgia',               element: <MyGeorgiaPage />,     public: false },
+  { name: 'My Georgia',        path: '/my-georgia',               element: <MyGeorgiaPage />,     public: true },
   { name: 'My Georgia start',  path: '/my-georgia/start',         element: <MyGeorgiaStartPage />, public: true },
   { name: 'For Expats topic',  path: '/for-expats/georgia/:slug', element: <ExpatTopicPage />,    public: true },
   /*

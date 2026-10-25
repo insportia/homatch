@@ -77,19 +77,19 @@ test('there is no chat surface anywhere in the product', () => {
   }
 });
 
-test('the landing page opens with the hero, not a search box or a grid', () => {
+test('For Expats opens My Georgia, not a page in front of it', () => {
+  /* Owner, 2026-10-25: clicking For Expats starts directly with My Georgia. The
+     door renders nothing of its own: a visitor without a finished profile goes to
+     the welcome, an owner with one to their dashboard, and the guide is a tab. */
   const page = read('src/pages/ForExpatsPage.tsx');
-  /* The MARKUP, not the file: an import list naturally mentions every
-     component and would fail a naive scan of everything above the hero. */
-  const markup = page.slice(page.indexOf('return ('), page.indexOf('</>'));
-  const heroAt = markup.indexOf('<ExpatHero');
-  assert.ok(heroAt > 0, 'the hero is missing from the first return');
-  const before = markup.slice(0, heroAt);
-  assert.ok(!/<input/i.test(before), 'something takes input above the hero');
-  assert.ok(
-    !/<(CostOfLiving|WhatCanIBuy|TopicIndex|RentalCommunities)/.test(before),
-    'a tool renders above the hero',
-  );
+  assert.match(page, /const START = '\/my-georgia\/start'/);
+  assert.match(page, /status === 'UNAUTHENTICATED'\) \{ setTarget\(START\)/, 'a signed-out visitor does not start with My Georgia');
+  assert.match(page, /s\?\.completedAt \? '\/my-georgia' : START/, 'the finished profile does not lead to the dashboard');
+  const markup = code(page).slice(code(page).indexOf('export default'));
+  assert.ok(!/<(GuideHub|WhatDoYouNeed|GeorgiaAtAGlance|input)/i.test(markup), 'For Expats renders content in front of My Georgia');
+  /* And the welcome card's Later leads into My Georgia, never back to this door. */
+  const start = read('src/pages/MyGeorgiaStartPage.tsx');
+  assert.ok(!start.includes("'/for-expats/georgia'") && !start.includes('"/for-expats/georgia"'), 'Later loops back to For Expats');
 });
 
 /* ── No invented content ─────────────────────────────────────────── */
@@ -227,7 +227,7 @@ test('the two established availabilities render nothing', () => {
 
 /* ── §66: the free layer is genuinely free ───────────────────────── */
 
-test('the public routes are public and only the plan is not', () => {
+test('the public routes are public and only the personal plan is not', () => {
   const routes = read('src/routes.tsx');
   const row = (p) => {
     const m = routes.match(new RegExp(`\\{[^}]*path: '${p.replace(/\//g, '\\/')}'[^}]*\\}`));
@@ -235,14 +235,22 @@ test('the public routes are public and only the plan is not', () => {
   };
   assert.match(row('/for-expats/georgia'), /public: true/);
   assert.match(row('/for-expats/georgia/:slug'), /public: true/);
-  /* The plan moved into My Georgia (2026-10-24): the dashboard is the account's, the onboarding is open. */
-  assert.match(row('/my-georgia'), /public: false/);
+  /* For Expats opens My Georgia (2026-10-25): /my-georgia is public because its guide and
+     places tabs are; the personal sections render only for the owner (guest below). */
+  assert.match(row('/my-georgia'), /public: true/);
+  const dash = code(read('src/pages/MyGeorgiaPage.tsx'));
+  assert.match(dash, /const guest = status === 'UNAUTHENTICATED'/);
+  for (const id of ['mg-info', 'mg-plans', 'mg-documents']) {
+    const at = dash.indexOf(`id="${id}"`);
+    assert.ok(at > 0, `${id} is gone`);
+    assert.ok(dash.lastIndexOf('{!guest ? (', at) > 0, `${id} renders for a signed-out visitor`);
+  }
   assert.match(row('/my-georgia/start'), /public: true/);
   assert.match(row('/for-expats/plan'), /Navigate to="\/my-georgia"/);
 });
 
-test('the landing page renders its tools without waiting for a session', () => {
-  const page = read('src/pages/ForExpatsPage.tsx');
+test('the guide renders its tools without waiting for a session', () => {
+  const page = read('src/components/expats/MyGeorgiaGuide.tsx');
   // The only thing the auth state changes is which link the plan CTA gets.
   const uses = page.match(/homatchUser/g) ?? [];
   assert.ok(uses.length <= 2, `auth is consulted ${uses.length} times on a free page`);
@@ -286,6 +294,7 @@ test('robots.txt points at a sitemap that exists and blocks the plan', () => {
 test('the sitemap lists the public entry point and never the plan', () => {
   const xml = read('public/sitemap.xml');
   assert.ok(xml.includes('<loc>https://homatch.live/for-expats/georgia</loc>'));
+  assert.ok(xml.includes('<loc>https://homatch.live/my-georgia</loc>'), 'My Georgia, where the guide now lives, is not listed');
   assert.ok(!xml.includes('/for-expats/plan'));
   assert.ok(!xml.includes(':slug'), 'a route parameter was published as a literal');
 });

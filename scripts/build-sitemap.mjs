@@ -49,7 +49,8 @@ const ORIGIN = 'https://homatch.live';
 /** Pages worth a crawler's time, ordered by how much they are worth. */
 const PRIORITY = new Map([
   ['/', '1.0'],
-  ['/for-expats/georgia', '0.9'],
+  /* For Expats opens My Georgia (2026-10-25); the guide and the places are its public tabs. */
+  ['/my-georgia', '0.9'],
   ['/for-buyers', '0.8'],
   ['/for-owners', '0.8'],
   ['/brokers', '0.6'],

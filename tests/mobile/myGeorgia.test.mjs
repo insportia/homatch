@@ -9,6 +9,9 @@
 //   · the last step marks the profile complete with the private note kept on
 //     the owner's row only;
 //   · signed out, answers wait on the device and the last step leads to sign up;
+//   · For Expats opens My Georgia: the welcome without a finished profile, the
+//     dashboard with one; Later leads into My Georgia; the guide and the places
+//     tabs are full, never empty;
 //   · 320/375/390/430px, Georgian, Arabic and Hebrew (RTL): no sideways scroll,
 //     44px touch targets.
 
@@ -230,8 +233,57 @@ test('My Georgia by HOMI: onboarding, autosave, resume, conditional questions, d
       if (!body.includes(s)) failures.push(`dashboard section missing: ${s}`);
     }
     if (!body.includes('Nino')) failures.push('dashboard does not show the saved name');
+    if (!body.includes('ამ სეზონზე წასასვლელად')) failures.push('the plan has no places for this season');
     const l = await layout(page);
     if (l.overflow) failures.push('390px: sideways scroll on the dashboard');
+    await ctx.close();
+  }
+
+  /* 3b · For Expats opens My Georgia: with a finished profile, the dashboard. */
+  {
+    const { ctx, page } = await open('/for-expats/georgia', { width: 390 });
+    await page.waitForTimeout(800);
+    if (!page.url().endsWith('/my-georgia')) failures.push(`For Expats sent a profiled owner to ${page.url()} instead of My Georgia`);
+    await ctx.close();
+  }
+
+  /* 3c · The places and the guide live inside My Georgia, full, in Georgian, at 320 and 390. */
+  for (const width of [320, 390]) {
+    const { ctx, page } = await open('/my-georgia?tab=places', { width });
+    await page.waitForSelector('[data-place]', { timeout: 15000 }).catch(() => {});
+    const n = await page.evaluate(() => document.querySelectorAll('[data-place]').length);
+    if (n < 40) failures.push(`${width}px: Places in Georgia shows ${n} places`);
+    const body = await text(page);
+    for (const s of ['ადგილები საქართველოში', 'მთები', 'ზღვა და პლაჟები', 'მღვიმეები და კანიონები', 'ყაზბეგი, სტეფანწმინდა']) {
+      if (!body.includes(s)) failures.push(`${width}px places: missing ${s}`);
+    }
+    await page.getByRole('button', { name: /^ზამთარი/ }).first().click();
+    await page.waitForTimeout(300);
+    const winter = await page.evaluate(() => document.querySelectorAll('[data-place]').length);
+    if (!(winter > 0 && winter < n)) failures.push(`${width}px: the winter filter shows ${winter} of ${n}`);
+    await page.locator('[data-place] button[aria-expanded]').first().click();
+    await page.waitForTimeout(200);
+    if (!(await text(page)).includes('როგორ მივიდეთ')) failures.push(`${width}px: a place card does not open its details`);
+    const l = await layout(page);
+    if (l.overflow) failures.push(`${width}px: sideways scroll on the places`);
+    const small = await page.evaluate(() => [...document.querySelectorAll('[data-places] button, [data-mg-tabs] a')]
+      .map((b) => b.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0 && r.height < 43.5).length);
+    if (small) failures.push(`${width}px: ${small} places controls under 44px`);
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await open('/my-georgia?tab=guide', { width: 390 });
+    if (!(await text(page)).includes('ცხოვრება საქართველოში, ნაბიჯ ნაბიჯ')) failures.push('the guide tab is empty');
+    const l = await layout(page);
+    if (l.overflow) failures.push('390px: sideways scroll on the guide');
+    await ctx.close();
+  }
+  for (const lang of ['ar', 'he']) {
+    const { ctx, page } = await open('/my-georgia?tab=places', { width: 375, lang });
+    await page.waitForSelector('[data-place]', { timeout: 15000 }).catch(() => {});
+    const l = await layout(page);
+    if (l.overflow) failures.push(`375px ${lang}: sideways scroll on the places`);
+    if (l.dir !== 'rtl') failures.push(`${lang}: the places are not right to left`);
     await ctx.close();
   }
 
@@ -243,6 +295,20 @@ test('My Georgia by HOMI: onboarding, autosave, resume, conditional questions, d
     if (l.overflow) failures.push(`${width}px ${lang}: sideways scroll`);
     if (l.small) failures.push(`${width}px ${lang}: ${l.small} controls under 44px`);
     if ((lang === 'ar' || lang === 'he') && l.dir !== 'rtl') failures.push(`${lang}: the page is not right to left`);
+    await ctx.close();
+  }
+
+  /* 5a · Signed out: For Expats starts with the welcome, and Later leads into My Georgia. */
+  {
+    const { ctx, page } = await open('/for-expats/georgia', { signedIn: false });
+    if (!page.url().includes('/my-georgia/start')) failures.push(`signed out: For Expats went to ${page.url()}`);
+    if (!(await text(page)).includes(KA.welcome)) failures.push('signed out: For Expats did not start with the welcome');
+    await clickText(page, 'მოგვიანებით');
+    await page.waitForTimeout(700);
+    if (!page.url().endsWith('/my-georgia')) failures.push(`signed out: Later went to ${page.url()}`);
+    const body = await text(page);
+    if (body.includes('ჩემი ინფორმაცია')) failures.push('signed out: personal sections render for a guest');
+    if (!body.includes('ადგილები') || !body.includes('იურიდიული საკითხები')) failures.push('signed out: My Georgia is empty for a guest');
     await ctx.close();
   }
 

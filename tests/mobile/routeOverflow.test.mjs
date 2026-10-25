@@ -100,10 +100,13 @@ const ROUTES = [
   /* FOR EXPATS. Public like its two neighbours, and the one most likely
      to overflow: Georgian nav words are long and unhyphenated, and the
      market cards carry a currency range and a comparable count on one
-     row. The plan is auth-gated. */
+     row. The plan is auth-gated. Since 2026-10-25 For Expats opens My Georgia,
+     whose guide and places tabs are public. */
   { path: '/for-expats/georgia', name: 'for expats' },
   { path: '/for-expats/georgia/residence-permits', name: 'for expats topic' },
   { path: '/my-georgia', name: 'my georgia', auth: true },
+  { path: '/my-georgia?tab=guide', name: 'my georgia guide' },
+  { path: '/my-georgia?tab=places', name: 'my georgia places' },
   { path: '/my-georgia/start', name: 'my georgia start' },
   { path: '/pricing', name: 'pricing' },
   { path: '/developers', name: 'developers' },
@@ -1051,7 +1054,7 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
      Hebrew — and because its market cards put a currency range and two
      counts on one row, which is where a mirrored layout overflows. */
   const SPREAD = ROUTES.filter((r) =>
-    ['/', '/dashboard', '/ai', '/verify', '/outreach/email', '/for-expats/georgia',
+    ['/', '/dashboard', '/ai', '/verify', '/outreach/email', '/for-expats/georgia', '/my-georgia?tab=places',
       /*
        * The matching screen joins the spread because it is where a seller spends
        * the most time and where money changes hands: dense rows with a checkbox,

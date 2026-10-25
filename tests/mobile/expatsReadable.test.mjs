@@ -253,11 +253,14 @@ const PAGE_CENSUS = () => ({
   path: location.pathname,
   dir: document.documentElement.getAttribute('dir') || getComputedStyle(document.body).direction,
   topicLinks: [...document.querySelectorAll('[data-expat-topic-link]')].map((a) => a.getAttribute('href')),
-  pathways: [...document.querySelectorAll('[data-expat-pathway]')].map((a) => a.getAttribute('href')),
+  tabs: [...document.querySelectorAll('[data-mg-tab]')].map((a) => a.getAttribute('href')),
   cities: document.querySelectorAll('[data-expat-city]').length,
   drawers: document.querySelectorAll('[data-expat-evidence-open]').length,
-  starter: document.querySelector('[data-expat-plan-starter]') !== null,
-  anchorTargets: ['plan', 'needs', 'topics', 'tools'].filter((id) => document.getElementById(id)),
+  welcome: document.querySelector('[data-mg-welcome]') !== null,
+  resume: document.querySelector('[data-mg-resume]') !== null,
+  personal: ['mg-info', 'mg-plans', 'mg-documents'].filter((id) => document.getElementById(id)),
+  places: document.querySelectorAll('[data-place]').length,
+  anchorTargets: ['needs', 'topics', 'tools'].filter((id) => document.getElementById(id)),
   scrollWidth: document.body.scrollWidth,
   clientWidth: document.documentElement.clientWidth,
 });
@@ -332,8 +335,12 @@ test('FOR EXPATS stays readable at every supported width', opts, async (t) => {
 
   /* 1. THE COLLAPSE RULE, over every route, width and both primary
         locales. This is the owner's defect, stated as a measurement. */
+  /* For Expats opens My Georgia (2026-10-25): the door leads to the welcome, and the
+     guide and the places are My Georgia's tabs. All three are measured. */
   const ROUTES = [
     '/for-expats/georgia',
+    '/my-georgia?tab=guide',
+    '/my-georgia?tab=places',
     ...TOPIC_SLUGS.map((s) => `/for-expats/georgia/${s}`),
   ];
   for (const lang of ['en', 'ka']) {
@@ -359,7 +366,7 @@ test('FOR EXPATS stays readable at every supported width', opts, async (t) => {
 
   /* 2. RTL. A mirrored layout collapses on the other side, and a
         left-to-right-only check never sees it. */
-  for (const path of ['/for-expats/georgia', '/for-expats/georgia/cost-of-living']) {
+  for (const path of ['/for-expats/georgia', '/my-georgia?tab=guide', '/my-georgia?tab=places', '/for-expats/georgia/cost-of-living']) {
     const { ctx, page } = await open(path, 390, 'he');
     const census = await page.evaluate(PAGE_CENSUS);
     const collapsed = await page.evaluate(COLLAPSE_PROBE);
@@ -369,7 +376,7 @@ test('FOR EXPATS stays readable at every supported width', opts, async (t) => {
     await ctx.close();
   }
 
-  assert.ok(checked >= 56, `the gate covered only ${checked} combinations`);
+  assert.ok(checked >= 76, `the gate covered only ${checked} combinations`);
   assert.deepEqual(failures, [], `FOR EXPATS is not readable:\n  ${failures.join('\n  ')}`);
 });
 
@@ -431,22 +438,23 @@ test('FOR EXPATS navigation goes where it says', opts, async (t) => {
 
   const failures = [];
 
-  /* Every landing-page destination, followed. The seven that shipped dead
+  /* Every guide destination, followed. The seven that shipped dead
      all returned HTTP 200 and rendered the missing-page copy, so the only
-     proof that a link works is opening it and reading what came back. */
+     proof that a link works is opening it and reading what came back.
+     (2026-10-25: the guide is My Georgia's living guide tab.) */
   {
-    const { ctx, page } = await open('/for-expats/georgia', 'en');
+    const { ctx, page } = await open('/my-georgia?tab=guide', 'en');
     const census = await page.evaluate(PAGE_CENSUS);
 
     assert.equal(census.cities, 3, 'the three city cards are gone');
     assert.deepEqual(
-      census.anchorTargets, ['plan', 'needs', 'topics', 'tools'],
-      'a section lost the id its hero row points at',
+      census.anchorTargets, ['needs', 'topics', 'tools'],
+      'a section lost the id old links point at',
     );
-    for (const href of census.pathways) {
-      if (!href?.startsWith('#')) failures.push(`hero pathway points at ${href}, not an in-page anchor`);
-      else if (!census.anchorTargets.includes(href.slice(1))) failures.push(`hero pathway ${href} has no target`);
-    }
+    assert.deepEqual(
+      census.tabs, ['/my-georgia', '/my-georgia?tab=guide', '/my-georgia?tab=places'],
+      'My Georgia lost one of its three tabs',
+    );
     assert.equal(census.topicLinks.length, TOPIC_SLUGS.length, 'the topic index lost a topic');
 
     /* The site's own chrome is not this product's navigation: the public
@@ -470,9 +478,8 @@ test('FOR EXPATS navigation goes where it says', opts, async (t) => {
      * all returned HTTP 200 and rendered the missing-page copy.
      */
     const inProduct = [...new Set(internal)].filter((h) => h.startsWith('/for-expats'));
-    /* Six: one per topic. The four pathway rows are in-page anchors and the
-       plan sits behind /auth/signup, so those are checked separately above
-       and below rather than followed here. */
+    /* Six: one per topic. The tabs sit in the header (counted above), and
+       the plan is checked separately below rather than followed here. */
     assert.equal(
       inProduct.length, TOPIC_SLUGS.length,
       `expected one in-product link per topic, found ${inProduct.length}: ${inProduct.join(' ')}`,
@@ -497,9 +504,9 @@ test('FOR EXPATS navigation goes where it says', opts, async (t) => {
    * its chrome is.
    */
   {
-    const { ctx, page } = await open('/for-expats/georgia', 'ka');
+    const { ctx, page } = await open('/my-georgia?tab=guide', 'ka');
     const rows = await page.evaluate(() =>
-      [...document.querySelectorAll('[data-expat-plan-starter] h2, [data-expat-plan-starter] p, [data-guide-hub] h3')].map((p) => p.textContent.trim()));
+      [...document.querySelectorAll('[data-mg-guide] h2, [data-mg-guide] p, [data-guide-hub] h3')].map((p) => p.textContent.trim()));
     for (const text of rows) {
       /* Four or more consecutive Latin letters, three times over, is a
          sentence rather than a unit or a brand: "Mbps", "GEL" and
@@ -508,7 +515,7 @@ test('FOR EXPATS navigation goes where it says', opts, async (t) => {
       const latin = (text.match(/[A-Za-z]{4,}/g) || []).filter((w) => !/^(Mbps|Magticom)$/.test(w));
       if (latin.length >= 3) failures.push(`Georgian landing copy is in English: "${text.slice(0, 70)}" (${latin.slice(0, 5).join(' ')})`);
     }
-    if (!rows.some((t) => /[Ⴀ-ჿ]/.test(t))) failures.push('no Georgian in the My Georgia start or the guide');
+    if (!rows.some((t) => /[Ⴀ-ჿ]/.test(t))) failures.push('no Georgian in the My Georgia guide');
     await ctx.close();
   }
 
@@ -539,20 +546,44 @@ test('FOR EXPATS navigation goes where it says', opts, async (t) => {
     await ctx.close();
   }
 
-  /* Anonymous and signed-in both resolve: the plan is the only gated
-     route here, and the landing page must never require an account. */
+  /* For Expats starts DIRECTLY with My Georgia (owner, 2026-10-25), and nothing
+     here requires an account: the welcome, the guide and the places are open;
+     only the personal sections wait for one. */
   {
     const anon = await open('/for-expats/georgia', 'en');
     const c = await anon.page.evaluate(PAGE_CENSUS);
-    if (c.path !== '/for-expats/georgia') failures.push(`the landing page redirected an anonymous visitor to ${c.path}`);
-    if (!c.starter) failures.push('the My Georgia start did not render for an anonymous visitor');
+    if (c.path !== '/my-georgia/start') failures.push(`For Expats sent an anonymous visitor to ${c.path} instead of the My Georgia welcome`);
+    if (!c.welcome) failures.push('the My Georgia welcome did not render for an anonymous visitor');
     await anon.ctx.close();
 
-    /* The plan lives in My Georgia now: the old address leads there, and the dashboard is the account's. */
-    const gated = await open('/my-georgia', 'en');
-    const g = await gated.page.evaluate(PAGE_CENSUS);
-    if (g.path === '/my-georgia') failures.push('My Georgia rendered for a signed-out visitor');
-    await gated.ctx.close();
+    /* No profile yet, signed in: the welcome too. */
+    const fresh = await open('/for-expats/georgia', 'en', { signedIn: true });
+    /* The door waits briefly for the account row (the stub has none), then opens the welcome. */
+    await fresh.page.waitForURL(/\/my-georgia\/start/, { timeout: 10000 }).catch(() => {});
+    const f = await fresh.page.evaluate(PAGE_CENSUS);
+    if (f.path !== '/my-georgia/start') failures.push(`a member without a profile was sent to ${f.path} instead of the welcome`);
+    await fresh.ctx.close();
+
+    /* Later leads into My Georgia, which a guest can read, without anything personal. */
+    const guest = await open('/my-georgia', 'en');
+    const g = await guest.page.evaluate(PAGE_CENSUS);
+    if (g.path !== '/my-georgia') failures.push(`My Georgia sent a guest away to ${g.path}`);
+    if (!g.resume) failures.push('a guest sees no way to start their profile');
+    if (g.personal.length) failures.push(`a guest sees personal sections: ${g.personal.join(', ')}`);
+    await guest.ctx.close();
+
+    /* The places: many, filterable. */
+    const places = await open('/my-georgia?tab=places', 'en');
+    await places.page.waitForSelector('[data-place]', { timeout: 15000 }).catch(() => {});
+    const p = await places.page.evaluate(PAGE_CENSUS);
+    if (p.places < 40) failures.push(`Places in Georgia shows ${p.places} places, not 40 or more`);
+    await places.page.getByRole('button', { name: /^Caves and canyons/ }).first().click();
+    await places.page.waitForTimeout(300);
+    const caves = await places.page.evaluate(() => document.querySelectorAll('[data-place]').length);
+    if (!(caves > 0 && caves < p.places)) failures.push(`the caves filter shows ${caves} of ${p.places}`);
+    const sources = await places.page.evaluate(() => [...document.querySelectorAll('[data-place-source]')].map((a) => a.getAttribute('href')));
+    if (sources.some((h) => !/^https:\/\/(www\.)?(georgia\.travel|apa\.gov\.ge)\//.test(h || ''))) failures.push('a place links to an unofficial source');
+    await places.ctx.close();
 
     const member = await open('/for-expats/plan', 'en', { signedIn: true });
     const m = await member.page.evaluate(PAGE_CENSUS);

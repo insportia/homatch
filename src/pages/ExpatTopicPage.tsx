@@ -84,7 +84,7 @@ export default function ExpatTopicPage() {
     };
   }, [slug]);
 
-  if (!slug) return <Navigate to="/for-expats/georgia" replace />;
+  if (!slug) return <Navigate to="/my-georgia?tab=guide" replace />;
 
   if (state === 'LOADING') {
     return (
@@ -107,11 +107,11 @@ export default function ExpatTopicPage() {
         </h1>
         <p className="mt-3 text-sm text-muted-foreground">{t('expat_topic_missing_body')}</p>
         <Link
-          to="/for-expats/georgia"
-          className="mt-6 inline-flex items-center gap-2 text-sm text-[hsl(var(--gold-ink))] underline underline-offset-2"
+          to="/my-georgia?tab=guide"
+          className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-5 text-sm font-medium text-foreground"
         >
           <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
-          {t('expat_topic_back')}
+          {t('mg_back_to_mg')}
         </Link>
       </div>
       </AppLayout>
@@ -119,13 +119,14 @@ export default function ExpatTopicPage() {
   }
 
   const localised = localiseTopic(topic, lang);
-  if (!localised) return <Navigate to="/for-expats/georgia" replace />;
+  if (!localised) return <Navigate to="/my-georgia?tab=guide" replace />;
 
   const { content, isFallback } = localised;
   const path = `/for-expats/georgia/${topic.slug}`;
   const crumbs: Crumb[] = [
-    { name: t('expat_crumb_home'), path: '/for-expats/georgia' },
-    { name: t(`expat_domain_${topic.domain.toLowerCase()}`), path: '/for-expats/georgia' },
+    /* A topic sits inside My Georgia, in its living guide (2026-10-25). */
+    { name: t('mg_dash_title'), path: '/my-georgia' },
+    { name: t('mg_tab_guide'), path: '/my-georgia?tab=guide' },
     { name: content.title, path },
   ];
   const freshness = judgeFreshness(topic.lastVerifiedAt, topic.factClass);
@@ -266,12 +267,14 @@ export default function ExpatTopicPage() {
           </aside>
         ) : null}
 
+        {/* Topics are part of My Georgia: the way out leads back into it. */}
         <Link
-          to="/for-expats/georgia"
-          className="mt-10 inline-flex items-center gap-2 text-sm text-[hsl(var(--gold-ink))] underline underline-offset-2"
+          to="/my-georgia?tab=guide"
+          data-mg-back
+          className="mt-10 inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-5 text-sm font-medium text-foreground hover:border-[hsl(var(--gold-border))]"
         >
           <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
-          {t('expat_topic_back')}
+          {t('mg_back_to_mg')}
         </Link>
       </article>
 

@@ -48,8 +48,11 @@ test('notification destinations all have somewhere to go', () => {
     '/credits', '/viewings', '/notifications', '/brokers']) {
     assert.notEqual(parentRouteFor(path), null, `${path} must have a parent`);
   }
-  assert.equal(parentRouteFor('/for-expats/plan'), '/for-expats/georgia');
-  assert.equal(parentRouteFor('/for-expats/georgia/visas'), '/for-expats/georgia');
+  /* For Expats opens My Georgia (2026-10-25): a topic returns to its living guide tab, and
+     /for-expats/georgia itself is only a door (it would send a profiled owner on again). */
+  assert.equal(parentRouteFor('/for-expats/plan'), '/my-georgia');
+  assert.equal(parentRouteFor('/for-expats/georgia/visas'), '/my-georgia?tab=guide');
+  assert.equal(parentRouteFor('/my-georgia/start'), '/my-georgia');
 });
 
 test('a mortgage term goes back to the glossary, the glossary to the calculator', () => {

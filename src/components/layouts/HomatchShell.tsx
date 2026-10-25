@@ -310,7 +310,9 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
     .filter(group => group.items.length > 0);
 
   const isActive = (path: string) =>
-    location.pathname === path || location.pathname.startsWith(`${path}/`);
+    location.pathname === path || location.pathname.startsWith(`${path}/`)
+    /* For Expats opens My Georgia, so its item stays lit there. */
+    || (path === '/for-expats/georgia' && (location.pathname === '/my-georgia' || location.pathname.startsWith('/my-georgia/')));
 
   const name = homatchUser?.full_name || homatchUser?.email || '';
   const initials = (name || '?').trim().charAt(0).toUpperCase();

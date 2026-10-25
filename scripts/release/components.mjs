@@ -164,7 +164,7 @@ export const COMPONENTS = {
   MORTGAGE: { paths: [/^src\/(pages\/Mortgage(Page|TermsPage|TermPage)|components\/mortgage|mortgage)/, /^src\/services\/mortgageFxRates\.ts$/, /^scripts\/ux-mortgage-i18n/, fn('mortgage-fx-rates')], suites: ['mobile:mortgage', 'mobile:routes', 'mobile:admin-mortgage'] },
   /* For Expats and My Georgia by HOMI (onboarding, dashboard, guide hub). */
   EXPATS: { paths: [/^src\/(pages\/(ForExpatsPage|Expat|MyGeorgia)|components\/expats|expats|myGeorgia)/, /^src\/services\/myGeorgia\.ts$/,
-    /^scripts\/expat-content\//, /^scripts\/homi-mygeorgia-i18n-data\.mjs$/, /^tests\/mobile\/myGeorgia\.test\.mjs$/], suites: ['mobile:expats'] },
+    /^scripts\/expat-content\//, /^scripts\/homi-mygeorgia-i18n-data\.mjs$/, /^scripts\/ux-expats-i18n-(data|apply)\.mjs$/, /^tests\/mobile\/myGeorgia\.test\.mjs$/], suites: ['mobile:expats'] },
   // PUBLISH TO PORTALS: the standalone listing-publishing workspace (/publishing),
   // its edge function and its publishing_* / publishing_engine_* objects.
   PUBLISHING: {

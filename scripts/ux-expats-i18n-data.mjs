@@ -1,0 +1,67 @@
+/* My Georgia opens For Expats, and Places in Georgia lives inside it — [en, ka, ru, tr, ar, he].
+ * Georgian first in spirit: plain, friendly, no dashes. The place texts themselves are in
+ * src/myGeorgia/places/content.<lang>.ts; these are the labels around them. */
+export const UX_EXPATS_STRINGS = {
+  mg_tabs_aria: ['My Georgia sections', 'ჩემი საქართველოს განყოფილებები', 'Разделы «Моей Грузии»', 'Gürcistan’ım bölümleri', 'أقسام جورجيا الخاصة بي', 'האזורים של הגאורגיה שלי'],
+  mg_tab_plan: ['My plan', 'ჩემი გეგმა', 'Мой план', 'Planım', 'خطتي', 'התוכנית שלי'],
+  mg_tab_guide: ['Living guide', 'ცხოვრების გზამკვლევი', 'Жизнь в Грузии', 'Yaşam rehberi', 'دليل المعيشة', 'מדריך לחיים'],
+  mg_tab_places: ['Places to visit', 'სად წავიდეთ', 'Куда поехать', 'Gezilecek yerler', 'أماكن للزيارة', 'לאן לנסוע'],
+
+  mg_guest_note: ['You are looking around as a guest. The guide and the places are open to everyone; your plan is saved once you create a profile.', 'ახლა სტუმრად ათვალიერებთ. გზამკვლევი და ადგილები ყველასთვის ღიაა, თქვენი გეგმა კი პროფილის შექმნის შემდეგ შეინახება.', 'Сейчас вы смотрите как гость. Путеводитель и места открыты всем, а ваш план сохранится, когда вы создадите профиль.', 'Şu an misafir olarak bakıyorsunuz. Rehber ve yerler herkese açık; planınız profil oluşturduğunuzda kaydedilir.', 'أنت تتصفح الآن كضيف. الدليل والأماكن متاحة للجميع، وتُحفظ خطتك عندما تنشئ ملفك.', 'אתם מסתכלים כרגע כאורחים. המדריך והמקומות פתוחים לכולם, והתוכנית שלכם תישמר אחרי שתיצרו פרופיל.'],
+  mg_property_guest: ['Looking for a home? Search HOMATCH yourself, and read the renting and buying guides first.', 'საცხოვრებელს ეძებთ? მოძებნეთ HOMATCH-ზე და მანამდე ქირაობისა და ყიდვის გზამკვლევები გადახედეთ.', 'Ищете жильё? Поищите на HOMATCH, а сначала загляните в путеводители по аренде и покупке.', 'Ev mi arıyorsunuz? HOMATCH’te kendiniz arayın, önce kiralama ve satın alma rehberlerine göz atın.', 'تبحث عن مسكن؟ ابحث بنفسك على HOMATCH، واقرأ أولًا دليلَي الإيجار والشراء.', 'מחפשים בית? חפשו בעצמכם ב־HOMATCH, ולפני כן עיינו במדריכים לשכירות ולקנייה.'],
+  mg_docs_none: ['Finish your profile and HOMI will list the documents and steps that fit your plans.', 'დაასრულეთ პროფილი და HOMI ჩამოგიწერთ იმ დოკუმენტებსა და ნაბიჯებს, რომლებიც თქვენს გეგმებს შეესაბამება.', 'Заполните профиль, и HOMI составит список документов и шагов под ваши планы.', 'Profilinizi tamamlayın; HOMI planlarınıza uyan belgeleri ve adımları listelesin.', 'أكمل ملفك وسيعدّ لك HOMI قائمة بالمستندات والخطوات التي تناسب خططك.', 'השלימו את הפרופיל ו־HOMI יכין רשימה של המסמכים והצעדים שמתאימים לתוכניות שלכם.'],
+  mg_docs_none_done: ['No steps on your list right now. These guides cover the documents most people need.', 'ახლა თქვენს სიაში ნაბიჯები არ არის. ეს გზამკვლევები იმ დოკუმენტებზეა, რომლებიც ადამიანების უმეტესობას სჭირდება.', 'Сейчас в вашем списке нет шагов. В этих путеводителях есть документы, которые нужны большинству.', 'Listenizde şu an adım yok. Bu rehberler çoğu kişinin ihtiyaç duyduğu belgeleri anlatıyor.', 'لا توجد خطوات في قائمتك الآن. هذه الأدلة تشرح المستندات التي يحتاجها معظم الناس.', 'כרגע אין צעדים ברשימה שלכם. המדריכים האלה מסבירים על המסמכים שרוב האנשים צריכים.'],
+  mg_guide_ask_body: ['The written guide for this is on its way. Until then, HOMI can answer your questions about {{topic}}.', 'ამ თემაზე წერილობითი გზამკვლევი მზადდება. მანამდე HOMI გიპასუხებთ კითხვებზე: {{topic}}.', 'Письменный путеводитель по этой теме готовится. А пока HOMI ответит на вопросы о теме «{{topic}}».', 'Bu konudaki yazılı rehber hazırlanıyor. O zamana kadar HOMI {{topic}} hakkındaki sorularınızı yanıtlar.', 'الدليل المكتوب لهذا الموضوع قيد الإعداد. وحتى ذلك الحين يجيب HOMI عن أسئلتك حول {{topic}}.', 'המדריך הכתוב לנושא הזה בהכנה. עד אז HOMI יענה על שאלות בנושא {{topic}}.'],
+  mg_ask_about: ['Tell me about {{topic}} in Georgia.', 'მომიყევი, როგორ არის საქართველოში: {{topic}}.', 'Расскажи про тему «{{topic}}» в Грузии.', 'Gürcistan’da {{topic}} hakkında bilgi ver.', 'أخبرني عن {{topic}} في جورجيا.', 'ספר לי על {{topic}} בגאורגיה.'],
+
+  mg_guide_title: ['Living in Georgia, step by step', 'ცხოვრება საქართველოში, ნაბიჯ ნაბიჯ', 'Жизнь в Грузии, шаг за шагом', 'Adım adım Gürcistan’da yaşam', 'العيش في جورجيا خطوة بخطوة', 'החיים בגאורגיה, צעד אחר צעד'],
+  mg_guide_sub: ['Papers, money, phone, doctors and the cities. Every guide is checked against official sources and dated.', 'საბუთები, ფული, ტელეფონი, ექიმები და ქალაქები. ყველა გზამკვლევი ოფიციალური წყაროებით არის გადამოწმებული და თარიღიც უწერია.', 'Документы, деньги, связь, врачи и города. Каждый путеводитель сверен с официальными источниками и датирован.', 'Belgeler, para, telefon, doktorlar ve şehirler. Her rehber resmî kaynaklarla kontrol edildi ve tarihli.', 'الأوراق والمال والهاتف والأطباء والمدن. كل دليل مُراجَع وفق مصادر رسمية ومؤرَّخ.', 'מסמכים, כסף, טלפון, רופאים וערים. כל מדריך נבדק מול מקורות רשמיים ומתוארך.'],
+
+  mg_places_title: ['Places in Georgia', 'ადგილები საქართველოში', 'Места в Грузии', 'Gürcistan’da yerler', 'أماكن في جورجيا', 'מקומות בגאורגיה'],
+  mg_places_sub: ['Mountains, sea, wine country and old towns. Most of them are a day trip or a weekend from Tbilisi.', 'მთები, ზღვა, ღვინის მხარე და ძველი ქალაქები. უმეტესობა თბილისიდან ერთდღიანი ან შაბათ კვირის მოგზაურობაა.', 'Горы, море, винные края и старые города. До большинства из них из Тбилиси можно съездить за день или за выходные.', 'Dağlar, deniz, şarap diyarı ve eski kasabalar. Çoğu Tiflis’ten günübirlik ya da hafta sonu gezisi.', 'جبال وبحر وبلاد النبيذ ومدن قديمة. معظمها رحلة يوم أو عطلة نهاية أسبوع من تبليسي.', 'הרים, ים, ארץ היין ועיירות עתיקות. לרובם אפשר להגיע מטביליסי לטיול של יום או לסוף שבוע.'],
+  mg_places_filter_type: ['What do you feel like?', 'რა გიზიდავთ?', 'Что вам по душе?', 'Canınız ne istiyor?', 'ماذا تحب؟', 'מה בא לכם?'],
+  mg_places_filter_season: ['When are you going?', 'როდის მიდიხართ?', 'Когда вы едете?', 'Ne zaman gidiyorsunuz?', 'متى ستذهب؟', 'מתי אתם נוסעים?'],
+  mg_places_all: ['Everything', 'ყველა', 'Всё', 'Hepsi', 'الكل', 'הכול'],
+  mg_places_any_season: ['Any time', 'ნებისმიერ დროს', 'В любое время', 'Her zaman', 'في أي وقت', 'בכל זמן'],
+  mg_places_count: ['{{count}} places', '{{count}} ადგილი', 'Мест: {{count}}', '{{count}} yer', 'عدد الأماكن: {{count}}', '{{count}} מקומות'],
+  mg_places_empty: ['Nothing matches both filters. Try another season or show everything.', 'ორივე ფილტრს ვერაფერი ერგება. სცადეთ სხვა სეზონი ან ყველა ადგილი ნახეთ.', 'Под оба фильтра ничего не подходит. Попробуйте другой сезон или покажите всё.', 'İki filtreye uyan yer yok. Başka bir mevsim deneyin ya da hepsini gösterin.', 'لا يوجد ما يطابق الفلترين. جرّب موسمًا آخر أو اعرض الكل.', 'אין מקום שמתאים לשני המסננים. נסו עונה אחרת או הציגו הכול.'],
+  mg_places_reset: ['Show everything', 'ყველაფრის ნახვა', 'Показать всё', 'Hepsini göster', 'اعرض الكل', 'להציג הכול'],
+  mg_places_hours: ['About {{hours}} h from Tbilisi', 'თბილისიდან დაახლოებით {{hours}} სთ', 'Около {{hours}} ч от Тбилиси', 'Tiflis’ten yaklaşık {{hours}} sa', 'نحو {{hours}} ساعة من تبليسي', 'בערך {{hours}} שעות מטביליסי'],
+  mg_places_minutes: ['About {{minutes}} min from Tbilisi', 'თბილისიდან დაახლოებით {{minutes}} წთ', 'Около {{minutes}} мин от Тбилиси', 'Tiflis’ten yaklaşık {{minutes}} dk', 'نحو {{minutes}} دقيقة من تبليسي', 'בערך {{minutes}} דקות מטביליסי'],
+  mg_places_in_tbilisi: ['Right here in Tbilisi', 'აქვე, თბილისში', 'Прямо в Тбилиси', 'Tam burada, Tiflis’te', 'هنا في تبليسي', 'ממש כאן בטביליסי'],
+  mg_places_best: ['Best time', 'საუკეთესო დრო', 'Лучшее время', 'En iyi zaman', 'أفضل وقت', 'הזמן הטוב ביותר'],
+  mg_places_how: ['Getting there', 'როგორ მივიდეთ', 'Как добраться', 'Nasıl gidilir', 'كيف تصل', 'איך מגיעים'],
+  mg_places_todo: ['What to do', 'რა ვაკეთოთ', 'Чем заняться', 'Neler yapılır', 'ماذا تفعل', 'מה עושים'],
+  mg_places_details: ['How to get there and what to do', 'როგორ მივიდეთ და რა ვაკეთოთ', 'Как добраться и чем заняться', 'Nasıl gidilir, neler yapılır', 'كيف تصل وماذا تفعل', 'איך מגיעים ומה עושים'],
+  mg_places_source: ['More on {{publisher}}', 'მეტი: {{publisher}}', 'Подробнее: {{publisher}}', 'Daha fazlası: {{publisher}}', 'المزيد على {{publisher}}', 'עוד ב־{{publisher}}'],
+  mg_places_note: ['Times are typical and change with the weather and the roads. Before a mountain trip, check the forecast and whether the pass is open.', 'დრო მიახლოებითია და ამინდსა და გზებზეა დამოკიდებული. მთაში წასვლამდე ამინდი გადაამოწმეთ და ისიც, ღიაა თუ არა უღელტეხილი.', 'Время примерное и зависит от погоды и дорог. Перед поездкой в горы проверьте прогноз и открыт ли перевал.', 'Süreler yaklaşıktır, hava ve yollara göre değişir. Dağ gezisinden önce hava durumuna ve geçidin açık olup olmadığına bakın.', 'الأوقات تقريبية وتتغير مع الطقس والطرق. قبل رحلة إلى الجبال تحقّق من الطقس ومن أن الممر مفتوح.', 'הזמנים משוערים ומשתנים לפי מזג האוויר והכבישים. לפני טיול בהרים בדקו את התחזית ואם המעבר פתוח.'],
+  mg_places_loading: ['Loading the places…', 'ადგილები იტვირთება…', 'Загружаем места…', 'Yerler yükleniyor…', 'جارٍ تحميل الأماكن…', 'טוענים את המקומות…'],
+  mg_places_season_title: ['Good to go this season', 'ამ სეზონზე წასასვლელად', 'Куда поехать в этот сезон', 'Bu mevsim gidilecek yerler', 'أماكن مناسبة لهذا الموسم', 'מתאים לנסוע בעונה הזאת'],
+  mg_places_see_all: ['See all {{count}} places', 'ყველა {{count}} ადგილის ნახვა', 'Все места ({{count}})', '{{count}} yerin hepsini gör', 'اعرض الأماكن كلها ({{count}})', 'לכל {{count}} המקומות'],
+
+  mg_ptype_mountains: ['Mountains', 'მთები', 'Горы', 'Dağlar', 'الجبال', 'הרים'],
+  mg_ptype_sea: ['Sea and beaches', 'ზღვა და პლაჟები', 'Море и пляжи', 'Deniz ve plajlar', 'البحر والشواطئ', 'ים וחופים'],
+  mg_ptype_wine: ['Wine country', 'ღვინის მხარე', 'Винные края', 'Şarap bölgeleri', 'مناطق النبيذ', 'אזורי יין'],
+  mg_ptype_historic: ['Old towns and history', 'ძველი ქალაქები და ისტორია', 'История и старые города', 'Tarih ve eski kentler', 'التاريخ والمدن القديمة', 'היסטוריה ועיירות עתיקות'],
+  mg_ptype_caves: ['Caves and canyons', 'მღვიმეები და კანიონები', 'Пещеры и каньоны', 'Mağaralar ve kanyonlar', 'الكهوف والأودية', 'מערות וקניונים'],
+  mg_ptype_lakes: ['Lakes', 'ტბები', 'Озёра', 'Göller', 'البحيرات', 'אגמים'],
+  mg_ptype_spa: ['Resorts and spas', 'კურორტები', 'Курорты', 'Tatil ve kaplıca yerleri', 'المنتجعات', 'אתרי נופש'],
+  mg_ptype_parks: ['National parks', 'ეროვნული პარკები', 'Национальные парки', 'Millî parklar', 'الحدائق الوطنية', 'פארקים לאומיים'],
+  mg_ptype_cities: ['Cities', 'ქალაქები', 'Города', 'Şehirler', 'المدن', 'ערים'],
+
+  mg_season_spring: ['Spring', 'გაზაფხული', 'Весна', 'İlkbahar', 'الربيع', 'אביב'],
+  mg_season_summer: ['Summer', 'ზაფხული', 'Лето', 'Yaz', 'الصيف', 'קיץ'],
+  mg_season_autumn: ['Autumn', 'შემოდგომა', 'Осень', 'Sonbahar', 'الخريف', 'סתיו'],
+  mg_season_winter: ['Winter', 'ზამთარი', 'Зима', 'Kış', 'الشتاء', 'חורף'],
+  mg_season_all_year: ['All year', 'მთელი წელი', 'Круглый год', 'Bütün yıl', 'طوال العام', 'כל השנה'],
+
+  mg_transport_car: ['Car', 'მანქანა', 'Машина', 'Araba', 'سيارة', 'רכב'],
+  mg_transport_minibus: ['Minibus', 'მარშრუტკა', 'Маршрутка', 'Minibüs', 'ميني باص', 'מיניבוס'],
+  mg_transport_train: ['Train', 'მატარებელი', 'Поезд', 'Tren', 'قطار', 'רכבת'],
+  mg_transport_flight: ['Flight', 'თვითმფრინავი', 'Самолёт', 'Uçak', 'طائرة', 'טיסה'],
+  mg_transport_jeep: ['4x4', 'ჯიპი', 'Внедорожник', 'Arazi aracı', 'سيارة دفع رباعي', 'רכב שטח'],
+  mg_transport_walk: ['On foot', 'ფეხით', 'Пешком', 'Yürüyerek', 'سيرًا على الأقدام', 'ברגל'],
+  mg_transport_city: ['Metro and bus', 'მეტრო და ავტობუსი', 'Метро и автобус', 'Metro ve otobüs', 'مترو وحافلة', 'מטרו ואוטובוס'],
+
+  mg_back_to_mg: ['Back to My Georgia', 'ჩემს საქართველოში დაბრუნება', 'Назад в «Мою Грузию»', 'Gürcistan’ım’a dön', 'العودة إلى جورجيا الخاصة بي', 'חזרה לגאורגיה שלי'],
+};

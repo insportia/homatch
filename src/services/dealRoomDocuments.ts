@@ -144,7 +144,7 @@ export async function listFindings(roomId: string): Promise<DocumentFinding[]> {
 /** What the analyst produced for one document. Mirrors the `analysis` jsonb
  * written by the deal-room-document-analyze function. */
 /** A proposal for a flagged clause: risk, who it favours, replacement wording, trade-offs. */
-export interface ClauseReview { risk: string; why: string; favours: string; suggestion: string; tradeoffs: string | null }
+export interface ClauseReview { risk: string; why: string; favours: string; suggestion: string; tradeoffs: string | null; benefit?: string }
 
 export interface DocumentAnalysis {
   documentType: string | null;

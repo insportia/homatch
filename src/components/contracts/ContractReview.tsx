@@ -1,11 +1,25 @@
 // CONTRACT INTELLIGENCE — "what could be better, and do you want it?"
 //
-// One card per flagged clause: the contract's own words, the risk, why it
-// matters, whose interests the wording serves, a proposed replacement and
-// what the other side may say. The signer accepts, edits or rejects each;
-// nothing reaches the revised contract without that choice. Saving writes a
+// One card per flagged clause, laid out in the order a signer asks:
+//   1. what is wrong with it (the risk, and why it matters),
+//   2. EXACTLY what the proposal changes: the contract's words with removed
+//      words struck and added words underlined, word by word (ClauseDiff),
+//      with "now" and "will be written" one tap away,
+//   3. why the new wording is better for them (review.benefit; older
+//      analyses fall back to "why it matters"),
+//   4. whose interests the current wording serves, ONLY when the analyser
+//      knew (an "unclear" here was a vague label that said nothing),
+//   5. what the other side may say, and the choice: accept, edit, reject.
+// Nothing reaches the revised contract without that choice. Saving writes a
 // numbered revision; exports are built from the stored contract text and the
 // choices, in the browser.
+//
+// THE ACTIONS NO LONGER SIT ON TOP OF THE READING. The old sticky sheet held
+// six buttons and a disclaimer and covered the middle of the screen on a
+// phone (and slid under the mobile tab bar). Save, compare, downloads, print
+// and history now live in an in-flow "Finish" section after the last card.
+// While there are unsaved choices and that section is out of view, one slim
+// bar (counts + Save + a jump to Finish) rides above the mobile tab bar.
 //
 // Unsaved choices live in sessionStorage, keyed by document and analysis, so
 // going to "Ask HOMI" about a clause and coming back loses nothing. A saved
@@ -14,17 +28,22 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Check, Download, FileText, History, Pencil, Printer, X } from 'lucide-react';
+import {
+  AlertTriangle, ArrowDown, Check, CheckCircle2, Download, FileText, History, MessageCircle, Pencil, Printer, Sparkles, X,
+} from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import {
-  analysisIdentity, applyDecisions, draftStorageKey, isStaleRevision, reviewItems,
+  analysisIdentity, applyDecisions, draftStorageKey, isStaleRevision, replacementFor, reviewItems,
   type AnalysisLike, type Decision, type ReviewItem,
 } from '@/contracts/revisions';
 import { DOCX_MIME, buildDocx, downloadBytes } from '@/contracts/docx';
 import { getContractText, listRevisions, saveRevision, type SavedRevision } from '@/services/contractRevisions';
+import { ClauseDiff } from './ClauseDiff';
+import './contracts.css';
 
 const chip = 'inline-flex min-h-11 items-center gap-1.5 rounded-full border px-4 text-sm font-medium transition-colors';
+const KNOWN_PARTIES = new Set(['BUYER', 'SELLER', 'DEVELOPER', 'BOTH']);
 
 interface Draft { decisions: Record<string, Decision>; editing: string | null; draft: string }
 
@@ -40,6 +59,11 @@ function readDraft(key: string): Draft | null {
 
 function writeDraft(key: string, d: Draft): void {
   try { sessionStorage.setItem(key, JSON.stringify(d)); } catch { /* storage full or blocked: the page still works */ }
+}
+
+/** A stable signature of a set of decisions, to tell saved from unsaved. */
+function signature(list: Decision[]): string {
+  return JSON.stringify([...list].sort((a, b) => a.key.localeCompare(b.key)).map((d) => [d.key, d.status, d.text ?? '']));
 }
 
 /*
@@ -85,6 +109,8 @@ export function ContractReview({ documentId, title, analysis }: { documentId: st
   const [showCompare, setShowCompare] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const finishRef = useRef<HTMLElement>(null);
+  const [finishInView, setFinishInView] = useState(false);
 
   /* The unsaved draft for this document and analysis, if the customer left the page mid-review. */
   useEffect(() => {
@@ -117,6 +143,15 @@ export function ContractReview({ documentId, title, analysis }: { documentId: st
     return () => { alive = false; };
   }, [documentId, analysis]);
 
+  /* Is the Finish section on screen? The slim bar hides while it is. */
+  useEffect(() => {
+    const el = finishRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((entries) => setFinishInView(entries.some((e) => e.isIntersecting)), { rootMargin: '0px 0px -10% 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [items.length]);
+
   const list = Object.values(decisions);
   const result = useMemo(
     () => (text ? applyDecisions(text, items, list, t('ct_rev_added_heading')) : null),
@@ -124,7 +159,14 @@ export function ContractReview({ documentId, title, analysis }: { documentId: st
     [text, items, decisions, t],
   );
 
+  const savedSignature = useMemo(() => {
+    const latest = history[0];
+    return latest && !isStaleRevision(latest.analysisSha, analysis) ? signature(latest.decisions) : signature([]);
+  }, [history, analysis]);
+
   if (!items.length) return null;
+
+  const dirty = signature(list) !== savedSignature;
 
   const decide = (key: string, d: Decision | null) => {
     setNotice(null);
@@ -173,163 +215,247 @@ export function ContractReview({ documentId, title, analysis }: { documentId: st
     },
   });
 
+  const jumpToFinish = () => finishRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
   return (
     <section aria-labelledby="ct-review-title" className="space-y-4" data-testid="contract-review">
-      <div className="rounded-2xl bg-[#0C1119] p-5 text-white">
-        <h2 id="ct-review-title" className="font-display text-lg font-semibold">{t('ct_rev_title')}</h2>
-        <p className="mt-1.5 text-sm leading-relaxed text-white/80">{t('ct_rev_intro')}</p>
-        {truncated ? (
-          <p role="note" className="mt-3 flex items-start gap-2 rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm leading-relaxed text-white">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" aria-hidden="true" />
-            <span className="min-w-0 break-words">{t('ct_rev_truncated')}</span>
+      <div className="relative overflow-hidden rounded-3xl bg-[#0C1119] p-5 text-white shadow-hover sm:p-6">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_80%_at_100%_0%,hsl(38_92%_56%/0.18),transparent_60%)]" aria-hidden="true" />
+        <div className="relative">
+          <p className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(38_92%_56%)]/15 px-2.5 py-0.5 text-xs font-semibold text-[hsl(38_92%_70%)]">
+            <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />{t('ux_ct_review_eyebrow', { n: items.length })}
           </p>
-        ) : null}
-        <p className="mt-3 text-xs text-white/70" aria-live="polite">{t('ct_rev_counts', { accepted: counts.accepted, rejected: counts.rejected, open: counts.open })}</p>
+          <h2 id="ct-review-title" className="mt-2 font-display text-xl font-semibold sm:text-2xl">{t('ct_rev_title')}</h2>
+          <p className="mt-1.5 text-sm leading-relaxed text-white/80">{t('ct_rev_intro')}</p>
+          {truncated ? (
+            <p role="note" className="mt-3 flex items-start gap-2 rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm leading-relaxed text-white">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" aria-hidden="true" />
+              <span className="min-w-0 break-words">{t('ct_rev_truncated')}</span>
+            </p>
+          ) : null}
+          {/* How far through the decisions the signer is. */}
+          <div className="mt-4">
+            <div className="flex h-1.5 overflow-hidden rounded-full bg-white/10" aria-hidden="true">
+              <span className="bg-[hsl(38_92%_56%)] transition-all duration-500 motion-reduce:transition-none" style={{ width: `${(counts.accepted / items.length) * 100}%` }} />
+              <span className="bg-white/40 transition-all duration-500 motion-reduce:transition-none" style={{ width: `${(counts.rejected / items.length) * 100}%` }} />
+            </div>
+            <p className="mt-2 text-xs text-white/75" aria-live="polite">{t('ct_rev_counts', { accepted: counts.accepted, rejected: counts.rejected, open: counts.open })}</p>
+          </div>
+        </div>
       </div>
 
       <ol className="space-y-4">
-        {items.map((item) => {
+        {items.map((item, idx) => {
           const d = decisions[item.key];
           const isEditing = editing === item.key;
+          const proposed = isEditing ? (draft.trim() || item.review.suggestion) : (replacementFor(item, d && d.status !== 'REJECTED' ? d : { key: item.key, status: 'ACCEPTED' }) ?? item.review.suggestion);
+          const favoursKnown = KNOWN_PARTIES.has(item.review.favours);
+          const benefit = item.review.benefit?.trim() || null;
           return (
-            <li key={item.key} className={cn('rounded-2xl border bg-card p-4 shadow-card sm:p-5', d?.status === 'REJECTED' ? 'border-border opacity-80' : d ? 'border-[hsl(var(--gold))]' : 'border-border')}>
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="font-display text-base font-semibold text-foreground">{item.label}</h3>
-                <span className="rounded-full bg-[hsl(var(--gold-soft))] px-2.5 py-0.5 text-2xs font-semibold text-[hsl(var(--gold-ink))]">
-                  {t(item.kind === 'MISSING' ? 'ct_rev_kind_missing' : `ct_rev_attention_${(item.attention ?? 'UNUSUAL').toLowerCase()}`)}
+            <li key={item.key}
+              className={cn('ct-rise min-w-0 rounded-2xl border bg-card shadow-card transition-colors',
+                d?.status === 'REJECTED' ? 'border-border' : d ? 'border-[hsl(var(--gold))] ring-1 ring-[hsl(var(--gold))]/30' : 'border-border')}
+              style={{ ['--i' as string]: Math.min(idx, 8) } as React.CSSProperties}
+            >
+              {/* 1. What it is and what is wrong with it. */}
+              <div className="flex min-w-0 items-start gap-3 p-4 pb-0 sm:p-5 sm:pb-0">
+                <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold',
+                  d && d.status !== 'REJECTED' ? 'bg-[hsl(var(--gold))] text-[#0C1119]' : 'bg-[#0C1119] text-white')}>
+                  {d && d.status !== 'REJECTED' ? <Check className="h-4 w-4" aria-hidden="true" /> : idx + 1}
                 </span>
-                {item.page ? <span className="text-2xs text-muted-foreground">{t('ct_rev_page', { n: item.page })}</span> : null}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="min-w-0 break-words font-display text-base font-semibold text-foreground sm:text-lg">{item.label}</h3>
+                    <span className="rounded-full bg-[hsl(var(--gold-soft))] px-2.5 py-0.5 text-xs font-semibold text-[hsl(var(--gold-ink))]">
+                      {t(item.kind === 'MISSING' ? 'ct_rev_kind_missing' : `ct_rev_attention_${(item.attention ?? 'UNUSUAL').toLowerCase()}`)}
+                    </span>
+                    {item.page ? <span className="text-xs text-muted-foreground">{t('ct_rev_page', { n: item.page })}</span> : null}
+                  </div>
+                  <p className="mt-1.5 min-w-0 break-words text-[15px] font-medium leading-relaxed text-foreground">{item.review.risk}</p>
+                  <p className="mt-1 min-w-0 break-words text-sm leading-relaxed text-ink-soft">{item.review.why}</p>
+                </div>
               </div>
 
-              {item.original ? (
-                <div className="mt-3">
-                  <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{t('ct_rev_original')}</p>
-                  <blockquote className="mt-1 border-s-2 border-border ps-3 text-sm leading-relaxed text-foreground/90">{item.original}</blockquote>
+              {/* 2. Exactly what changes. */}
+              <div className="mt-4 px-4 sm:px-5">
+                <p className="mb-2 text-sm font-semibold text-foreground">
+                  {isEditing ? t('ux_ct_edit_preview') : t(item.kind === 'MISSING' ? 'ct_rev_add_clause' : 'ux_ct_what_changes')}
+                </p>
+                <ClauseDiff before={item.original} after={proposed} idBase={`ct-${item.key.replace(/[^a-z0-9]/gi, '')}`} />
+              </div>
+
+              {/* 3 + 4. Why it is better, and who the wording serves today. */}
+              <div className="mt-3 space-y-2 px-4 sm:px-5">
+                {benefit ? (
+                  <p className="flex min-w-0 items-start gap-2 rounded-xl bg-emerald-50 p-3 text-sm leading-relaxed text-emerald-950 dark:bg-emerald-500/10 dark:text-emerald-100">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden="true" />
+                    <span className="min-w-0 break-words"><span className="font-semibold">{t('ux_ct_better')}: </span>{benefit}</span>
+                  </p>
+                ) : null}
+                {favoursKnown ? (
+                  <p className="min-w-0 break-words text-sm text-ink-soft">
+                    {t('ux_ct_favours_now', { party: t(`ct_rev_party_${item.review.favours.toLowerCase()}`) })}
+                  </p>
+                ) : null}
+                {item.review.tradeoffs ? (
+                  <p className="min-w-0 break-words text-sm leading-relaxed text-ink-soft"><span className="font-semibold text-foreground">{t('ux_ct_other_side')}: </span>{item.review.tradeoffs}</p>
+                ) : null}
+              </div>
+
+              {isEditing ? (
+                <div className="mt-3 px-4 sm:px-5">
+                  <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={5} aria-label={t('ct_rev_edit')}
+                    className="w-full rounded-xl border border-border bg-background p-3 text-base leading-relaxed outline-none focus:border-[hsl(var(--gold))] md:text-sm" />
                 </div>
               ) : null}
 
-              <dl className="mt-3 grid gap-2 text-sm">
-                <div><dt className="font-semibold text-foreground">{t('ct_rev_risk')}</dt><dd className="text-foreground/90">{item.review.risk}</dd></div>
-                <div><dt className="font-semibold text-foreground">{t('ct_rev_why')}</dt><dd className="text-foreground/90">{item.review.why}</dd></div>
-                <div><dt className="font-semibold text-foreground">{t('ct_rev_favours')}</dt><dd className="text-foreground/90">{t(`ct_rev_party_${item.review.favours.toLowerCase()}`)}</dd></div>
-              </dl>
-
-              <div className="mt-3 rounded-xl bg-[hsl(var(--gold-soft))] p-3">
-                <p className="text-2xs font-semibold uppercase tracking-wide text-[hsl(var(--gold-ink))]">{t(item.kind === 'MISSING' ? 'ct_rev_add_clause' : 'ct_rev_suggestion')}</p>
-                {isEditing ? (
-                  <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={5} aria-label={t('ct_rev_edit')}
-                    className="mt-2 w-full rounded-lg border border-border bg-background p-2 text-sm leading-relaxed outline-none focus:border-[hsl(var(--gold))]" />
-                ) : (
-                  <p className="mt-1 text-sm leading-relaxed text-foreground">{d?.status === 'EDITED' ? d.text : item.review.suggestion}</p>
-                )}
+              {/* 5. The choice, and what it means for the contract. */}
+              <div className="mt-4 border-t border-border p-4 sm:p-5">
+                {d && !isEditing ? (
+                  <p role="status" className={cn('mb-3 flex min-w-0 items-start gap-2 text-sm leading-relaxed',
+                    d.status === 'REJECTED' ? 'text-muted-foreground' : 'font-medium text-foreground')}>
+                    {d.status === 'REJECTED' ? <X className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />}
+                    <span className="min-w-0 break-words">{t(d.status === 'REJECTED' ? 'ux_ct_written_reject' : d.status === 'EDITED' ? 'ux_ct_written_edit' : 'ux_ct_written_ok')}</span>
+                  </p>
+                ) : !isEditing ? (
+                  <p className="mb-3 min-w-0 break-words text-sm text-muted-foreground">{t('ux_ct_will_write')}</p>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  {isEditing ? (
+                    <>
+                      <button type="button" className={cn(chip, 'border-[hsl(var(--gold))] bg-[hsl(var(--gold))] text-[hsl(var(--primary-foreground))]')}
+                        onClick={() => { decide(item.key, draft.trim() ? { key: item.key, status: 'EDITED', text: draft.trim() } : null); setEditing(null); }}>
+                        <Check className="h-4 w-4" aria-hidden="true" />{t('ct_rev_use_edit')}
+                      </button>
+                      <button type="button" className={cn(chip, 'border-border')} onClick={() => setEditing(null)}>{t('ct_rev_cancel')}</button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" aria-pressed={d?.status === 'ACCEPTED'} onClick={() => decide(item.key, d?.status === 'ACCEPTED' ? null : { key: item.key, status: 'ACCEPTED' })}
+                        className={cn(chip, d?.status === 'ACCEPTED' ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold))] text-[hsl(var(--primary-foreground))]' : 'border-foreground/25')}>
+                        <Check className="h-4 w-4" aria-hidden="true" />{t('ct_rev_accept')}
+                      </button>
+                      <button type="button" aria-pressed={d?.status === 'EDITED'} onClick={() => { setDraft(d?.text ?? item.review.suggestion); setEditing(item.key); }}
+                        className={cn(chip, d?.status === 'EDITED' ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold-soft))]' : 'border-foreground/25')}>
+                        <Pencil className="h-4 w-4" aria-hidden="true" />{t('ct_rev_edit')}
+                      </button>
+                      <button type="button" aria-pressed={d?.status === 'REJECTED'} onClick={() => decide(item.key, d?.status === 'REJECTED' ? null : { key: item.key, status: 'REJECTED' })}
+                        className={cn(chip, d?.status === 'REJECTED' ? 'border-foreground bg-foreground text-background' : 'border-foreground/25')}>
+                        <X className="h-4 w-4" aria-hidden="true" />{t('ct_rev_reject')}
+                      </button>
+                      <button type="button" onClick={() => askHomi(item)} className={cn(chip, 'border-[hsl(var(--gold-border))] text-[hsl(var(--gold-ink))]')}>
+                        <MessageCircle className="h-4 w-4" aria-hidden="true" />{t('ct_rev_ask_homi')}
+                      </button>
+                    </>
+                  )}
+                </div>
+                {result?.unplaced.includes(item.key) ? (
+                  <p role="status" className="mt-3 text-sm text-[hsl(var(--destructive))]">
+                    {t(result.unplacedReasons[item.key] === 'TRUNCATED' ? 'ct_rev_unplaced_truncated' : 'ct_rev_unplaced')}
+                  </p>
+                ) : null}
               </div>
-              {item.review.tradeoffs ? (
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground"><span className="font-semibold text-foreground">{t('ct_rev_tradeoffs')}:</span> {item.review.tradeoffs}</p>
-              ) : null}
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {isEditing ? (
-                  <>
-                    <button type="button" className={cn(chip, 'border-[hsl(var(--gold))] bg-[hsl(var(--gold))] text-[hsl(var(--primary-foreground))]')}
-                      onClick={() => { decide(item.key, draft.trim() ? { key: item.key, status: 'EDITED', text: draft.trim() } : null); setEditing(null); }}>
-                      <Check className="h-4 w-4" aria-hidden="true" />{t('ct_rev_use_edit')}
-                    </button>
-                    <button type="button" className={cn(chip, 'border-border')} onClick={() => setEditing(null)}>{t('ct_rev_cancel')}</button>
-                  </>
-                ) : (
-                  <>
-                    <button type="button" aria-pressed={d?.status === 'ACCEPTED'} onClick={() => decide(item.key, d?.status === 'ACCEPTED' ? null : { key: item.key, status: 'ACCEPTED' })}
-                      className={cn(chip, d?.status === 'ACCEPTED' ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold))] text-[hsl(var(--primary-foreground))]' : 'border-border')}>
-                      <Check className="h-4 w-4" aria-hidden="true" />{t('ct_rev_accept')}
-                    </button>
-                    <button type="button" aria-pressed={d?.status === 'EDITED'} onClick={() => { setDraft(d?.text ?? item.review.suggestion); setEditing(item.key); }}
-                      className={cn(chip, d?.status === 'EDITED' ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold-soft))]' : 'border-border')}>
-                      <Pencil className="h-4 w-4" aria-hidden="true" />{t('ct_rev_edit')}
-                    </button>
-                    <button type="button" aria-pressed={d?.status === 'REJECTED'} onClick={() => decide(item.key, d?.status === 'REJECTED' ? null : { key: item.key, status: 'REJECTED' })}
-                      className={cn(chip, d?.status === 'REJECTED' ? 'border-foreground bg-foreground text-background' : 'border-border')}>
-                      <X className="h-4 w-4" aria-hidden="true" />{t('ct_rev_reject')}
-                    </button>
-                    <button type="button" onClick={() => askHomi(item)} className={cn(chip, 'border-[hsl(var(--gold-border))] text-[hsl(var(--gold-ink))]')}>{t('ct_rev_ask_homi')}</button>
-                  </>
-                )}
-              </div>
-              {result?.unplaced.includes(item.key) ? (
-                <p role="status" className="mt-2 text-xs text-[hsl(var(--destructive))]">
-                  {t(result.unplacedReasons[item.key] === 'TRUNCATED' ? 'ct_rev_unplaced_truncated' : 'ct_rev_unplaced')}
-                </p>
-              ) : null}
             </li>
           );
         })}
       </ol>
 
-      <div className="sticky bottom-3 z-10 rounded-2xl border border-[hsl(var(--gold-border))] bg-card/95 p-4 shadow-hover backdrop-blur">
-        {text === null ? <p className="mb-2 text-xs text-muted-foreground">{t('ct_rev_no_text')}</p> : null}
-        <div className="flex flex-wrap gap-2">
-          <button type="button" disabled={saving || !result} onClick={() => void save()} className={cn(chip, 'border-[hsl(var(--gold))] bg-[hsl(var(--gold))] font-semibold text-[hsl(var(--primary-foreground))] disabled:opacity-60')}>
-            {t('ct_rev_save')}
+      {/* The slim bar: only while choices are unsaved and Finish is out of view.
+          Sits above the mobile tab bar (3.75rem + safe area), never over the middle. */}
+      {dirty && !finishInView ? (
+        <div className="sticky bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-20 md:bottom-4">
+          <div className="mx-auto flex max-w-xl items-center gap-2 rounded-full border border-[hsl(var(--gold-border))] bg-[#0C1119]/95 py-1.5 pe-1.5 ps-4 text-white shadow-hover backdrop-blur">
+            <span className="min-w-0 flex-1 truncate text-sm">{t('ux_ct_unsaved', { n: list.length })}</span>
+            <button type="button" onClick={jumpToFinish} aria-label={t('ux_ct_jump_finish')}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/85 hover:bg-white/10">
+              <ArrowDown className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <button type="button" disabled={saving || !result} onClick={() => void save()}
+              className="min-h-10 shrink-0 rounded-full bg-[hsl(38_92%_56%)] px-4 text-sm font-semibold text-[#0C1119] disabled:opacity-60">
+              {t('ct_rev_save')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Finish: in the flow of the page, after the last point. */}
+      <section ref={finishRef} aria-labelledby="ct-finish-title" className="scroll-mt-24 rounded-2xl border border-[hsl(var(--gold-border))] bg-card p-4 shadow-card sm:p-5">
+        <h3 id="ct-finish-title" className="font-display text-lg font-semibold text-foreground">{t('ux_ct_finish_title')}</h3>
+        <p className="mt-1 text-sm leading-relaxed text-ink-soft">{t('ux_ct_finish_hint')}</p>
+        {text === null ? <p className="mt-2 text-sm text-muted-foreground">{t('ct_rev_no_text')}</p> : null}
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <button type="button" disabled={saving || !result} onClick={() => void save()}
+            className={cn(chip, 'justify-center border-[hsl(var(--gold))] bg-[hsl(var(--gold))] font-semibold text-[hsl(var(--primary-foreground))] disabled:opacity-60 sm:col-span-2')}>
+            <Check className="h-4 w-4" aria-hidden="true" />{t('ct_rev_save')}
           </button>
-          <button type="button" disabled={!result} onClick={() => setShowCompare((v) => !v)} aria-expanded={showCompare} className={cn(chip, 'border-border')}>
-            <FileText className="h-4 w-4" aria-hidden="true" />{t('ct_rev_compare')}
+          <button type="button" disabled={!result} onClick={() => setShowCompare((v) => !v)} aria-expanded={showCompare} className={cn(chip, 'border-foreground/25')}>
+            <FileText className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="min-w-0 break-words text-start">{t('ct_rev_compare')}</span>
           </button>
-          <button type="button" disabled={!result} onClick={() => exportDocx(false)} className={cn(chip, 'border-border')}><Download className="h-4 w-4" aria-hidden="true" />{t('ct_rev_docx')}</button>
-          <button type="button" disabled={!result || !result.changes.length} onClick={() => exportDocx(true)} className={cn(chip, 'border-border')}><Download className="h-4 w-4" aria-hidden="true" />{t('ct_rev_docx_tracked')}</button>
+          <button type="button" disabled={!result} onClick={() => exportDocx(false)} className={cn(chip, 'border-foreground/25')}>
+            <Download className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="min-w-0 break-words text-start">{t('ct_rev_docx')}</span>
+          </button>
+          <button type="button" disabled={!result || !result.changes.length} onClick={() => exportDocx(true)} className={cn(chip, 'border-foreground/25')}>
+            <Download className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="min-w-0 break-words text-start">{t('ct_rev_docx_tracked')}</span>
+          </button>
           <button type="button" disabled={!result} aria-describedby="ct-rev-print-hint"
             onClick={() => { if (result && !printHtml(`${title} · ${t('ct_rev_revised')}`, result.text, lang, isRTL ? 'rtl' : 'ltr', exportNotes)) setNotice('ct_rev_popup_blocked'); }}
-            className={cn(chip, 'border-border')}>
-            <Printer className="h-4 w-4" aria-hidden="true" />{t('ct_rev_print_pdf')}
+            className={cn(chip, 'border-foreground/25')}>
+            <Printer className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="min-w-0 break-words text-start">{t('ct_rev_print_pdf')}</span>
           </button>
           {history.length ? (
-            <button type="button" onClick={() => setShowHistory((v) => !v)} aria-expanded={showHistory} className={cn(chip, 'border-border')}><History className="h-4 w-4" aria-hidden="true" />{t('ct_rev_history')}</button>
+            <button type="button" onClick={() => setShowHistory((v) => !v)} aria-expanded={showHistory} className={cn(chip, 'border-foreground/25')}>
+              <History className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="min-w-0 break-words text-start">{t('ct_rev_history')}</span>
+            </button>
           ) : null}
         </div>
-        {notice ? <p role="status" className="mt-2 text-sm text-foreground">{t(notice)}</p> : null}
-        <p id="ct-rev-print-hint" className="mt-2 text-2xs leading-relaxed text-muted-foreground">{t('ct_rev_print_hint')}</p>
-        {truncated ? <p className="mt-1 text-2xs leading-relaxed text-foreground">{t('ct_rev_truncated_export')}</p> : null}
-        <p className="mt-2 text-2xs leading-relaxed text-muted-foreground">{t('ct_rev_disclaimer')}</p>
-      </div>
+        {notice ? <p role="status" className="mt-3 text-sm font-medium text-foreground">{t(notice)}</p> : null}
+        <p id="ct-rev-print-hint" className="mt-3 text-xs leading-relaxed text-muted-foreground">{t('ct_rev_print_hint')}</p>
+        {truncated ? <p className="mt-1 text-xs leading-relaxed text-foreground">{t('ct_rev_truncated_export')}</p> : null}
 
-      {showCompare && result ? (
-        <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
-          <h3 className="font-display text-base font-semibold">{t('ct_rev_compare')}</h3>
-          {result.changes.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">{t('ct_rev_no_changes')}</p> : (
-            <ul className="mt-3 space-y-3">
-              {result.changes.map((c) => (
-                <li key={c.key} className="grid gap-2 sm:grid-cols-2">
-                  <div className="rounded-lg bg-muted/60 p-3 text-sm"><p className="text-2xs font-semibold uppercase text-muted-foreground">{t('ct_rev_before')}</p><p className="mt-1 line-through decoration-[hsl(var(--destructive))]/60">{c.before ?? t('ct_rev_not_in_original')}</p></div>
-                  <div className="rounded-lg bg-[hsl(var(--gold-soft))] p-3 text-sm"><p className="text-2xs font-semibold uppercase text-[hsl(var(--gold-ink))]">{t('ct_rev_after')}</p><p className="mt-1">{c.after}</p></div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : null}
+        {showCompare && result ? (
+          <div className="mt-4 border-t border-border pt-4">
+            <h4 className="font-display text-base font-semibold">{t('ct_rev_compare')}</h4>
+            {result.changes.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">{t('ct_rev_no_changes')}</p> : (
+              <ul className="mt-3 space-y-4">
+                {result.changes.map((c) => (
+                  <li key={c.key} className="min-w-0">
+                    <p className="mb-1.5 text-sm font-semibold text-foreground">{c.label}</p>
+                    <ClauseDiff before={c.before} after={c.after} idBase={`ct-cmp-${c.key.replace(/[^a-z0-9]/gi, '')}`} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : null}
 
-      {showHistory ? (
-        <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
-          <h3 className="font-display text-base font-semibold">{t('ct_rev_history')}</h3>
-          <ol className="mt-2">
-            {history.map((h) => {
-              const stale = isStaleRevision(h.analysisSha, analysis);
-              return (
-                <li key={h.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border py-2 text-sm last:border-0">
-                  <span className="min-w-0 break-words">
-                    {t('ct_rev_version', { n: h.version })} · {new Intl.DateTimeFormat(lang, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(h.createdAt))} · {t('ct_rev_version_counts', { applied: h.applied })}
-                    {stale ? <span className="ms-2 rounded-full bg-muted px-2 py-0.5 text-2xs font-semibold text-muted-foreground">{t('ct_rev_stale')}</span> : null}
-                  </span>
-                  {stale ? (
-                    <span className="text-2xs text-muted-foreground">{t('ct_rev_stale_hint')}</span>
-                  ) : (
-                    <button type="button" className="min-h-11 font-medium text-[hsl(var(--gold-ink))] underline underline-offset-4"
-                      onClick={() => { setNotice(null); setEditing(null); setDecisions(Object.fromEntries(h.decisions.map((d) => [d.key, d]))); }}>{t('ct_rev_restore')}</button>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-      ) : null}
+        {showHistory ? (
+          <div className="mt-4 border-t border-border pt-4">
+            <h4 className="font-display text-base font-semibold">{t('ct_rev_history')}</h4>
+            <ol className="mt-2">
+              {history.map((h) => {
+                const stale = isStaleRevision(h.analysisSha, analysis);
+                return (
+                  <li key={h.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border py-2 text-sm last:border-0">
+                    <span className="min-w-0 break-words">
+                      {t('ct_rev_version', { n: h.version })} · {new Intl.DateTimeFormat(lang, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(h.createdAt))} · {t('ct_rev_version_counts', { applied: h.applied })}
+                      {stale ? <span className="ms-2 rounded-full bg-muted px-2 py-0.5 text-2xs font-semibold text-muted-foreground">{t('ct_rev_stale')}</span> : null}
+                    </span>
+                    {stale ? (
+                      <span className="text-2xs text-muted-foreground">{t('ct_rev_stale_hint')}</span>
+                    ) : (
+                      <button type="button" className="min-h-11 font-medium text-[hsl(var(--gold-ink))] underline underline-offset-4"
+                        onClick={() => { setNotice(null); setEditing(null); setDecisions(Object.fromEntries(h.decisions.map((d) => [d.key, d]))); }}>{t('ct_rev_restore')}</button>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        ) : null}
+
+        <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">{t('ct_rev_disclaimer')}</p>
+      </section>
     </section>
   );
 }

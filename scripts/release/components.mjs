@@ -161,7 +161,7 @@ export const COMPONENTS = {
     paths: [/^src\/pages\/(Verify|ContractResultPage|VerificationCasePage|ContractsHistoryPage|ContractsPage)/, /^src\/(verify|components\/verify|components\/contracts|components\/research|contracts)\//, /^src\/services\/(verifyResult|verifyDocumentFile|verifyReportPrefetch)\.ts$/, fn('research-agent', 'verify-synthesis', 'verify-queue', 'verify-scaling', 'verification-handoff', 'browserbase-handoff', 'revalidate-evidence', 'homatch-research')],
     suites: ['mobile:verify', 'mobile:routes'],
   },
-  MORTGAGE: { paths: [/^src\/(pages\/MortgagePage|components\/mortgage|mortgage)/], suites: ['mobile:mortgage', 'mobile:routes', 'mobile:admin-mortgage'] },
+  MORTGAGE: { paths: [/^src\/(pages\/Mortgage(Page|TermsPage|TermPage)|components\/mortgage|mortgage)/, /^src\/services\/mortgageFxRates\.ts$/, /^scripts\/ux-mortgage-i18n/, fn('mortgage-fx-rates')], suites: ['mobile:mortgage', 'mobile:routes', 'mobile:admin-mortgage'] },
   /* For Expats and My Georgia by HOMI (onboarding, dashboard, guide hub). */
   EXPATS: { paths: [/^src\/(pages\/(ForExpatsPage|Expat|MyGeorgia)|components\/expats|expats|myGeorgia)/, /^src\/services\/myGeorgia\.ts$/,
     /^scripts\/expat-content\//, /^scripts\/homi-mygeorgia-i18n-data\.mjs$/, /^tests\/mobile\/myGeorgia\.test\.mjs$/], suites: ['mobile:expats'] },

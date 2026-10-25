@@ -57,6 +57,9 @@ const DeveloperProfilePage = lazyRoute(() => import('./pages/DeveloperProfilePag
 const AIPage = lazyRoute(() => import('./pages/AIPage'));
 const VerifyPage = lazyRoute(() => import('./pages/VerifyPage'));
 const MortgagePage = lazyRoute(withFeatureStrings(() => import('./pages/MortgagePage')));
+/* The mortgage glossary: an index and one page per term. Public. */
+const MortgageTermsPage = lazyRoute(withFeatureStrings(() => import('./pages/MortgageTermsPage')));
+const MortgageTermPage = lazyRoute(withFeatureStrings(() => import('./pages/MortgageTermPage')));
 const ForExpatsPage = lazyRoute(withFeatureStrings(() => import('./pages/ForExpatsPage')));
 /* HOMATCH Design Studio. Lazy, and the workspace separately from the
    launcher, because only the workspace pulls three.js. */
@@ -327,6 +330,8 @@ const routeTable: RouteConfig[] = [
   // / mortgage_offers RLS (auth_user_id()-based, see the migration), not by
   // gating this route.
   { name: 'Mortgage',          path: '/mortgage',                 element: <MortgagePage />,      public: true },
+  { name: 'Mortgage terms',    path: '/mortgage/terms',           element: <MortgageTermsPage />, public: true },
+  { name: 'Mortgage term',     path: '/mortgage/terms/:slug',     element: <MortgageTermPage />,  public: true },
   // Public for the same reason /mortgage is: every figure on the page is
   // computed in the browser by src/investment/calculations, so a signed-out
   // visitor gets the complete analytical product. The Consultant and the

@@ -652,6 +652,10 @@ jobs:
             # clip to homatch-official-worker with WORKER_TOKEN. A real user
             # identity is required, so the gateway JWT check stays on.
             "homi-voice-transcribe"
+            # Mortgage: the National Bank of Georgia's official rates, refreshed
+            # on demand when the stored ones are older than six hours. Public
+            # data; the anon key is enough, the service role writes the table.
+            "mortgage-fx-rates"
             # developer-score has never been deployed at all, which is what made
             # /developer/:id a dead route.
             "developer-score"

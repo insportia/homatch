@@ -77,7 +77,7 @@ function RatioCard({
 
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <div>
-          <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="text-2xs font-medium text-muted-foreground">
             {t('mortgage_afford_your_value')}
           </p>
           <p
@@ -91,7 +91,7 @@ function RatioCard({
         </div>
         <div>
           <div className="flex items-center gap-1.5">
-            <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-2xs font-medium text-muted-foreground">
               {t('mortgage_afford_official_limit')}
             </p>
             {rule ? <SourceBadge source="OFFICIAL" /> : null}
@@ -101,7 +101,7 @@ function RatioCard({
           </p>
         </div>
         <div>
-          <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="text-2xs font-medium text-muted-foreground">
             {t('mortgage_afford_difference')}
           </p>
           <p className="mt-1 font-display text-2xl font-semibold leading-none text-foreground">

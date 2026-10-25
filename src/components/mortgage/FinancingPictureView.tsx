@@ -77,7 +77,7 @@ function NoteList({
   if (!notes.length) return null;
   return (
     <div>
-      <h3 className={cn('flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.14em]', tone)}>
+      <h3 className={cn('flex items-center gap-1.5 text-2xs font-semibold', tone)}>
         <Icon className="h-3.5 w-3.5" aria-hidden="true" />
         {t(titleKey)}
       </h3>
@@ -133,7 +133,7 @@ export function FinancingPictureView({ picture }: { picture: FinancingPicture })
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
         <div className="min-w-0">
           <h2 className="font-display text-lg font-semibold text-foreground">{t('mortgage_pic_title')}</h2>
-          <p className="mt-0.5 text-2xs font-medium uppercase tracking-[0.1em] text-[hsl(var(--gold-ink))]">
+          <p className="mt-0.5 text-2xs font-medium text-[hsl(var(--gold-ink))]">
             {t('mortgage_pic_eyebrow')}
           </p>
         </div>
@@ -145,7 +145,7 @@ export function FinancingPictureView({ picture }: { picture: FinancingPicture })
       <div className="grid divide-y divide-border sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4 lg:divide-x rtl:lg:divide-x-reverse">
         {slots.map((slot) => (
           <div key={slot.labelKey} className={cn('p-4 sm:p-5', slot.emphasis && 'bg-[hsl(var(--gold-soft))]')}>
-            <p className="flex items-center gap-1.5 text-2xs font-medium uppercase leading-tight tracking-wide text-muted-foreground">
+            <p className="flex items-center gap-1.5 text-2xs font-medium leading-tight text-muted-foreground">
               {t(slot.labelKey)}
               <LabelTerm labelKey={slot.labelKey} />
             </p>

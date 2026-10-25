@@ -37,7 +37,8 @@ import { CheckCircle2, CircleHelp, ExternalLink, XCircle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { Module, formatMoney, formatPercent, intlLocaleFor } from '@/components/workspace/primitives';
-import { SourceBadge, YesNoField, ChipField } from '@/components/workspace/controls';
+import { SourceBadge, ChipField } from '@/components/workspace/controls';
+import { YesNoCards } from '../OptionCards';
 import { AskHomatch } from '../askConsultant';
 import { computeMonthlyPayment } from '@/mortgage/calculations';
 import {
@@ -74,7 +75,7 @@ function Fact({ labelKey, value }: { labelKey: string; value: string }) {
   const { t } = useLanguage();
   return (
     <div className="min-w-0">
-      <p className="text-2xs uppercase tracking-[0.12em] text-muted-foreground">{t(labelKey)}</p>
+      <p className="text-2xs text-muted-foreground">{t(labelKey)}</p>
       <p className="mt-1 text-sm font-medium leading-snug text-foreground">{value}</p>
     </div>
   );
@@ -214,7 +215,7 @@ export function ProgramsView({
             {/* ── 3. What it is worth on THIS scenario ── */}
             {benefit ? (
               <div className="mt-5 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4">
-                <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--gold-ink))]">
+                <p className="text-2xs font-semibold text-[hsl(var(--gold-ink))]">
                   {t('mortgage_subsidy_worth_title')}
                 </p>
 
@@ -248,13 +249,13 @@ export function ProgramsView({
                       <div className="mt-3 rounded-lg border border-[hsl(var(--gold-border))] bg-card p-3">
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <p className="text-2xs uppercase tracking-[0.12em] text-muted-foreground">{t('mortgage_subsidy_compare_without')}</p>
+                            <p className="text-2xs text-muted-foreground">{t('mortgage_subsidy_compare_without')}</p>
                             <p className="mt-0.5 font-display text-lg font-semibold tabular-nums text-foreground" dir="ltr">
                               {formatMoney(without, programCurrency, locale)}
                             </p>
                           </div>
                           <div>
-                            <p className="text-2xs uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">{t('mortgage_subsidy_compare_with')}</p>
+                            <p className="text-2xs text-[hsl(var(--gold-ink))]">{t('mortgage_subsidy_compare_with')}</p>
                             <p className="mt-0.5 font-display text-lg font-semibold tabular-nums text-foreground" dir="ltr">
                               {formatMoney(withProgram, programCurrency, locale)}
                             </p>
@@ -330,7 +331,7 @@ export function ProgramsView({
                       the decree's own wording of the same fact, and both
                       together were two sentences about one date.
                     */}
-                    <p className="mb-2.5 max-w-[60ch] text-2xs leading-relaxed text-muted-foreground">
+                    <p id={`crit-${rule.id}-${criterion.key}`} className="mb-2.5 max-w-[60ch] text-sm leading-relaxed text-muted-foreground">
                       {criterion.routeClosedOn
                         ? t('mortgage_subsidy_route_closed')
                         : t(criterion.description)}
@@ -345,13 +346,14 @@ export function ProgramsView({
                         {t('mortgage_subsidy_not_checkable')}
                       </p>
                     ) : question.type === 'YES_NO' ? (
-                      <YesNoField
+                      <YesNoCards
+                        labelledBy={`crit-${rule.id}-${criterion.key}`}
                         value={
                           typeof answers[question.id] === 'boolean'
                             ? answers[question.id]
                               ? 'YES'
                               : 'NO'
-                            : undefined
+                            : null
                         }
                         onChange={(v) => onAnswer(question.id, v === null ? undefined : v === 'YES')}
                       />
@@ -409,7 +411,7 @@ export function ProgramsView({
                     leaving somebody to guess which ones they skipped. */}
                 {match.verdict === 'CANNOT_DETERMINE' && match.outstanding.length ? (
                   <div className="mt-3">
-                    <p className="text-2xs font-semibold uppercase tracking-[0.12em]">
+                    <p className="text-2xs font-semibold">
                       {t('mortgage_subsidy_outstanding_title')}
                     </p>
                     <ul className="mt-1.5 space-y-1">

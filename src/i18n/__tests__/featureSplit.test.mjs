@@ -18,7 +18,7 @@ const keys = Object.keys(en);
 /* Everything that only renders on a route wrapped with withFeatureStrings, plus the admin console
    (it has its own lazy layout and is never the first screen of a visitor). */
 const FEATURE_ROUTES = new RegExp([
-  '^src/pages/(MortgagePage|InvestmentPage|ForExpatsPage|ExpatTopicPage|MyGeorgiaPage|MyGeorgiaStartPage)\\.tsx$',
+  '^src/pages/(MortgagePage|MortgageTermsPage|MortgageTermPage|InvestmentPage|ForExpatsPage|ExpatTopicPage|MyGeorgiaPage|MyGeorgiaStartPage)\\.tsx$',
   '^src/pages/property/MatchingWorkspacePage\\.tsx$',
   '^src/components/(mortgage|investment|expats)/',
   '^src/(mortgage|investment|expats)/',
@@ -65,7 +65,7 @@ test('the split is real: the families are cut, the shared keys stay', () => {
 
 test('every route that renders these features waits for their strings', () => {
   const routes = readFileSync(join(ROOT, 'src/routes.tsx'), 'utf8');
-  for (const page of ['MortgagePage', 'InvestmentPage', 'ForExpatsPage', 'ExpatTopicPage', 'MyGeorgiaPage', 'MyGeorgiaStartPage', 'property/MatchingWorkspacePage']) {
+  for (const page of ['MortgagePage', 'MortgageTermsPage', 'MortgageTermPage', 'InvestmentPage', 'ForExpatsPage', 'ExpatTopicPage', 'MyGeorgiaPage', 'MyGeorgiaStartPage', 'property/MatchingWorkspacePage']) {
     assert.match(routes, new RegExp(`lazyRoute\\(withFeatureStrings\\(\\(\\) => import\\('\\./pages/${page.replace('/', '\\/')}'\\)\\)\\)`), `${page} is not wrapped`);
   }
 });

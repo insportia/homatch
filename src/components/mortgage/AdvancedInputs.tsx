@@ -172,6 +172,7 @@ export function AdvancedInputs({
         )}
         <NumberField
           field="monthlyFeeFlat"
+          persist
           labelKey="mortgage_label_monthly_fee"
           kind="money"
           currency={currency}
@@ -181,6 +182,7 @@ export function AdvancedInputs({
         />
         <NumberField
           field="mandatoryInsuranceAnnualFlat"
+          persist
           labelKey="mortgage_label_insurance_annual"
           kind="money"
           currency={currency}
@@ -190,6 +192,7 @@ export function AdvancedInputs({
         />
         <NumberField
           field="valuationFeeFlat"
+          persist
           labelKey="mortgage_label_valuation_fee"
           kind="money"
           currency={currency}
@@ -238,6 +241,7 @@ export function AdvancedInputs({
       >
         <NumberField
           field="monthlyNetIncome"
+          persist
           labelKey="mortgage_label_monthly_income"
           kind="money"
           currency={currency}
@@ -247,6 +251,7 @@ export function AdvancedInputs({
         />
         <NumberField
           field="existingMonthlyDebtObligations"
+          persist
           labelKey="mortgage_label_existing_debt"
           hintKey="mortgage_label_existing_debt_hint"
           kind="money"

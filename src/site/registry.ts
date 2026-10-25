@@ -1120,7 +1120,7 @@ export function itemsDef(type: string): ItemGroupDef | undefined {
  *  editor bundle. */
 export const PUBLIC_ROUTES: readonly string[] = [
   '/', '/about', '/pricing', '/partners', '/developers', '/brokers',
-  '/verify', '/mortgage', '/investment',
+  '/verify', '/mortgage', '/mortgage/terms', '/mortgage/terms/:slug', '/investment',
   '/for-expats', '/for-expats/georgia', '/for-expats/georgia/:slug',
   // The public front doors of Find Property and the owner workspace.
   '/for-buyers', '/for-owners',

@@ -63,7 +63,7 @@ export function TermsView({
                   {t('mortgage_years_value', { years: row.termMonths / 12 })}
                 </span>
                 {row.isSelected ? (
-                  <span className="text-2xs uppercase tracking-wide text-[hsl(var(--gold-ink))]">
+                  <span className="text-2xs text-[hsl(var(--gold-ink))]">
                     {t('mortgage_term_compare_selected')}
                   </span>
                 ) : (

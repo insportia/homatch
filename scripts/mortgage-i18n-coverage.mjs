@@ -39,10 +39,18 @@ const SCAN_ROOTS = [
   'src/components/mortgage',
   'src/components/workspace',
   'src/pages/MortgagePage.tsx',
+  'src/pages/MortgageTermsPage.tsx',
+  'src/pages/MortgageTermPage.tsx',
 ];
 
 /** Keys built by string template, with the set that builds them. */
 const TEMPLATED = [];
+
+/* The glossary pages assemble every key from the term id (src/mortgage/termPages.ts). */
+{
+  const { TERM_PAGES, TERM_CATEGORIES, termPageKeys, categoryKey } = await import(new URL('../src/mortgage/termPages.ts', import.meta.url).href);
+  TEMPLATED.push({ where: 'src/mortgage/termPages.ts', keys: [...TERM_PAGES.flatMap((p) => termPageKeys(p.term)), ...TERM_CATEGORIES.map(categoryKey)] });
+}
 
 function walk(target, out) {
   const stats = statSync(target);

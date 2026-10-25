@@ -57,6 +57,7 @@ import { ValueResults } from '@/components/investment/results/ValueResults';
 import { STRATEGIES } from '@/investment/strategies/definitions';
 import { HomiInvestmentBar } from '@/components/investment/HomiInvestmentBar';
 import { SaveResultBar, SavedResultsList } from '@/components/investment/SavedResults';
+import { useScrollTopOnChange } from '@/hooks/useScrollTopOnChange';
 
 export default function InvestmentPage() {
   const { t, isRTL } = useLanguage();
@@ -87,6 +88,11 @@ export default function InvestmentPage() {
     attachProperty,
     attachListing,
   } = session;
+
+  /* Choosing a strategy (or going back to the list) replaces the whole screen
+     without changing the URL: to the person it is a new page, so it starts at
+     its top instead of wherever the strategy card was. */
+  useScrollTopOnChange(strategy ?? null);
 
   /* A property can be handed in from anywhere in the app: the detail page,
      a match, a share link. Origin PROPERTY, so the investor can disagree

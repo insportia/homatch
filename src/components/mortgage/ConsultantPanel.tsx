@@ -28,6 +28,7 @@ import { Streamdown } from 'streamdown';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAIChat } from '@/hooks/useAIChat';
 import { cn } from '@/lib/utils';
+import { followLatest } from '@/lib/scrollWithin';
 import { SuggestedReplies } from '@/components/ai/SuggestedReplies';
 import { customerMessage } from '@/lib/ai/messageText';
 import { useMortgageAsk } from './askConsultant';
@@ -84,7 +85,9 @@ export function ConsultantPanel({ brief }: { brief: ConsultantBrief | null }) {
   }, [brief, setPageContext]);
 
   useEffect(() => {
-    if (messages.length) bottomRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    /* Inside the conversation box only: scrollIntoView also scrolled the PAGE, so a
+       restored conversation pulled Mortgage down to the consultant on arrival. */
+    if (messages.length) followLatest(bottomRef.current, { smooth: true });
   }, [messages.length, streamContent]);
 
   const ask = (text: string) => {

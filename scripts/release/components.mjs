@@ -151,7 +151,9 @@ export const COMPONENTS = {
     suites: ['mobile:discovery', 'mobile:routes'],
   },
   PWA_PUSH: {
-    paths: [/^public\/(sw|service-worker|manifest)[^/]*$/, /^src\/serviceWorker\//, /^src\/lib\/(pwa|push)\.ts$/, /^src\/lib\/notifications\//, /^src\/(components\/notifications|pages\/NotificationsPage)/, fn('push-send', 'active-search-notify')],
+    paths: [/^public\/(sw|service-worker|manifest)[^/]*$/, /^src\/serviceWorker\//, /^src\/lib\/(pwa|push)\.ts$/, /^src\/lib\/notifications\//, /^src\/(components\/notifications|pages\/NotificationsPage)/, fn('push-send', 'active-search-notify'),
+      // Finished-job notifications (UX round 2026-10-25): the push copy generator and the copy.
+      /^scripts\/sw-push-copy\.mjs$/, /^scripts\/ux-navnotify-i18n-(data|apply)\.mjs$/],
     suites: ['push', 'a11y', 'mobile:shell'],
     proofs: ['push: push-send PROVEN_EXACT; a real subscription receives a test notification'],
   },
@@ -251,6 +253,8 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(site_|app_content|studio_)/, 'SITE_STUDIO'],
   [/^public\.(dt_|developer_|dev_)/, 'DEVELOPER'],
   [/^public\.(push_|notification)/, 'PWA_PUSH'],
+  // The finished-job notification outbox, its trigger function and drain RPCs (20261204103000).
+  [/^public\.(job_notification_|background_jobs_enqueue_notification$)/, 'PWA_PUSH'],
   [/^public\.(publishing_)/, 'PUBLISHING'],
   [/^public\.(broker)/, 'BROKER'],
   [/^public\.(mortgage)/, 'MORTGAGE'],
@@ -312,7 +316,7 @@ export const I18N_KEY_OWNERS = [
   [/^(verify|dr)_/, 'VERIFY'],
   // Contracts (entry, result, history) and the UX round's contracts copy.
   [/^(ct|ux_ct)_/, 'VERIFY'],
-  [/^(pwa|notif)_/, 'PWA_PUSH'],
+  [/^(pwa|notif|jobdone)_/, 'PWA_PUSH'],
   [/^auth_/, 'AUTH_SECURITY'],
   [/^admin_/, 'ADMIN'],
   // Admin → Finance (incl. Finance V2 per-service dashboards).

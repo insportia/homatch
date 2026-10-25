@@ -118,7 +118,9 @@ test('route 4: every route is loaded through the recovering loader', () => {
 test('route 5: the app scrolls new pages to the top, and leaves back alone', () => {
   const src = readFileSync('src/components/common/ScrollToTop.tsx', 'utf8');
 
-  /* Back and forward restore where the person was: that is what back means. */
+  /* Back and forward restore where the person was: that is what back means.
+     (The position is now restored by ScrollToTop itself once the page is tall
+     enough, see tests/matrix/scrollJumps.test.mjs, never forced to the top.) */
   assert.match(src, /navigationType === 'POP'/, 'back/forward must keep its restored position');
   /* An anchor asked for an element, not the top. */
   assert.match(src, /if \(hash\) return/, 'anchor links must not be dragged to the top');

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { AppLayout } from '@/components/layouts/AppLayout';
+import { followLatest } from '@/lib/scrollWithin';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -383,7 +384,8 @@ function AIPageInner() {
 
   useEffect(() => {
     if (!following) return;
-    bottomRef.current?.scrollIntoView({ behavior: streaming ? 'instant' : 'smooth' });
+    /* The transcript's own box: scrollIntoView also nudged the page on every token. */
+    followLatest(bottomRef.current, { smooth: !streaming });
   }, [messages, streamContent, following, streaming]);
 
   /*

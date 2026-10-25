@@ -4,7 +4,7 @@
 import {
   AlignCenter, AlignLeft, AlignRight, ChevronDown, Info, Link2, Lock, Plus, ShieldAlert, Trash2, X,
 } from 'lucide-react';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,11 +39,23 @@ export function ToolBtn({ label, onClick, disabled, children }: { label: string;
 
 /* ── property controls ─────────────────────────────────────────────────────────────────────── */
 
+/* The visible label is the control's accessible name: a direct Input / Textarea child gets the
+   label's id (htmlFor); controls nested in wrappers carry their own aria-label. */
 export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: React.ReactNode }) {
+  const id = useId();
+  let linked = false;
+  const kids = React.Children.map(children, (c) => {
+    if (!linked && React.isValidElement<{ id?: string }>(c) && (c.type === Input || c.type === Textarea)) {
+      linked = true;
+      return React.cloneElement(c, { id: c.props.id ?? id });
+    }
+    return c;
+  });
   return (
     <div className="space-y-1">
-      <Label className="text-xs font-medium text-foreground/80">{label}</Label>
-      {children}
+      {/* block: an inline label shared its line with an inline control ("Size" touching "Small"). */}
+      <Label htmlFor={linked ? id : undefined} className="block text-xs font-medium text-foreground/80">{label}</Label>
+      {kids}
       {hint}
     </div>
   );
@@ -62,7 +74,7 @@ export function ColorField({ label, value, onChange, allowEmpty = false }: { lab
       <div className="flex items-center gap-2">
         <input type="color" aria-label={label} value={value ?? '#FFFFFF'} onChange={(e) => onChange(e.target.value.toUpperCase())}
           className="h-8 w-10 shrink-0 cursor-pointer rounded border bg-transparent p-0.5" />
-        <Input value={text} dir="ltr" className="h-8 font-mono text-xs" placeholder={allowEmpty ? t('ems_d_none') : t('ems_d_hex_placeholder')}
+        <Input value={text} dir="ltr" aria-label={label} className="h-8 font-mono text-xs" placeholder={allowEmpty ? t('ems_d_none') : t('ems_d_hex_placeholder')}
           onChange={(e) => setText(e.target.value)}
           onBlur={() => { const v = text.trim(); if (/^#[0-9a-f]{6}$/i.test(v)) onChange(v.toUpperCase()); else if (!v && allowEmpty) onChange(null); else setText(value ?? ''); }} />
         {allowEmpty && value ? <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={t('ems_d_clear')} onClick={() => onChange(null)}><X className="h-3.5 w-3.5" /></Button> : null}
@@ -75,7 +87,7 @@ export function NumberField({ label, value, min, max, onChange, suffix }: { labe
   return (
     <Field label={label}>
       <div className="flex items-center gap-1.5">
-        <Input type="number" inputMode="numeric" min={min} max={max} value={value ?? ''} className="h-8 text-xs"
+        <Input type="number" inputMode="numeric" min={min} max={max} value={value ?? ''} aria-label={label} className="h-8 text-xs"
           onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, Math.round(n)))); }} />
         {suffix ? <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{suffix}</span> : null}
       </div>
@@ -111,10 +123,10 @@ export function AlignField({ value, onChange }: { value: Align; onChange: (a: Al
 export function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: Array<{ v: T; l: string }>; onChange: (v: T) => void }) {
   return (
     <Field label={label}>
-      <div className="inline-flex flex-wrap rounded-lg border p-0.5" role="group" aria-label={label}>
+      <div className="flex flex-wrap rounded-lg border p-0.5" role="group" aria-label={label}>
         {options.map((o) => (
           <button key={o.v} type="button" aria-pressed={value === o.v} onClick={() => onChange(o.v)}
-            className={cn('inline-flex h-7 items-center rounded-md px-2.5 text-xs', value === o.v ? 'bg-[#0C1119] text-white' : 'text-muted-foreground hover:text-foreground')}>
+            className={cn('inline-flex min-h-7 min-w-0 flex-auto items-center justify-center rounded-md px-2.5 py-1 text-center text-xs leading-tight', value === o.v ? 'bg-[#0C1119] text-white' : 'text-muted-foreground hover:text-foreground')}>
             {o.l}
           </button>
         ))}
@@ -123,7 +135,9 @@ export function Segmented<T extends string>({ label, value, options, onChange }:
   );
 }
 
-export function UrlField({ label, value, onChange, kind = 'a', text, hint }: { label: string; value: string | null | undefined; onChange: (v: string) => void; kind?: 'a' | 'img'; text?: string; hint?: string }) {
+export function UrlField({ label, value, onChange, kind = 'a', text, hint, live = false }: { label: string; value: string | null | undefined; onChange: (v: string) => void; kind?: 'a' | 'img'; text?: string; hint?: string;
+  /** Apply each valid address as it is typed (the canvas follows), not only when the field is left. */
+  live?: boolean }) {
   const { t } = useLanguage();
   const [draft, setDraft] = useState(value ?? '');
   useEffect(() => setDraft(value ?? ''), [value]);
@@ -142,7 +156,12 @@ export function UrlField({ label, value, onChange, kind = 'a', text, hint }: { l
       </div>
     }>
       <Input value={draft} dir="ltr" inputMode="url" placeholder="https://" className="h-8 text-xs"
-        onChange={(e) => setDraft(e.target.value)} onBlur={() => onChange(draft.trim())} />
+        onChange={(e) => {
+          setDraft(e.target.value);
+          const v = e.target.value.trim();
+          if (live && (kind === 'img' ? /^https:\/\/\S+\.\S+/i : /^(https:\/\/\S+\.\S+|mailto:\S+@\S+|tel:\+?[0-9 ()-]{5,})/i).test(v)) onChange(v);
+        }}
+        onBlur={() => { if (draft.trim() !== (value ?? '')) onChange(draft.trim()); }} />
     </Field>
   );
 }
@@ -230,7 +249,6 @@ const BUTTON_PRESETS: Array<{ key: string; patch: (accent: string) => Partial<Bu
   { key: 'outline', patch: (a) => ({ buttonColor: '#FFFFFF', textColor: '#0C1119', radius: 8, strokeWidth: 2, strokeColor: a, fullWidth: false }) },
   { key: 'pill', patch: (a) => ({ buttonColor: a, textColor: '#FFFFFF', radius: 40, strokeWidth: 0, strokeColor: null, size: 'lg', fullWidth: false }) },
   { key: 'square', patch: () => ({ buttonColor: '#1B1B1B', textColor: '#FFFFFF', radius: 0, strokeWidth: 0, strokeColor: null, size: 'lg', fullWidth: false }) },
-  { key: 'wide', patch: (a) => ({ buttonColor: a, textColor: '#0C1119', radius: 10, strokeWidth: 0, strokeColor: null, fullWidth: true }) },
 ];
 
 export function ButtonBuilder({ b, theme, rtl, onPatch }: { b: ButtonBlock; theme: Theme; rtl: boolean; onPatch: (p: Record<string, unknown>, key?: string) => void }) {
@@ -240,12 +258,13 @@ export function ButtonBuilder({ b, theme, rtl, onPatch }: { b: ButtonBlock; them
   return (
     <>
       <ShortText label={t('ems_d_label')} value={b.label} max={80} onChange={(v) => onPatch({ label: v }, `label:${b.id}`)} placeholder={t('ems_d_button_sample')} />
-      <UrlField label={t('ems_d_link')} value={b.href} text={b.label} onChange={(v) => onPatch({ href: v })} hint={t('ems_d_button_link_hint')} />
+      <UrlField label={t('ems_d_link')} value={b.href} text={b.label} live onChange={(v) => onPatch({ href: v }, `href:${b.id}`)} hint={t('ems_d_button_link_hint')} />
       <Field label={t('ems_d_button_style')}>
-        <div className="grid grid-cols-3 gap-1.5">
+        {/* Columns by width, labels wrap inside their button: "მომრგვალებული" ran into its neighbour at 320 px. */}
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))] gap-1.5">
           {BUTTON_PRESETS.map((p) => (
             <button key={p.key} type="button" onClick={() => onPatch(p.patch(theme.accent))}
-              className="rounded-md border px-1.5 py-1.5 text-2xs hover:border-[hsl(38_70%_55%)] hover:bg-[hsl(38_90%_97%)]">{t(`ems_d_btn_${p.key}`)}</button>
+              className="min-w-0 break-words rounded-md border px-1.5 py-1.5 text-2xs leading-tight hover:border-[hsl(38_70%_55%)] hover:bg-[hsl(38_90%_97%)]">{t(`ems_d_btn_${p.key}`)}</button>
           ))}
         </div>
       </Field>
@@ -255,13 +274,15 @@ export function ButtonBuilder({ b, theme, rtl, onPatch }: { b: ButtonBlock; them
       <Segmented label={t('ems_d_size')} value={b.size ?? 'md'} options={(['sm', 'md', 'lg'] as const).map((s) => ({ v: s, l: t(`ems_d_size_${s}`) }))}
         onChange={(v) => onPatch({ size: v, paddingX: undefined, paddingY: undefined, fontSize: undefined })} />
       <AlignField value={b.align} onChange={(a) => onPatch({ align: a })} />
-      <label className="flex items-center justify-between gap-2 text-xs"><span>{t('ems_d_full_width')}</span><Switch checked={Boolean(b.fullWidth)} onCheckedChange={(v) => onPatch({ fullWidth: v })} /></label>
+      <Segmented label={t('ems_b_button_width')} value={b.fullWidth ? 'full' : 'auto'} options={[{ v: 'auto', l: t('ems_b_width_auto') }, { v: 'full', l: t('ems_d_full_width') }]}
+        onChange={(v) => onPatch({ fullWidth: v === 'full' })} />
       <div className="grid grid-cols-2 gap-2">
         <ColorField label={t('ems_d_button_color')} value={b.buttonColor} onChange={(v) => v && onPatch({ buttonColor: v })} />
         <ColorField label={t('ems_d_text_color')} value={b.textColor} onChange={(v) => v && onPatch({ textColor: v })} />
       </div>
       <SliderField label={t('ems_d_radius')} value={b.radius} min={0} max={40} suffix="px" onChange={(n) => onPatch({ radius: n }, `radius:${b.id}`)} />
-      <button type="button" className="flex w-full items-center justify-between text-xs font-medium text-foreground/80" onClick={() => setAdvanced((o) => !o)} aria-expanded={advanced}>
+      <SliderField label={t('ems_b_font_size')} value={b.fontSize ?? ({ sm: 14, md: 15, lg: 17 } as const)[b.size ?? 'md']} min={12} max={22} suffix="px" onChange={(n) => onPatch({ fontSize: n }, `fs:${b.id}`)} />
+      <button type="button" className="flex min-h-9 w-full items-center justify-between text-xs font-medium text-foreground/80" onClick={() => setAdvanced((o) => !o)} aria-expanded={advanced}>
         {t('ems_d_more_options')}<ChevronDown className={cn('h-3.5 w-3.5 transition-transform', advanced && 'rotate-180')} />
       </button>
       {advanced ? (
@@ -276,17 +297,14 @@ export function ButtonBuilder({ b, theme, rtl, onPatch }: { b: ButtonBlock; them
             <NumberField label={t('ems_d_pad_x')} value={b.paddingX} min={8} max={64} suffix="px" onChange={(n) => onPatch({ paddingX: n })} />
             <NumberField label={t('ems_d_pad_y')} value={b.paddingY} min={6} max={28} suffix="px" onChange={(n) => onPatch({ paddingY: n })} />
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <NumberField label={t('ems_d_size')} value={b.fontSize} min={12} max={22} suffix="px" onChange={(n) => onPatch({ fontSize: n })} />
-            <WeightField value={b.fontWeight} onChange={(n) => onPatch({ fontWeight: n })} />
-          </div>
+          <WeightField value={b.fontWeight} onChange={(n) => onPatch({ fontWeight: n })} />
         </div>
       ) : null}
     </>
   );
 }
 
-export function BlockProperties({ block, theme, rtl, onPatch, onClose, onRemove, editsOnCanvas = false, locked = false, canHtml = true }: {
+export function BlockProperties({ block, theme, rtl, onPatch, onClose, onRemove, editsOnCanvas = false, locked = false, canHtml = true, compactHeader = false }: {
   block: Block | LeafBlock; theme: Theme; rtl: boolean; onPatch: (p: Record<string, unknown>, key?: string) => void; onClose: () => void; onRemove: () => void;
   /** Wide screens edit text in place on the canvas; the panel then only explains how. */
   editsOnCanvas?: boolean;
@@ -294,6 +312,8 @@ export function BlockProperties({ block, theme, rtl, onPatch, onClose, onRemove,
   locked?: boolean;
   /** The advanced HTML block is for accounts the server allows; others see why it is read-only. */
   canHtml?: boolean;
+  /** In the phone sheet the sheet header names the element and carries delete/close. */
+  compactHeader?: boolean;
 }) {
   const { t } = useLanguage();
   const b = block as Block;
@@ -312,7 +332,7 @@ export function BlockProperties({ block, theme, rtl, onPatch, onClose, onRemove,
   }
   return (
     <div className="space-y-3.5">
-      <div className="flex items-center justify-between gap-2">
+      <div className={cn('flex items-center justify-between gap-2', compactHeader && 'hidden')}>
         <div className="min-w-0">
           <p className="text-sm font-semibold">{t(`ems_block_${b.type}`)}</p>
           <p className="text-2xs leading-snug text-muted-foreground">{t(`ems_block_${b.type}_hint`)}</p>

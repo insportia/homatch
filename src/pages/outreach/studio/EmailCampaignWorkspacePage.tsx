@@ -602,7 +602,8 @@ export default function EmailCampaignWorkspacePage() {
           {step === 'design' ? (
             <DesignStep w={w} update={update} readOnly={readOnly} templates={templates} sections={sections} fallbackName={fallbackName}
               onSaveTemplate={() => void saveAsTemplate()} onSaveSection={(b) => void saveSection(b)} placeholders={placeholders} noLink={noLink} noAlt={noAlt}
-              campaignId={campaignId} onSnapshot={snapshot} />
+              campaignId={campaignId} onSnapshot={snapshot}
+              status={<SaveIndicator state={saving} at={savedAt} onRetry={() => void saveNow()} hasCampaign={Boolean(campaignId)} light />} />
           ) : null}
           {step === 'sender' ? <SenderStep w={w} update={update} senders={senders} domains={domains} readOnly={readOnly} campaignId={campaignId} /> : null}
           {step === 'recipients' ? (
@@ -701,14 +702,16 @@ export default function EmailCampaignWorkspacePage() {
   );
 }
 
-function SaveIndicator({ state, at, onRetry, hasCampaign }: { state: SaveState; at: number | null; onRetry: () => void; hasCampaign: boolean }) {
+function SaveIndicator({ state, at, onRetry, hasCampaign, light = false }: { state: SaveState; at: number | null; onRetry: () => void; hasCampaign: boolean;
+  /** On a light surface (the editor bar) rather than the dark page header. */
+  light?: boolean }) {
   const { t, lang } = useLanguage();
   const time = at ? new Date(at).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' }) : '';
   if (state === 'idle') return hasCampaign && at ? <span className="inline-flex items-center gap-1" role="status"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{t('ems_save_saved_at', { time })}</span> : null;
   if (state === 'error') {
     return (
-      <span className="inline-flex items-center gap-1.5 text-red-200" role="alert"><AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />{t('ems_save_error')}
-        <button type="button" onClick={onRetry} className="inline-flex items-center gap-1 rounded underline underline-offset-2 hover:text-white"><RefreshCw className="h-3 w-3" />{t('ems_retry')}</button>
+      <span className={cn('inline-flex items-center gap-1.5', light ? 'text-red-700' : 'text-red-200')} role="alert"><AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />{t('ems_save_error')}
+        <button type="button" onClick={onRetry} className={cn('inline-flex items-center gap-1 rounded underline underline-offset-2', light ? 'hover:text-red-900' : 'hover:text-white')}><RefreshCw className="h-3 w-3" />{t('ems_retry')}</button>
       </span>
     );
   }
@@ -750,10 +753,10 @@ function F({ id, label, hint, children, counter }: { id?: string; label: string;
   );
 }
 
-function DesignStep({ w, update, readOnly, templates, sections, onSaveTemplate, onSaveSection, placeholders, noLink, noAlt, fallbackName, campaignId, onSnapshot }: StepProps & {
+function DesignStep({ w, update, readOnly, templates, sections, onSaveTemplate, onSaveSection, placeholders, noLink, noAlt, fallbackName, campaignId, onSnapshot, status }: StepProps & {
   templates: UserTemplate[]; sections: Array<{ id: string; name: string; block: Block }>; onSaveTemplate: () => void; onSaveSection: (b: Block) => void;
   placeholders: string[]; noLink: string[]; noAlt: string[]; fallbackName: string;
-  campaignId: string | null; onSnapshot: (reason: 'MANUAL' | 'RESTORE') => void;
+  campaignId: string | null; onSnapshot: (reason: 'MANUAL' | 'RESTORE') => void; status: React.ReactNode;
 }) {
   const { t } = useLanguage();
   const [picker, setPicker] = useState(w.design.blocks.length === 0);
@@ -807,7 +810,7 @@ function DesignStep({ w, update, readOnly, templates, sections, onSaveTemplate, 
           <Suspense fallback={<Skeleton className="h-[32rem] w-full rounded-2xl" />}>
             <EmailDesigner value={w.design} onChange={(doc) => update({ design: doc })} rtl={rtl} subject={w.subject} previewText={w.preview_text}
               senderName={w.sender_name} language={w.language} sections={sections} onSaveSection={onSaveSection} onSaveTemplate={onSaveTemplate} flagged={noLink}
-              campaignId={campaignId} onSnapshot={onSnapshot} />
+              campaignId={campaignId} onSnapshot={onSnapshot} status={status} />
           </Suspense>
         </div>
       )}

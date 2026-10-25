@@ -13,13 +13,15 @@ import type { Block } from '@/emailMarketing/designer/document';
 import { isLockedPath, layerRows } from '@/emailMarketing/designer/tree';
 import { cn } from '@/lib/utils';
 
-export function LayersPanel({ blocks, selIds, label, onSelect, onPatch, onNudge, onDuplicate, onRemove, onGroup, onUngroup, canGroup, canUngroup }: {
+export function LayersPanel({ blocks, selIds, label, onSelect, onPatch, onNudge, onDuplicate, onRemove, onGroup, onUngroup, canGroup, canUngroup, touch = false }: {
   blocks: Block[]; selIds: string[]; label: (b: Block) => string;
   onSelect: (id: string, additive: boolean) => void;
   onPatch: (id: string, patch: Record<string, unknown>) => void;
   onNudge: (id: string, dir: -1 | 1) => void;
   onDuplicate: () => void; onRemove: () => void; onGroup: () => void; onUngroup: () => void;
   canGroup: boolean; canUngroup: boolean;
+  /** Phone sheet: 44 px rows and buttons. */
+  touch?: boolean;
 }) {
   const { t } = useLanguage();
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -27,8 +29,8 @@ export function LayersPanel({ blocks, selIds, label, onSelect, onPatch, onNudge,
   const rows = layerRows(blocks);
   const primary = selIds[selIds.length - 1] ?? null;
   const anyLocked = selIds.some((id) => isLockedPath(blocks, id));
-  const icon = 'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30';
-  const action = 'inline-flex h-7 items-center gap-1 rounded-md border px-2 text-2xs hover:bg-muted disabled:pointer-events-none disabled:opacity-40';
+  const icon = cn('inline-flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30', touch ? 'h-11 w-11' : 'h-6 w-6');
+  const action = cn('inline-flex items-center gap-1 rounded-md border px-2 hover:bg-muted disabled:pointer-events-none disabled:opacity-40', touch ? 'min-h-11 px-3 text-xs' : 'h-7 text-2xs');
 
   const commitName = (id: string) => { onPatch(id, { name: draft.trim() || null }); setRenaming(null); };
 
@@ -65,7 +67,7 @@ export function LayersPanel({ blocks, selIds, label, onSelect, onPatch, onNudge,
                     else if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); if (!locked) onNudge(b.id, e.key === 'ArrowUp' ? -1 : 1); }
                   }}
                   style={{ paddingInlineStart: 6 + r.depth * 14 }}
-                  className={cn('flex min-h-8 items-center gap-1 rounded-md pe-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_85%_52%)]',
+                  className={cn('flex items-center gap-1 rounded-md pe-1 text-xs outline-none', touch ? 'min-h-11 text-[13px]' : 'min-h-8', ' focus-visible:ring-2 focus-visible:ring-[hsl(38_85%_52%)]',
                     sel ? 'bg-[hsl(38_90%_94%)] text-foreground' : 'hover:bg-muted', b.hidden && 'text-muted-foreground')}
                 >
                   {r.col != null && r.index === 0 ? <span className="me-0.5 rounded bg-muted px-1 text-2xs text-muted-foreground">{t('ems_b_column_n', { n: r.col + 1 })}</span> : null}

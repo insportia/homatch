@@ -1,9 +1,16 @@
 # PROJECT STATE
 
-last_updated: 2026-10-24
+last_updated: 2026-10-25
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Email Studio editor rebuild — drag & drop + mobile-first (branch claude/email-editor-ux-rebuild, 2026-10-25) — PR OPEN, NOT MERGED/DEPLOYED, AWAITING OWNER RELEASE APPROVAL
+
+- Drag & drop fixed at the causes (transform scaling instead of CSS zoom; no scroll under the pointer; drops on panels cancel; gutter drags resolve inside the email; canvas takes the email's direction). Phone editor: Edit/Add/Layers/Preview bar, element settings in a bottom sheet, handle beside the email. Labels wrap; accessible names on fields and slider thumbs.
+- Real-browser E2E (scratchpad harness, 16 steps incl. touch drags) and an 11-view matrix (320–1440 px, six languages, RTL) pass. HOMI launcher work superseded by main (floating button removed, owner 2026-10-24).
+- No migrations. Release plan REPO_FULL (shared slider.tsx); owed edge: email-marketing, outreach-send (emailMarketing/designer/render.ts wraps button labels in sent HTML).
+- Observed, pre-existing (also on the base build): after selecting a block, Chrome throttles the page's frames (~2–3 fps idle rAF, 150–990 ms keystroke-to-paint in automation, headless and headed); reduced motion avoids it. Not yet reproduced on a real device.
 
 ## My Georgia by HOMI + For Expats fixes (branch claude/my-georgia-by-homi, follow-up to #325, 2026-10-25) — PR OPEN, NOT MERGED, AWAITING OWNER APPROVAL
 

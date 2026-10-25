@@ -5,7 +5,9 @@
 // one column) and their blocks data-block-id; the place is the container under the pointer and
 // the index of the first sibling whose middle lies below it. A place the format cannot hold
 // (tree.ts canContain, or into the dragged block itself) climbs to the enclosing container,
-// before or after the block that owns it. Escape cancels; the viewport scrolls near its edges.
+// before or after the block that owns it. Over anything outside the canvas (a panel, a sheet, the
+// toolbar) there is no place, and letting go there cancels. Escape cancels; the viewport scrolls
+// near its edges.
 // Keyboard users never need this: every move also exists as a command (Layers panel, Alt+↑/↓).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -47,13 +49,27 @@ export function useBlockDrag({ blocks, viewport, onDrop }: {
     const items = sample(payload);
     if (!items.length) return null;
     const forbidden = new Set(payload.kind === 'move' ? items.flatMap(subtreeIds) : []);
-    let el = document.elementFromPoint(x, y) as HTMLElement | null;
-    if (!el || !root.contains(el)) {
-      /* Outside the email (canvas margin): the nearest top-level edge. */
-      el = root.querySelector('[data-container="root"]');
-      if (!el) return null;
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    /* Outside the canvas: no place (dropping on a panel must not move the block to the top level). */
+    if (!el || !root.contains(el)) return null;
+    /* Space inside the canvas but outside every container (below the last block) means the email
+       itself: the top level, at the position the pointer is level with. */
+    let container = el.closest<HTMLElement>('[data-container]') ?? root.querySelector<HTMLElement>('[data-container="root"]');
+    /* Beside the email (the gutter with the handle, the margin): the deepest container at that
+       height — of side-by-side columns, the nearer one. A finger on the handle moves straight down
+       the gutter; without this every such drag went to the top level, and nothing inside a section
+       could be reordered on a phone. */
+    const card = root.querySelector<HTMLElement>('.hm-canvas-card');
+    if (card && (!card.contains(el) || el.closest('[data-rail]'))) {
+      const level = Array.from(card.querySelectorAll<HTMLElement>('[data-container]')).filter((c) => {
+        const r = c.getBoundingClientRect();
+        return r.height > 0 && y >= r.top && y <= r.bottom;
+      });
+      const deepest = level.filter((c) => !level.some((o) => o !== c && c.contains(o)));
+      const gap = (c: HTMLElement) => { const r = c.getBoundingClientRect(); return x < r.left ? r.left - x : x > r.right ? x - r.right : 0; };
+      const nearest = deepest.sort((a, b) => gap(a) - gap(b))[0];
+      if (nearest) container = nearest;
     }
-    let container = el.closest<HTMLElement>('[data-container]');
     while (container) {
       const key = container.dataset.container as ContainerKey;
       const owner = key === ROOT ? null : key.split(':')[1];
@@ -93,12 +109,16 @@ export function useBlockDrag({ blocks, viewport, onDrop }: {
       if (!live.current && Math.hypot(e.clientX - p.x, e.clientY - p.y) < THRESHOLD) return;
       e.preventDefault();
       document.body.style.setProperty('user-select', 'none');
+      /* Near an edge, scroll: the canvas box when it scrolls itself (desktop), else the page (phone). */
       const vp = viewport.current;
-      if (vp) {
-        const r = vp.getBoundingClientRect();
-        if (e.clientY < r.top + 40) vp.scrollBy({ top: -14 });
-        else if (e.clientY > r.bottom - 40) vp.scrollBy({ top: 14 });
-      }
+      /* Only a box that REALLY overflows scrolls itself (a pixel of rounding must not move the
+         email under the pointer), and the edge zone never covers more than a fifth of it. */
+      const boxScrolls = Boolean(vp && vp.scrollHeight - vp.clientHeight > 8);
+      const top = boxScrolls && vp ? vp.getBoundingClientRect().top : 0;
+      const bottom = boxScrolls && vp ? vp.getBoundingClientRect().bottom : window.innerHeight;
+      const zone = Math.min(56, (bottom - top) / 5);
+      const step = e.clientY < top + zone ? -16 : e.clientY > bottom - zone ? 16 : 0;
+      if (step) (boxScrolls && vp ? vp : window).scrollBy({ top: step });
       const hit = resolve(p.payload, e.clientX, e.clientY);
       const next: DragState = { payload: p.payload, x: e.clientX, y: e.clientY, place: hit?.place ?? null, line: hit?.line ?? null };
       live.current = next;

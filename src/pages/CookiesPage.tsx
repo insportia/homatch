@@ -1,130 +1,121 @@
-import React from 'react';
-import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
-import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
-import { usePublicNavLinks } from '@/site/publicNav';
-import { SiteFooter } from '@/components/home/sections/SiteFooter';
-import { PAGE } from '@/components/home/sections/primitives';
-import { Cookie } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import { openCookieSettings } from '@/lib/consent/cookieConsent';
-
-const LAST_UPDATED = 'October 25, 2026';
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="space-y-3">
-      <h2 className="text-base font-semibold text-foreground">{title}</h2>
-      <div className="text-sm text-muted-foreground leading-relaxed space-y-2">{children}</div>
-    </section>
-  );
-}
+import { LegalLayout, LegalList, type LegalSection } from '@/components/legal/LegalLayout';
 
 /*
  * THE INVENTORY IS WHAT THE CODE ACTUALLY STORES, NOT A TEMPLATE.
  *
  * Every row was read from source (2026-10-25): the Supabase session key,
  * src/lib/consent/cookieConsent.ts, LanguageContext, anonymousSession,
- * the sidebar cookie, returnTo/pending-intent session keys, the service
- * worker, and the PWA funnel in src/lib/engagement.ts (the only optional
- * storage, gated on analytics consent). No marketing cookie or advertising
- * pixel is loaded today. Add a row here in the same PR as any new storage.
+ * returnTo/pending-intent keys, the service worker, the sidebar cookie
+ * (functional, consent-gated in components/ui/sidebar.tsx) and the PWA funnel
+ * in src/lib/engagement.ts (analytics, consent-gated). No Meta Pixel, GA or
+ * GTM is loaded. Third-party rows are set on the provider's own pages or only
+ * after the visitor presses play. Add a row here in the same PR as any new
+ * storage or script.
  */
-const INVENTORY: { name: string; cat: 'necessary' | 'analytics'; purpose: TranslationKey; duration: TranslationKey }[] = [
-  { name: 'sb-…-auth-token', cat: 'necessary', purpose: 'cookie_inv_session', duration: 'cookie_dur_signout' },
-  { name: 'homatch_cookie_consent', cat: 'necessary', purpose: 'cookie_inv_consent', duration: 'cookie_dur_until_changed' },
-  { name: 'homatch_lang', cat: 'necessary', purpose: 'cookie_inv_lang', duration: 'cookie_dur_until_cleared' },
-  { name: 'homatch.anon.session', cat: 'necessary', purpose: 'cookie_inv_anon', duration: 'cookie_dur_until_signin' },
-  { name: 'sidebar_state', cat: 'necessary', purpose: 'cookie_inv_sidebar', duration: 'cookie_dur_7d' },
-  { name: 'homatch_return_to, homatch_pending_*', cat: 'necessary', purpose: 'cookie_inv_return', duration: 'cookie_dur_until_signin' },
-  { name: 'Service worker cache', cat: 'necessary', purpose: 'cookie_inv_sw', duration: 'cookie_dur_until_updated' },
-  { name: 'homatch_telemetry_id, homatch_standalone_seen', cat: 'analytics', purpose: 'cookie_inv_pwa', duration: 'cookie_dur_until_withdrawn' },
+type Cat = 'necessary' | 'functional' | 'analytics' | 'marketing';
+type Consent = 'not_required' | 'required' | 'on_action';
+const INVENTORY: { name: string; provider: string; cat: Cat; third: boolean; consent: Consent; purpose: TranslationKey; duration: TranslationKey }[] = [
+  { name: 'sb-…-auth-token', provider: 'HOMATCH (Supabase Auth)', cat: 'necessary', third: false, consent: 'not_required', purpose: 'cookie_inv_session', duration: 'cookie_dur_signout' },
+  { name: 'homatch_cookie_consent', provider: 'HOMATCH', cat: 'necessary', third: false, consent: 'not_required', purpose: 'cookie_inv_consent', duration: 'cookie_dur_until_changed' },
+  { name: 'homatch_lang', provider: 'HOMATCH', cat: 'necessary', third: false, consent: 'not_required', purpose: 'cookie_inv_lang', duration: 'cookie_dur_until_cleared' },
+  { name: 'homatch.anon.session', provider: 'HOMATCH', cat: 'necessary', third: false, consent: 'not_required', purpose: 'cookie_inv_anon', duration: 'cookie_dur_until_signin' },
+  { name: 'homatch_return_to, homatch_pending_*, homatch_policy_preaccept', provider: 'HOMATCH', cat: 'necessary', third: false, consent: 'not_required', purpose: 'cookie_inv_return', duration: 'cookie_dur_session' },
+  { name: 'Service worker cache', provider: 'HOMATCH', cat: 'necessary', third: false, consent: 'not_required', purpose: 'cookie_inv_sw', duration: 'cookie_dur_until_updated' },
+  { name: 'sidebar_state', provider: 'HOMATCH', cat: 'functional', third: false, consent: 'required', purpose: 'cookie_inv_sidebar', duration: 'cookie_dur_7d' },
+  { name: 'homatch_telemetry_id, homatch_standalone_seen', provider: 'HOMATCH', cat: 'analytics', third: false, consent: 'required', purpose: 'cookie_inv_pwa', duration: 'cookie_dur_until_withdrawn' },
+  { name: 'Google sign-in', provider: 'Google', cat: 'necessary', third: true, consent: 'on_action', purpose: 'cookie_inv_google', duration: 'cookie_dur_provider' },
+  { name: 'Stripe Checkout', provider: 'Stripe', cat: 'necessary', third: true, consent: 'on_action', purpose: 'cookie_inv_stripe', duration: 'cookie_dur_provider' },
+  { name: 'YouTube / Vimeo', provider: 'Google (YouTube), Vimeo', cat: 'marketing', third: true, consent: 'on_action', purpose: 'cookie_inv_video', duration: 'cookie_dur_provider' },
 ];
 
+const CAT_LABEL: Record<Cat, TranslationKey> = {
+  necessary: 'cookie_cat_necessary', functional: 'cookie_cat_functional', analytics: 'cookie_cat_analytics', marketing: 'cookie_cat_marketing',
+};
+const CONSENT_LABEL: Record<Consent, TranslationKey> = {
+  not_required: 'cookie_consent_not_required', required: 'cookie_consent_required', on_action: 'cookie_consent_on_action',
+};
+
 export default function CookiesPage() {
-  useSurfaceTheme('light');
   const { t } = useLanguage();
-  const headerLinks = usePublicNavLinks();
 
-  return (
-    <div className="hm-public min-h-screen bg-background text-foreground flex flex-col">
-      <PublicHeader links={headerLinks} solid />
-      <HeaderSpacer />
+  const cols: { key: TranslationKey; cell: (r: typeof INVENTORY[number]) => ReactNode }[] = [
+    { key: 'cookie_col_provider', cell: (r) => r.provider },
+    { key: 'cookie_col_category', cell: (r) => t(CAT_LABEL[r.cat]) },
+    { key: 'cookie_col_purpose', cell: (r) => t(r.purpose) },
+    { key: 'cookie_col_duration', cell: (r) => t(r.duration) },
+    { key: 'cookie_col_party', cell: (r) => t(r.third ? 'cookie_party_third' : 'cookie_party_first') },
+    { key: 'cookie_col_consent', cell: (r) => t(CONSENT_LABEL[r.consent]) },
+  ];
 
-      <main className={`flex-1 ${PAGE} py-14 sm:py-20`}>
-        <div className="max-w-[48rem] space-y-10">
-          <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-foreground/20 bg-secondary">
-              <Cookie className="h-3.5 w-3.5 text-gold-ink" />
-              <span className="text-[14px] font-semibold uppercase tracking-[0.16em] text-gold-ink">{t('cookie_policy_badge')}</span>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-semibold text-foreground text-balance">{t('cookie_policy_title')}</h1>
-            <p className="text-sm text-muted-foreground">{t('privacy_last_updated', { date: LAST_UPDATED })}</p>
-            <p className="text-sm text-muted-foreground leading-relaxed">{t('cookie_policy_intro')}</p>
-          </div>
-
-          <div className="w-full h-px bg-border/50" />
-
-          <Section title={t('cookie_s_necessary_title')}><p>{t('cookie_s_necessary_body')}</p></Section>
-          <Section title={t('cookie_s_analytics_title')}><p>{t('cookie_s_analytics_body')}</p></Section>
-          <Section title={t('cookie_s_marketing_title')}>
-            <p>{t('cookie_s_marketing_body')}</p>
-            <p>{t('cookie_s_marketing_current')}</p>
-          </Section>
-
-          <Section title={t('cookie_s_inventory_title')}>
-            <div className="overflow-x-auto rounded-[0.9rem] border border-border">
-              <table className="w-full text-xs">
-                <thead className="bg-secondary/60 text-foreground">
-                  <tr>
-                    <th scope="col" className="p-2.5 text-start font-semibold">{t('cookie_col_name')}</th>
-                    <th scope="col" className="p-2.5 text-start font-semibold">{t('cookie_col_category')}</th>
-                    <th scope="col" className="p-2.5 text-start font-semibold">{t('cookie_col_purpose')}</th>
-                    <th scope="col" className="p-2.5 text-start font-semibold">{t('cookie_col_duration')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {INVENTORY.map((row) => (
-                    <tr key={row.name} className="border-t border-border align-top">
-                      <td className="p-2.5 font-mono text-2xs text-foreground break-all" dir="ltr">{row.name}</td>
-                      <td className="p-2.5">{row.cat === 'necessary' ? t('cookie_cat_necessary_short') : t('cookie_cat_analytics')}</td>
-                      <td className="p-2.5">{t(row.purpose)}</td>
-                      <td className="p-2.5">{t(row.duration)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p>{t('cookie_s_inventory_note')}</p>
-          </Section>
-
-          <Section title={t('cookie_s_choices_title')}>
-            <p>{t('cookie_s_choices_body')}</p>
-            <button
-              type="button"
-              onClick={openCookieSettings}
-              className="mt-1 inline-flex h-9 items-center rounded-full border border-border bg-card px-4 text-sm font-semibold text-foreground hover:bg-secondary"
-            >
-              {t('home_footer_cookie_settings')}
-            </button>
-          </Section>
-
-          <Section title={t('cookie_s_third_title')}>
-            <p>{t('cookie_s_third_body')}</p>
-            <ul className="list-disc list-inside space-y-1.5">
-              <li>{t('cookie_third_google')}</li>
-              <li>{t('cookie_third_fonts')}</li>
-              <li>{t('cookie_third_stripe')}</li>
-              <li>{t('cookie_third_sentry')}</li>
-              <li>{t('cookie_third_video')}</li>
-            </ul>
-          </Section>
-
-          <Section title={t('cookie_s_updates_title')}><p>{t('cookie_s_updates_body')}</p></Section>
-        </div>
-      </main>
-
-      <SiteFooter />
-    </div>
+  const inventory = (
+    <>
+      {/* Phones: one card per entry. */}
+      <ul className="space-y-3 md:hidden">
+        {INVENTORY.map((r) => (
+          <li key={r.name} className="rounded-[0.9rem] border border-border bg-card p-3.5">
+            <p className="font-mono text-2xs text-foreground break-all" dir="ltr">{r.name}</p>
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[14px]">
+              {cols.map((c) => (
+                <div key={c.key} className="contents"><dt className="text-muted-foreground/80">{t(c.key)}</dt><dd className="text-foreground">{c.cell(r)}</dd></div>
+              ))}
+            </dl>
+          </li>
+        ))}
+      </ul>
+      {/* Tablet and up: the table. */}
+      <div className="hidden overflow-x-auto rounded-[0.9rem] border border-border md:block print:block">
+        <table className="w-full text-[13px]">
+          <thead className="bg-secondary/60 text-foreground">
+            <tr>
+              <th scope="col" className="p-2.5 text-start font-semibold">{t('cookie_col_name')}</th>
+              {cols.map((c) => <th key={c.key} scope="col" className="p-2.5 text-start font-semibold">{t(c.key)}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {INVENTORY.map((r) => (
+              <tr key={r.name} className="border-t border-border align-top">
+                <td className="p-2.5 font-mono text-2xs text-foreground break-all" dir="ltr">{r.name}</td>
+                {cols.map((c) => <td key={c.key} className="p-2.5">{c.cell(r)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p>{t('cookie_s_inventory_note')}</p>
+    </>
   );
+
+  const sections: LegalSection[] = [
+    { id: 'what', title: t('cookie_what_title'), content: <><p>{t('cookie_what_p1')}</p><p>{t('cookie_what_p2')}</p></> },
+    { id: 'necessary', title: t('cookie_s_necessary_title'), content: <p>{t('cookie_s_necessary_body')}</p> },
+    { id: 'functional', title: t('cookie_s_functional_title'), content: <><p>{t('cookie_s_functional_body')}</p><p>{t('cookie_s_functional_current')}</p></> },
+    { id: 'analytics', title: t('cookie_s_analytics_title'), content: <p>{t('cookie_s_analytics_body')}</p> },
+    { id: 'marketing', title: t('cookie_s_marketing_title'), content: <><p>{t('cookie_s_marketing_body')}</p><p><strong>{t('cookie_s_marketing_current')}</strong></p></> },
+    { id: 'inventory', title: t('cookie_s_inventory_title'), content: inventory },
+    {
+      id: 'choices', title: t('cookie_s_choices_title'), content: <>
+        <p>{t('cookie_s_choices_body')}</p>
+        <button
+          type="button"
+          onClick={openCookieSettings}
+          className="mt-1 inline-flex h-9 items-center rounded-full border border-border bg-card px-4 text-[14px] font-semibold text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring print:hidden"
+        >
+          {t('home_footer_cookie_settings')}
+        </button>
+      </>,
+    },
+    {
+      id: 'third-party', title: t('cookie_s_third_title'), content: <>
+        <p>{t('cookie_s_third_body')}</p>
+        <LegalList items={[t('cookie_third_google'), t('cookie_third_fonts'), t('cookie_third_stripe'), t('cookie_third_sentry'), t('cookie_third_video')]} />
+      </>,
+    },
+    { id: 'updates', title: t('cookie_s_updates_title'), content: <p>{t('cookie_s_updates_body')}</p> },
+  ];
+
+  return <LegalLayout doc="cookies" title={t('cookie_policy_title')} intro={<p>{t('cookie_policy_intro')}</p>} sections={sections} />;
 }

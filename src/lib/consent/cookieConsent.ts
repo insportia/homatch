@@ -3,8 +3,9 @@ import { COOKIE_POLICY_VERSION } from '@/lib/legal/policies';
 /*
  * COOKIE CONSENT — the one place optional storage asks permission.
  *
- * Necessary storage (session, language, this choice itself) needs no consent
- * and is not modelled as a toggle. Analytics and marketing default to OFF and
+ * Necessary storage (session, the language you picked, this choice itself)
+ * needs no consent and is not a toggle. Functional (the remembered side-menu
+ * state), analytics and marketing default to OFF and
  * stay off until the visitor turns them on: anything that would set optional
  * storage or load an optional script calls hasConsent() first, and anything
  * that loads late subscribes with onConsentChange().
@@ -12,10 +13,11 @@ import { COOKIE_POLICY_VERSION } from '@/lib/legal/policies';
  * A stored choice made under an older cookie-policy version is treated as no
  * choice, so the banner returns after a material change to the policy.
  */
-export type OptionalCategory = 'analytics' | 'marketing';
+export type OptionalCategory = 'functional' | 'analytics' | 'marketing';
 
 export interface CookieConsent {
   necessary: true;
+  functional: boolean;
   analytics: boolean;
   marketing: boolean;
   version: string;
@@ -34,6 +36,7 @@ export function readConsent(): CookieConsent | null {
     if (v.version !== COOKIE_POLICY_VERSION) return null;
     return {
       necessary: true,
+      functional: v.functional === true,
       analytics: v.analytics === true,
       marketing: v.marketing === true,
       version: v.version,
@@ -48,9 +51,10 @@ export function hasConsent(category: OptionalCategory): boolean {
   return readConsent()?.[category] === true;
 }
 
-export function saveConsent(choice: { analytics: boolean; marketing: boolean }): CookieConsent {
+export function saveConsent(choice: { functional: boolean; analytics: boolean; marketing: boolean }): CookieConsent {
   const consent: CookieConsent = {
     necessary: true,
+    functional: choice.functional === true,
     analytics: choice.analytics === true,
     marketing: choice.marketing === true,
     version: COOKIE_POLICY_VERSION,
@@ -63,6 +67,9 @@ export function saveConsent(choice: { analytics: boolean; marketing: boolean }):
       localStorage.removeItem('homatch_telemetry_id');
       localStorage.removeItem('homatch_standalone_seen');
     } catch { /* storage unavailable */ }
+  }
+  if (!consent.functional) {
+    try { document.cookie = 'sidebar_state=; path=/; max-age=0'; } catch { /* no cookie access */ }
   }
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: consent }));
   return consent;

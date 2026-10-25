@@ -1,4 +1,5 @@
 import { supabase } from '@/db/supabase';
+import { LEGAL_OPERATOR } from '@/lib/legal/operator';
 
 /*
  * THE POLICY VERSIONS THIS CLIENT DISPLAYS.
@@ -6,10 +7,11 @@ import { supabase } from '@/db/supabase';
  * They must equal public.legal_policy_versions. The server refuses an
  * acceptance that names any other version (POLICY_VERSION_MISMATCH), so a
  * page cached from before a policy change cannot accept a text it never
- * showed. Publishing a new version = bump these, update the row, ship both.
+ * showed. Publishing a new version = bump them in src/lib/legal/operator.ts,
+ * update the row, ship both.
  */
-export const POLICY_VERSIONS = { terms: '2026-10-25', privacy: '2026-10-25' } as const;
-export const COOKIE_POLICY_VERSION = '2026-10-25';
+export const POLICY_VERSIONS = { terms: LEGAL_OPERATOR.versions.terms, privacy: LEGAL_OPERATOR.versions.privacy } as const;
+export const COOKIE_POLICY_VERSION = LEGAL_OPERATOR.versions.cookies;
 
 /** Paths an account that still owes an acceptance may open. */
 export const POLICY_GATE_ALLOWED = ['/auth/', '/terms', '/privacy', '/cookies'];

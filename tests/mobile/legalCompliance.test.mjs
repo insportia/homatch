@@ -264,17 +264,25 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
     assert.equal(Math.round(a.height), Math.round(r.height), 'Reject and Accept are the same height');
     assert.equal(await accept.getAttribute('class'), await reject.getAttribute('class'), 'Reject and Accept are styled identically');
 
-    await banner.getByRole('button', { name: 'Settings' }).click();
+    await banner.getByRole('button', { name: 'Manage settings' }).click();
+    assert.equal(await banner.locator('h2').innerText(), 'Cookie settings');
+    assert.equal(await banner.locator('[data-always-active]').innerText(), 'Always active');
     const switches = banner.locator('[role="switch"]');
-    assert.equal(await switches.count(), 3);
-    assert.deepEqual(await switches.evaluateAll((s) => s.map((x) => [x.getAttribute('aria-checked'), x.hasAttribute('disabled')])),
-      [['true', true], ['false', false], ['false', false]], 'necessary locked on; optional start off');
+    assert.deepEqual(await switches.evaluateAll((s) => s.map((x) => [x.getAttribute('data-consent-category'), x.getAttribute('aria-checked')])),
+      [['functional', 'false'], ['analytics', 'false'], ['marketing', 'false']], 'no optional category is pre-ticked');
+    // Escape returns to the summary instead of dismissing without a choice.
+    await page.keyboard.press('Escape');
+    assert.equal(await banner.getByRole('button', { name: 'Manage settings' }).count(), 1);
+    await banner.getByRole('button', { name: 'Manage settings' }).click();
 
     await banner.getByRole('button', { name: 'Reject optional' }).click();
     await banner.waitFor({ state: 'detached' });
     const stored = JSON.parse(await page.evaluate(() => localStorage.getItem('homatch_cookie_consent')));
+    assert.equal(stored.functional, false);
     assert.equal(stored.analytics, false);
     assert.equal(stored.marketing, false);
+    assert.equal(stored.version, '2026-10-25');
+    assert.ok(!Number.isNaN(Date.parse(stored.decidedAt)), 'the choice carries a timestamp');
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1500);
@@ -283,10 +291,11 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
     // Footer → Cookie settings reopens it on the settings view; change and save.
     await page.getByRole('button', { name: 'Cookie settings' }).first().click();
     await banner.waitFor({ timeout: 5000 });
-    await banner.locator('[role="switch"]').nth(1).click();
+    await banner.locator('[data-consent-category="analytics"]').click();
     await banner.getByRole('button', { name: 'Save choices' }).click();
     const changed = JSON.parse(await page.evaluate(() => localStorage.getItem('homatch_cookie_consent')));
     assert.equal(changed.analytics, true);
+    assert.equal(changed.functional, false);
     assert.equal(changed.marketing, false);
     await ctx.close();
   });
@@ -297,7 +306,8 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
     const banner = ka.page.locator('[data-cookie-consent]');
     await banner.waitFor({ timeout: 20000 });
     assert.equal(await banner.locator('h2').innerText(), 'თქვენი კონფიდენციალურობა მნიშვნელოვანია');
-    for (const label of ['ყველას მიღება', 'არასავალდებულოების უარყოფა', 'პარამეტრები']) {
+    assert.equal(await banner.locator('p').first().innerText().then((x) => x.startsWith('ვიყენებთ აუცილებელ ქუქიებს HOMATCH-ის უსაფრთხო და გამართული მუშაობისთვის.')), true);
+    for (const label of ['ყველას მიღება', 'არასავალდებულოების უარყოფა', 'პარამეტრების მართვა']) {
       assert.equal(await banner.getByRole('button', { name: label }).count(), 1, label);
     }
     for (const label of ['მომსახურების პირობები', 'კონფიდენციალურობის პოლიტიკა', 'ქუქიების პოლიტიკა', 'ქუქიების პარამეტრები']) {
@@ -305,7 +315,7 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
     }
     await banner.getByRole('button', { name: 'ყველას მიღება' }).click();
     const stored = JSON.parse(await ka.page.evaluate(() => localStorage.getItem('homatch_cookie_consent')));
-    assert.equal(stored.analytics && stored.marketing, true);
+    assert.equal(stored.functional && stored.analytics && stored.marketing, true);
     await ka.ctx.close();
 
     const he = await open({ lang: 'he' });
@@ -316,5 +326,42 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
     const overflow = await he.page.evaluate(() => document.body.scrollWidth > document.documentElement.clientWidth + 1);
     assert.equal(overflow, false, 'banner causes no horizontal overflow');
     await he.ctx.close();
+  });
+
+  await t.test('legal center: operator from config, contents, numbering, no overflow, RTL', async () => {
+    for (const [lang, path] of [['ka', '/terms'], ['en', '/privacy'], ['ar', '/cookies']]) {
+      const { ctx, page } = await open({ lang });
+      await page.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('[data-legal-doc] h1', { timeout: 20000 });
+      const body = await page.locator('[data-legal-doc]').innerText();
+      assert.ok(body.includes('01027085016'), `${path}: identification number shown on the legal page`);
+      if (lang === 'ka') {
+        assert.ok(body.includes('ინდივიდუალური მეწარმე ტარიელი ჩაჩუა'), 'Georgian operator name');
+        assert.ok(body.includes('რომელსაც მართავს ინდივიდუალური მეწარმე ტარიელი ჩაჩუა.'), 'approved 4.1 wording with the configured operator');
+      } else {
+        assert.ok(body.includes('Tariel Chachua'), `${lang}: operator name`);
+      }
+      assert.ok(!/\bLLC\b|შპს/.test(body), 'never described as an LLC');
+      assert.ok(!/GDPR Certified|ISO 27001|Government Approved|100% legally/i.test(body), 'no certification claims');
+      const overflow = await page.evaluate(() => document.body.scrollWidth > document.documentElement.clientWidth + 1);
+      assert.equal(overflow, false, `${lang} ${path}: no horizontal overflow`);
+      assert.equal(await page.evaluate(() => document.documentElement.getAttribute('dir') || getComputedStyle(document.body).direction), lang === 'ar' ? 'rtl' : 'ltr');
+      // Mobile contents: a disclosure that jumps to a section.
+      const toc = page.locator('details');
+      await toc.locator('summary').click();
+      const firstLink = toc.locator('a').nth(1);
+      const target = (await firstLink.getAttribute('href')).slice(1);
+      await firstLink.click();
+      await page.waitForFunction((id) => location.hash === `#${id}`, target, { timeout: 5000 });
+      assert.equal(await page.locator(`#${target} h2`).innerText().then((x) => /^2\./.test(x)), true, 'sections are numbered in order');
+      await ctx.close();
+    }
+    // Profile → Security carries the legal links and the cookie settings control.
+    const { ctx, page } = await open({ session: true });
+    await page.goto(`${BASE}/terms`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-legal-doc]', { timeout: 20000 });
+    const footer = await page.locator('footer').innerText();
+    assert.ok(footer.includes('Tariel Chachua') && !footer.includes('01027085016'), 'footer names the operator but not the ID number');
+    await ctx.close();
   });
 });

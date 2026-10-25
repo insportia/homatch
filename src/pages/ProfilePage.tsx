@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
+import { LegalPrivacyCard } from '@/components/legal/LegalPrivacyCard';
 import { getCreditAccount, getCreditLedger, getMyPayments, updateMyProfile } from '@/services/api';
 import type { CreditAccount, CreditLedgerEntry, LedgerType, Payment, PaymentStatus } from '@/types/types';
 import { toast } from 'sonner';
@@ -460,6 +461,8 @@ function ProfileContent() {
               </Button>
             </CardContent>
           </Card>
+
+          <LegalPrivacyCard />
         </TabsContent>
       </Tabs>
     </div>

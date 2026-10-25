@@ -12,6 +12,7 @@ import { SiteFooter } from '@/components/home/sections/SiteFooter';
 import { usePublicNavLinks } from '@/site/publicNav';
 import { HomatchShell } from './HomatchShell';
 import { MobileBottomNav } from './MobileBottomNav';
+import { useHomiReturn } from '@/components/homi/useHomiReturn';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -67,6 +68,10 @@ export function AppLayout({
    * using this shell.
    */
   useSurfaceTheme('light');
+  /* HOMI's way back: remembers where somebody was when they asked HOMI, and
+     puts them back there when they return from the chat. Acts only on a
+     pending HOMI return (components/homi/useHomiReturn.ts). */
+  useHomiReturn();
   const { session, status } = useAuth();
   const { pathname } = useLocation();
   const publicLinks = usePublicNavLinks();

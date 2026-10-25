@@ -65,7 +65,7 @@ export function SuggestedReplies({
       role="group"
       aria-label={t('ai_suggested_replies_label')}
     >
-      {replies.map((reply) => {
+      {replies.map((reply, index) => {
         const isChosen = chosen === reply.id;
         return (
           <button
@@ -78,20 +78,26 @@ export function SuggestedReplies({
               setChosen(reply.id);
               onSelect(reply.value, reply);
             }}
+            style={{ animationDelay: `${index * 60}ms` }}
             className={cn(
               /* 44px, wrapping, and a start-aligned label so a long
-                 Georgian phrase breaks instead of pushing the row. */
-              'min-h-11 max-w-full rounded-full border px-4 py-2 text-start text-sm',
-              'transition-colors',
+                 Georgian phrase breaks instead of pushing the row.
+                 A real framed chip (gold hairline, card ground, a lift),
+                 never plain text pretending to be a control. */
+              'group inline-flex min-h-11 max-w-full items-center gap-2 rounded-2xl border px-4 py-2.5 text-start text-[15px] font-medium leading-snug',
+              'shadow-sm transition-[transform,box-shadow,border-color,background-color] duration-200',
+              'motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:fill-mode-both',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]',
               isChosen
-                ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))]'
-                : 'border-border text-muted-foreground',
+                ? 'border-[hsl(38_92%_56%)] bg-[hsl(var(--gold)/0.14)] text-foreground'
+                : 'border-[hsl(var(--gold-border))] bg-card text-foreground',
               locked
                 ? 'cursor-default opacity-60'
-                : 'hover:border-[hsl(var(--primary)/0.5)] hover:text-foreground',
+                : 'hover:-translate-y-0.5 hover:border-[hsl(38_92%_56%)] hover:shadow-card motion-reduce:hover:translate-y-0',
             )}
           >
-            <span className="block break-words">{reply.label}</span>
+            <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(38_92%_56%)]" />
+            <span className="block min-w-0 break-words">{reply.label}</span>
           </button>
         );
       })}

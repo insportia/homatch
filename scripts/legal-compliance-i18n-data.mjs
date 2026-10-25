@@ -182,8 +182,8 @@ export const LEGAL_COMPLIANCE_STRINGS = {
     'لقد قرأتُ {{terms}} وأوافق عليها، واطّلعتُ على {{privacy}}.',
     'קראתי את {{terms}} ואני מסכים/ה להם, וקראתי את {{privacy}}.',
   ],
-  legal_accept_terms_link: ['Terms of Service', 'მომსახურების პირობებს', 'Условиями использования', 'Hizmet Şartları\'nı', 'شروط الخدمة', 'תנאי השימוש'],
-  legal_accept_privacy_link: ['Privacy Policy', 'კონფიდენციალურობის პოლიტიკას', 'Политикой конфиденциальности', 'Gizlilik Politikası\'nı', 'سياسة الخصوصية', 'מדיניות הפרטיות'],
+  legal_accept_terms_link: ['Terms of Service', 'მომსახურების პირობებს', 'Условия использования', 'Hizmet Şartları\'nı', 'شروط الخدمة', 'תנאי השימוש'],
+  legal_accept_privacy_link: ['Privacy Policy', 'კონფიდენციალურობის პოლიტიკას', 'Политику конфиденциальности', 'Gizlilik Politikası\'nı', 'سياسة الخصوصية', 'מדיניות הפרטיות'],
   legal_accept_required: [
     'To continue registration, please read and agree to the Terms of Service.',
     'რეგისტრაციის გასაგრძელებლად გაეცანით და დაეთანხმეთ მომსახურების პირობებს.',

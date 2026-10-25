@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { PageBlocks } from '@/site/render/PageBlocks';
 import { LegalContactCard, LegalLayout, LegalList, type LegalSection, useOperatorVars } from '@/components/legal/LegalLayout';
 
 /*
@@ -118,7 +119,7 @@ export default function TermsPage() {
       title={t('terms_title')}
       intro={<p>{t('terms_intro')} <a href="https://www.homatch.live" dir="ltr">homatch.live</a> {t('terms_intro_cont')}</p>}
       sections={sections}
-      blocksSlug="terms"
+      blocks={<PageBlocks slug="terms" />}
     />
   );
 }

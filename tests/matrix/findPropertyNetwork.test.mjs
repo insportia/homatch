@@ -61,9 +61,25 @@ test('calling: a matched person gets that property\'s own listing contact — ne
 });
 
 test('no migration in this workstream redefines who may be called', () => {
+  /*
+   * One owner-approved redefinition (PR #335, 2026-10-25): a seeker gets the listing's
+   * number only once its advertiser published it. It must still read ONLY the
+   * property's listing contact on the seeker side, never an account phone, and keep
+   * the owner side to what the seeker shared in conversation. Any other migration
+   * redefining the function still fails here.
+   */
+  const APPROVED = '20261206110000_listing_contact_phone_publication.sql';
   const { readdirSync } = require_('node:fs');
   const later = readdirSync(new URL('../../supabase/migrations/', import.meta.url)).filter((f) => f > '20260928010000_native_intent_pipeline.sql');
-  for (const f of later) assert.doesNotMatch(read(`supabase/migrations/${f}`), /function public\.reveal_native_contact/, f);
+  for (const f of later) {
+    const sql = read(`supabase/migrations/${f}`);
+    if (f !== APPROVED) { assert.doesNotMatch(sql, /function public\.reveal_native_contact/, f); continue; }
+    const body = sql.slice(sql.indexOf('function public.reveal_native_contact'));
+    assert.match(body, /select contact_phone_e164, contact_phone_public into v_phone, v_public\s+from public\.properties/);
+    assert.match(body, /if not coalesce\(v_public, false\) then return jsonb_build_object\('phone', null, 'reason', 'NOT_PUBLISHED'\)/);
+    assert.doesNotMatch(body, /public\.users|users\.phone|u\.phone/, 'never an account phone');
+    assert.match(body, /from public\.conversation_contact_shares s/, 'owner side: only what the seeker shared');
+  }
 });
 
 test('the listing form says who will call the number; the seeker panel dials and copies it', () => {

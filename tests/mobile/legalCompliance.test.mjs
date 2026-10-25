@@ -422,10 +422,9 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
 
   await t.test('listing contact: publication is an explicit, unticked choice saved through the server', async () => {
     for (const lang of ['ka', 'en', 'ar']) {
-      /* English runs at desktop width: at 390px the app's bottom nav sits over the edit
-         form's Save bar (pre-existing, reported separately), which blocks a real click. */
+      /* At 390px, where the bottom nav sits: a real click on Save must land on Save. */
       const { ctx, page, calls } = await openWithData({
-        lang, width: lang === 'en' ? 1280 : 390, tables: { users: [USER_ROW], properties: [PROPERTY_ROW] },
+        lang, width: 390, tables: { users: [USER_ROW], properties: [PROPERTY_ROW] },
         rpc: { set_property_contact_publication: true, renew_property: { ok: true, renewed: false } },
       });
       await page.goto(`${BASE}/property/${PROPERTY_ROW.id}/edit`, { waitUntil: 'domcontentloaded' });
@@ -481,6 +480,89 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
         assert.equal(await page.locator('a[href^="tel:"]').count(), 0);
         assert.match(await page.locator('[role="status"]').last().innerText(), /chosen to show a phone number/);
       }
+      await ctx.close();
+    }
+  });
+
+  await t.test('responsive QA: legal pages, banner, signup, footer and profile at 360/390/430/1280 in six locales', async () => {
+    const WIDTHS = [360, 390, 430, 1280];
+    const LOCALES = ['ka', 'en', 'ru', 'tr', 'ar', 'he'];
+    const failures = [];
+    /* Words the browser split across two lines inside an element (not bidi runs). */
+    const brokenWordsIn = (sel) => {
+      const root = document.querySelector(sel);
+      if (!root) return ['(missing)'];
+      const bad = [];
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        const re = /\S+/g; let m;
+        while ((m = re.exec(node.nodeValue || '')) !== null) {
+          if (m[0].length < 2) continue;
+          const r = document.createRange(); r.setStart(node, m.index); r.setEnd(node, m.index + m[0].length);
+          const rects = [...r.getClientRects()].filter((x) => x.width > 0);
+          if (new Set(rects.map((x) => Math.round(x.top))).size > 1) bad.push(m[0]);
+        }
+      }
+      return bad;
+    };
+    const overflowX = () => document.body.scrollWidth > document.documentElement.clientWidth + 1;
+    for (const lang of LOCALES) {
+      for (const width of WIDTHS) {
+        const ctx = await browser.newContext({ viewport: { width, height: 860 }, isMobile: width < 700, hasTouch: width < 700 });
+        await ctx.addInitScript((l) => { localStorage.setItem('homatch_lang', l); }, lang);
+        const page = await ctx.newPage();
+        await page.route('**', (r) => (r.request().url().startsWith(BASE) ? r.continue()
+          : r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[]' })));
+        const tag = `${lang}@${width}`;
+        for (const path of ['/terms?consent=show', '/privacy', '/cookies']) {
+          await page.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded' });
+          await page.waitForSelector('[data-legal-doc] h1', { timeout: 20000 });
+          if (await page.evaluate(overflowX)) failures.push(`${tag} ${path}: horizontal overflow`);
+          const dir = await page.evaluate(() => document.documentElement.getAttribute('dir') || getComputedStyle(document.body).direction);
+          if ((dir === 'rtl') !== (lang === 'ar' || lang === 'he')) failures.push(`${tag} ${path}: dir=${dir}`);
+          if (path.startsWith('/terms')) {
+            const b = await page.locator('[data-cookie-consent]').boundingBox();
+            if (!b || b.x < 0 || b.x + b.width > width + 1) failures.push(`${tag}: cookie banner outside the viewport`);
+            for (const btn of await page.locator('[data-cookie-consent] button').all()) {
+              const bb = await btn.boundingBox();
+              if (bb && bb.height < 32) failures.push(`${tag}: banner button under 32px tall`);
+            }
+          }
+          // Footer: operator line wraps inside the viewport, never collapses to nothing.
+          const op = await page.evaluate(() => {
+            const p = [...document.querySelectorAll('footer p')].find((x) => /Chachua|ჩაჩუა/.test(x.textContent || ''));
+            if (!p) return null;
+            const s = p.querySelector('span:last-child'); const r = (s || p).getBoundingClientRect();
+            return { w: r.width, right: r.right, left: r.left, vw: document.documentElement.clientWidth };
+          });
+          if (!op) failures.push(`${tag} ${path}: footer operator line missing`);
+          else if (op.w < 20 || op.right > op.vw + 1 || op.left < -1) failures.push(`${tag} ${path}: footer operator collapsed/overflowing ${JSON.stringify(op)}`);
+        }
+        await page.goto(`${BASE}/auth/signup`, { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('[data-policy-acceptance]', { timeout: 20000 });
+        const broken = await page.evaluate(brokenWordsIn, '[data-policy-acceptance]');
+        if (broken.length) failures.push(`${tag} signup: split words ${broken.join(', ')}`);
+        if (await page.evaluate(overflowX)) failures.push(`${tag} signup: horizontal overflow`);
+        await ctx.close();
+      }
+    }
+    assert.deepEqual(failures, []);
+  });
+
+  await t.test('profile security tab: legal card with documents and cookie settings', async () => {
+    for (const lang of ['ka', 'he']) {
+      const { ctx, page } = await openWithData({ lang, tables: { users: [USER_ROW], credit_accounts: [{ balance: 0 }] } });
+      await page.goto(`${BASE}/profile`, { waitUntil: 'domcontentloaded' });
+      const tab = page.locator('[role="tab"]').nth(2);
+      await tab.waitFor({ timeout: 20000 });
+      await tab.click();
+      const card = page.locator('[data-legal-privacy-card]');
+      await card.waitFor({ timeout: 10000 });
+      const hrefs = await card.locator('a').evaluateAll((as) => as.map((a) => a.getAttribute('href')));
+      assert.deepEqual(hrefs, ['/terms', '/privacy', '/cookies']);
+      assert.equal(await card.locator('button').count(), 1, 'cookie settings control');
+      assert.equal(await page.evaluate(() => document.body.scrollWidth > document.documentElement.clientWidth + 1), false, `${lang}: no overflow`);
       await ctx.close();
     }
   });

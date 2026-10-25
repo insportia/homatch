@@ -5,9 +5,7 @@ import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
 import { usePublicNavLinks } from '@/site/publicNav';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
-import { PageBlocks } from '@/site/render/PageBlocks';
 import { PAGE } from '@/components/home/sections/primitives';
-import type { PageSlug } from '@/services/siteContent';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { LEGAL_OPERATOR, formatLegalDate, operatorDisplayName, type LegalDoc } from '@/lib/legal/operator';
 
@@ -40,13 +38,14 @@ const reduceMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 export function LegalLayout({
-  doc, title, intro, sections, blocksSlug,
+  doc, title, intro, sections, blocks,
 }: {
   doc: LegalDoc;
   title: string;
   intro?: React.ReactNode;
   sections: LegalSection[];
-  blocksSlug?: PageSlug;
+  /** The page's Site Studio band (<PageBlocks slug=…/>), rendered below the document. */
+  blocks?: React.ReactNode;
 }) {
   useSurfaceTheme('light');
   const { t, lang } = useLanguage();
@@ -207,7 +206,7 @@ export function LegalLayout({
         </div>
       </main>
 
-      {blocksSlug && <div className="print:hidden"><PageBlocks slug={blocksSlug} /></div>}
+      {blocks && <div className="print:hidden">{blocks}</div>}
       <div className="print:hidden"><SiteFooter /></div>
     </div>
   );

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { PageBlocks } from '@/site/render/PageBlocks';
 import { LegalContactCard, LegalLayout, LegalList, LegalSub, type LegalSection, useOperatorVars } from '@/components/legal/LegalLayout';
 
 /*
@@ -53,12 +54,12 @@ export default function PrivacyPage() {
         <LegalList items={[t('privacy_lb_contract'), t('privacy_lb_legal'), t('privacy_lb_legit'), t('privacy_lb_consent')]} />,
     },
     {
-      id: 'matching', title: t('privacy_match_title'), content: <>
+      id: 'interest-matching', title: t('privacy_match_title'), content: <div id="matching" className="scroll-mt-24 space-y-2.5">
         <p>{t('privacy_match_p1')}</p>
         <p>{t('privacy_match_p2')}</p>
         <p><strong>{t('privacy_match_p3')}</strong></p>
         <p>{t('privacy_match_p4')}</p>
-      </>,
+      </div>,
     },
     {
       id: 'listing-contact', title: t('terms_listing_contact_title'), content: <>
@@ -126,7 +127,7 @@ export default function PrivacyPage() {
       title={t('privacy_title')}
       intro={<p>{t('privacy_intro_p1')} <a href="https://www.homatch.live" dir="ltr">{t('privacy_domain_text')}</a> {t('privacy_intro_p2')}</p>}
       sections={sections}
-      blocksSlug="privacy"
+      blocks={<PageBlocks slug="privacy" />}
     />
   );
 }

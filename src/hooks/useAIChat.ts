@@ -5,6 +5,7 @@ import { supabase } from '@/db/supabase';
 import { parseServiceActions, type ServiceAction } from '@/lib/ai/serviceActions';
 import { parseSuggestedReplies, type SuggestedReply } from '@/lib/ai/suggestedReplies';
 import { parseHomiCards, type HomiCardRef } from '@/lib/homi/cards';
+import { parseMessageMeta, type HomiMessageMeta } from '@/lib/homi/messageMeta';
 import { waitingMoodFor } from '@/lib/homi/mood';
 import type { HomiState } from '@/components/homi/homiStates';
 import { sendStreamRequest } from '@/lib/sse';
@@ -27,6 +28,8 @@ export interface AIMessage {
   role: 'user' | 'assistant';
   content: string;
   createdAt: Date;
+  /** HOMI answers only: designed blocks, service cards and the service note. */
+  meta?: HomiMessageMeta;
 }
 
 export interface AIConversation {
@@ -133,13 +136,25 @@ export function useAIChat() {
     if (saved?.surface === 'find-property') setPageContext({ type: 'property', data: saved });
     else if (typeof saved?.surface === 'string' && saved.surface) setPageContext({ type: 'workspace', data: saved });
     else setPageContext({ type: 'general' });
-    const { data } = await supabase.from('ai_messages').select('id, role, content, created_at').eq('conversation_id', convId).order('created_at', { ascending: true });
+    /* The chips under the answer on screen belong to THAT conversation's
+       latest answer; another conversation must never inherit them. */
+    setSuggestedReplies([]); setSuggestedActions([]); setLastCards([]);
+    setLastWebChecked(false); setLastSources([]);
+    /* `meta` arrived with migration 20261204102000. Until it is applied the
+       column does not exist, so the read falls back to the old shape rather
+       than losing the conversation. */
+    const read = (columns: string) => supabase.from('ai_messages').select(columns)
+      .eq('conversation_id', convId).order('created_at', { ascending: true });
+    const withMeta = await read('id, role, content, created_at, meta');
+    const { data } = withMeta.error ? await read('id, role, content, created_at') : withMeta;
     if (data) {
-      setMessages(data.map(m => ({
+      const rows = data as unknown as Array<{ id: string; role: string; content: string; created_at: string; meta?: unknown }>;
+      setMessages(rows.map(m => ({
         id: m.id,
         role: m.role === 'user' ? 'user' : 'assistant',
         content: m.content,
         createdAt: new Date(m.created_at),
+        ...(m.role !== 'user' && m.meta ? { meta: parseMessageMeta(m.meta) } : {}),
       })));
       setActiveConvId(convId);
     }
@@ -236,6 +251,8 @@ export function useAIChat() {
     let pendingBilling: ChatBilling | null = null;
     let pendingCards: HomiCardRef[] = [];
     let pendingMood: HomiState = 'happy';
+    /* Blocks, service cards and the service note, kept WITH the answer. */
+    let pendingMeta: HomiMessageMeta | null = null;
     /* The server's finished text wins over what streamed: it is the same
        answer with the hidden JSON block removed exactly, not approximately. */
     let finalText: string | null = null;
@@ -268,6 +285,10 @@ export function useAIChat() {
         /* A HOMI chip's intent. The server trusts it only if it is on its
            own closed list of written answers. */
         ...(opts.intent ? { homiIntent: opts.intent } : {}),
+        /* Which service note each earlier answer carried. A hint for a
+           conversation the server cannot read back; it never widens what
+           the server allows (at most once per service, its own rule). */
+        homiPitchHistory: messages.filter((m) => m.role === 'assistant').map((m) => m.meta?.pitch ?? null),
       },
       supabaseAnonKey: SUPABASE_ANON_KEY,
       accessToken,
@@ -305,6 +326,10 @@ export function useAIChat() {
         if (replies.length) pendingReplies = replies;
 
         pendingActions = parseServiceActions(payload?.suggestedActions);
+        /* An older server sends no `meta`: the cards still come from its actions. */
+        pendingMeta = parseMessageMeta(payload?.meta ?? {
+          blocks: payload?.blocks, pitch: payload?.pitch, services: pendingActions.map((a) => a.id),
+        });
         pendingWebChecked = payload?.webChecked === true;
         pendingSources = Array.isArray(payload?.sources)
           ? (payload.sources as Array<{ title?: unknown; url?: unknown }>)
@@ -350,7 +375,10 @@ export function useAIChat() {
           propertyRetry.current = null;
           try { if (readPropertyRetry()?.id === interactionId) sessionStorage.removeItem(PROPERTY_RETRY_KEY); } catch { /* storage unavailable */ }
         }
-        const assistantMsg: AIMessage = { id: crypto.randomUUID(), role: 'assistant', content: accumulated, createdAt: new Date() };
+        const assistantMsg: AIMessage = {
+          id: crypto.randomUUID(), role: 'assistant', content: accumulated, createdAt: new Date(),
+          ...(pendingMeta ? { meta: pendingMeta } : {}),
+        };
         setMessages(prev => [...prev, assistantMsg]);
         setStreamContent('');
         setStreaming(false);
@@ -454,7 +482,8 @@ export function useAIChat() {
 
   const resetChat = useCallback(() => {
     setMessages([]); setActiveConvId(null); setStreamContent('');
-    setPageContext({ type: 'general' }); setSuggestedReplies([]);
+    setPageContext({ type: 'general' }); setSuggestedReplies([]); setSuggestedActions([]);
+    setLastWebChecked(false); setLastSources([]);
     setInsufficientCredits(false); setLastCards([]); setHomiState('idle');
   }, []);
 

@@ -1,0 +1,86 @@
+/* HOMI chat UX round (back control, service cards, service notes) — [en, ka, ru, tr, ar, he].
+ * Georgian first: everyday language, informal "შენ", no dashes as punctuation.
+ * Service notes (homi_pitch_*) are HOMATCH's reviewed claims, shown only when
+ * HOMI picks that service (src/lib/homi/pitch.ts); keep them strictly true. */
+export const UX_HOMICHAT_STRINGS = {
+  homi_back: ['Back', 'უკან', 'Назад', 'Geri', 'رجوع', 'חזרה'],
+  homi_back_aria: ['Back to where you were', 'დაბრუნება იქ, სადაც იყავი', 'Вернуться туда, где ты был', 'Kaldığın yere dön', 'العودة إلى حيث كنت', 'חזרה למקום שבו היית'],
+
+  homi_svc_verify_desc: ['Owner, mortgages, restrictions and price in one report', 'მესაკუთრე, იპოთეკა, შეზღუდვები და ფასი ერთ ანგარიშში', 'Собственник, ипотеки, ограничения и цена в одном отчёте', 'Sahip, ipotek, kısıtlamalar ve fiyat tek raporda', 'المالك والرهون والقيود والسعر في تقرير واحد', 'בעלים, משכנתאות, הגבלות ומחיר בדוח אחד'],
+  homi_svc_find_property_desc: ['Describe what you want and HOMATCH searches for you', 'აღწერე, რას ეძებ, და HOMATCH შენ მაგივრად მოძებნის', 'Опиши, что ищешь, и HOMATCH найдёт за тебя', 'Ne aradığını anlat, HOMATCH senin yerine arasın', 'صف ما تبحث عنه وسيبحث HOMATCH عنك', 'תאר מה אתה מחפש ו־HOMATCH יחפש בשבילך'],
+  homi_svc_find_buyers_tenants_desc: ['Add your property and HOMATCH finds people looking for one like it', 'დაამატე ქონება და HOMATCH მოძებნის მათ, ვინც ასეთს ეძებს', 'Добавь объект, и HOMATCH найдёт тех, кто ищет похожий', 'Mülkünü ekle, HOMATCH benzerini arayanları bulsun', 'أضف عقارك وسيجد HOMATCH من يبحث عن مثله', 'הוסף את הנכס ו־HOMATCH ימצא מי שמחפש נכס כזה'],
+  homi_svc_contract_intelligence_desc: ['Upload a contract and see what it really says', 'ატვირთე ხელშეკრულება და გაიგე, რას ამბობს სინამდვილეში', 'Загрузи договор и узнай, что в нём на самом деле', 'Sözleşmeyi yükle, gerçekte ne dediğini gör', 'ارفع العقد واعرف ما يقوله فعلًا', 'העלה חוזה וראה מה הוא אומר באמת'],
+  homi_svc_mortgage_desc: ['Your real monthly payment and the full cost', 'რეალური ყოველთვიური შენატანი და სრული ღირებულება', 'Реальный ежемесячный платёж и полная стоимость', 'Gerçek aylık taksit ve toplam maliyet', 'القسط الشهري الحقيقي والتكلفة الكاملة', 'ההחזר החודשי האמיתי והעלות המלאה'],
+  homi_svc_investment_desc: ['Income, return and risk worked out with your numbers', 'შემოსავალი, უკუგება და რისკი შენი ციფრებით', 'Доход, доходность и риски по твоим цифрам', 'Gelir, getiri ve risk senin rakamlarınla', 'الدخل والعائد والمخاطر بأرقامك أنت', 'הכנסה, תשואה וסיכון לפי המספרים שלך'],
+  homi_svc_for_expats_desc: ['A personal step by step plan for moving to Georgia', 'პირადი გეგმა საქართველოში გადმოსასვლელად, ნაბიჯ-ნაბიჯ', 'Личный пошаговый план переезда в Грузию', 'Gürcistan’a taşınmak için adım adım kişisel plan', 'خطة شخصية خطوة بخطوة للانتقال إلى جورجيا', 'תוכנית אישית צעד אחר צעד למעבר לגאורגיה'],
+  homi_svc_brokers_desc: ['Find a professional by market and language', 'იპოვე პროფესიონალი ბაზრისა და ენის მიხედვით', 'Найди специалиста по рынку и языку', 'Pazara ve dile göre bir uzman bul', 'اعثر على محترف حسب السوق واللغة', 'מצא איש מקצוע לפי שוק ושפה'],
+  homi_svc_meta_ads_desc: ['Ads on Facebook and Instagram, HOMATCH builds the campaign', 'რეკლამა Facebook-სა და Instagram-ზე, კამპანიას HOMATCH აწყობს', 'Реклама в Facebook и Instagram, кампанию собирает HOMATCH', 'Facebook ve Instagram reklamı, kampanyayı HOMATCH kurar', 'إعلانات على فيسبوك وإنستغرام، وHOMATCH يبني الحملة', 'מודעות בפייסבוק ובאינסטגרם, HOMATCH בונה את הקמפיין'],
+  homi_svc_contact_desc: ['The official way to reach the HOMATCH team', 'HOMATCH-ის გუნდთან დაკავშირების ოფიციალური გზა', 'Официальный способ связаться с командой HOMATCH', 'HOMATCH ekibine ulaşmanın resmi yolu', 'الطريقة الرسمية للتواصل مع فريق HOMATCH', 'הדרך הרשמית לפנות לצוות HOMATCH'],
+
+  homi_pitch_eyebrow: ['From HOMATCH', 'HOMATCH-ისგან', 'От HOMATCH', 'HOMATCH’ten', 'من HOMATCH', 'מ־HOMATCH'],
+  homi_pitch_cta: ['See how it works', 'ნახე, როგორ მუშაობს', 'Посмотреть, как это работает', 'Nasıl çalıştığını gör', 'شاهد كيف يعمل', 'לראות איך זה עובד'],
+
+  homi_pitch_verify_title: ['Verify: check a property before you buy', 'Verify: ბინა ყიდვამდე შეამოწმე', 'Verify: проверь объект до покупки', 'Verify: almadan önce mülkü kontrol et', 'Verify: افحص العقار قبل الشراء', 'Verify: בדוק נכס לפני שקונים'],
+  homi_pitch_verify_body: [
+    'Verify brings the official registry and public sources together in one report: who owns it, whether there is a mortgage or a restriction, whether the developer is real and whether the price makes sense. A check this complete, in one place, is rare in Georgia.',
+    'Verify ერთ ანგარიშში აერთიანებს ოფიციალურ რეესტრს და საჯარო წყაროებს: ვინ არის მესაკუთრე, აქვს თუ არა იპოთეკა ან შეზღუდვა, ნამდვილია თუ არა დეველოპერი და რამდენად სწორია ფასი. ასეთი სრული შემოწმება ერთ ადგილას საქართველოში იშვიათია.',
+    'Verify собирает официальный реестр и открытые источники в одном отчёте: кто собственник, есть ли ипотека или ограничение, реален ли застройщик и адекватна ли цена. Такая полная проверка в одном месте в Грузии редкость.',
+    'Verify resmi sicili ve açık kaynakları tek raporda birleştirir: sahibi kim, ipotek ya da kısıtlama var mı, müteahhit gerçek mi ve fiyat makul mü. Bu kadar eksiksiz bir kontrolü tek yerde bulmak Gürcistan’da nadirdir.',
+    'يجمع Verify السجل الرسمي والمصادر العامة في تقرير واحد: من المالك، وهل يوجد رهن أو قيد، وهل المطوّر حقيقي، وهل السعر معقول. فحص بهذا الاكتمال في مكان واحد نادر في جورجيا.',
+    'Verify מאחד את המרשם הרשמי ומקורות ציבוריים בדוח אחד: מי הבעלים, האם יש משכנתא או הגבלה, האם היזם אמיתי והאם המחיר הגיוני. בדיקה מלאה כזו במקום אחד היא נדירה בגאורגיה.',
+  ],
+  homi_pitch_find_property_title: ['Find a property in your own words', 'ქონების ძებნა შენი სიტყვებით', 'Поиск жилья своими словами', 'Kendi sözlerinle mülk ara', 'ابحث عن عقار بكلماتك', 'חיפוש נכס במילים שלך'],
+  homi_pitch_find_property_body: [
+    'Just write what you want: area, budget, rooms. HOMATCH turns it into a search plan you can edit, then searches for you.',
+    'უბრალოდ დაწერე, რა გინდა: უბანი, ბიუჯეტი, ოთახები. HOMATCH ამას ძებნის გეგმად აქცევს, რომლის შეცვლაც შეგიძლია, და შენ მაგივრად ეძებს.',
+    'Просто напиши, что нужно: район, бюджет, комнаты. HOMATCH превратит это в план поиска, который можно править, и будет искать за тебя.',
+    'Ne istediğini yaz: semt, bütçe, oda sayısı. HOMATCH bunu düzenleyebileceğin bir arama planına çevirir ve senin yerine arar.',
+    'اكتب ما تريده فقط: الحي والميزانية وعدد الغرف. يحوّل HOMATCH ذلك إلى خطة بحث يمكنك تعديلها، ثم يبحث عنك.',
+    'פשוט כתוב מה אתה רוצה: אזור, תקציב, חדרים. HOMATCH הופך את זה לתוכנית חיפוש שאפשר לערוך, ומחפש בשבילך.',
+  ],
+  homi_pitch_find_buyers_tenants_title: ['Find a buyer or a tenant', 'მყიდველის ან მოიჯარის პოვნა', 'Найти покупателя или арендатора', 'Alıcı ya da kiracı bul', 'اعثر على مشترٍ أو مستأجر', 'למצוא קונה או שוכר'],
+  homi_pitch_find_buyers_tenants_body: [
+    'Add your property and HOMATCH looks for potentially interested people who are searching for a place like yours, and shows you why each one fits.',
+    'დაამატე შენი ქონება და HOMATCH მოძებნის პოტენციურად დაინტერესებულ ადამიანებს, ვინც შენნაირ ქონებას ეძებს, და გაჩვენებს, რატომ ერგება თითოეული.',
+    'Добавь свой объект, и HOMATCH найдёт потенциально заинтересованных людей, которые ищут похожее жильё, и покажет, почему каждый подходит.',
+    'Mülkünü ekle; HOMATCH senin mülküne benzer bir yer arayan, potansiyel olarak ilgilenen kişileri bulur ve her birinin neden uyduğunu gösterir.',
+    'أضف عقارك وسيبحث HOMATCH عن أشخاص قد يهتمون به ويبحثون عن مكان مثله، ويريك لماذا يناسب كل منهم.',
+    'הוסף את הנכס שלך ו־HOMATCH יחפש אנשים שעשויים להתעניין ומחפשים נכס כמו שלך, ויראה לך למה כל אחד מתאים.',
+  ],
+  homi_pitch_contract_intelligence_title: ['Understand a contract before you sign', 'ხელშეკრულება ხელმოწერამდე გაიგე', 'Пойми договор до подписи', 'İmzalamadan önce sözleşmeyi anla', 'افهم العقد قبل التوقيع', 'להבין חוזה לפני שחותמים'],
+  homi_pitch_contract_intelligence_body: [
+    'Upload a purchase or rental contract and HOMATCH explains it simply: what it commits you to, where the risks are, the money involved and the deadlines.',
+    'ატვირთე ყიდვის ან ქირის ხელშეკრულება და HOMATCH მარტივად აგიხსნის: რას გავალდებულებს, სად არის რისკი, რა თანხებია და რა ვადები.',
+    'Загрузи договор покупки или аренды, и HOMATCH просто объяснит: какие у тебя обязательства, где риски, какие суммы и сроки.',
+    'Satış ya da kira sözleşmesini yükle, HOMATCH basitçe anlatsın: seni neye bağlıyor, riskler nerede, hangi tutarlar ve hangi süreler var.',
+    'ارفع عقد شراء أو إيجار وسيشرحه HOMATCH ببساطة: ما الذي يلزمك به، وأين المخاطر، وما المبالغ والمواعيد.',
+    'העלה חוזה רכישה או שכירות ו־HOMATCH יסביר אותו בפשטות: למה הוא מחייב אותך, איפה הסיכונים, אילו סכומים ואילו מועדים.',
+  ],
+  homi_pitch_mortgage_title: ['The real price of a mortgage', 'იპოთეკის ნამდვილი ფასი', 'Настоящая цена ипотеки', 'Konut kredisinin gerçek maliyeti', 'السعر الحقيقي للرهن العقاري', 'המחיר האמיתי של משכנתא'],
+  homi_pitch_mortgage_body: [
+    'HOMATCH’s calculator shows your real monthly payment and the total cost, including the fees a bank quote often leaves out.',
+    'HOMATCH-ის კალკულატორი გიჩვენებს რეალურ ყოველთვიურ შენატანს და მთლიან ხარჯს, იმ საკომისიოებითაც, რასაც ბანკის შეთავაზება ხშირად არ აჩვენებს.',
+    'Калькулятор HOMATCH покажет реальный ежемесячный платёж и полную стоимость, включая комиссии, которые банк часто не указывает.',
+    'HOMATCH hesaplayıcısı gerçek aylık taksitini ve toplam maliyeti, bankanın teklifinde çoğu zaman görünmeyen ücretlerle birlikte gösterir.',
+    'تعرض حاسبة HOMATCH قسطك الشهري الحقيقي والتكلفة الإجمالية، بما في ذلك الرسوم التي يغفلها عرض البنك غالبًا.',
+    'המחשבון של HOMATCH מראה את ההחזר החודשי האמיתי ואת העלות הכוללת, כולל עמלות שהצעת הבנק לרוב לא מציגה.',
+  ],
+  homi_pitch_investment_title: ['Invest with numbers, not guesses', 'ინვესტიცია ციფრებით, არა ვარაუდით', 'Инвестиции по цифрам, а не наугад', 'Tahminle değil rakamlarla yatırım', 'استثمر بالأرقام لا بالتخمين', 'השקעה לפי מספרים, לא לפי ניחוש'],
+  homi_pitch_investment_body: [
+    'Pick a strategy (renting out, renovate and sell, buying from a developer) and HOMATCH works out income, return and risks from your own figures.',
+    'აირჩიე სტრატეგია (გაქირავება, გარემონტება და გაყიდვა, დეველოპერისგან ყიდვა) და HOMATCH შენი ციფრებით დაგითვლის შემოსავალს, უკუგებას და რისკებს.',
+    'Выбери стратегию (аренда, ремонт и продажа, покупка у застройщика), и HOMATCH посчитает доход, доходность и риски по твоим цифрам.',
+    'Bir strateji seç (kiraya verme, yenileyip satma, müteahhitten alma), HOMATCH geliri, getiriyi ve riskleri senin rakamlarınla hesaplasın.',
+    'اختر استراتيجية (التأجير، أو الترميم والبيع، أو الشراء من المطوّر) وسيحسب HOMATCH الدخل والعائد والمخاطر من أرقامك.',
+    'בחר אסטרטגיה (השכרה, שיפוץ ומכירה, קנייה מיזם) ו־HOMATCH יחשב הכנסה, תשואה וסיכונים לפי הנתונים שלך.',
+  ],
+  homi_pitch_for_expats_title: ['Moving to Georgia, with HOMI', 'საქართველოში გადმოსვლა HOMI-სთან ერთად', 'Переезд в Грузию вместе с HOMI', 'HOMI ile Gürcistan’a taşınma', 'الانتقال إلى جورجيا مع HOMI', 'מעבר לגאורגיה עם HOMI'],
+  homi_pitch_for_expats_body: [
+    'Tell HOMI your plans and get a saved, step by step plan: a place to live, documents and everyday matters.',
+    'მოუყევი HOMI-ს შენი გეგმები და მიიღე შენახული გეგმა, ნაბიჯ-ნაბიჯ: საცხოვრებელი, საბუთები და ყოველდღიური საკითხები.',
+    'Расскажи HOMI о своих планах и получи сохранённый пошаговый план: жильё, документы и повседневные дела.',
+    'Planlarını HOMI’ye anlat, kaydedilen adım adım bir plan al: ev, belgeler ve günlük işler.',
+    'أخبر HOMI بخططك واحصل على خطة محفوظة خطوة بخطوة: السكن والمستندات والأمور اليومية.',
+    'ספר ל־HOMI על התוכניות שלך וקבל תוכנית שמורה צעד אחר צעד: מגורים, מסמכים ועניינים יומיומיים.',
+  ],
+};

@@ -37,7 +37,9 @@ export function HomiInvestmentBar({ run }: { run: StrategyRun }) {
   const ask = (key: string) => navigate('/ai', { state: { context, prompt: t(key) } });
 
   return (
-    <div className="hm-invest-panel flex flex-wrap items-center gap-3 p-4">
+    /* The id is the return anchor: back from HOMI lands on this bar, exactly
+       where it sat on screen (components/homi/useHomiReturn.ts). */
+    <div id="inv-homi" className="hm-invest-panel flex flex-wrap items-center gap-3 p-4">
       <HomiAvatar state="explaining" crop="upper" size={48} />
       <p className="min-w-0 flex-1 text-sm text-foreground">{t('inv_homi_lead')}</p>
       <div className="flex flex-wrap gap-2">

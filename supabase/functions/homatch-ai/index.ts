@@ -37,6 +37,11 @@ import { retentionBlockedIds } from '../_shared/retentionGuard.ts';
 import { serviceBackendEnabled, serviceDisabledBody, serviceState, type ServiceKey } from '../_shared/serviceControl.ts';
 import { routeHomiTurn, type HomiRoute } from '../../../src/lib/homi/router.ts';
 import { HOMI_CARDS_INSTRUCTION, parseHomiCards } from '../../../src/lib/homi/cards.ts';
+import { decideTurnPolicy, servicesNamedIn, turnPolicyPrompt } from '../../../src/lib/homi/webPolicy.ts';
+import { HOMI_ANSWER_FORMAT_INSTRUCTION, parseAnswerBlocks } from '../../../src/lib/homi/answerBlocks.ts';
+import { allowPitch, HOMI_PITCH_INSTRUCTION, parsePitchHistory } from '../../../src/lib/homi/pitch.ts';
+import { ensureReplies, fallbackReplies, HOMI_ALWAYS_REPLIES_INSTRUCTION } from '../../../src/lib/homi/replyFallback.ts';
+import { hasMeta, parseMessageMeta, type HomiMessageMeta } from '../../../src/lib/homi/messageMeta.ts';
 import {
   deterministicPayload, readOpenAIStream, SSE_HEADERS, sseFrame, stripAiDashes, trimConversation,
 } from './homi.ts';
@@ -56,8 +61,8 @@ const RATE_LIMIT_OPERATION = 'ai_chat_message';
 /* Every HOMI turn, deterministic ones included: a burst ceiling, not a quota. */
 const BURST_OPERATION = 'homi_turn';
 const BURST_PER_MINUTE = 20;
-/* Web searches a single turn may run. The model decides whether to search at
-   all; this caps how far one turn can go. */
+/* Web searches a single turn may run. Whether the tool is offered at all is
+   decided in code (decideTurnPolicy); this caps how far an open turn can go. */
 const TOOL_CALL_BUDGET = { LIGHT: 1, FULL: 4 } as const;
 /*
  * WHICH SURFACES STILL CHARGE PER ANSWER.
@@ -125,7 +130,7 @@ const BURST_MESSAGES: Record<Locale, string> = {
 // ── Intent-to-lead extraction instruction, appended to the system prompt ──
 const LEAD_EXTRACTION_INSTRUCTION = `
 After your visible reply to the user, on a new line, append exactly ONE fenced code block \`\`\`json ... \`\`\` (nothing after it) containing a single JSON object with this exact shape — use null for anything not stated, never invent a value:
-{"intent_detected": boolean, "transaction_type": "BUY"|"SELL"|"RENT_OUT"|"RENT_IN"|"INVEST"|null, "property_type": string|null, "location": string|null, "budget_min": number|null, "budget_max": number|null, "currency": string|null, "bedrooms": number|null, "timeline": string|null, "contact_name": string|null, "contact_phone": string|null, "contact_email": string|null, "confidence": number, "suggested_replies": string[], "suggested_actions": string[], "cards": array, "routing": {"intent": string, "web_mode": "NO_WEB"|"SUPPLEMENTAL_WEB"|"REQUIRED_LIVE_WEB"|"SPECIALIZED_HOMATCH_WORKFLOW", "internal_used": boolean}}
+{"intent_detected": boolean, "transaction_type": "BUY"|"SELL"|"RENT_OUT"|"RENT_IN"|"INVEST"|null, "property_type": string|null, "location": string|null, "budget_min": number|null, "budget_max": number|null, "currency": string|null, "bedrooms": number|null, "timeline": string|null, "contact_name": string|null, "contact_phone": string|null, "contact_email": string|null, "confidence": number, "suggested_replies": string[], "suggested_actions": string[], "cards": array, "blocks": array, "pitch_service": string|null, "routing": {"intent": string, "web_mode": "NO_WEB"|"SUPPLEMENTAL_WEB"|"REQUIRED_LIVE_WEB"|"SPECIALIZED_HOMATCH_WORKFLOW", "internal_used": boolean}}
 "routing" reports how you actually answered THIS turn: "intent" is a 2-5 word English label for what the user wanted (e.g. "property price context", "market research", "contract clause"), "web_mode" is the mode you actually followed, "internal_used" is true when PAGE CONTEXT or HOMATCH INTERNAL DATA materially shaped the answer. Report what happened — never what would sound better.
 Set "intent_detected": true only if the user expressed a genuine intention to buy, sell, rent out, rent, or invest in property (not just idle research or a general question), OR shared their own contact info (phone/email/name) for follow-up. "confidence" is your 0-1 confidence in that assessment. This JSON block is removed before the user sees your answer — it must never replace or duplicate your visible reply, and it must always be present even when intent_detected is false.`;
 
@@ -148,6 +153,10 @@ interface LeadExtraction {
   suggested_actions?: unknown;
   /** Untrusted. Never reaches a browser without parseHomiCards(). */
   cards?: unknown;
+  /** Untrusted. Never reaches a browser without parseAnswerBlocks(). */
+  blocks?: unknown;
+  /** Untrusted. Only an ID; allowPitch() decides, and the words are ours. */
+  pitch_service?: unknown;
   /** Self-reported routing (telemetry only — never rendered to customers). */
   routing?: { intent?: unknown; web_mode?: unknown; internal_used?: unknown } | null;
 }
@@ -371,6 +380,33 @@ serve(async (req) => {
       ...row,
     }).then(({ error }: { error: unknown }) => { if (error) console.error('routing telemetry insert failed', error); });
 
+  /*
+   * THE ANSWER AND WHAT TRAVELS WITH IT (blocks, service cards, the service
+   * note). The meta is written in a second, best-effort step so an answer is
+   * never lost because the column is not there yet (migration
+   * 20261204102000_ai_messages_meta): the words are saved first.
+   */
+  const saveAssistantMessage = async (content: string, meta: HomiMessageMeta) => {
+    if (!conversationId) return;
+    const { data: row } = await sb.from('ai_messages')
+      .insert({ conversation_id: conversationId, role: 'assistant', content }).select('id').single();
+    if (row?.id && hasMeta(meta)) {
+      const { error } = await sb.from('ai_messages').update({ meta }).eq('id', row.id);
+      if (error) console.error('homatch-ai: answer meta not stored', error.message ?? error);
+    }
+  };
+
+  /** Which service note each earlier answer carried (oldest first): the stored truth when it can be read. */
+  const pitchHistory = async (): Promise<Array<string | null>> => {
+    if (conversationId) {
+      const { data, error } = await sb.from('ai_messages').select('meta')
+        .eq('conversation_id', conversationId).eq('role', 'assistant')
+        .order('created_at', { ascending: true }).limit(40);
+      if (!error && Array.isArray(data)) return data.map((r: any) => parseMessageMeta(r?.meta).pitch);
+    }
+    return parsePitchHistory(body?.homiPitchHistory);
+  };
+
   /* ── HOMI: a written answer, no model ──────────────────────────────── */
   if (deterministic && route.kind === 'DETERMINISTIC') {
     const payload = deterministicPayload(route.intent, lang);
@@ -379,17 +415,24 @@ serve(async (req) => {
       const key = SERVICE_ACTION_SERVICE[action.id];
       if (!key || (await serviceState(sb, key as ServiceKey)).frontend) actionsOut.push(action);
     }
+    /* Something to tap after every answer: a written answer without its own
+       chips (and without the start menu, which IS the choices) gets the
+       general set. */
+    const replies = payload.suggestedReplies.length || payload.cards.some((c) => c.type === 'START')
+      ? payload.suggestedReplies : fallbackReplies(lang, null);
+    const meta: HomiMessageMeta = { blocks: [], services: actionsOut.map((a) => a.id), pitch: null };
     if (conversationId) {
-      await sb.from('ai_messages').insert([
-        { conversation_id: conversationId, role: 'user', content: lastUserText },
-        { conversation_id: conversationId, role: 'assistant', content: payload.text },
-      ]);
+      await sb.from('ai_messages').insert({ conversation_id: conversationId, role: 'user', content: lastUserText });
+      await saveAssistantMessage(payload.text, meta);
     }
     const customerEnvelope = {
       text: payload.text,
       conversationId,
-      suggestedReplies: payload.suggestedReplies,
+      suggestedReplies: replies,
       suggestedActions: actionsOut,
+      blocks: [],
+      pitch: null,
+      meta,
       cards: payload.cards,
       homi: { route: 'DETERMINISTIC', intent: route.intent, mood: payload.mood },
       webChecked: false,
@@ -400,7 +443,7 @@ serve(async (req) => {
     recordTurn({
       intent: route.intent.toLowerCase(), deterministic_intent: route.intent, web_mode: 'NO_WEB',
       internal_used: true, web_calls: 0, action_ids: actionsOut.map((a) => a.id),
-      reply_count: payload.suggestedReplies.length, latency_ms: Date.now() - turnStartedAt,
+      reply_count: replies.length, latency_ms: Date.now() - turnStartedAt,
       ttft_ms: Date.now() - turnStartedAt, input_tokens: 0, cached_tokens: 0, output_tokens: 0,
       cost_cents: 0, billed: false,
     });
@@ -670,6 +713,16 @@ serve(async (req) => {
   };
   const context = body.context || {};
   /*
+   * WEB OR NOT, AND WHICH SERVICE — decided in code (src/lib/homi/webPolicy.ts),
+   * never left to the model. The search tool is only offered when the turn
+   * genuinely needs live data; "find me an apartment" is Find Property, not
+   * a web search.
+   */
+  const policy = decideTurnPolicy(last, { marketplace: marketplaceScope });
+  const webAllowed = policy.web === 'ON';
+  const priorPitches = await pitchHistory();
+  const pitchedServices = [...new Set(priorPitches.filter((p): p is string => p !== null))];
+  /*
    * The identity block leads, because it is the answer to the questions this
    * prompt never used to cover: who are you, are you a person, and whose AI
    * are you. It is shared rather than written here, so the assistant, AI TALK
@@ -684,7 +737,7 @@ THE ORDER OF EVERY ANSWER — INTERNAL FIRST, WEB WHEN USEFUL, ANSWER FIRST, SER
 1. Understand what they are asking and which property or situation it is about.
 2. Use what is ALREADY IN FRONT OF YOU before anything else: PAGE CONTEXT and HOMATCH INTERNAL DATA below carry the current property (price, location, type, facts), their own Verify reports, their matches and their stated search intents. That material is what makes you Homatch rather than a search box — an answer that ignores a property the customer is literally looking at is a failed answer.
 3. Only then decide whether CURRENT external information would materially improve the answer, and follow exactly one mode: NO_WEB — the context you hold or stable knowledge already answers it, so searching is waste; SUPPLEMENTAL_WEB — the context answers it, but current comparables, market or neighbourhood facts would sharpen it, so search AND merge both; REQUIRED_LIVE_WEB — the question is about current external facts you do not hold (today's prices, a developer's news, regulations), so research properly; SPECIALIZED_HOMATCH_WORKFLOW — the real answer is a Homatch product doing structured work (a Verify report, a full investment analysis, an actual property search), so give the genuinely useful conversational answer you CAN give, then offer that product as the deeper next step. A service existing NEVER means refusing to answer.
-Never call web_search before you have used what Homatch already knows; never avoid it when currency genuinely matters. Searching is NOT the default: a turn that the context, HOMATCH's products or stable knowledge can answer must not search, and when the person explicitly asks you to check online, do. This turn may run at most ${TOOL_CALL_BUDGET[route.kind === 'MODEL' ? route.tier : 'FULL']} search call(s). web_search is the tool for research, verification, current public facts, and anything about a company/developer/project/person/address/cadastral reference — do not answer from memory alone when the topic could be time-sensitive or unverifiable without a search.
+Never call web_search before you have used what Homatch already knows; never avoid it when currency genuinely matters. Searching is NOT the default: a turn that the context, HOMATCH's products or stable knowledge can answer must not search, and when the person explicitly asks you to check online, do. ${webAllowed ? `This turn may run at most ${TOOL_CALL_BUDGET[route.kind === 'MODEL' ? route.tier : 'FULL']} search call(s).` : 'This turn has no search tool at all (see WEB THIS TURN below).'} web_search is the tool for research, verification, current public facts, and anything about a company/developer/project/person/address/cadastral reference — do not answer from memory alone when the topic could be time-sensitive or unverifiable without a search.
 
 RESEARCH IS SYNTHESIS, NOT A LINK. When you search: run as many targeted searches as the question deserves; prefer official/registry/bank/municipality sources over marketplaces, marketplaces over third-party claims; cross-check when sources disagree and say so when they do. An asking price is not a transaction price; a listing is not registry truth — keep those apart whenever the difference matters. Then ANSWER THE QUESTION in your own words: what the evidence shows, what it suggests for THEIR situation, and what its limits are, with sources attached as supporting evidence. A reply whose substance is one URL is a failure — the customer must never have to leave Homatch to understand your answer. Depth follows the question: for one narrow current fact, one authoritative source is enough; for a market, price-comparison or research question, one random listing is not — gather until another source stops changing the picture, then stop. If the web fails mid-answer, say so naturally and still give everything the internal context supports.
 
@@ -698,7 +751,10 @@ ${HOMATCH_CONVERSATION_STYLE}
 ${SUGGESTED_REPLIES_INSTRUCTION}
 ${SERVICE_ACTIONS_INSTRUCTION}
 ${HOMI_CARDS_INSTRUCTION}
-${droppedTurns > 0 ? `NOTE: ${droppedTurns} older message(s) of this conversation were left out to keep it short; if the person refers to something you cannot see, ask briefly.\n` : ''}SOMETHING GENUINELY UNRELATED AND SUBSTANTIAL — a recipe, a maths problem, code, medical advice: do not write it out, and do not lecture about scope either. One friendly sentence that this is not what you are here for, then offer the nearest thing you CAN do. Never produce an error, never quote a policy, never say "outside my scope" or "I can only". This is about somebody asking you to DO a large unrelated job; an ordinary human aside, a joke, a complaint or a swear word is not that, and is covered by the style rules above.
+${HOMI_ANSWER_FORMAT_INSTRUCTION}
+${HOMI_ALWAYS_REPLIES_INSTRUCTION}
+${HOMI_PITCH_INSTRUCTION}
+${pitchedServices.length ? `Service notes already shown in this conversation (never choose these again): ${pitchedServices.join(', ')}.\n` : ''}${droppedTurns > 0 ? `NOTE: ${droppedTurns} older message(s) of this conversation were left out to keep it short; if the person refers to something you cannot see, ask briefly.\n` : ''}SOMETHING GENUINELY UNRELATED AND SUBSTANTIAL — a recipe, a maths problem, code, medical advice: do not write it out, and do not lecture about scope either. One friendly sentence that this is not what you are here for, then offer the nearest thing you CAN do. Never produce an error, never quote a policy, never say "outside my scope" or "I can only". This is about somebody asking you to DO a large unrelated job; an ordinary human aside, a joke, a complaint or a swear word is not that, and is covered by the style rules above.
 WHAT HOMATCH CAN ACTUALLY DO FOR THEM. These are the real products, with the real place each one starts. Never describe a capability Homatch does not have, and never name a destination that is not on this list.
   Verify (/verify) — deep research on ONE specific property across official registries and public sources, returned as a buyer's report: who owns it, mortgages and restrictions, whether the developer is real, whether the price makes sense.
   Contract Intelligence (/contracts) — upload a purchase or rental contract and Homatch reads it and explains what it actually says: obligations, risks, financial terms, deadlines.
@@ -720,6 +776,7 @@ MORTGAGE NUMBERS ARE NOT YOURS TO COMPUTE. When PAGE CONTEXT carries a \`mortgag
 ${LEAD_EXTRACTION_INSTRUCTION}
 ${internalRetrievalFailed ? 'NOTE: internal data retrieval FAILED this turn. If they ask about their own saved properties, matches or reports, say plainly that you could not reach their saved data right now — never claim it does not exist, and never invent it.\n' : ''}HOMATCH INTERNAL DATA:${internalDataForPrompt(internal)}
 ${marketplaceScope ? 'PROPERTY ANALYSIS: Distinguish source facts, description inferences, unknowns and advice. Never promise a seller will accept a negotiation price. Renovation costs are estimates, never exact facts: ask for basic/mid-range/premium level when missing; use ranges and explicit assumptions, and do not invent Georgian construction prices. If current cost evidence is required, use the existing web-checking rules. Purchase-plus-renovation totals need supported purchase price and a supported estimate, otherwise ask for missing information.' : ''}
+${turnPolicyPrompt(policy)}
 PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
 
   const key = Deno.env.get('OPENAI_API_KEY');
@@ -754,8 +811,13 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
   const providerTimer = setTimeout(() => providerAbort.abort('timeout'), OPENAI_REQUEST_TIMEOUT_MS);
   const providerBody = {
     model, instructions, input: msgs,
-    tools: [{ type: 'web_search', search_context_size: 'medium' }], tool_choice: 'auto', store: false,
-    max_tool_calls: TOOL_CALL_BUDGET[tier],
+    store: false,
+    /* The search tool exists for this request only when the turn policy
+       opened it. Without it the model cannot go online however it reads
+       the question. */
+    ...(webAllowed
+      ? { tools: [{ type: 'web_search', search_context_size: 'medium' }], tool_choice: 'auto', max_tool_calls: TOOL_CALL_BUDGET[tier] }
+      : {}),
     /* A stable key per surface keeps the long static prefix of the
        instructions in the provider's prompt cache across people. Only the
        prefix is shared there; nothing user-specific is cached by us. */
@@ -795,7 +857,11 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
    * validator before it goes anywhere near a screen: the model is a
    * useful author of suggestions and an untrusted one. See
    * src/lib/ai/suggestedReplies.ts for what is rejected and why. */
-  const suggestedReplies = parseSuggestedReplies(lead?.suggested_replies);
+  /* And never nothing: fewer than two usable chips → the deterministic set
+     for the service this turn is about (src/lib/homi/replyFallback.ts). */
+  const suggestedReplies = ensureReplies(parseSuggestedReplies(lead?.suggested_replies), lang, policy.service);
+  /* The designed parts of the answer, validated like everything else. */
+  const blocks = parseAnswerBlocks(lead?.blocks);
 
   /* ── 4. What it actually cost ──────────────────────────────────────
    *
@@ -846,8 +912,6 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
       streamed: streamThisTurn,
     },
   };
-
-  if (conversationId) await sb.from('ai_messages').insert({ conversation_id: conversationId, role: 'assistant', content: text });
 
   // Record this successful turn against the daily rate limit.
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || null;
@@ -930,12 +994,26 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
   const webMode = typeof routingRaw?.web_mode === 'string' && WEB_MODES.has(routingRaw.web_mode)
     ? routingRaw.web_mode : (searchCount > 0 ? 'REQUIRED_LIVE_WEB' : 'NO_WEB');
   /* A chip for a paused product (Admin → Service Control Center) is never offered. */
+  /* SERVICE CARDS whenever the answer touches a HOMATCH service: the service
+     the turn policy found in the question first (a property search always
+     carries Find Property), then the model's own picks, then any product the
+     reply names. Same catalogue validator, same three-card ceiling. */
   const actionsOut: ServiceAction[] = [];
-  for (const action of parseServiceActions(lead?.suggested_actions)) {
+  const modelActionIds = parseServiceActions(lead?.suggested_actions).map((a) => a.id);
+  const candidateIds = [...(policy.service ? [policy.service] : []), ...modelActionIds, ...servicesNamedIn(text)];
+  for (const action of parseServiceActions(candidateIds)) {
     const key = SERVICE_ACTION_SERVICE[action.id];
     if (!key || (await serviceState(sb, key as ServiceKey)).frontend) actionsOut.push(action);
   }
   const cards = parseHomiCards(lead?.cards);
+  /* The service note: an ID from the model, the rate and the words from code. */
+  let pitch = allowPitch(lead?.pitch_service, priorPitches);
+  if (pitch) {
+    const key = SERVICE_ACTION_SERVICE[pitch];
+    if (key && !(await serviceState(sb, key as ServiceKey)).frontend) pitch = null;
+  }
+  const meta: HomiMessageMeta = { blocks, services: actionsOut.map((a) => a.id), pitch };
+  await saveAssistantMessage(text, meta);
   recordTurn({
     model,
     input_tokens: inputTokens,
@@ -957,6 +1035,11 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
       intents: internal.intents.length,
       verifications: internal.verifications.length,
       pageContext: (context as any)?.type ?? null,
+      /* The code-side turn policy (webPolicy.ts): why the web was or was not offered. */
+      webPolicy: `${policy.web}:${policy.reason}`,
+      policyService: policy.service,
+      pitch,
+      blocks: blocks.length,
     },
     action_ids: actionsOut.map((a) => a.id),
     reply_count: suggestedReplies.length,
@@ -1005,6 +1088,12 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
     internalSummary: { properties: internal.properties.length, matches: internal.matches.length, intents: internal.intents.length },
     /* Interactive cards, validated against the catalogue (src/lib/homi/cards.ts). */
     cards,
+    /* The designed blocks and the rate-limited service note (an ID; the
+       client renders HOMATCH's own reviewed copy for it). `meta` is the same
+       thing as it is stored beside the answer. Old clients ignore all three. */
+    blocks,
+    pitch,
+    meta,
     homi: { route: `MODEL_${tier}`, mood: 'explaining' },
   };
   return customerEnvelope;

@@ -7,7 +7,7 @@
 export const MORTGAGE_STRINGS_3 = {
   /* ── Field labels the old page did not have ─────────────────────── */
 
-  mortgage_label_currency: ['Currency', 'ვალუტა', 'Валюта', 'Para birimi', 'العملة', 'מטבע'],
+  mortgage_label_currency: ['Loan currency', 'სესხის ვალუტა', 'Валюта кредита', 'Kredi para birimi', 'عملة القرض', 'מטבע ההלוואה'],
   mortgage_label_nominal_rate_hint: [
     'The rate the bank quoted you. If you do not have one yet, ask for it in writing — it is the single number every other figure here depends on.',
     'განაკვეთი, რომელიც ბანკმა დაგისახელათ. თუ ჯერ არ გაქვთ, მოითხოვეთ წერილობით — ეს ის ერთადერთი ციფრია, რომელზეც აქ ყველა დანარჩენი დამოკიდებულია.',

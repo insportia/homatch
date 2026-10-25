@@ -177,7 +177,7 @@ export const LEGAL_COMPLIANCE_STRINGS = {
   legal_accept_sentence: [
     'I have read and agree to the {{terms}} and have read the {{privacy}}.',
     'გავეცანი და ვეთანხმები {{terms}} და გავეცანი {{privacy}}.',
-    'Я ознакомился(-ась) и согласен(-на) с {{terms}} и ознакомился(-ась) с {{privacy}}.',
+    'Я принимаю {{terms}} и подтверждаю, что прочитал(а) {{privacy}}.',
     '{{terms}} okudum ve kabul ediyorum; {{privacy}} okudum.',
     'لقد قرأتُ {{terms}} وأوافق عليها، واطّلعتُ على {{privacy}}.',
     'קראתי את {{terms}} ואני מסכים/ה להם, וקראתי את {{privacy}}.',

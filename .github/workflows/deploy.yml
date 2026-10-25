@@ -647,6 +647,10 @@ jobs:
             # then decides what that caller is allowed to see.
             "homatch-ai"
             "anon-session"
+            # Mortgage: the National Bank of Georgia's official rates, refreshed
+            # on demand when the stored ones are older than six hours. Public
+            # data; the anon key is enough, the service role writes the table.
+            "mortgage-fx-rates"
             # developer-score has never been deployed at all, which is what made
             # /developer/:id a dead route.
             "developer-score"

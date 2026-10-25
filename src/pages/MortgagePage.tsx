@@ -62,6 +62,7 @@ import { BeforeYouSignView } from '@/components/mortgage/views/GuidanceViews';
 import { GlossaryPanel, GlossaryScenarioProvider } from '@/components/mortgage/TermInfo';
 import { MortgageWorkspace } from '@/components/mortgage/MortgageWorkspace';
 import { recordMortgageInterest } from '@/services/mortgageInterest';
+import { MoneyEntriesProvider } from '@/components/mortgage/fxRates';
 
 interface MortgagePrefillState extends FinancingPrefill {
   propertyId?: string;
@@ -99,6 +100,9 @@ export default function MortgagePage() {
     set,
     replaceDraft,
     reset,
+    moneyEntries,
+    setMoneyEntry,
+    replaceMoneyEntries,
     topic,
     selectTopic,
     input,
@@ -244,6 +248,7 @@ export default function MortgagePage() {
       <PageMeta title={t('mortgage_page_title')} description={t('mortgage_page_subtitle')} />
       <MortgageAskProvider>
       <GlossaryScenarioProvider scenario={exampleScenario}>
+      <MoneyEntriesProvider entries={moneyEntries} setEntry={setMoneyEntry}>
         {/*
           * PREMIUM LIGHT, NOT THE ANALYTICAL NAVY.
           *
@@ -260,9 +265,10 @@ export default function MortgagePage() {
                 The navy band is the product's frame: deep ink ground, white
                 title, gold eyebrow and a hairline of gold light. The WORK
                 happens on the white panels below it. */}
-            <header className="overflow-hidden rounded-2xl bg-[#0C1119] px-5 py-6 text-white shadow-hover sm:px-9 sm:py-10">
+            <header className="relative overflow-hidden rounded-3xl bg-[#0C1119] px-5 py-6 text-white shadow-hover sm:px-9 sm:py-10">
+              <div aria-hidden="true" className="pointer-events-none absolute -end-24 -top-24 h-64 w-64 rounded-full bg-[radial-gradient(circle,hsl(38_92%_56%/0.22),transparent_65%)]" />
               <div className="relative">
-                <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[hsl(38_92%_60%)]">
+                <p className="text-[13px] font-semibold text-[hsl(38_92%_60%)]">
                   {t('mortgage_product_eyebrow')}
                 </p>
                 <h1 className="mt-2 font-display text-3xl font-bold leading-tight tracking-[-0.02em] text-white sm:text-4xl">
@@ -300,7 +306,9 @@ export default function MortgagePage() {
               rules={workspaceRules}
               propertyId={prefill?.propertyId ?? null}
               offers={offers}
-              onOpenDraft={(next, savedOffers) => { replaceDraft(next); replaceOffers(savedOffers); setPressed(true); }}
+              moneyEntries={moneyEntries}
+              inFlow={showResult}
+              onOpenDraft={(next, savedOffers, entries) => { replaceDraft(next); replaceOffers(savedOffers); replaceMoneyEntries(entries); setPressed(true); }}
               onNew={() => { reset(); setPressed(false); }}
             />
 
@@ -465,6 +473,7 @@ export default function MortgagePage() {
             <PageBlocks slug="mortgage" />
           </div>
         </div>
+      </MoneyEntriesProvider>
       </GlossaryScenarioProvider>
       </MortgageAskProvider>
     </AppLayout>

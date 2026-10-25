@@ -67,6 +67,7 @@ import type {
   SubsidyProgramRuleData,
   TermComparisonRow,
 } from '@/mortgage/types';
+import { cleanEntries, type MoneyEntries, type MoneyEntry } from '@/mortgage/fx';
 
 /** Everything the borrower has typed or clicked, as entered. */
 export interface FinancingDraft {
@@ -131,6 +132,13 @@ const EMPTY_DRAFT: FinancingDraft = {
 
 const STORAGE_KEY = 'homatch.mortgage.draft.v1';
 const TOPIC_KEY = 'homatch.mortgage.topic.v1';
+/** Amounts typed in a currency other than the loan's (see src/mortgage/fx.ts). */
+const ENTRIES_KEY = 'homatch.mortgage.entries.v1';
+
+function loadEntries(): Record<string, MoneyEntry> {
+  if (typeof window === 'undefined') return {};
+  try { return cleanEntries(JSON.parse(window.localStorage.getItem(ENTRIES_KEY) ?? 'null')); } catch { return {}; }
+}
 
 /**
  * A scenario survives a reload.
@@ -227,6 +235,11 @@ export interface FinancingSession {
   replaceDraft: (next: Partial<FinancingDraft>) => void;
   reset: () => void;
 
+  /** Money typed in another currency, keyed by draft field; the draft holds the converted figure. */
+  moneyEntries: MoneyEntries;
+  setMoneyEntry: (field: string, entry: MoneyEntry | null) => void;
+  replaceMoneyEntries: (entries: MoneyEntries) => void;
+
   topic: TopicId | null;
   selectTopic: (topic: TopicId | null) => void;
 
@@ -298,6 +311,7 @@ export function useFinancingSession(prefill?: FinancingPrefill): FinancingSessio
     }
     return loaded;
   });
+  const [moneyEntries, setMoneyEntries] = useState<Record<string, MoneyEntry>>(loadEntries);
   const [topic, setTopic] = useState<TopicId | null>(loadTopic);
   const [offers, setOffers] = useState<MortgageOffer[]>([]);
   const [subsidyAnswers, setSubsidyAnswers] = useState<SubsidyAnswers>({});
@@ -325,6 +339,24 @@ export function useFinancingSession(prefill?: FinancingPrefill): FinancingSessio
   useEffect(() => {
     store(TOPIC_KEY, topic);
   }, [topic]);
+
+  useEffect(() => {
+    store(ENTRIES_KEY, Object.keys(moneyEntries).length ? JSON.stringify(moneyEntries) : null);
+  }, [moneyEntries]);
+
+  const setMoneyEntry = useCallback((field: string, entry: MoneyEntry | null) => {
+    setMoneyEntries((current) => {
+      if (entry === null) {
+        if (!(field in current)) return current;
+        const { [field]: _gone, ...rest } = current;
+        return rest;
+      }
+      const prev = current[field];
+      if (prev && prev.amount === entry.amount && prev.currency === entry.currency) return current;
+      return { ...current, [field]: entry };
+    });
+  }, []);
+  const replaceMoneyEntries = useCallback((entries: MoneyEntries) => setMoneyEntries(cleanEntries(entries)), []);
 
   useEffect(() => {
     // ACTIVE knowledge-base rows are public under RLS, so these load for a
@@ -364,6 +396,7 @@ export function useFinancingSession(prefill?: FinancingPrefill): FinancingSessio
 
   const reset = useCallback(() => {
     setDraft(EMPTY_DRAFT);
+    setMoneyEntries({});
     setTopic(null);
     setOffers([]);
     setSubsidyAnswers({});
@@ -580,6 +613,9 @@ export function useFinancingSession(prefill?: FinancingPrefill): FinancingSessio
     set,
     replaceDraft,
     reset,
+    moneyEntries,
+    setMoneyEntry,
+    replaceMoneyEntries,
     topic,
     selectTopic,
     inputErrors,

@@ -20,7 +20,7 @@ import type { MortgageCalculationResult, MortgageInput } from '@/mortgage/types'
 function Figure({ label, value, labelKey }: { label: string; value: string; labelKey?: string }) {
   return (
     <div className="min-w-0">
-      <p className="flex items-center gap-1.5 text-2xs uppercase tracking-[0.12em] text-muted-foreground">{label}{labelKey ? <LabelTerm labelKey={labelKey} /> : null}</p>
+      <p className="flex items-center gap-1.5 text-2xs text-muted-foreground">{label}{labelKey ? <LabelTerm labelKey={labelKey} /> : null}</p>
       <p className="mt-1 font-display text-lg font-semibold tabular-nums text-foreground sm:text-xl">
         {value}
       </p>
@@ -48,7 +48,7 @@ export function ResultHeadline({
 
   return (
     <section id="result" className="hm-customer-panel hm-customer-focus p-5 sm:p-7">
-      <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--gold-ink))]">
+      <p className="text-2xs font-semibold text-[hsl(var(--gold-ink))]">
         {t('mortgage_result_eyebrow')}
       </p>
 

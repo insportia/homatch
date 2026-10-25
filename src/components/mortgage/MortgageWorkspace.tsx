@@ -8,7 +8,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, Copy, FolderOpen, History, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Copy, FolderOpen, History, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import {
@@ -23,9 +23,10 @@ import type {
 } from '@/mortgage/types';
 import type { FinancingDraft } from './useFinancingSession';
 import { useMortgageAsk } from './askConsultant';
+import type { MoneyEntries } from '@/mortgage/fx';
 
 /* What a saved row's input holds beyond the engine input: the form as typed, and the bank offers compared with it. */
-type StoredInput = MortgageInput & { draft?: Partial<FinancingDraft>; offers?: MortgageOffer[] };
+type StoredInput = MortgageInput & { draft?: Partial<FinancingDraft>; offers?: MortgageOffer[]; moneyEntries?: MoneyEntries };
 
 const btn = 'inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:border-[hsl(var(--gold-border))]';
 const goldBtn = 'inline-flex min-h-11 items-center gap-1.5 rounded-full bg-[hsl(var(--gold))] px-5 text-sm font-semibold text-[hsl(var(--primary-foreground))] transition-colors hover:bg-[hsl(var(--gold-hover))] disabled:cursor-not-allowed disabled:opacity-60';
@@ -39,6 +40,8 @@ export function MortgageWorkspace({
   rules,
   propertyId,
   offers,
+  moneyEntries,
+  inFlow,
   onOpenDraft,
   onNew,
 }: {
@@ -53,7 +56,15 @@ export function MortgageWorkspace({
   propertyId: string | null;
   /** The bank offers being compared right now; saved with the scenario. */
   offers: MortgageOffer[];
-  onOpenDraft: (draft: Partial<FinancingDraft>, offers: MortgageOffer[]) => void;
+  /** Amounts typed in another currency; saved with the scenario so they reopen as typed. */
+  moneyEntries: MoneyEntries;
+  /**
+   * A calculation is on screen. The saved list then steps aside: it belongs
+   * to the landing, and only a slim bar (what is being edited, save, back to
+   * the list) stays with the calculation.
+   */
+  inFlow: boolean;
+  onOpenDraft: (draft: Partial<FinancingDraft>, offers: MortgageOffer[], entries: MoneyEntries) => void;
   onNew: () => void;
 }) {
   const { t, lang } = useLanguage();
@@ -88,7 +99,7 @@ export function MortgageWorkspace({
       userId,
       // A new version keeps the listing it was first opened from.
       propertyId: propertyId ?? (mode === 'changes' && current ? current.latest.propertyId ?? null : null),
-      input: { ...input, draft, offers } as StoredInput,
+      input: { ...input, draft, moneyEntries, offers } as StoredInput,
       result: { ...result, amortizationSchedule: [] },
       affordability,
       // Exactly the rules applied to these numbers; empty when they had not loaded (read as unknown, never stale).
@@ -141,7 +152,7 @@ export function MortgageWorkspace({
     onOpenDraft(stored.draft ?? {
       propertyPrice: stored.propertyPrice, currency: stored.propertyCurrency, downPayment: stored.downPayment,
       termMonths: stored.termMonths, nominalAnnualRatePercent: stored.nominalAnnualRatePercent,
-    }, Array.isArray(stored.offers) ? stored.offers : []);
+    }, Array.isArray(stored.offers) ? stored.offers : [], stored.moneyEntries ?? {});
     setOpenChain(chain.rootId);
     requestAnimationFrame(() => document.getElementById('calculator')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
@@ -172,18 +183,34 @@ export function MortgageWorkspace({
   }
 
   const compared = chains.filter((c) => compare.includes(c.rootId));
+  const flow = inFlow || current !== null;
+  const backToList = () => {
+    setOpenChain(null);
+    setNaming(false);
+    onNew();
+    requestAnimationFrame(() => document.getElementById('my-mortgages')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
 
   return (
     <section id="my-mortgages" aria-labelledby="ws-title" className="rounded-2xl border border-[hsl(var(--gold-border))] bg-card p-5 shadow-card sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 id="ws-title" className="font-display text-lg font-semibold text-foreground">{t('mortgage_ws_title')}</h2>
-          {current ? <p className="mt-0.5 text-sm text-muted-foreground">{t('mortgage_ws_editing', { name: current.name ?? t('mortgage_ws_untitled') })}</p> : null}
+        <div className="min-w-0">
+          <h2 id="ws-title" className="font-display text-lg font-semibold text-foreground">
+            {flow ? (current ? t('mortgage_flow_editing', { name: current.name ?? t('mortgage_ws_untitled') }) : t('mortgage_flow_new')) : t('mortgage_ws_title')}
+          </h2>
+          {flow && !current ? <p className="mt-0.5 text-sm text-muted-foreground">{t('mortgage_flow_unsaved')}</p> : null}
+          {!flow && chains.length ? <p className="mt-0.5 text-sm text-muted-foreground">{t('mortgage_flow_my_count', { n: chains.length })}</p> : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => { setOpenChain(null); onNew(); }} className={btn}>
-            <Plus className="h-4 w-4" aria-hidden="true" />{t('mortgage_ws_new')}
-          </button>
+          {flow ? (
+            <button type="button" onClick={backToList} className={btn}>
+              <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />{t('mortgage_flow_back_to_list')}
+            </button>
+          ) : (
+            <button type="button" onClick={() => { setOpenChain(null); onNew(); requestAnimationFrame(() => document.getElementById('mtg-price')?.focus()); }} className={btn}>
+              <Plus className="h-4 w-4" aria-hidden="true" />{t('mortgage_ws_new')}
+            </button>
+          )}
           {result && current ? (
             <button type="button" disabled={busy} onClick={() => void save('changes')} className={goldBtn}>{t('mortgage_ws_save_changes')}</button>
           ) : null}
@@ -220,6 +247,10 @@ export function MortgageWorkspace({
         </p>
       ) : null}
 
+      {/* The saved list lives on the landing only: once a scenario is open or a
+          calculation is on screen it steps aside, so editing never shows the
+          list beside the thing being edited. */}
+      {!flow ? (<>
       <h3 className="mt-6 text-sm font-semibold text-foreground">{t('mortgage_ws_saved_list')}</h3>
       {rows === null ? (
         <p className="mt-2 text-sm text-muted-foreground">{t('mortgage_ws_loading')}</p>
@@ -307,6 +338,8 @@ export function MortgageWorkspace({
         <p className="mt-4 text-sm text-muted-foreground">{t('mortgage_ws_compare_hint')}</p>
       ) : null}
 
+      </>) : null}
+
       <AlertDialog open={confirmDelete !== null} onOpenChange={(o) => { if (!o) setConfirmDelete(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -342,14 +375,14 @@ function ScenarioDetail({ chain, money, date, locale }: {
   return (
     <div className="mt-4 grid gap-4 sm:grid-cols-2">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--gold-ink))]">{t('mortgage_ws_inputs')}</p>
+        <p className="text-xs font-semibold text-[hsl(var(--gold-ink))]">{t('mortgage_ws_inputs')}</p>
         {line('mortgage_label_property_price', money(input.propertyPrice, result.currency))}
         {line('mortgage_label_down_payment', money(input.downPayment, result.currency))}
         {line('mortgage_label_nominal_rate', formatPercent(input.nominalAnnualRatePercent, locale, 2))}
         {line('mortgage_ws_term_years', String(Math.round(input.termMonths / 12)))}
       </div>
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--gold-ink))]">{t('mortgage_ws_results')}</p>
+        <p className="text-xs font-semibold text-[hsl(var(--gold-ink))]">{t('mortgage_ws_results')}</p>
         {line('mortgage_result_loan_amount', money(result.loanAmount, result.currency))}
         {line('mortgage_result_monthly_label', money(result.monthlyPayment, result.currency))}
         {line('mortgage_result_total_interest', money(result.totalInterest, result.currency))}
@@ -357,7 +390,7 @@ function ScenarioDetail({ chain, money, date, locale }: {
       </div>
       {chain.versions.length > 1 ? (
         <div className="sm:col-span-2">
-          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[hsl(var(--gold-ink))]">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-[hsl(var(--gold-ink))]">
             <History className="h-3.5 w-3.5" aria-hidden="true" />{t('mortgage_ws_history')}
           </p>
           <ol className="mt-1">

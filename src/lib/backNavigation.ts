@@ -173,6 +173,9 @@ const PARENTS: ReadonlyArray<readonly [RegExp, string | ((m: RegExpMatchArray) =
   [/^\/outreach\/[^/]+$/, '/outreach'],
   [/^\/developer\/[^/]+$/, '/dashboard'],
   [/^\/for-expats\/georgia\/[^/]+$/, '/for-expats/georgia'],
+  /* The mortgage glossary: a term returns to the index, the index to the calculator. */
+  [/^\/mortgage\/terms\/[^/]+$/, '/mortgage/terms'],
+  [/^\/mortgage\/terms$/, '/mortgage'],
   [/^\/for-expats\/plan$/, '/for-expats/georgia'],
   /* A design project, a version inside it and its walkthrough all return to
      the Design Studio launcher; the launcher itself belongs to the dashboard. */

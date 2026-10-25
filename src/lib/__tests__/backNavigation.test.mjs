@@ -52,6 +52,11 @@ test('notification destinations all have somewhere to go', () => {
   assert.equal(parentRouteFor('/for-expats/georgia/visas'), '/for-expats/georgia');
 });
 
+test('a mortgage term goes back to the glossary, the glossary to the calculator', () => {
+  assert.equal(parentRouteFor('/mortgage/terms/effective-rate'), '/mortgage/terms');
+  assert.equal(parentRouteFor('/mortgage/terms'), '/mortgage');
+});
+
 test('top-level screens with no obvious container stay null (component decides home)', () => {
   assert.equal(parentRouteFor('/dashboard'), null);
   assert.equal(parentRouteFor('/'), null);

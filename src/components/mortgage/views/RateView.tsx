@@ -71,7 +71,7 @@ export function RateView({ breakdown, currency }: { breakdown: RateBreakdown; cu
       >
         <div className="flex flex-wrap items-end gap-4 sm:gap-8">
           <div className="min-w-0">
-            <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-2xs font-medium text-muted-foreground">
               {t('mortgage_rate_nominal')}
             </p>
             <p className="mt-1.5 font-display text-3xl font-semibold leading-none text-foreground sm:text-4xl">
@@ -88,7 +88,7 @@ export function RateView({ breakdown, currency }: { breakdown: RateBreakdown; cu
           />
 
           <div className="min-w-0">
-            <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-2xs font-medium text-muted-foreground">
               {t('mortgage_rate_effective')}
             </p>
             <p className="mt-1.5 font-display text-3xl font-semibold leading-none text-[hsl(var(--gold-ink))] sm:text-4xl">
@@ -108,7 +108,7 @@ export function RateView({ breakdown, currency }: { breakdown: RateBreakdown; cu
 
           {breakdown.gapPoints !== null ? (
             <div className="min-w-0">
-              <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+              <p className="text-2xs font-medium text-muted-foreground">
                 {t('mortgage_rate_gap')}
               </p>
               <p className="mt-1.5 font-display text-2xl font-semibold leading-none text-foreground">
@@ -200,7 +200,7 @@ export function RateView({ breakdown, currency }: { breakdown: RateBreakdown; cu
           <div className="grid gap-6 sm:grid-cols-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <p className="text-xs font-medium uppercase leading-tight tracking-wide text-muted-foreground">
+                <p className="text-xs font-medium leading-tight text-muted-foreground">
                   {t('mortgage_rate_bank_stated')}
                 </p>
                 <SourceBadge source="USER" />

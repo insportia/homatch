@@ -157,7 +157,7 @@ export function ScheduleView({
           <table className="w-full min-w-[32rem] text-sm">
             <caption className="sr-only">{t('mortgage_schedule_title')}</caption>
             <thead>
-              <tr className="text-2xs uppercase tracking-wide text-muted-foreground">
+              <tr className="text-2xs text-muted-foreground">
                 <th scope="col" className="py-2 text-start font-medium">
                   {t('mortgage_schedule_col_month')}
                 </th>

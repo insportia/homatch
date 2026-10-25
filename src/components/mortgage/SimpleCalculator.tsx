@@ -9,6 +9,14 @@
 // five suggestions is slower than typing it. The suggestions stay where
 // they earn their keep — the advanced inputs, one section down.
 //
+// ANY CURRENCY IN, ONE CURRENCY OUT
+//
+// The loan currency (lari by default) is what the calculation runs in. The
+// price and the deposit each carry their own currency picker, so a flat
+// advertised in dollars is typed in dollars and converted with the National
+// Bank of Georgia's official rate; the rate and its date sit under the field.
+// See MoneyField.tsx and src/mortgage/fx.ts.
+//
 // THE BUTTON IS NEVER DISABLED.
 //
 // The page this replaced had a grey Calculate button above four
@@ -18,12 +26,15 @@
 // A control that cannot be pressed cannot explain itself.
 
 import React, { useMemo, useRef, useState } from 'react';
+import { Banknote } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { formatMoney, intlLocaleFor } from '@/components/workspace/primitives';
 import { MORTGAGE_CURRENCIES } from '@/mortgage/currencies';
 import { mortgageDerivedPercent } from '@/mortgage/presets';
 import { TermInfo } from './TermInfo';
+import { MoneyField, MONEY_INPUT_CLASS } from './MoneyField';
+import { useMoneyEntry } from './fxRates';
 import type { GlossaryTerm } from '@/mortgage/glossary';
 import type { DraftField, FinancingDraft } from './useFinancingSession';
 
@@ -58,17 +69,15 @@ function Field({
       </div>
       {children}
       {error ? (
-        <p className="mt-1.5 text-xs text-[hsl(var(--destructive))]">{error}</p>
+        <p className="mt-1.5 text-xs text-[hsl(var(--destructive))]" role="alert">{error}</p>
       ) : hint ? (
-        <p className="mt-1.5 text-xs text-muted-foreground">{hint}</p>
+        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{hint}</p>
       ) : null}
     </div>
   );
 }
 
-const INPUT_CLASS =
-  'min-h-12 w-full min-w-0 rounded-xl border border-border bg-[hsl(var(--input))] px-4 text-base ' +
-  'text-foreground shadow-card outline-none transition-colors focus:border-[hsl(var(--gold-border))] focus:ring-2 focus:ring-gold/20';
+const INPUT_CLASS = MONEY_INPUT_CLASS;
 
 export function SimpleCalculator({
   draft,
@@ -108,7 +117,11 @@ export function SimpleCalculator({
     return downPercent;
   }, [downMode, draft.downPayment, downPercent]);
 
+  /* A deposit typed as a percentage is in the loan currency by definition, so
+     any amount typed earlier in another currency stops applying. */
+  const [, setDownEntry] = useMoneyEntry('downPayment');
   const setDown = (raw: number | null) => {
+    if (downMode === 'PERCENT') setDownEntry(null);
     if (raw === null) return set('downPayment', null);
     if (downMode === 'AMOUNT') return set('downPayment', raw);
     const price = draft.propertyPrice;
@@ -151,20 +164,32 @@ export function SimpleCalculator({
     return Number.isFinite(n) ? n : null;
   };
 
+  const downInput = (
+    <input
+      ref={refs.downPayment}
+      id="mtg-down"
+      type="text"
+      inputMode="decimal"
+      value={number(downValue)}
+      onChange={(e) => { setProblem(null); setDown(parse(e.target.value)); }}
+      className={INPUT_CLASS}
+    />
+  );
+
   return (
     <section id="calculator" className="hm-customer-panel p-5 sm:p-7">
       <div className="grid gap-5 sm:grid-cols-2">
-        {/* ── Currency ── */}
+        {/* ── Loan currency. Amounts below can be typed in any currency. ── */}
         <Field
           id="mtg-currency"
           label={t('mortgage_label_currency')}
-          hint={t('mortgage_currency_denomination_note')}
+          hint={t('mortgage_fx_loan_currency_hint')}
         >
           <select
             id="mtg-currency"
             value={currency}
             onChange={(e) => set('currency', e.target.value)}
-            className={cn(INPUT_CLASS, 'appearance-none')}
+            className={cn(INPUT_CLASS, 'cursor-pointer appearance-none font-semibold')}
           >
             {MORTGAGE_CURRENCIES.map((c) => (
               <option key={c.code} value={c.code}>
@@ -180,15 +205,24 @@ export function SimpleCalculator({
           label={t('mortgage_label_property_price')}
           error={errorFor('propertyPrice')}
         >
-          <input
-            ref={refs.propertyPrice}
+          <MoneyField
             id="mtg-price"
-            type="text"
-            inputMode="decimal"
-            value={number(draft.propertyPrice)}
-            onChange={(e) => { setProblem(null); set('propertyPrice', parse(e.target.value)); }}
-            className={INPUT_CLASS}
-          />
+            persistKey="propertyPrice"
+            loanCurrency={currency}
+            value={draft.propertyPrice}
+            onChange={(v) => { setProblem(null); set('propertyPrice', v); }}
+            inputRef={refs.propertyPrice}
+          >
+            <input
+              ref={refs.propertyPrice}
+              id="mtg-price"
+              type="text"
+              inputMode="decimal"
+              value={number(draft.propertyPrice)}
+              onChange={(e) => { setProblem(null); set('propertyPrice', parse(e.target.value)); }}
+              className={INPUT_CLASS}
+            />
+          </MoneyField>
         </Field>
 
         {/* ── Deposit ── */}
@@ -209,17 +243,22 @@ export function SimpleCalculator({
                 : null
           }
         >
-          <div className="flex items-stretch gap-2">
-            <input
-              ref={refs.downPayment}
-              id="mtg-down"
-              type="text"
-              inputMode="decimal"
-              value={number(downValue)}
-              onChange={(e) => { setProblem(null); setDown(parse(e.target.value)); }}
-              className={INPUT_CLASS}
-            />
-            <div className="flex shrink-0 rounded-xl border border-border bg-[hsl(var(--secondary))] p-1">
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              {downMode === 'AMOUNT' ? (
+                <MoneyField
+                  id="mtg-down"
+                  persistKey="downPayment"
+                  loanCurrency={currency}
+                  value={draft.downPayment}
+                  onChange={(v) => { setProblem(null); set('downPayment', v); }}
+                  inputRef={refs.downPayment}
+                >
+                  {downInput}
+                </MoneyField>
+              ) : downInput}
+            </div>
+            <div className="flex min-h-12 shrink-0 rounded-xl border border-border bg-[hsl(var(--secondary))] p-1" role="group" aria-label={t('mortgage_label_down_payment')}>
               {(['AMOUNT', 'PERCENT'] as const).map((mode) => (
                 <button
                   key={mode}
@@ -228,13 +267,13 @@ export function SimpleCalculator({
                   aria-pressed={downMode === mode}
                   aria-label={mode === 'AMOUNT' ? t('mortgage_calc_down_in_money') : t('mortgage_calc_down_in_percent')}
                   className={cn(
-                    'min-h-10 rounded-lg px-3 text-sm font-medium transition-colors',
+                    'min-h-10 rounded-lg px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]',
                     downMode === mode
                       ? 'bg-[hsl(var(--gold))] text-[hsl(var(--primary-foreground))]'
                       : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  {mode === 'AMOUNT' ? currency : '%'}
+                  {mode === 'AMOUNT' ? <Banknote className="h-4 w-4" aria-hidden="true" /> : '%'}
                 </button>
               ))}
             </div>
@@ -260,7 +299,7 @@ export function SimpleCalculator({
             }}
             className={INPUT_CLASS}
           />
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label={t('mortgage_label_term_years')}>
             {QUICK_TERMS.map((years) => (
               <button
                 key={years}
@@ -268,10 +307,10 @@ export function SimpleCalculator({
                 onClick={() => { setProblem(null); set('termMonths', years * 12); }}
                 aria-pressed={termYears === years}
                 className={cn(
-                  'min-h-10 rounded-lg border px-3 text-xs font-medium transition-colors',
+                  'min-h-10 min-w-12 rounded-xl border px-3 text-sm font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]',
                   termYears === years
-                    ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]'
-                    : 'border-border text-muted-foreground hover:text-foreground',
+                    ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))] shadow-card'
+                    : 'border-border bg-card text-foreground hover:border-[hsl(var(--gold-border))]',
                 )}
               >
                 {years}

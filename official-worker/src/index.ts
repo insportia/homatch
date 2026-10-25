@@ -121,6 +121,9 @@ import {
   multiLanguageEnabled, primaryLanguage, configuredLanguages,
 } from './speech/GoogleSpeechStream.js';
 import { probeRegions } from './speech/SpeechRegionProbe.js';
+import {
+  MAX_CLIP_BYTES, googleRecognizer, transcribeVoiceMessage, type TranscribeFailure, type TranscribeResult,
+} from './speech/VoiceMessageTranscriber.js';
 import { probeRecognizers } from './speech/SpeechRecognizerProbe.js';
 import { probeLanguageConfigs } from './speech/SpeechLanguageProbe.js';
 import { mountTelegramRoutes } from './telegram/routes.js';
@@ -742,6 +745,48 @@ process.on('uncaughtException', (error: unknown) => {
  * service account belongs to is not the project the request names -- and that
  * is answerable without printing either, by comparing them.
  */
+/**
+ * HOMI voice messages: one recorded clip segment in, its transcript out.
+ *
+ * Server to server only, behind the same WORKER_TOKEN bearer as every other
+ * privileged route. The only caller is the homi-voice-transcribe edge
+ * function, which has already authenticated the customer, checked consent
+ * and reserved the credits; a browser can never reach Google through here.
+ *
+ * The body is one raw segment (at most 2 MB and one minute: Google's unary
+ * ceiling; a two minute message arrives as two segments), the language a
+ * query parameter. The audio and the transcript are never logged: only
+ * sizes, timings and the outcome code.
+ */
+const voiceBody = express.raw({ type: () => true, limit: MAX_CLIP_BYTES + 1024 });
+app.post('/speech/transcribe', auth, voiceBody, async (req: any, res: any) => {
+  const started = Date.now();
+  const audio: Uint8Array = Buffer.isBuffer(req.body) ? req.body : new Uint8Array(0);
+  const cfg = speechConfigFromEnv();
+  const out = await transcribeVoiceMessage(
+    audio,
+    { locale: req.query?.locale, detect: req.query?.detect === '1' },
+    cfg,
+    cfg ? googleRecognizer(cfg) : null,
+  );
+  const done = out.ok === true ? out as TranscribeResult : null;
+  const fail = out.ok === false ? out as TranscribeFailure : null;
+  console.log(JSON.stringify({
+    at: new Date().toISOString(), service: 'speech', event: 'voice_message',
+    ok: out.ok, reason: fail?.reason ?? null, code: fail?.code ?? null,
+    bytes: audio.length, ms: Date.now() - started,
+    billedSeconds: done?.billedSeconds ?? null, language: done?.languageCode ?? null,
+    autoFallback: done?.autoFallback ?? null,
+  }));
+  if (done) return res.json(done);
+  const reason = fail?.reason;
+  const status = reason === 'NOT_CONFIGURED' ? 503
+    : reason === 'TOO_LARGE' ? 413
+    : reason === 'EMPTY' || reason === 'UNSUPPORTED_FORMAT' ? 422
+    : reason === 'TIMEOUT' ? 504 : 502;
+  return res.status(status).json(out);
+});
+
 app.get('/health/speech-config', (_q: any, r: any) => {
   const declared = (process.env.GOOGLE_SPEECH_PROJECT_ID || '').trim();
   let credentialProject = '';

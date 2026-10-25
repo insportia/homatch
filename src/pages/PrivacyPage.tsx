@@ -88,9 +88,15 @@ export default function PrivacyPage() {
             <p>
               {t('privacy_s1d_body')}
             </p>
+            <p className="font-medium text-foreground mt-3">{t('privacy_s1e_title')}</p>
+            <p>{t('privacy_s1e_body')}</p>
+            <p className="font-medium text-foreground mt-3">{t('privacy_s1f_title')}</p>
+            <p>{t('privacy_s1f_body')}</p>
           </Section>
 
           <Section title={t('privacy_s2_title')}>
+            <p>{t('privacy_s2_intro_p1')}</p>
+            <p>{t('privacy_s2_intro_p2')}</p>
             <ul className="list-disc list-inside space-y-1.5">
               <li>{t('privacy_s2_li1')}</li>
               <li>{t('privacy_s2_li2')}</li>
@@ -105,9 +111,17 @@ export default function PrivacyPage() {
             <p className="mt-3">
               <span className="font-medium text-foreground">{t('privacy_s2_google_label')}</span> {t('privacy_s2_google_body')}
             </p>
+            <p className="font-medium text-foreground mt-3">{t('privacy_lb_title')}</p>
+            <ul className="list-disc list-inside space-y-1.5">
+              <li>{t('privacy_lb_contract')}</li>
+              <li>{t('privacy_lb_legal')}</li>
+              <li>{t('privacy_lb_legit')}</li>
+              <li>{t('privacy_lb_consent')}</li>
+            </ul>
           </Section>
 
           <Section title={t('privacy_s3_title')}>
+            <p>{t('privacy_s3_body_measures')}</p>
             <p>
               {t('privacy_s3_intro')}
             </p>
@@ -147,11 +161,28 @@ export default function PrivacyPage() {
                 <span className="font-medium text-foreground">{t('privacy_s4_li5_label')}</span> {t('privacy_s4_li5_body')}
               </li>
             </ul>
+            <p className="mt-3">{t('privacy_s4_vendors_p')}</p>
+            <p className="font-medium text-foreground mt-3">{t('privacy_match_title')}</p>
+            <p>{t('privacy_match_p1')}</p>
+            <p>{t('privacy_match_p2')}</p>
+            <p>{t('privacy_match_p3')}</p>
+          </Section>
+
+          <Section title={t('privacy_transfer_title')}>
+            <p>{t('privacy_transfer_body')}</p>
+          </Section>
+
+          <Section title={t('privacy_profiling_title')}>
+            <p>{t('privacy_profiling_body')}</p>
           </Section>
 
           <Section title={t('privacy_s5_title')}>
             <p>
-              {t('privacy_s5_body')}
+              {t('privacy_s5_body')}{' '}
+              <Link to="/cookies" className="font-medium text-gold-ink hover:text-foreground">
+                {t('home_footer_cookies')}
+              </Link>
+              .
             </p>
           </Section>
 
@@ -159,6 +190,7 @@ export default function PrivacyPage() {
             <p>
               {t('privacy_s6_body')}
             </p>
+            <p>{t('privacy_s6_body2')}</p>
           </Section>
 
           <Section title={t('privacy_s7_title')}>
@@ -177,6 +209,7 @@ export default function PrivacyPage() {
               </a>
               {t('privacy_s7_contact_p2')}
             </p>
+            <p>{t('privacy_s7_complaint')}</p>
           </Section>
 
           <Section title={t('privacy_s8_title')}>

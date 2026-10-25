@@ -86,10 +86,19 @@ export default function TermsPage() {
             <p>
               {t('terms_s2_body1')}
             </p>
+            <p>{t('terms_s2_body_party')}</p>
             <p>
               {t('terms_s2_body2')}
             </p>
+            <p className="font-medium text-foreground mt-3">{t('terms_match_title')}</p>
+            <p>{t('terms_match_body1')}</p>
+            <p>{t('terms_match_body2')}</p>
+            <p>{t('terms_match_body3')}</p>
             <p>{t('terms_s2_body3')}</p>
+            <p className="font-medium text-foreground mt-3">{t('terms_verify_title')}</p>
+            <p>{t('terms_verify_body1')}</p>
+            <p>{t('terms_verify_body2')}</p>
+            <p>{t('terms_verify_body3')}</p>
           </Section>
 
           <Section title={t('terms_s3_title')}>
@@ -139,6 +148,10 @@ export default function TermsPage() {
             <p>
               {t('terms_s6_body2')}
             </p>
+            <p className="font-medium text-foreground mt-3">{t('terms_pub_title')}</p>
+            <p>{t('terms_pub_body1')}</p>
+            <p>{t('terms_pub_body2')}</p>
+            <p>{t('terms_pub_body3')}</p>
           </Section>
 
           <Section title={t('terms_s7_title')}>

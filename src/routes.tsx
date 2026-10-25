@@ -30,6 +30,8 @@ const ResetPasswordPage = lazyRoute(() => import('./pages/auth/ResetPasswordPage
 const ProfilePage = lazyRoute(() => import('./pages/ProfilePage'));
 const PrivacyPage = lazyRoute(() => import('./pages/PrivacyPage'));
 const TermsPage = lazyRoute(() => import('./pages/TermsPage'));
+const CookiesPage = lazyRoute(() => import('./pages/CookiesPage'));
+const AcceptPoliciesPage = lazyRoute(() => import('./pages/auth/AcceptPoliciesPage'));
 const DashboardPage = lazyRoute(() => import('./pages/DashboardPage'));
 const ActivityPage = lazyRoute(() => import('./pages/ActivityPage'));
 const NotificationsPage = lazyRoute(() => import('./pages/NotificationsPage'));
@@ -297,6 +299,8 @@ const routeTable: RouteConfig[] = [
   { name: 'Reset Password',    path: '/auth/reset-password',      element: <ResetPasswordPage />, public: true },
   { name: 'Privacy Policy',    path: '/privacy',                  element: <PrivacyPage />,       public: true },
   { name: 'Terms of Service',  path: '/terms',                    element: <TermsPage />,         public: true },
+  { name: 'Cookie Policy',     path: '/cookies',                  element: <CookiesPage />,       public: true },
+  { name: 'Accept Policies',   path: '/auth/accept-policies',     element: <AcceptPoliciesPage />, public: true },
   { name: 'AI Assistant',      path: '/ai',                       element: <AIPage />,            public: false },
   // VERIFICATION CENTER. The single customer destination for due diligence:
   // start a verification here, and return to any verification you already

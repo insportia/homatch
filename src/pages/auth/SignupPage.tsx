@@ -26,6 +26,8 @@ function GoogleIcon() {
 import { consumePendingAsk } from '@/lib/pendingAsk';
 import { rememberPendingPath, takePendingPath } from '@/services/returnTo';
 import { Checkbox } from '@/components/ui/checkbox';
+import { PolicyAcceptanceCheckbox } from '@/components/legal/PolicyAcceptanceCheckbox';
+import { rememberPreAcceptance } from '@/lib/legal/policies';
 
 const PENDING_URL_KEY = 'homatch_pending_url';
 
@@ -43,6 +45,9 @@ export default function SignupPage() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  /* Terms + Privacy: unticked by default; required for email AND Google. */
+  const [acceptedPolicies, setAcceptedPolicies] = useState(false);
+  const [policyError, setPolicyError] = useState(false);
   /* A real-estate professional says so with one tick, nothing more: the
      account goes on to broker onboarding, where the profile is built. */
   const [asProfessionalChoice, setAsProfessional] = useState(intent === 'broker');
@@ -93,13 +98,14 @@ export default function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!acceptedPolicies) { setPolicyError(true); return; }
     if (!email || !password) return;
     if (password.length < 6) {
       toast.error(t('auth_password_min6'));
       return;
     }
     setLoading(true);
-    const { error } = await signUp(email, password, fullName || undefined);
+    const { error } = await signUp(email, password, fullName || undefined, acceptedPolicies);
     setLoading(false);
     if (error) {
       toast.error(error);
@@ -109,6 +115,8 @@ export default function SignupPage() {
   };
 
   const handleGoogle = async () => {
+    if (!acceptedPolicies) { setPolicyError(true); return; }
+    rememberPreAcceptance();
     setGoogleLoading(true);
     const { error } = await signInWithGoogle();
     if (error) {
@@ -164,6 +172,12 @@ export default function SignupPage() {
                 <span className="block text-xs text-muted-foreground">{t('signup_professional_hint')}</span>
               </span>
             </label>}
+
+            <PolicyAcceptanceCheckbox
+              checked={acceptedPolicies}
+              onChange={(v) => { setAcceptedPolicies(v); if (v) setPolicyError(false); }}
+              showError={policyError}
+            />
 
             {/* Google Sign-Up */}
             <Button
@@ -262,7 +276,6 @@ export default function SignupPage() {
                 ) : t('auth_signup_btn')}
               </Button>
 
-              <p className="text-xs text-muted-foreground/60 text-center">{t('auth_terms')}</p>
             </form>
 
             <p className="text-sm text-center text-muted-foreground">

@@ -1,6 +1,7 @@
 import { supabase } from '@/db/supabase';
 import { currentAnonymousToken } from '@/services/anonymousSession';
 import { isIOS, isStandalone } from '@/lib/pwa';
+import { hasConsent } from '@/lib/consent/cookieConsent';
 
 /*
  * THE INSTALL AND PUSH FUNNEL.
@@ -122,6 +123,9 @@ export async function recordPwaEvent(
   opts: { source?: string; once?: boolean } = {},
 ): Promise<void> {
   if (typeof window === 'undefined') return;
+  /* Funnel telemetry is analytics: it keeps a local id and sends usage, so it
+     waits for the visitor's analytics choice (cookie settings). */
+  if (!hasConsent('analytics')) return;
 
   const key = `${event}:${opts.source ?? ''}`;
   if (opts.once !== false) {
@@ -176,7 +180,7 @@ const STANDALONE_SEEN = 'homatch_standalone_seen';
  * two is how a funnel reports more installs than it has devices.
  */
 export function recordStandaloneSession(): void {
-  if (typeof window === 'undefined' || !isStandalone()) return;
+  if (typeof window === 'undefined' || !isStandalone() || !hasConsent('analytics')) return;
   void recordPwaEvent('PWA_STANDALONE_DETECTED', 'DETECTED', { source: 'boot' });
   try {
     if (localStorage.getItem(STANDALONE_SEEN)) {

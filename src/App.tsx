@@ -18,6 +18,8 @@ import { DeveloperWorkspaceProvider } from '@/contexts/DeveloperWorkspaceContext
 import { JobIndicator } from '@/components/jobs/JobIndicator';
 import { currentHistoryIndex, noteHistoryEntry, noteInAppNavigation } from '@/lib/backNavigation';
 import ScrollToTop from '@/components/common/ScrollToTop';
+import { CookieConsent } from '@/components/legal/CookieConsent';
+import { PolicyAcceptanceGate } from '@/components/legal/PolicyAcceptanceGate';
 import { ImpersonationBanner } from '@/components/impersonation/ImpersonationBanner';
 
 /*
@@ -79,5 +81,5 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode},EBState>{
  */
 const RouteFallback: React.FC = () => <div className="min-h-[50vh]" aria-busy="true" />;
 
-const App:React.FC=()=> <Router><LanguageProvider><ImpersonationBanner/><AuthProvider><JobsProvider><DeveloperWorkspaceProvider><NavigationCounter/><ScrollToTop/><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Suspense fallback={<RouteFallback/>}><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<NotFoundPage/>}/></Routes></Suspense></ErrorBoundary><JobIndicator/><SwUpdateToast/><Toaster richColors position="top-right"/></DeveloperWorkspaceProvider></JobsProvider></AuthProvider></LanguageProvider></Router>;
+const App:React.FC=()=> <Router><LanguageProvider><ImpersonationBanner/><AuthProvider><PolicyAcceptanceGate/><JobsProvider><DeveloperWorkspaceProvider><NavigationCounter/><ScrollToTop/><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Suspense fallback={<RouteFallback/>}><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<NotFoundPage/>}/></Routes></Suspense></ErrorBoundary><JobIndicator/><SwUpdateToast/><Toaster richColors position="top-right"/><CookieConsent/></DeveloperWorkspaceProvider></JobsProvider></AuthProvider></LanguageProvider></Router>;
 export default App;

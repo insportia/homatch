@@ -1,0 +1,24 @@
+name: Supabase New Table Grants
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'scripts/check-new-table-grants.mjs'
+      - '.github/workflows/supabase-table-grants.yml'
+permissions:
+  contents: read
+jobs:
+  check-grants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check new public tables have explicit Data API grants
+        env:
+          RELEASE_BASE: origin/${{ github.base_ref }}
+        run: node scripts/check-new-table-grants.mjs

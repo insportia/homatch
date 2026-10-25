@@ -119,6 +119,11 @@ export function Canvas(props: CanvasProps) {
       className={cn('hm-canvas min-w-0', layout === 'desktop' ? 'rounded-2xl border py-6 pe-6' : 'py-3 pe-2')}
       style={{ backgroundColor: doc.theme.canvas, paddingInlineStart: layout === 'desktop' ? gutter * zoom + 12 : gutter }}
       onPointerDown={(e) => { if (e.target === e.currentTarget) onClear(); }}
+      /* The email's links are content here, not navigation: tapping a button to edit it opened its
+         link in a new tab and left the editor behind (a background tab, frozen to a frame or two a
+         second). The click still selects the block; only the link's default action is cancelled. */
+      onClickCapture={inertLinks}
+      onAuxClick={inertLinks}
     >
       <style>{CANVAS_CSS}</style>
       {/* Scaled with a TRANSFORM, not CSS zoom: under zoom, element geometry and the pointer's hit
@@ -156,6 +161,11 @@ export function Canvas(props: CanvasProps) {
       {props.drag ? <DragOverlay drag={props.drag} /> : null}
     </div>
   );
+}
+
+/** A link inside the email never navigates from the editor (click, middle click, tap). */
+function inertLinks(e: React.MouseEvent) {
+  if ((e.target as HTMLElement).closest('a[href]')) e.preventDefault();
 }
 
 function findIn(blocks: Block[], id: string): Block | null {

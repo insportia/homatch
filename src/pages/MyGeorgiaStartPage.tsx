@@ -192,7 +192,7 @@ export default function MyGeorgiaStartPage() {
   const later = () => {
     if (userId) void saveMyGeorgia(userId, answers, step);
     else saveDraft({ answers, step, completedAt: null });
-    navigate(userId ? '/my-georgia' : '/for-expats/georgia');
+    navigate('/my-georgia');
   };
 
   const askHomi = () => {
@@ -236,7 +236,7 @@ export default function MyGeorgiaStartPage() {
                   className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[hsl(var(--gold))] px-7 text-sm font-semibold text-[#0C1119]">
                   {t('mg_start')} <ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
                 </button>
-                <Link to="/for-expats/georgia" className="inline-flex min-h-12 items-center rounded-full border border-white/20 px-6 text-sm font-medium text-white/85">
+                <Link to="/my-georgia" className="inline-flex min-h-12 items-center rounded-full border border-white/20 px-6 text-sm font-medium text-white/85">
                   {t('mg_later')}
                 </Link>
               </div>

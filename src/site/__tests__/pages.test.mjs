@@ -40,7 +40,8 @@ const ROUTES = {
   privacy: 'src/pages/PrivacyPage.tsx',
   terms: 'src/pages/TermsPage.tsx',
   verify: 'src/pages/VerifyPage.tsx',
-  expat: 'src/pages/ForExpatsPage.tsx',
+  /* The For Expats guide is My Georgia's living guide tab since 2026-10-25. */
+  expat: 'src/components/expats/MyGeorgiaGuide.tsx',
   contact: 'src/pages/ContactPage.tsx',
 };
 
@@ -187,7 +188,7 @@ test('For Expats is editable, and its guidance stays in code', () => {
    */
   const slugs = EDITABLE_PAGES.map(p => p.slug);
   assert.ok(slugs.includes('expat'), 'For Expats cannot be opened in the editor');
-  const src = readFileSync('src/pages/ForExpatsPage.tsx', 'utf8');
+  const src = readFileSync('src/components/expats/MyGeorgiaGuide.tsx', 'utf8');
   assert.match(src, /<PageBlocks slug="expat" \/>/);
   assert.match(src, /<WhatDoYouNeed/, 'the guidance must not become editable content');
 });

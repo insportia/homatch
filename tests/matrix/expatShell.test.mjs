@@ -49,15 +49,25 @@ test('expat 2: the loading and missing states keep the shell too', () => {
   }
 });
 
-test('expat 3: the long page says where you are inside it', () => {
-  /* Four sections, and the hero's own pathway rows point at all four.
-     (2026-10-24: the cost and budget sections were removed; the HOMI plan
-     and the needs guide took their places.) */
-  const src = readFileSync('src/pages/ForExpatsPage.tsx', 'utf8');
-  assert.match(src, /<LocalSectionNav/);
-  for (const id of ['plan', 'needs', 'topics', 'tools']) {
-    assert.ok(src.includes(`id: '${id}'`), `${id} is missing from the page navigation`);
-    assert.ok(src.includes(`id="${id}"`), `${id} is navigated to but never rendered`);
+test('expat 3: My Georgia says where you are inside it', () => {
+  /* For Expats opens My Georgia (owner, 2026-10-25). The long landing page and its
+     section nav became My Georgia's three tabs: the plan, the living guide and the
+     places. The tabs are real links, each names itself, and the guide keeps the
+     section ids old links point at. */
+  const page = readFileSync('src/pages/MyGeorgiaPage.tsx', 'utf8');
+  assert.match(page, /aria-label=\{t\('mg_tabs_aria'\)\}/, 'the tabs have no accessible name');
+  assert.match(page, /aria-current=\{tab === key \? 'page' : undefined\}/, 'the current tab is not announced');
+  for (const tab of ['plan', 'guide', 'places']) {
+    assert.ok(page.includes(`key: '${tab}'`), `the ${tab} tab is missing`);
+  }
+  assert.match(page, /<Link\s+to=\{key === 'plan'/, 'the tabs are not links');
+  const guide = readFileSync('src/components/expats/MyGeorgiaGuide.tsx', 'utf8');
+  for (const id of ['needs', 'topics', 'tools']) {
+    assert.ok(guide.includes(`id="${id}"`), `${id} is no longer rendered in the guide`);
+  }
+  const door = readFileSync('src/pages/ForExpatsPage.tsx', 'utf8');
+  for (const id of ['needs', 'topics', 'tools']) {
+    assert.ok(door.includes(`'#${id}'`), `an old #${id} link no longer reaches the guide`);
   }
 });
 

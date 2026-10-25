@@ -5,6 +5,13 @@ maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
 
+## For Expats opens My Georgia + Places in Georgia (branch claude/ux-expats, 2026-10-25) — COMMITTED, NOT PUSHED
+
+- Owner: clicking For Expats starts directly with My Georgia. /for-expats and /for-expats/georgia are a door (ForExpatsPage): no finished profile (signed in or out) → /my-georgia/start welcome; finished → /my-georgia. Old #needs/#topics/#tools links → /my-georgia?tab=guide. Later → /my-georgia (never back to the door).
+- /my-georgia is now PUBLIC with three tabs (?tab= plan | guide | places). Guests see the welcome card, guides, places and HOMI; info/plans/documents render only for the owner. Topic pages keep /for-expats/georgia/:slug; breadcrumbs and back lead to My Georgia's guide tab.
+- Places in Georgia: 50 destinations in 9 kinds, typed static module src/myGeorgia/places (meta + one lazy chunk per language, ka/en/ru/tr/ar/he), sources georgia.travel / apa.gov.ge. Not the DB: expat_places is a provider directory (one-language name, price/rating), so no migration.
+- No migrations, no edge functions. Copy: scripts/ux-expats-i18n-data.mjs (+ apply script). Removed ExpatHero and ExpatPlanStarter (landing page gone).
+
 ## My Georgia by HOMI + For Expats fixes (branch claude/my-georgia-by-homi, follow-up to #325, 2026-10-25) — PR OPEN, NOT MERGED, AWAITING OWNER APPROVAL
 
 - Owner-approved Georgian onboarding copy used verbatim (mg_* keys, scripts/homi-mygeorgia-i18n-data.mjs); five steps at /my-georgia/start (autosave to expat_profiles, resume, account prefill, conditional rent/purchase budget and arrival); dashboard /my-georgia (plan = existing roadmap/PlanBoard, guides = GuideHub, HOMI). /for-expats/plan redirects there.

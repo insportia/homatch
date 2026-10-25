@@ -24175,7 +24175,7 @@ const en = {
   admin_hs_ml_with_search_n: '{{n}} unlocked at this price',
   privacy_s2_li9: 'To show your property search, or your interest when you calculate a mortgage for a listing, to relevant property owners and brokers in HOMATCH Matching, while your account accepts property offers',
   privacy_s4_li5_label: 'HOMATCH Matching:',
-  privacy_s4_li5_body: 'While your account accepts property offers (a setting in your contact preferences you can turn off at any time), owners and brokers whose listing fits your property search, or a listing you calculated a mortgage for, can see an anonymous preview: the area, property type, a rounded budget and, where it applies, that you are interested in a mortgage. After they open you, they see your name and can message you in HOMATCH; your phone number or email is shown only if you chose to share it in your contact preferences (off by default). Your income, debts, credit history, guarantor, residency and mortgage calculations are never shared. Turning property offers off removes you from Matching immediately.',
+  privacy_s4_li5_body: 'While your account accepts property offers (a setting in your contact preferences you can turn off at any time), owners and brokers whose listing fits your property search, or a listing you calculated a mortgage for, can see an anonymous preview: the area, property type, a rounded budget and, where it applies, that you are interested in a mortgage. After they open you, they see your name and can message you in HOMATCH; your registered email is shown only if you chose to share it in your contact preferences (off by default). Your account phone number is not shared. Your income, debts, credit history, guarantor, residency and mortgage calculations are never shared. Turning property offers off removes you from Matching immediately.',
   terms_s2_body3: 'People shown in HOMATCH Matching are potentially interested, based on what they stated and what our matching found. Nobody is presented as a guaranteed buyer or tenant, and opening someone’s contact details does not mean a bank has approved anyone for a loan.',
   terms_s4_body3: 'HOMATCH Matching: opening a person’s contact details costs the price shown on their card and in the confirmation, together with the reasons for that price. You pay for the same person only once per account: anyone you have already opened stays accessible without a new charge, whatever the listing, search or later price. If the price rises before you confirm, nothing is charged and you are shown the new price.',
   terms_s5_item8: 'Use contact details obtained in HOMATCH Matching for anything other than offers about relevant properties, pass them to others, or contact people who have withdrawn their permission or blocked you',
@@ -25144,7 +25144,7 @@ const en = {
   privacy_lb_contract: 'Performance of our agreement with you: your account, matching, HOMI, Verify reports, credits and other services you request.',
   privacy_lb_legal: 'Legal obligations: accounting and tax records for payments, and responding to lawful requests from authorities.',
   privacy_lb_legit: 'Legitimate interests: security, fraud and abuse prevention, error monitoring, and improving the service, balanced against your rights.',
-  privacy_lb_consent: 'Consent: optional analytics and marketing cookies, marketing communications, and sharing your phone number or email with other users when you choose to. You can withdraw consent at any time; this does not affect earlier processing.',
+  privacy_lb_consent: 'Consent: optional analytics and marketing cookies, marketing communications, and sharing your registered email address with other users when you choose to. You can withdraw consent at any time; this does not affect earlier processing.',
   privacy_s3_body_measures: 'HOMATCH applies technical and organisational security measures appropriate to the risks of processing personal data. These measures aim to reduce the risk of unauthorised access, unlawful disclosure, loss, alteration and other security incidents.',
   privacy_s4_vendors_p: 'Hosting, data storage, payment, communications, analytics and artificial intelligence service providers may be used to operate HOMATCH. Such processing of personal data takes place with regard to the appropriate legal basis, security requirements and the necessary contractual terms.',
   privacy_match_title: 'Interest matching',
@@ -25201,7 +25201,7 @@ const en = {
   privacy_sources_li3: 'From other users: messages and requests they send you inside HOMATCH.',
   privacy_sources_li4: 'From public sources: property listings on third-party websites and, for Verify, official registers and other lawfully accessible sources.',
   privacy_sources_li5: 'From Stripe: the status and amount of your payments.',
-  privacy_match_p4: 'In practice: other users first see an anonymous preview of a matching request. Your name becomes visible when an owner or broker opens your card, and your phone number or email only if you chose to share it in your contact preferences (off by default). Some search services can also show contact details that a person published in a public listing themselves; these are shown only for contacting that person about the relevant property.',
+  privacy_match_p4: 'In practice: other users first see an anonymous preview of a matching request. After a match is opened, communication takes place through HOMATCH\'s internal messaging. Your registered email address is made available to the other party only if you turn on email sharing in your contact preferences (off by default). Your account phone number is kept in HOMATCH\'s internal systems and is not part of a match result.',
   privacy_public_title: 'Data from public sources',
   privacy_public_p1: 'HOMATCH may process publicly available information on an appropriate legal basis in order to provide the service.',
   privacy_public_p2: 'Obtaining information from a public source does not remove the requirements of personal data protection, transparency, purpose limitation and proportionality.',
@@ -25239,6 +25239,16 @@ const en = {
   cookie_desc_analytics: 'HOMATCH\'s own statistics on app installs and notification opt-ins.',
   cookie_desc_marketing: 'Advertising measurement. Not used by HOMATCH today.',
   cookie_btn_back: 'Back',
+
+  /* ── LEGAL MATCHING + COMMUNICATION (2026-10-25) ── */
+  terms_comm_title: 'Interest matching and communication',
+  terms_comm_p1: 'HOMATCH offers users a service for automatically matching property-related interests and for digital communication.',
+  terms_comm_p2: 'Once a match is identified, users can communicate with each other through HOMATCH\'s internal messaging system.',
+  terms_comm_p3: 'Within the service, where there is an appropriate legal basis, a user\'s registered email address may be made available to the relevant other party.',
+  terms_comm_p4: 'A user\'s phone number is not part of the standard match result and is not passed to other users within this service.',
+  terms_comm_p5: 'HOMATCH charges a predetermined fee for the digital matching and intermediation service, not for selling a user\'s phone number.',
+  terms_comm_listing: 'A property listing is different: when you publish a property for sale or rent, the contact number you give for that listing is there so buyers or tenants can call you about it, and it may be shown to people who find the listing on HOMATCH.',
+  privacy_listing_phone: 'Listing contact numbers are separate from your account. When you publish a property for sale or rent, the contact number you enter for that listing is there so that buyers and tenants can call you about it, and it may be shown with the listing to people who find it on HOMATCH. Listings HOMATCH shows from other websites may include the seller contact published on the source listing.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -49328,7 +49338,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_hs_ml_with_search_n: '{{n}} გაიხსნა ამ ფასად',
   privacy_s2_li9: 'თქვენი ქონების ძიების, ან განცხადებისთვის იპოთეკის გამოთვლისას გამოვლენილი ინტერესის, HOMATCH-ის დამთხვევებში შესაბამისი მესაკუთრეებისა და ბროკერებისთვის საჩვენებლად, სანამ თქვენი ანგარიში ქონების შეთავაზებებს იღებს',
   privacy_s4_li5_label: 'HOMATCH-ის დამთხვევები:',
-  privacy_s4_li5_body: 'სანამ თქვენი ანგარიში ქონების შეთავაზებებს იღებს (საკონტაქტო პარამეტრებში არსებული პარამეტრი, რომლის გამორთვაც ნებისმიერ დროს შეგიძლიათ), იმ მესაკუთრეებსა და ბროკერებს, რომელთა განცხადებაც თქვენს ქონების ძიებას, ან იმ განცხადებას, რისთვისაც იპოთეკა გამოთვალეთ, შეესაბამება, შეუძლიათ ნახონ ანონიმური მიმოხილვა: ლოკაცია, ქონების ტიპი, დამრგვალებული ბიუჯეტი და, საჭიროების შემთხვევაში, ის, რომ იპოთეკით ხართ დაინტერესებული. თქვენი კონტაქტის გახსნის შემდეგ ისინი ხედავენ თქვენს სახელს და შეუძლიათ HOMATCH-ში მოგწერონ; თქვენი ტელეფონის ნომერი ან ელფოსტა მხოლოდ მაშინ ჩანს, თუ მისი გაზიარება საკონტაქტო პარამეტრებში აირჩიეთ (ნაგულისხმევად გამორთულია). თქვენი შემოსავალი, ვალები, საკრედიტო ისტორია, თავდები, რეზიდენტობა და იპოთეკის გამოთვლები არასოდეს გაზიარდება. ქონების შეთავაზებების გამორთვა დამთხვევებიდან მაშინვე გამოგრიცხავთ.',
+  privacy_s4_li5_body: 'სანამ თქვენი ანგარიში ქონების შეთავაზებებს იღებს (საკონტაქტო პარამეტრი, რომლის გამორთვაც ნებისმიერ დროს შეგიძლიათ), მესაკუთრეებსა და ბროკერებს, რომელთა განცხადებაც შეესაბამება თქვენს ძიებას, ან რომლის განცხადებისთვისაც იპოთეკა გამოთვალეთ, შეუძლიათ ნახონ ანონიმური მიმოხილვა: უბანი, ქონების ტიპი, დამრგვალებული ბიუჯეტი და, საჭიროების შემთხვევაში, ის, რომ იპოთეკით ხართ დაინტერესებული. თქვენი ბარათის გახსნის შემდეგ ისინი ხედავენ თქვენს სახელს და შეუძლიათ მოგწერონ HOMATCH-ში; თქვენი რეგისტრირებული ელფოსტა ჩანს მხოლოდ მაშინ, თუ საკონტაქტო პარამეტრებში მისი გაზიარება აირჩიეთ (ნაგულისხმევად გამორთულია). თქვენი ანგარიშის ტელეფონის ნომერი არ ზიარდება. თქვენი შემოსავალი, ვალები, საკრედიტო ისტორია, თავდები, რეზიდენტობა და იპოთეკის გამოთვლები არასოდეს ზიარდება. ქონების შეთავაზებების გამორთვა დაუყოვნებლივ გამოგრიცხავთ დამთხვევებიდან.',
   terms_s2_body3: 'HOMATCH-ის დამთხვევებში ნაჩვენები ადამიანები პოტენციურად დაინტერესებულები არიან, მათ მიერ მითითებულისა და ჩვენი დამთხვევის საფუძველზე. არავინ არ არის წარმოდგენილი, როგორც გარანტირებული მყიდველი ან მოიჯარე, და კონტაქტის გახსნა არ ნიშნავს, რომ ბანკმა ვინმეს სესხი დაუმტკიცა.',
   terms_s4_body3: 'HOMATCH-ის დამთხვევები: ადამიანის საკონტაქტო მონაცემების გახსნა ღირს იმ ფასად, რომელიც მის ბარათზე და დადასტურებისას ჩანს, ამ ფასის მიზეზებთან ერთად. ერთსა და იმავე ადამიანზე ერთ ანგარიშზე მხოლოდ ერთხელ იხდით: ვისაც უკვე გახსენით, ხელმისაწვდომი რჩება ახალი გადასახადის გარეშე, განცხადების, ძიების ან შემდგომი ფასის მიუხედავად. თუ ფასი დადასტურებამდე გაიზარდა, არაფერი ჩამოგეჭრებათ და ახალ ფასს ნახავთ.',
   terms_s5_item8: 'HOMATCH-ის დამთხვევებში მიღებული საკონტაქტო მონაცემები გამოიყენოთ შესაბამისი ქონების შეთავაზების გარდა სხვა მიზნით, გადასცეთ სხვებს ან დაუკავშირდეთ პირებს, რომლებმაც ნებართვა გააუქმეს ან დაგბლოკეს',
@@ -50297,7 +50307,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   privacy_lb_contract: 'თქვენთან დადებული ხელშეკრულების შესრულება: ანგარიში, დამთხვევები, HOMI, Verify-ის ანგარიშები, კრედიტები და თქვენ მიერ მოთხოვნილი სხვა მომსახურებები.',
   privacy_lb_legal: 'კანონით დაკისრებული ვალდებულებები: გადახდების საბუღალტრო და საგადასახადო აღრიცხვა და უფლებამოსილი ორგანოების კანონიერ მოთხოვნებზე პასუხი.',
   privacy_lb_legit: 'კანონიერი ინტერესი: უსაფრთხოება, თაღლითობისა და ბოროტად გამოყენების პრევენცია, შეცდომების მონიტორინგი და მომსახურების გაუმჯობესება — თქვენი უფლებების გათვალისწინებით.',
-  privacy_lb_consent: 'თანხმობა: არასავალდებულო ანალიტიკური და მარკეტინგული ქუქიები, მარკეტინგული კომუნიკაცია და თქვენი ტელეფონის ნომრის ან ელფოსტის სხვა მომხმარებლებისთვის გაზიარება, როცა ამას თავად ირჩევთ. თანხმობის გამოხმობა ნებისმიერ დროს შეგიძლიათ; ეს არ მოქმედებს მანამდე განხორციელებულ დამუშავებაზე.',
+  privacy_lb_consent: 'თანხმობა: არასავალდებულო ანალიტიკური და მარკეტინგული ქუქიები, მარკეტინგული კომუნიკაცია და თქვენი რეგისტრირებული ელფოსტის სხვა მომხმარებლებისთვის გაზიარება, როცა ამას თავად ირჩევთ. თანხმობის გამოხმობა ნებისმიერ დროს შეგიძლიათ; ეს არ მოქმედებს მანამდე განხორციელებულ დამუშავებაზე.',
   privacy_s3_body_measures: 'HOMATCH იყენებს პერსონალური მონაცემების დამუშავებასთან დაკავშირებული რისკების შესაბამის ტექნიკურ და ორგანიზაციულ უსაფრთხოების ზომებს. ეს ზომები მიზნად ისახავს მონაცემებზე არასანქცირებული წვდომის, უკანონო გამჟღავნების, დაკარგვის, ცვლილებისა და სხვა უსაფრთხოების ინციდენტების რისკების შემცირებას.',
   privacy_s4_vendors_p: 'HOMATCH-ის ფუნქციონირებისთვის შეიძლება გამოყენებული იყოს ჰოსტინგის, მონაცემთა შენახვის, გადახდის, კომუნიკაციის, ანალიტიკისა და ხელოვნური ინტელექტის მომსახურების მომწოდებლები. პერსონალური მონაცემების ასეთი დამუშავება ხორციელდება შესაბამისი სამართლებრივი საფუძვლის, უსაფრთხოების მოთხოვნებისა და საჭირო სახელშეკრულებო პირობების გათვალისწინებით.',
   privacy_match_title: 'ინტერესების შესაბამისობა',
@@ -50354,7 +50364,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   privacy_sources_li3: 'სხვა მომხმარებლებისგან: HOMATCH-ში თქვენთვის გამოგზავნილი შეტყობინებები და მოთხოვნები.',
   privacy_sources_li4: 'საჯარო წყაროებიდან: მესამე მხარის ვებსაიტებზე განთავსებული განცხადებები, ხოლო Verify-ისთვის — ოფიციალური რეესტრები და სხვა კანონიერად ხელმისაწვდომი წყაროები.',
   privacy_sources_li5: 'Stripe-ისგან: თქვენი გადახდების სტატუსი და თანხა.',
-  privacy_match_p4: 'პრაქტიკაში: სხვა მომხმარებლები თავდაპირველად ხედავენ შესაბამისი მოთხოვნის ანონიმურ მიმოხილვას. თქვენი სახელი ჩანს მაშინ, როცა მესაკუთრე ან ბროკერი თქვენს ბარათს გახსნის, ხოლო ტელეფონის ნომერი ან ელფოსტა — მხოლოდ იმ შემთხვევაში, თუ საკონტაქტო პარამეტრებში მათი გაზიარება აირჩიეთ (ნაგულისხმევად გამორთულია). ძიების ზოგიერთ მომსახურებას ასევე შეუძლია აჩვენოს საკონტაქტო მონაცემები, რომლებიც პირმა საჯარო განცხადებაში თავად გამოაქვეყნა; ასეთი მონაცემები ნაჩვენებია მხოლოდ ამ პირთან შესაბამის ქონებასთან დაკავშირებით დასაკავშირებლად.',
+  privacy_match_p4: 'პრაქტიკაში: სხვა მომხმარებლები თავდაპირველად ხედავენ შესაბამისი მოთხოვნის ანონიმურ მიმოხილვას. დამთხვევის გახსნის შემდეგ კომუნიკაცია მიმდინარეობს HOMATCH-ის შიდა მიმოწერის სისტემით. თქვენი რეგისტრირებული ელექტრონული ფოსტის მისამართი მეორე მხარისთვის ხელმისაწვდომი ხდება მხოლოდ მაშინ, თუ საკონტაქტო პარამეტრებში ელფოსტის გაზიარებას ჩართავთ (ნაგულისხმევად გამორთულია). თქვენი ანგარიშის ტელეფონის ნომერი ინახება HOMATCH-ის შიდა სისტემებში და არ არის დამთხვევის შედეგის ნაწილი.',
   privacy_public_title: 'საჯარო წყაროებიდან მიღებული მონაცემები',
   privacy_public_p1: 'HOMATCH-ს შეუძლია შესაბამისი კანონიერი საფუძვლით დაამუშაოს საჯაროდ ხელმისაწვდომი ინფორმაცია მომსახურების მიწოდების მიზნით.',
   privacy_public_p2: 'საჯარო წყაროდან ინფორმაციის მიღება არ გამორიცხავს პერსონალური მონაცემების დაცვის, ინფორმირების, მიზნობრიობისა და პროპორციულობის მოთხოვნების შესრულებას.',
@@ -50392,6 +50402,16 @@ const ka: Partial<Record<TranslationKey, string>> = {
   cookie_desc_analytics: 'HOMATCH-ის საკუთარი სტატისტიკა აპლიკაციის ინსტალაციებსა და შეტყობინებებზე.',
   cookie_desc_marketing: 'რეკლამის ეფექტიანობის გაზომვა. ამ ეტაპზე HOMATCH არ იყენებს.',
   cookie_btn_back: 'უკან',
+
+  /* ── LEGAL MATCHING + COMMUNICATION (2026-10-25) ── */
+  terms_comm_title: 'ინტერესთა დამთხვევა და კომუნიკაცია',
+  terms_comm_p1: 'HOMATCH მომხმარებლებს სთავაზობს უძრავ ქონებასთან დაკავშირებული ინტერესების ავტომატური შესაბამისობისა და ციფრული კომუნიკაციის მომსახურებას.',
+  terms_comm_p2: 'შესაბამისობის გამოვლენის შემდეგ მომხმარებლებს შეუძლიათ ერთმანეთთან კომუნიკაცია HOMATCH-ის შიდა მიმოწერის სისტემის მეშვეობით.',
+  terms_comm_p3: 'მომსახურების ფარგლებში, შესაბამისი სამართლებრივი საფუძვლის არსებობისას, მომხმარებლის რეგისტრირებული ელექტრონული ფოსტის მისამართი შეიძლება ხელმისაწვდომი გახდეს შესაბამისი მეორე მხარისთვის.',
+  terms_comm_p4: 'მომხმარებლის ტელეფონის ნომერი არ წარმოადგენს სტანდარტული შესაბამისობის შედეგის ნაწილს და არ გადაეცემა სხვა მომხმარებლებს აღნიშნული მომსახურების ფარგლებში.',
+  terms_comm_p5: 'HOMATCH იღებს წინასწარ განსაზღვრულ საფასურს ციფრული შესაბამისობისა და შუამავლობის მომსახურებისთვის და არა მომხმარებლის ტელეფონის ნომრის გაყიდვისთვის.',
+  terms_comm_listing: 'უძრავი ქონების განცხადება განსხვავებული შემთხვევაა: როდესაც ქონებას გასაყიდად ან გასაქირავებლად განათავსებთ, განცხადებისთვის მითითებული საკონტაქტო ნომერი განკუთვნილია იმისთვის, რომ მყიდველმა ან მოიჯარემ ამ ქონებასთან დაკავშირებით დაგირეკოთ, და ის შეიძლება ნახონ პირებმა, რომლებიც ამ განცხადებას HOMATCH-ზე იპოვიან.',
+  privacy_listing_phone: 'განცხადების საკონტაქტო ნომერი თქვენი ანგარიშისგან განცალკევებულია. როდესაც ქონებას გასაყიდად ან გასაქირავებლად განათავსებთ, განცხადებისთვის მითითებული ნომერი განკუთვნილია იმისთვის, რომ მყიდველებმა და მოიჯარეებმა ამ ქონებასთან დაკავშირებით დაგირეკონ, და ის შეიძლება ნაჩვენები იყოს განცხადებასთან ერთად პირებისთვის, რომლებიც მას HOMATCH-ზე იპოვიან. სხვა ვებსაიტებიდან ნაჩვენებ განცხადებებს შეიძლება ახლდეს წყარო განცხადებაში გამოქვეყნებული გამყიდველის კონტაქტი.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -74472,7 +74492,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_hs_ml_with_search_n: '{{n}} открыто по этой цене',
   privacy_s2_li9: 'Чтобы показывать ваш поиск недвижимости или ваш интерес, когда вы рассчитываете ипотеку для объявления, подходящим владельцам и брокерам в подборе HOMATCH, пока ваш аккаунт принимает предложения недвижимости',
   privacy_s4_li5_label: 'Подбор HOMATCH:',
-  privacy_s4_li5_body: 'Пока ваш аккаунт принимает предложения недвижимости (настройка в ваших контактных предпочтениях, которую можно выключить в любой момент), владельцы и брокеры объектов, подходящих к вашему поиску или к объявлению, для которого вы рассчитали ипотеку, видят анонимный обзор: район, тип недвижимости, округлённый бюджет и, если это так, интерес к ипотеке. После открытия контакта они видят ваше имя и могут написать вам в HOMATCH; номер телефона или email показываются, только если вы выбрали их в контактных предпочтениях (по умолчанию выключено). Ваш доход, долги, кредитная история, поручитель, резидентство и ипотечные расчёты никогда не передаются. Выключение предложений недвижимости сразу убирает вас из подбора.',
+  privacy_s4_li5_body: 'Пока ваш аккаунт принимает предложения недвижимости (настройка в контактных предпочтениях, которую можно отключить в любое время), владельцы и брокеры, чьё объявление подходит под ваш поиск или для объявления которых вы рассчитали ипотеку, видят анонимный предпросмотр: район, тип недвижимости, округлённый бюджет и, если применимо, интерес к ипотеке. Открыв вашу карточку, они видят ваше имя и могут написать вам в HOMATCH; ваш зарегистрированный email виден, только если вы решили поделиться им в контактных предпочтениях (по умолчанию выключено). Номер телефона вашей учётной записи не передаётся. Ваш доход, долги, кредитная история, поручитель, резидентство и расчёты ипотеки никогда не передаются. Отключение предложений недвижимости немедленно исключает вас из сопоставлений.',
   terms_s2_body3: 'Люди в подборе HOMATCH потенциально заинтересованы, исходя из того, что они указали, и того, что нашёл подбор. Никто не представлен как гарантированный покупатель или арендатор, а открытие контакта не означает, что банк кому-то одобрил кредит.',
   terms_s4_body3: 'Подбор HOMATCH: открытие контактов человека стоит цену, указанную на его карточке и при подтверждении, вместе с причинами этой цены. За одного и того же человека вы платите на один аккаунт только один раз: те, кого вы уже открыли, остаются доступными без новой оплаты, независимо от объявления, поиска или более поздней цены. Если цена выросла до подтверждения, ничего не списывается и вы видите новую цену.',
   terms_s5_item8: 'Использовать контакты, полученные в подборе HOMATCH, для чего-либо кроме предложений подходящей недвижимости, передавать их другим или связываться с людьми, отозвавшими разрешение или заблокировавшими вас',
@@ -75441,7 +75461,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   privacy_lb_contract: 'Исполнение договора с вами: учётная запись, сопоставление, HOMI, отчёты Verify, кредиты и другие запрошенные вами услуги.',
   privacy_lb_legal: 'Юридические обязательства: бухгалтерский и налоговый учёт платежей, ответы на законные запросы органов власти.',
   privacy_lb_legit: 'Законные интересы: безопасность, предотвращение мошенничества и злоупотреблений, мониторинг ошибок и улучшение сервиса — с учётом ваших прав.',
-  privacy_lb_consent: 'Согласие: необязательные аналитические и маркетинговые cookie, маркетинговые сообщения, а также передача вашего номера телефона или электронной почты другим пользователям, если вы сами это выбрали. Вы можете отозвать согласие в любое время; это не влияет на обработку, осуществлённую ранее.',
+  privacy_lb_consent: 'Согласие: необязательные аналитические и маркетинговые cookie, маркетинговые сообщения, а также передача вашего зарегистрированного адреса электронной почты другим пользователям, если вы сами это выбрали. Вы можете отозвать согласие в любое время; это не влияет на обработку, осуществлённую ранее.',
   privacy_s3_body_measures: 'HOMATCH применяет технические и организационные меры безопасности, соответствующие рискам обработки персональных данных. Эти меры направлены на снижение рисков несанкционированного доступа, незаконного раскрытия, утраты, изменения данных и других инцидентов безопасности.',
   privacy_s4_vendors_p: 'Для работы HOMATCH могут использоваться поставщики услуг хостинга, хранения данных, платежей, коммуникаций, аналитики и искусственного интеллекта. Такая обработка персональных данных осуществляется с учётом соответствующего правового основания, требований безопасности и необходимых договорных условий.',
   privacy_match_title: 'Сопоставление интересов',
@@ -75498,7 +75518,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   privacy_sources_li3: 'От других пользователей: сообщения и запросы, которые они отправляют вам в HOMATCH.',
   privacy_sources_li4: 'Из публичных источников: объявления о недвижимости на сторонних сайтах, а для Verify — официальные реестры и другие законно доступные источники.',
   privacy_sources_li5: 'От Stripe: статус и сумма ваших платежей.',
-  privacy_match_p4: 'На практике: другие пользователи сначала видят анонимный предпросмотр подходящего запроса. Ваше имя становится видно, когда собственник или брокер открывает вашу карточку, а номер телефона или электронная почта — только если вы решили поделиться ими в настройках контактов (по умолчанию выключено). Некоторые поисковые сервисы также могут показывать контактные данные, которые человек сам опубликовал в публичном объявлении; они показываются только для связи с этим человеком по соответствующему объекту.',
+  privacy_match_p4: 'На практике: другие пользователи сначала видят анонимный предпросмотр подходящего запроса. После открытия совпадения общение идёт через внутреннюю систему сообщений HOMATCH. Ваш зарегистрированный адрес электронной почты становится доступен другой стороне, только если вы включили обмен email в настройках контактов (по умолчанию выключено). Номер телефона вашей учётной записи хранится во внутренних системах HOMATCH и не входит в результат сопоставления.',
   privacy_public_title: 'Данные из публичных источников',
   privacy_public_p1: 'HOMATCH может на соответствующем законном основании обрабатывать общедоступную информацию в целях оказания услуги.',
   privacy_public_p2: 'Получение информации из публичного источника не освобождает от соблюдения требований защиты персональных данных, информирования, целевого характера и пропорциональности.',
@@ -75536,6 +75556,16 @@ const ru: Partial<Record<TranslationKey, string>> = {
   cookie_desc_analytics: 'Собственная статистика HOMATCH по установкам приложения и уведомлениям.',
   cookie_desc_marketing: 'Измерение рекламы. Сейчас HOMATCH не использует.',
   cookie_btn_back: 'Назад',
+
+  /* ── LEGAL MATCHING + COMMUNICATION (2026-10-25) ── */
+  terms_comm_title: 'Сопоставление интересов и коммуникация',
+  terms_comm_p1: 'HOMATCH предлагает пользователям услугу автоматического сопоставления интересов, связанных с недвижимостью, и цифровой коммуникации.',
+  terms_comm_p2: 'После выявления соответствия пользователи могут общаться друг с другом через внутреннюю систему сообщений HOMATCH.',
+  terms_comm_p3: 'В рамках услуги, при наличии соответствующего правового основания, зарегистрированный адрес электронной почты пользователя может стать доступен соответствующей другой стороне.',
+  terms_comm_p4: 'Номер телефона пользователя не входит в стандартный результат сопоставления и не передаётся другим пользователям в рамках данной услуги.',
+  terms_comm_p5: 'HOMATCH взимает заранее установленную плату за услугу цифрового сопоставления и посредничества, а не за продажу номера телефона пользователя.',
+  terms_comm_listing: 'Объявление о недвижимости — другой случай: когда вы размещаете объект для продажи или аренды, контактный номер, указанный для этого объявления, нужен для того, чтобы покупатели или арендаторы могли позвонить вам по этому объекту, и его могут видеть те, кто найдёт объявление в HOMATCH.',
+  privacy_listing_phone: 'Контактный номер объявления не связан с вашей учётной записью. Когда вы размещаете объект для продажи или аренды, номер, указанный для этого объявления, нужен для того, чтобы покупатели и арендаторы могли позвонить вам по этому объекту, и он может показываться вместе с объявлением тем, кто найдёт его в HOMATCH. Объявления с других сайтов, которые показывает HOMATCH, могут содержать контакт продавца, опубликованный в исходном объявлении.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -99614,7 +99644,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_hs_ml_with_search_n: 'Bu fiyattan {{n}} açıldı',
   privacy_s2_li9: 'Mülk aramanızı veya bir ilan için konut kredisi hesapladığınızda ortaya çıkan ilginizi, hesabınız mülk tekliflerini kabul ettiği sürece HOMATCH eşleştirmesinde ilgili mülk sahiplerine ve brokerlara göstermek için',
   privacy_s4_li5_label: 'HOMATCH eşleştirmesi:',
-  privacy_s4_li5_body: 'Hesabınız mülk tekliflerini kabul ettiği sürece (iletişim tercihlerinizde istediğiniz zaman kapatabileceğiniz bir ayar), ilanı mülk aramanıza ya da konut kredisi hesapladığınız bir ilana uyan mülk sahipleri ve brokerlar anonim bir önizleme görebilir: bölge, mülk tipi, yuvarlanmış bütçe ve geçerliyse konut kredisine ilginiz. İletişim bilgilerinizi açtıktan sonra adınızı görür ve size HOMATCH üzerinden yazabilirler; telefon numaranız veya e-postanız yalnızca iletişim tercihlerinizde paylaşmayı seçtiyseniz gösterilir (varsayılan olarak kapalı). Geliriniz, borçlarınız, kredi geçmişiniz, kefiliniz, mukimliğiniz ve kredi hesaplamalarınız asla paylaşılmaz. Mülk tekliflerini kapatmak sizi eşleştirmeden hemen çıkarır.',
+  privacy_s4_li5_body: 'Hesabınız mülk tekliflerini kabul ettiği sürece (iletişim tercihlerinizde istediğiniz zaman kapatabileceğiniz bir ayar), ilanı mülk aramanıza veya ipotek hesapladığınız bir ilana uyan mülk sahipleri ve komisyoncular anonim bir önizleme görebilir: bölge, mülk türü, yuvarlanmış bütçe ve uygun olduğunda ipotekle ilgilendiğiniz. Kartınızı açtıktan sonra adınızı görürler ve size HOMATCH\'te mesaj gönderebilirler; kayıtlı e-postanız yalnızca iletişim tercihlerinizde paylaşmayı seçtiyseniz görünür (varsayılan olarak kapalı). Hesabınızın telefon numarası paylaşılmaz. Geliriniz, borçlarınız, kredi geçmişiniz, kefiliniz, ikametiniz ve ipotek hesaplarınız asla paylaşılmaz. Mülk tekliflerini kapatmak sizi eşleştirmeden hemen çıkarır.',
   terms_s2_body3: 'HOMATCH eşleştirmesinde gösterilen kişiler, belirttikleri ve eşleştirmemizin bulduğu bilgilere göre potansiyel olarak ilgilidir. Hiç kimse garantili alıcı ya da kiracı olarak sunulmaz; iletişim bilgilerini açmak bir bankanın kimseye kredi onayladığı anlamına gelmez.',
   terms_s4_body3: 'HOMATCH eşleştirmesi: bir kişinin iletişim bilgilerini açmak, kartında ve onay ekranında gösterilen fiyata ve o fiyatın gerekçelerine tabidir. Aynı kişi için hesap başına yalnızca bir kez ödersiniz: zaten açtığınız herkes, ilan, arama ya da sonraki fiyat ne olursa olsun yeni bir ücret olmadan erişilebilir kalır. Onaylamadan önce fiyat yükselirse hiçbir ücret alınmaz ve yeni fiyat size gösterilir.',
   terms_s5_item8: 'HOMATCH eşleştirmesinde elde edilen iletişim bilgilerini ilgili mülk teklifleri dışında bir amaçla kullanmak, başkalarına vermek ya da iznini geri almış veya sizi engellemiş kişilerle iletişime geçmek',
@@ -100583,7 +100613,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   privacy_lb_contract: 'Sizinle yaptığımız sözleşmenin ifası: hesabınız, eşleştirme, HOMI, Verify raporları, krediler ve talep ettiğiniz diğer hizmetler.',
   privacy_lb_legal: 'Yasal yükümlülükler: ödemelere ilişkin muhasebe ve vergi kayıtları ile yetkili makamların yasal taleplerine yanıt verilmesi.',
   privacy_lb_legit: 'Meşru menfaatler: haklarınız gözetilerek güvenlik, dolandırıcılık ve kötüye kullanımın önlenmesi, hata izleme ve hizmetin iyileştirilmesi.',
-  privacy_lb_consent: 'Açık rıza: isteğe bağlı analitik ve pazarlama çerezleri, pazarlama iletişimleri ve tercih ettiğinizde telefon numaranızın veya e-postanızın diğer kullanıcılarla paylaşılması. Rızanızı istediğiniz zaman geri çekebilirsiniz; bu, önceki işlemeleri etkilemez.',
+  privacy_lb_consent: 'Açık rıza: isteğe bağlı analitik ve pazarlama çerezleri, pazarlama iletişimleri ve tercih ettiğinizde kayıtlı e-posta adresinizin diğer kullanıcılarla paylaşılması. Rızanızı istediğiniz zaman geri çekebilirsiniz; bu, önceki işlemeleri etkilemez.',
   privacy_s3_body_measures: 'HOMATCH, kişisel verilerin işlenmesine ilişkin risklere uygun teknik ve idari güvenlik tedbirleri uygular. Bu tedbirler yetkisiz erişim, hukuka aykırı ifşa, kayıp, değişiklik ve diğer güvenlik olayları risklerini azaltmayı amaçlar.',
   privacy_s4_vendors_p: 'HOMATCH\'in işleyişi için barındırma, veri depolama, ödeme, iletişim, analitik ve yapay zekâ hizmet sağlayıcıları kullanılabilir. Kişisel verilerin bu şekilde işlenmesi, uygun hukuki dayanak, güvenlik gereklilikleri ve gerekli sözleşme koşulları dikkate alınarak gerçekleştirilir.',
   privacy_match_title: 'İlgi eşleştirme',
@@ -100640,7 +100670,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   privacy_sources_li3: 'Diğer kullanıcılardan: HOMATCH içinde size gönderdikleri mesajlar ve talepler.',
   privacy_sources_li4: 'Kamuya açık kaynaklardan: üçüncü taraf web sitelerindeki ilanlar ve Verify için resmi siciller ile yasal olarak erişilebilen diğer kaynaklar.',
   privacy_sources_li5: 'Stripe\'tan: ödemelerinizin durumu ve tutarı.',
-  privacy_match_p4: 'Uygulamada: diğer kullanıcılar önce eşleşen bir talebin anonim önizlemesini görür. Bir mülk sahibi veya komisyoncu kartınızı açtığında adınız görünür; telefon numaranız veya e-postanız ise yalnızca iletişim tercihlerinizde paylaşmayı seçtiyseniz görünür (varsayılan olarak kapalı). Bazı arama hizmetleri, bir kişinin kamuya açık bir ilanda kendisinin yayınladığı iletişim bilgilerini de gösterebilir; bu bilgiler yalnızca o kişiyle ilgili mülk hakkında iletişime geçmek için gösterilir.',
+  privacy_match_p4: 'Uygulamada: diğer kullanıcılar önce eşleşen bir talebin anonim önizlemesini görür. Bir eşleşme açıldıktan sonra iletişim HOMATCH\'in dahili mesajlaşması üzerinden yürür. Kayıtlı e-posta adresiniz, yalnızca iletişim tercihlerinizde e-posta paylaşımını açtıysanız karşı tarafa açılır (varsayılan olarak kapalı). Hesabınızın telefon numarası HOMATCH\'in dahili sistemlerinde tutulur ve eşleşme sonucunun bir parçası değildir.',
   privacy_public_title: 'Kamuya açık kaynaklardan elde edilen veriler',
   privacy_public_p1: 'HOMATCH, hizmeti sunmak amacıyla kamuya açık bilgileri uygun bir hukuki dayanakla işleyebilir.',
   privacy_public_p2: 'Bilginin kamuya açık bir kaynaktan elde edilmesi, kişisel verilerin korunması, bilgilendirme, amaca bağlılık ve orantılılık gerekliliklerinin yerine getirilmesini ortadan kaldırmaz.',
@@ -100678,6 +100708,16 @@ const tr: Partial<Record<TranslationKey, string>> = {
   cookie_desc_analytics: 'Uygulama yüklemeleri ve bildirim izinlerine ilişkin HOMATCH istatistikleri.',
   cookie_desc_marketing: 'Reklam ölçümü. HOMATCH şu anda kullanmıyor.',
   cookie_btn_back: 'Geri',
+
+  /* ── LEGAL MATCHING + COMMUNICATION (2026-10-25) ── */
+  terms_comm_title: 'İlgi eşleştirme ve iletişim',
+  terms_comm_p1: 'HOMATCH, kullanıcılara gayrimenkulle ilgili ilgilerin otomatik eşleştirilmesi ve dijital iletişim hizmeti sunar.',
+  terms_comm_p2: 'Bir eşleşme belirlendikten sonra kullanıcılar, HOMATCH\'in dahili mesajlaşma sistemi aracılığıyla birbirleriyle iletişim kurabilir.',
+  terms_comm_p3: 'Hizmet kapsamında, uygun bir hukuki dayanak bulunması halinde, kullanıcının kayıtlı e-posta adresi ilgili karşı tarafa açılabilir.',
+  terms_comm_p4: 'Kullanıcının telefon numarası standart eşleşme sonucunun bir parçası değildir ve bu hizmet kapsamında diğer kullanıcılara aktarılmaz.',
+  terms_comm_p5: 'HOMATCH, kullanıcının telefon numarasının satışı için değil, dijital eşleştirme ve aracılık hizmeti için önceden belirlenmiş bir ücret alır.',
+  terms_comm_listing: 'Bir gayrimenkul ilanı farklıdır: bir mülkü satılık veya kiralık olarak yayınladığınızda, o ilan için verdiğiniz iletişim numarası alıcıların veya kiracıların sizi bu mülk hakkında arayabilmesi içindir ve ilanı HOMATCH\'te bulan kişilere gösterilebilir.',
+  privacy_listing_phone: 'İlan iletişim numaraları hesabınızdan ayrıdır. Bir mülkü satılık veya kiralık olarak yayınladığınızda o ilan için girdiğiniz numara, alıcıların ve kiracıların sizi bu mülk hakkında arayabilmesi içindir ve ilanı HOMATCH\'te bulan kişilere ilanla birlikte gösterilebilir. HOMATCH\'in diğer web sitelerinden gösterdiği ilanlar, kaynak ilanda yayınlanan satıcı iletişim bilgisini içerebilir.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -124756,7 +124796,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_hs_ml_with_search_n: 'تم فتح {{n}} بهذا السعر',
   privacy_s2_li9: 'لعرض بحثك العقاري، أو اهتمامك عندما تحسب تمويلًا عقاريًا لإعلان، على الملاك والوسطاء المعنيين في مطابقة HOMATCH طالما أن حسابك يقبل عروض العقارات',
   privacy_s4_li5_label: 'مطابقة HOMATCH:',
-  privacy_s4_li5_body: 'طالما أن حسابك يقبل عروض العقارات (إعداد في تفضيلات التواصل يمكنك إيقافه في أي وقت)، يمكن للملاك والوسطاء الذين يناسب إعلانهم بحثك العقاري أو إعلانًا حسبت له تمويلًا عقاريًا رؤية معاينة مجهولة الهوية: المنطقة ونوع العقار وميزانية مقرّبة، وعند الاقتضاء اهتمامك بالتمويل العقاري. بعد فتح جهة اتصالك يرون اسمك ويمكنهم مراسلتك في HOMATCH؛ ولا يظهر رقم هاتفك أو بريدك إلا إذا اخترت مشاركته في تفضيلات التواصل (متوقف افتراضيًا). لا تتم مشاركة دخلك وديونك وسجلك الائتماني وكفيلك وإقامتك وحسابات التمويل العقاري أبدًا. إيقاف عروض العقارات يزيلك من المطابقة فورًا.',
+  privacy_s4_li5_body: 'طالما أن حسابك يقبل عروض العقارات (إعداد في تفضيلات التواصل يمكنك إيقافه في أي وقت)، يمكن للمالكين والوسطاء الذين يطابق إعلانهم بحثك العقاري، أو إعلانًا حسبت له رهنًا عقاريًا، رؤية معاينة مجهولة الهوية: المنطقة ونوع العقار وميزانية مقرّبة، وعند الاقتضاء اهتمامك بالرهن العقاري. وبعد فتح بطاقتك يرون اسمك ويمكنهم مراسلتك داخل HOMATCH؛ ولا يظهر بريدك الإلكتروني المسجّل إلا إذا اخترت مشاركته في تفضيلات التواصل (معطّل افتراضيًا). لا تتم مشاركة رقم هاتف حسابك. ولا تتم أبدًا مشاركة دخلك أو ديونك أو سجلك الائتماني أو الكفيل أو الإقامة أو حسابات الرهن العقاري. وإيقاف عروض العقارات يزيلك من المطابقة فورًا.',
   terms_s2_body3: 'الأشخاص الذين يظهرون في مطابقة HOMATCH مهتمون محتملون بناءً على ما ذكروه وما وجدته المطابقة. لا يُقدَّم أحد كمشترٍ أو مستأجر مضمون، وفتح جهة الاتصال لا يعني أن بنكًا وافق على قرض لأحد.',
   terms_s4_body3: 'مطابقة HOMATCH: فتح بيانات اتصال شخص يكلّف السعر المعروض على بطاقته وفي التأكيد، مع أسباب هذا السعر. تدفع مقابل الشخص نفسه مرة واحدة فقط لكل حساب: من فتحته سابقًا يبقى متاحًا دون رسوم جديدة مهما كان الإعلان أو البحث أو السعر اللاحق. إذا ارتفع السعر قبل أن تؤكد، لا يُخصم شيء ويُعرض عليك السعر الجديد.',
   terms_s5_item8: 'استخدام بيانات الاتصال التي تم الحصول عليها في مطابقة HOMATCH لأي غرض غير عروض العقارات المناسبة، أو تمريرها للآخرين، أو التواصل مع أشخاص سحبوا إذنهم أو حظروك',
@@ -125725,7 +125765,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   privacy_lb_contract: 'تنفيذ اتفاقنا معك: حسابك، والمطابقة، وHOMI، وتقارير Verify، والأرصدة، والخدمات الأخرى التي تطلبها.',
   privacy_lb_legal: 'الالتزامات القانونية: السجلات المحاسبية والضريبية للمدفوعات، والرد على الطلبات القانونية من السلطات.',
   privacy_lb_legit: 'المصالح المشروعة: الأمان، ومنع الاحتيال وإساءة الاستخدام، ومراقبة الأخطاء، وتحسين الخدمة، مع مراعاة حقوقك.',
-  privacy_lb_consent: 'الموافقة: ملفات تعريف الارتباط التحليلية والتسويقية الاختيارية، والاتصالات التسويقية، ومشاركة رقم هاتفك أو بريدك الإلكتروني مع مستخدمين آخرين عندما تختار ذلك. يمكنك سحب موافقتك في أي وقت، ولا يؤثر ذلك على المعالجة السابقة.',
+  privacy_lb_consent: 'الموافقة: ملفات تعريف الارتباط التحليلية والتسويقية الاختيارية، والاتصالات التسويقية، ومشاركة بريدك الإلكتروني المسجّل مع مستخدمين آخرين عندما تختار ذلك. يمكنك سحب موافقتك في أي وقت، ولا يؤثر ذلك على المعالجة السابقة.',
   privacy_s3_body_measures: 'تطبّق HOMATCH تدابير أمنية تقنية وتنظيمية تتناسب مع مخاطر معالجة البيانات الشخصية. وتهدف هذه التدابير إلى الحد من مخاطر الوصول غير المصرح به والإفصاح غير القانوني والفقدان والتعديل وغيرها من الحوادث الأمنية.',
   privacy_s4_vendors_p: 'قد يُستعان بمزوّدي خدمات الاستضافة وتخزين البيانات والدفع والاتصالات والتحليلات والذكاء الاصطناعي لتشغيل HOMATCH. وتتم هذه المعالجة للبيانات الشخصية مع مراعاة الأساس القانوني المناسب ومتطلبات الأمان والشروط التعاقدية اللازمة.',
   privacy_match_title: 'مطابقة الاهتمامات',
@@ -125782,7 +125822,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   privacy_sources_li3: 'من مستخدمين آخرين: الرسائل والطلبات التي يرسلونها إليك داخل HOMATCH.',
   privacy_sources_li4: 'من المصادر العامة: الإعلانات العقارية على مواقع الأطراف الثالثة، وبالنسبة إلى Verify، السجلات الرسمية وغيرها من المصادر المتاحة قانونًا.',
   privacy_sources_li5: 'من Stripe: حالة مدفوعاتك ومبلغها.',
-  privacy_match_p4: 'عمليًا: يرى المستخدمون الآخرون أولًا معاينة مجهولة الهوية للطلب المطابق. ويظهر اسمك عندما يفتح مالك أو وسيط بطاقتك، أما رقم هاتفك أو بريدك الإلكتروني فلا يظهران إلا إذا اخترت مشاركتهما في تفضيلات التواصل (معطّلة افتراضيًا). وقد تعرض بعض خدمات البحث أيضًا بيانات اتصال نشرها الشخص بنفسه في إعلان عام، ولا تُعرض إلا للتواصل مع ذلك الشخص بشأن العقار المعني.',
+  privacy_match_p4: 'عمليًا: يرى المستخدمون الآخرون أولًا معاينة مجهولة الهوية للطلب المطابق. وبعد فتح المطابقة، يتم التواصل عبر نظام المراسلة الداخلي في HOMATCH. ولا يُتاح عنوان بريدك الإلكتروني المسجّل للطرف الآخر إلا إذا فعّلت مشاركة البريد الإلكتروني في تفضيلات التواصل (معطّلة افتراضيًا). أما رقم هاتف حسابك فيُحفظ في الأنظمة الداخلية لـ HOMATCH وليس جزءًا من نتيجة المطابقة.',
   privacy_public_title: 'البيانات المستمدة من المصادر العامة',
   privacy_public_p1: 'يجوز لـ HOMATCH معالجة المعلومات المتاحة للعامة استنادًا إلى أساس قانوني مناسب لغرض تقديم الخدمة.',
   privacy_public_p2: 'لا يُعفي الحصول على المعلومات من مصدر عام من الالتزام بمتطلبات حماية البيانات الشخصية والإعلام وتحديد الغرض والتناسب.',
@@ -125820,6 +125860,16 @@ const ar: Partial<Record<TranslationKey, string>> = {
   cookie_desc_analytics: 'إحصاءات HOMATCH الخاصة بعمليات تثبيت التطبيق والإشعارات.',
   cookie_desc_marketing: 'قياس الإعلانات. لا تستخدمها HOMATCH حاليًا.',
   cookie_btn_back: 'رجوع',
+
+  /* ── LEGAL MATCHING + COMMUNICATION (2026-10-25) ── */
+  terms_comm_title: 'مطابقة الاهتمامات والتواصل',
+  terms_comm_p1: 'تقدّم HOMATCH للمستخدمين خدمة المطابقة الآلية للاهتمامات المتعلقة بالعقارات والتواصل الرقمي.',
+  terms_comm_p2: 'بعد تحديد المطابقة، يمكن للمستخدمين التواصل فيما بينهم عبر نظام المراسلة الداخلي في HOMATCH.',
+  terms_comm_p3: 'في إطار الخدمة، وعند وجود أساس قانوني مناسب، قد يُتاح عنوان البريد الإلكتروني المسجّل للمستخدم للطرف الآخر المعني.',
+  terms_comm_p4: 'لا يُعدّ رقم هاتف المستخدم جزءًا من نتيجة المطابقة القياسية، ولا يُنقل إلى مستخدمين آخرين في إطار هذه الخدمة.',
+  terms_comm_p5: 'تتقاضى HOMATCH رسومًا محددة مسبقًا مقابل خدمة المطابقة والوساطة الرقمية، وليس مقابل بيع رقم هاتف المستخدم.',
+  terms_comm_listing: 'إعلان العقار حالة مختلفة: عندما تنشر عقارًا للبيع أو الإيجار، فإن رقم الاتصال الذي تحدده لذلك الإعلان مخصص لكي يتصل بك المشترون أو المستأجرون بشأنه، وقد يُعرض على من يجد الإعلان على HOMATCH.',
+  privacy_listing_phone: 'رقم الاتصال الخاص بالإعلان منفصل عن حسابك. عندما تنشر عقارًا للبيع أو الإيجار، فإن الرقم الذي تُدخله لذلك الإعلان مخصص لكي يتصل بك المشترون والمستأجرون بشأنه، وقد يُعرض مع الإعلان على من يجده على HOMATCH. وقد تتضمن الإعلانات التي تعرضها HOMATCH من مواقع أخرى بيانات اتصال البائع المنشورة في الإعلان الأصلي.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -149898,7 +149948,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_hs_ml_with_search_n: '{{n}} נפתחו במחיר הזה',
   privacy_s2_li9: 'כדי להציג את חיפוש הנכס שלך, או את העניין שלך כשאתה מחשב משכנתה למודעה, לבעלי נכסים ולמתווכים רלוונטיים בהתאמות של HOMATCH, כל עוד החשבון שלך מקבל הצעות נכסים',
   privacy_s4_li5_label: 'ההתאמות של HOMATCH:',
-  privacy_s4_li5_body: 'כל עוד החשבון שלך מקבל הצעות נכסים (הגדרה בהעדפות הקשר שאפשר לכבות בכל עת), בעלי נכסים ומתווכים שהמודעה שלהם מתאימה לחיפוש הנכס שלך או למודעה שחישבת לה משכנתה יכולים לראות תצוגה מקדימה אנונימית: אזור, סוג נכס, תקציב מעוגל ובמידת הצורך את העניין שלך במשכנתה. אחרי שפתחו את איש הקשר הם רואים את שמך ויכולים לכתוב לך ב־HOMATCH; מספר הטלפון או האימייל מוצגים רק אם בחרת לשתף אותם בהעדפות הקשר (כבוי כברירת מחדל). הכנסה, חובות, היסטוריית אשראי, ערב, תושבות וחישובי משכנתה לעולם אינם משותפים. כיבוי הצעות הנכסים מסיר אותך מההתאמות מיד.',
+  privacy_s4_li5_body: 'כל עוד החשבון שלך מקבל הצעות נכסים (הגדרה בהעדפות יצירת הקשר שניתן לכבות בכל עת), בעלי נכסים ומתווכים שהמודעה שלהם מתאימה לחיפוש שלך, או למודעה שעבורה חישבת משכנתה, יכולים לראות תצוגה מקדימה אנונימית: האזור, סוג הנכס, תקציב מעוגל, ובמידת הרלוונטיות — שאתה מתעניין במשכנתה. לאחר שפתחו את הכרטיס שלך הם רואים את שמך ויכולים לשלוח לך הודעה ב-HOMATCH; הדוא"ל הרשום שלך מוצג רק אם בחרת לשתף אותו בהעדפות יצירת הקשר (כבוי כברירת מחדל). מספר הטלפון של החשבון שלך אינו משותף. ההכנסה, החובות, היסטוריית האשראי, הערב, התושבות וחישובי המשכנתה שלך לעולם אינם משותפים. כיבוי הצעות הנכסים מוציא אותך מההתאמות מיד.',
   terms_s2_body3: 'האנשים שמוצגים בהתאמות של HOMATCH מתעניינים פוטנציאליים, לפי מה שציינו ומה שההתאמה מצאה. אף אחד לא מוצג כקונה או שוכר מובטח, ופתיחת איש קשר אינה אומרת שבנק אישר למישהו הלוואה.',
   terms_s4_body3: 'ההתאמות של HOMATCH: פתיחת פרטי הקשר של אדם עולה את המחיר שמוצג בכרטיס שלו ובאישור, יחד עם הסיבות למחיר. על אותו אדם משלמים רק פעם אחת לכל חשבון: מי שכבר פתחת נשאר נגיש בלי חיוב חדש, בלי קשר למודעה, לחיפוש או למחיר מאוחר יותר. אם המחיר עלה לפני שאישרת, לא מחויב דבר ומוצג לך המחיר החדש.',
   terms_s5_item8: 'להשתמש בפרטי קשר שהתקבלו בהתאמות של HOMATCH לכל דבר מלבד הצעות על נכסים רלוונטיים, להעביר אותם לאחרים או ליצור קשר עם מי שביטל את ההרשאה או חסם אותך',
@@ -150867,7 +150917,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   privacy_lb_contract: 'ביצוע ההסכם עמך: החשבון שלך, התאמות, HOMI, דוחות Verify, קרדיטים ושירותים אחרים שביקשת.',
   privacy_lb_legal: 'חובות חוקיות: רישומי הנהלת חשבונות ומס לתשלומים, ומענה לבקשות חוקיות של רשויות.',
   privacy_lb_legit: 'אינטרסים לגיטימיים: אבטחה, מניעת הונאות ושימוש לרעה, ניטור שגיאות ושיפור השירות, תוך איזון מול זכויותיך.',
-  privacy_lb_consent: 'הסכמה: קובצי Cookie אופציונליים לניתוח ולשיווק, דיוור שיווקי ושיתוף מספר הטלפון או הדוא"ל שלך עם משתמשים אחרים כשתבחר בכך. ניתן לבטל את ההסכמה בכל עת; הדבר אינו משפיע על עיבוד שנעשה קודם לכן.',
+  privacy_lb_consent: 'הסכמה: קובצי Cookie אופציונליים לניתוח ולשיווק, דיוור שיווקי ושיתוף כתובת הדוא"ל הרשומה שלך עם משתמשים אחרים כשתבחר בכך. ניתן לבטל את ההסכמה בכל עת; הדבר אינו משפיע על עיבוד שנעשה קודם לכן.',
   privacy_s3_body_measures: 'HOMATCH נוקטת אמצעי אבטחה טכניים וארגוניים המתאימים לסיכוני עיבוד הנתונים האישיים. אמצעים אלה נועדו לצמצם סיכונים של גישה בלתי מורשית, גילוי שלא כדין, אובדן, שינוי ואירועי אבטחה אחרים.',
   privacy_s4_vendors_p: 'לצורך הפעלת HOMATCH עשויים לשמש ספקי שירותי אחסון, שמירת נתונים, תשלומים, תקשורת, ניתוח ובינה מלאכותית. עיבוד נתונים אישיים כזה נעשה בהתחשב בבסיס המשפטי המתאים, בדרישות האבטחה ובתנאים החוזיים הנדרשים.',
   privacy_match_title: 'התאמת עניין',
@@ -150924,7 +150974,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   privacy_sources_li3: 'ממשתמשים אחרים: הודעות ובקשות שהם שולחים לך בתוך HOMATCH.',
   privacy_sources_li4: 'ממקורות ציבוריים: מודעות נדל"ן באתרים של צדדים שלישיים, ולגבי Verify — מרשמים רשמיים ומקורות אחרים הנגישים כדין.',
   privacy_sources_li5: 'מ-Stripe: הסטטוס והסכום של התשלומים שלך.',
-  privacy_match_p4: 'בפועל: משתמשים אחרים רואים תחילה תצוגה מקדימה אנונימית של בקשה תואמת. שמך נחשף כאשר בעל נכס או מתווך פותח את הכרטיס שלך, ומספר הטלפון או הדוא"ל שלך — רק אם בחרת לשתף אותם בהעדפות יצירת הקשר (כבוי כברירת מחדל). חלק משירותי החיפוש עשויים גם להציג פרטי קשר שאדם פרסם בעצמו במודעה ציבורית; פרטים אלה מוצגים רק לצורך יצירת קשר עם אותו אדם בנוגע לנכס הרלוונטי.',
+  privacy_match_p4: 'בפועל: משתמשים אחרים רואים תחילה תצוגה מקדימה אנונימית של בקשה תואמת. לאחר פתיחת ההתאמה, התקשורת מתנהלת דרך מערכת ההודעות הפנימית של HOMATCH. כתובת הדוא"ל הרשומה שלך נחשפת לצד השני רק אם הפעלת שיתוף דוא"ל בהעדפות יצירת הקשר (כבוי כברירת מחדל). מספר הטלפון של החשבון שלך נשמר במערכות הפנימיות של HOMATCH ואינו חלק מתוצאת ההתאמה.',
   privacy_public_title: 'נתונים ממקורות ציבוריים',
   privacy_public_p1: 'HOMATCH רשאית לעבד מידע הזמין לציבור על בסיס משפטי מתאים לצורך מתן השירות.',
   privacy_public_p2: 'קבלת מידע ממקור ציבורי אינה פוטרת מעמידה בדרישות הגנת המידע האישי, היידוע, צמידות המטרה והמידתיות.',
@@ -150962,6 +151012,16 @@ const he: Partial<Record<TranslationKey, string>> = {
   cookie_desc_analytics: 'סטטיסטיקה של HOMATCH על התקנות האפליקציה והסכמות להתראות.',
   cookie_desc_marketing: 'מדידת פרסום. HOMATCH אינה משתמשת בכך כיום.',
   cookie_btn_back: 'חזרה',
+
+  /* ── LEGAL MATCHING + COMMUNICATION (2026-10-25) ── */
+  terms_comm_title: 'התאמת עניין ותקשורת',
+  terms_comm_p1: 'HOMATCH מציעה למשתמשים שירות של התאמה אוטומטית של תחומי עניין הקשורים לנדל"ן ושל תקשורת דיגיטלית.',
+  terms_comm_p2: 'לאחר זיהוי התאמה, המשתמשים יכולים לתקשר זה עם זה באמצעות מערכת ההודעות הפנימית של HOMATCH.',
+  terms_comm_p3: 'במסגרת השירות, כאשר קיים בסיס משפטי מתאים, כתובת הדוא"ל הרשומה של המשתמש עשויה להיות זמינה לצד השני הרלוונטי.',
+  terms_comm_p4: 'מספר הטלפון של המשתמש אינו חלק מתוצאת ההתאמה הסטנדרטית ואינו מועבר למשתמשים אחרים במסגרת שירות זה.',
+  terms_comm_p5: 'HOMATCH גובה תשלום שנקבע מראש עבור שירות ההתאמה והתיווך הדיגיטלי, ולא עבור מכירת מספר הטלפון של המשתמש.',
+  terms_comm_listing: 'מודעת נדל"ן היא מקרה שונה: כאשר אתה מפרסם נכס למכירה או להשכרה, מספר הקשר שאתה מוסר למודעה נועד לכך שקונים או שוכרים יוכלו להתקשר אליך בנוגע לנכס, והוא עשוי להיות מוצג למי שמוצא את המודעה ב-HOMATCH.',
+  privacy_listing_phone: 'מספרי קשר של מודעות נפרדים מהחשבון שלך. כאשר אתה מפרסם נכס למכירה או להשכרה, המספר שאתה מזין למודעה נועד לכך שקונים ושוכרים יוכלו להתקשר אליך בנוגע לנכס, והוא עשוי להיות מוצג יחד עם המודעה למי שמוצא אותה ב-HOMATCH. מודעות מאתרים אחרים ש-HOMATCH מציגה עשויות לכלול את פרטי הקשר של המוכר שפורסמו במודעת המקור.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

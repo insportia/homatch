@@ -32,6 +32,16 @@ export default function TermsPage() {
       </>,
     },
     {
+      id: 'communication', title: t('terms_comm_title'), content: <>
+        <p>{t('terms_comm_p1')}</p>
+        <p>{t('terms_comm_p2')}</p>
+        <p>{t('terms_comm_p3')}</p>
+        <p><strong>{t('terms_comm_p4')}</strong></p>
+        <p>{t('terms_comm_p5')}</p>
+        <p>{t('terms_comm_listing')}</p>
+      </>,
+    },
+    {
       id: 'fees', title: t('terms_s4_title'), content: <>
         <p>{t('terms_s4_body1')}</p>
         <p>{t('terms_s4_body2')}</p>

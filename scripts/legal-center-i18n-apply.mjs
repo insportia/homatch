@@ -1,4 +1,7 @@
-import { LEGAL_CENTER_STRINGS } from './legal-center-i18n-data.mjs';
+import { LEGAL_CENTER_STRINGS as ALL } from './legal-center-i18n-data.mjs';
+import { LEGAL_MATCHING_COMM_STRINGS } from './legal-matching-comm-i18n-data.mjs';
+/* Round 3 (legal-matching-comm) rewrites some of these keys and wins on a rerun. */
+const LEGAL_CENTER_STRINGS = Object.fromEntries(Object.entries(ALL).filter(([k]) => !(k in LEGAL_MATCHING_COMM_STRINGS)));
 import { splice, validate } from './lib/i18nSplice.mjs';
 const problems = validate(LEGAL_CENTER_STRINGS, 'legal-center');
 if (problems.length) throw new Error(problems.join('\n'));

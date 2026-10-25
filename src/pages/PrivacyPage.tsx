@@ -58,6 +58,7 @@ export default function PrivacyPage() {
         <p>{t('privacy_match_p2')}</p>
         <p><strong>{t('privacy_match_p3')}</strong></p>
         <p>{t('privacy_match_p4')}</p>
+        <p>{t('privacy_listing_phone')}</p>
       </>,
     },
     { id: 'public-sources', title: t('privacy_public_title'), content: <><p>{t('privacy_public_p1')}</p><p>{t('privacy_public_p2')}</p></> },

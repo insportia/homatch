@@ -66,7 +66,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { readContactPhone } from '@/lib/propertyContact';
-import { setPropertyContact, uploadPropertyPhoto } from '@/services/api';
+import { setPropertyContact, setPropertyContactPublication, uploadPropertyPhoto } from '@/services/api';
 import {
   allPhotos,
   attachPhoto,
@@ -191,6 +191,9 @@ export default function EditPropertyPage() {
    * is what gets stored, and the field says so as they type.
    */
   const [contactPhone, setContactPhone] = useState('');
+  /* The advertiser's saved choice to show the number on the listing, and the form's copy. */
+  const [contactPhonePublic, setContactPhonePublic] = useState(false);
+  const [savedPhonePublic, setSavedPhonePublic] = useState(false);
   const [showPhoneProblem, setShowPhoneProblem] = useState(false);
 
   const deepLink = (typeof window !== 'undefined' ? window.location.hash : '').replace('#', '');
@@ -247,6 +250,8 @@ export default function EditPropertyPage() {
       setAddressVisibility(String(f?.address_visibility ?? 'CITY_ONLY'));
       setDescription(String(f?.description ?? ''));
       setContactPhone(String(row.contact_phone_raw ?? row.contact_phone_e164 ?? ''));
+      setContactPhonePublic(row.contact_phone_public === true);
+      setSavedPhonePublic(row.contact_phone_public === true);
       setShowPhoneProblem(false);
     } catch (error) {
       setFailed(error instanceof Error ? error.message : String(error));
@@ -360,6 +365,11 @@ export default function EditPropertyPage() {
               : 'contact_phone_unreachable',
           ));
         }
+      }
+
+      if (contactPhonePublic !== savedPhonePublic) {
+        if (await setPropertyContactPublication(id, contactPhonePublic)) setSavedPhonePublic(contactPhonePublic);
+        else { toast.error(t('contact_phone_publish_failed')); await load(); return; }
       }
 
       /*
@@ -503,7 +513,7 @@ export default function EditPropertyPage() {
           validation rule, photo control and save path is untouched — what changes is
           that a customer editing a property no longer crosses a theme boundary.
         */}
-        <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6">
+        <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 pb-[calc(11rem+env(safe-area-inset-bottom))] md:pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6">
           <div className="flex items-start justify-between gap-2 flex-wrap">
             <div className="min-w-0 space-y-1">
               <h1 className="text-xl font-bold text-foreground break-words">
@@ -770,6 +780,8 @@ export default function EditPropertyPage() {
             <ContactPhoneField
               value={contactPhone}
               onChange={(next) => { setContactPhone(next); setShowPhoneProblem(false); }}
+              published={contactPhonePublic}
+              onPublishedChange={setContactPhonePublic}
               defaultCountry="GE"
               accountPhone={homatchUser?.phone ?? null}
               showProblem={showPhoneProblem}
@@ -955,7 +967,7 @@ export default function EditPropertyPage() {
           it is a button somebody has to go looking for after every edit.
         */}
         <div
-          className="fixed bottom-0 inset-x-0 z-40 border-t border-border bg-card/95 backdrop-blur md:bottom-0"
+          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] inset-x-0 z-40 border-t border-border bg-card/95 backdrop-blur md:bottom-0"
           style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
         >
           <div className="max-w-2xl mx-auto flex items-center gap-2 px-4 pt-3 flex-wrap">

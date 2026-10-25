@@ -1011,6 +1011,8 @@ export const SECTION_DEFS: readonly SectionDef[] = [
       f('link_developers', 'mp_nav_developers', 'mp_nav_developers'),
       f('link_privacy', 'home_footer_privacy', 'home_footer_privacy'),
       f('link_terms', 'home_footer_terms', 'home_footer_terms'),
+      f('link_cookies', 'home_footer_cookies', 'home_footer_cookies'),
+      f('link_cookie_settings', 'home_footer_cookie_settings', 'home_footer_cookie_settings'),
       f('brand_tagline', 'brand_tagline', 'brand_tagline'),
     ],
     media: [],

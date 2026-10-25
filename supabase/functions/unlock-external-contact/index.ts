@@ -1,6 +1,7 @@
 // unlock-external-contact — authenticated external match reveal
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
+import { serviceBackendEnabled } from '../_shared/serviceControl.ts';
 const corsHeaders={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type'};
 const respond=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...corsHeaders,'Content-Type':'application/json'}});
 Deno.serve(async(req)=>{
@@ -13,8 +14,16 @@ Deno.serve(async(req)=>{
   const impersonating=await refuseIfImpersonating(supabase,authHeader,corsHeaders); if(impersonating) return impersonating; // an admin viewing as this account is read-only
   const {data:actor}=await supabase.from('users').select('id').eq('auth_id',user.id).maybeSingle(); if(!actor) return respond({error:'User not found'},404);
   const {match_id,confirm}=await req.json(); if(!match_id) return respond({error:'match_id required'},400);
-  const {data:match}=await supabase.from('matches').select('id,match_score,signal_strength,intent_confidence,unlock_price_credits,status,signal_id,intent_profile_id,preview_platform,preview_language,preview_city,preview_budget_min,preview_budget_max,preview_currency,preview_bedrooms,preview_excerpt,preview_recency').eq('id',match_id).maybeSingle();
+  const {data:match}=await supabase.from('matches').select('id,property_id,match_score,signal_strength,intent_confidence,unlock_price_credits,status,signal_id,intent_profile_id,preview_platform,preview_language,preview_city,preview_budget_min,preview_budget_max,preview_currency,preview_bedrooms,preview_excerpt,preview_recency').eq('id',match_id).maybeSingle();
   if(!match) return respond({error:'Match not found'},404); if(!match.signal_id) return respond({error:'Internal Homatch users connect via Chat, not contact unlock.'},400);
+  // Ownership BEFORE anything is returned. The service role bypasses RLS, so the preview
+  // below used to answer for any match id to any signed-in user; the RPC checked
+  // ownership only on confirm. Same 404 as a missing match, so ids cannot be probed.
+  const {data:owned}=await supabase.from('properties').select('id').eq('id',match.property_id).eq('user_id',actor.id).maybeSingle();
+  if(!owned) return respond({error:'Match not found'},404);
+  // External discovery (find_buyers_external) is closed to new sales while switched off.
+  // An owner who already paid keeps reading what they bought; nothing new is sold.
+  if(match.status!=='UNLOCKED' && !(await serviceBackendEnabled(supabase,'find_buyers_external'))) return respond({error:'SERVICE_DISABLED'},503);
   const preview={match_score:match.match_score,signal_strength:match.signal_strength,confidence:match.intent_confidence,location:match.preview_city,source:match.preview_platform,language:match.preview_language,budget_min:match.preview_budget_min,budget_max:match.preview_budget_max,budget_currency:match.preview_currency,bedrooms:match.preview_bedrooms,excerpt:match.preview_excerpt,freshness:match.preview_recency,customer_price:match.unlock_price_credits,currency:'credits',already_unlocked:match.status==='UNLOCKED'};
   if(!confirm) return respond({preview});
   const {data:result,error:unlockErr}=await supabase.rpc('atomic_external_match_unlock',{p_user_id:actor.id,p_match_id:match_id}).maybeSingle();

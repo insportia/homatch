@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { deriveAuthStatus, hasPersistedSession, type AuthStatus } from '@/auth/authStatus';
+import { POLICY_VERSIONS } from '@/lib/legal/policies';
 import { supabase } from '@/db/supabase';
 import { ReadOnlyImpersonationError, isImpersonating } from '@/lib/impersonation';
 import { claimAnonymousWork } from '@/services/anonymousSession';
@@ -20,7 +21,7 @@ interface AuthContextValue {
   supaUser: SupaUser | null;
   homatchUser: User | null;
   loading: boolean;
-  signUp: (email: string, password: string, fullName?: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, fullName?: string, acceptedPolicies?: boolean) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signInWithGoogle: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -114,8 +115,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, [fetchHomatchUser]);
 
-  const signUp = async (email: string, password: string, fullName?: string) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+  const signUp = async (email: string, password: string, fullName?: string, acceptedPolicies = false) => {
+    /* No account without the Terms/Privacy tick. The versions travel in the
+       signup metadata; the auth.users trigger records them only if they are
+       the current ones (20261206100000_policy_acceptance.sql). */
+    if (!acceptedPolicies) return { error: 'POLICY_ACCEPTANCE_REQUIRED' };
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { policy_acceptance: { ...POLICY_VERSIONS, accepted: true } } },
+    });
     if (error) return { error: error.message };
     // Create homatch user row
     if (data.user) {

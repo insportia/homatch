@@ -179,6 +179,16 @@ export async function setPropertyContact(
 }
 
 /**
+ * The advertiser's choice to show the listing's contact number to the people who find
+ * it. Server-recorded (owner only, server time); the column cannot be written directly.
+ */
+export async function setPropertyContactPublication(propertyId: string, published: boolean): Promise<boolean> {
+  const { error } = await supabase.rpc('set_property_contact_publication', { p_property_id: propertyId, p_public: published });
+  if (error) console.error('setPropertyContactPublication error:', error.message);
+  return !error;
+}
+
+/**
  * matchability_score is deliberately absent: it is produced by run-matching-v2
  * under the service role and shown on the dashboard as the property's matching
  * strength, so a client that could set it could rate its own listing. The

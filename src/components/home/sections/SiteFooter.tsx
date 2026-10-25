@@ -7,6 +7,8 @@ import { InstallApp } from '@/components/common/InstallApp';
 import { useFieldProps, useNotEditable, useSectionField } from '@/site/content';
 import { ShellScope } from '@/site/render/ShellScope';
 import type { TranslationKey } from '@/i18n/translations';
+import { openCookieSettings } from '@/lib/consent/cookieConsent';
+import { operatorDisplayName } from '@/lib/legal/operator';
 import { PAGE } from './primitives';
 import { usePathAvailable, useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
@@ -54,6 +56,8 @@ const FIELD: Readonly<Record<string, TranslationKey>> = {
   link_developers: 'mp_nav_developers',
   link_privacy: 'home_footer_privacy',
   link_terms: 'home_footer_terms',
+  link_cookies: 'home_footer_cookies',
+  link_cookie_settings: 'home_footer_cookie_settings',
 };
 
 export function SiteFooter() {
@@ -62,7 +66,7 @@ export function SiteFooter() {
 
 function FooterBody() {
   const { session } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const navigate = useNavigate();
   const sf = useSectionField();
   const fp = useFieldProps();
@@ -106,8 +110,11 @@ function FooterBody() {
       key: 'legal',
       field: 'heading_legal',
       links: [
-        { key: 'link_privacy', path: '/privacy' },
         { key: 'link_terms', path: '/terms' },
+        { key: 'link_privacy', path: '/privacy' },
+        { key: 'link_cookies', path: '/cookies' },
+        /* Not a page: reopens the consent banner to change or withdraw. */
+        { key: 'link_cookie_settings', path: '#cookie-settings' },
       ],
     },
   ];
@@ -138,7 +145,7 @@ function FooterBody() {
                 <li key={link.key}>
                   <button
                     type="button"
-                    onClick={() => navigate(link.path)}
+                    onClick={() => (link.path === '#cookie-settings' ? openCookieSettings() : navigate(link.path))}
                     className="min-h-0 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     {...fp(link.key)}
                   >
@@ -164,6 +171,8 @@ function FooterBody() {
         >
           <p className="text-xs text-muted-foreground">
             {t('home_footer_copyright', { year: new Date().getFullYear() })}
+            {/* The operator, from the one legal config (no ID number here). */}
+            <span className="ms-2 inline-block max-w-full align-baseline opacity-80 break-words">· {operatorDisplayName(lang, t('legal_entity_individual_entrepreneur'))}</span>
           </p>
           <InstallApp source="footer" />
         </div>

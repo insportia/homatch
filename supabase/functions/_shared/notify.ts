@@ -56,6 +56,19 @@ function readServiceKey(): string {
   try { return deno?.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''; } catch { return ''; }
 }
 
+/** The account a notification was written for; the caller's id when it cannot be read. */
+async function resolvedRecipient(sb: Client, notificationId: string, fallback: string): Promise<string> {
+  try {
+    if (typeof sb.from !== 'function') return fallback;
+    // deno-lint-ignore no-explicit-any
+    const q = (sb.from('notifications') as any).select('user_id').eq('id', notificationId);
+    const { data } = await q.maybeSingle();
+    return typeof data?.user_id === 'string' && data.user_id ? data.user_id : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export type Priority = 'CRITICAL' | 'HIGH' | 'NORMAL' | 'LOW';
 
 export interface NotifyInput {
@@ -166,7 +179,19 @@ export async function notify(sb: Client, input: NotifyInput): Promise<string | n
      * Where there is no such runtime (tests, local) it is awaited.
      */
     if (input.email !== false) {
-      const emailLeg = maybeEmailNotification(sb, { notificationId: data, userId: input.userId, type: input.type, deepLink: input.deepLink ?? null });
+      /*
+       * THE ACCOUNT, NOT THE ID THE CALLER HELD.
+       *
+       * notify_emit resolves an auth id to the account; the email leg used to
+       * be handed the raw input instead. Verify (research_jobs.user_id) passes
+       * the auth id, so the language and address lookups found nobody, the
+       * SKIPPED row then failed its foreign key, and 21 finished verifications
+       * in production were emailed to no one (2026-10-25). The notification row
+       * carries the resolved id, so it is read from there.
+       */
+      const recipient = await resolvedRecipient(sb, data, input.userId);
+      const kind = typeof input.metadata?.kind === 'string' ? input.metadata.kind : null;
+      const emailLeg = maybeEmailNotification(sb, { notificationId: data, userId: recipient, type: input.type, kind, deepLink: input.deepLink ?? null });
       if (!runAfterResponse(emailLeg)) await emailLeg;
     }
 

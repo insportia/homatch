@@ -149,6 +149,11 @@ export function notificationText(
   if (notif.type === 'PROPERTY_ACTION_REQUIRED') {
     return { title: t('notif_property_action_title'), body: t('notif_property_action_body') };
   }
+  /* A Find Buyers / Find Tenants search the person ran has finished. Typed SEARCH_COMPLETE,
+     so caught before the type below (which is a saved property search finding listings). */
+  if (kind === 'FIND_CLIENTS_DONE') {
+    return { title: t('notif_find_clients_done_title'), body: t('notif_find_clients_done_body') };
+  }
   if (notif.type === 'SEARCH_COMPLETE') {
     return { title: t('notif_search_complete_title'), body: t('notif_search_complete_body') };
   }
@@ -272,6 +277,7 @@ export function metaNotificationInfo(notif: Notification): {
 
 /** The button's words: what opening it will actually show. */
 export function notificationActionKey(notif: Notification): string {
+  if (kindOf(notif) === 'FIND_CLIENTS_DONE') return 'notif_action_view_result';
   switch (notif.type) {
     case 'VERIFY_COMPLETE': return 'notif_action_view_result';
     case 'DOCUMENT_ANALYZED': return 'notif_action_open_document';

@@ -302,6 +302,11 @@ serve(async (req) => {
     deep_link: notif.deep_link ?? '/notifications',
     priority,
     group_key: notif.group_key ?? undefined,
+    /* Where one type means several things (a Find Buyers search finishing is
+       SEARCH_COMPLETE with kind FIND_CLIENTS_DONE), the worker draws by kind. */
+    kind: typeof (notif.metadata as Record<string, unknown> | null)?.kind === 'string'
+      ? (notif.metadata as Record<string, string>).kind
+      : undefined,
   });
 
   /* Stamped whatever happened. A retry loop that re-sends on every failure is

@@ -26,12 +26,21 @@ test('the prompt orders INTERNAL FIRST, before any web directive', () => {
   assert.ok(order < internalRule && internalRule < webRule, 'ordering doctrine reads internal → web');
 });
 
-test('all four routing modes exist and web stays available', () => {
+test('all four routing modes exist and web stays available when the turn needs it', () => {
   for (const mode of ['NO_WEB', 'SUPPLEMENTAL_WEB', 'REQUIRED_LIVE_WEB', 'SPECIALIZED_HOMATCH_WORKFLOW']) {
     assert.ok(edge.includes(mode), mode);
   }
-  // Web is never disabled: the tool is still offered on every call.
+  // The premise changed (owner, 2026-10-25: "find me an apartment" went to the
+  // internet). The tool still exists, but code decides per turn whether it is
+  // offered at all (src/lib/homi/webPolicy.ts, unit-tested there): it is only
+  // in the request when the policy opened the web.
   assert.match(edge, /type: 'web_search'/);
+  assert.ok(edge.includes('decideTurnPolicy(last, { marketplace: marketplaceScope })'), 'the turn policy is decided in code');
+  assert.ok(edge.includes("const webAllowed = policy.web === 'ON'"));
+  assert.match(edge, /\.\.\.\(webAllowed\s*\?\s*\{ tools: \[\{ type: 'web_search'/, 'the search tool is offered only when allowed');
+  assert.ok(edge.includes('${turnPolicyPrompt(policy)}'), 'the model is told the policy');
+  // A property search always carries the Find Property card, from code.
+  assert.ok(edge.includes('...(policy.service ? [policy.service] : [])'));
   // A service existing must never mean refusing to answer.
   assert.ok(edge.includes('A service existing NEVER means refusing to answer'));
 });

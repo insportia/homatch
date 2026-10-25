@@ -151,18 +151,20 @@ export const COMPONENTS = {
     suites: ['mobile:discovery', 'mobile:routes'],
   },
   PWA_PUSH: {
-    paths: [/^public\/(sw|service-worker|manifest)[^/]*$/, /^src\/serviceWorker\//, /^src\/lib\/(pwa|push)\.ts$/, /^src\/lib\/notifications\//, /^src\/(components\/notifications|pages\/NotificationsPage)/, fn('push-send', 'active-search-notify')],
+    paths: [/^public\/(sw|service-worker|manifest)[^/]*$/, /^src\/serviceWorker\//, /^src\/lib\/(pwa|push)\.ts$/, /^src\/lib\/notifications\//, /^src\/(components\/notifications|pages\/NotificationsPage)/, fn('push-send', 'active-search-notify'),
+      // Finished-job notifications (UX round 2026-10-25): the push copy generator and the copy.
+      /^scripts\/sw-push-copy\.mjs$/, /^scripts\/ux-navnotify-i18n-(data|apply)\.mjs$/],
     suites: ['push', 'a11y', 'mobile:shell'],
     proofs: ['push: push-send PROVEN_EXACT; a real subscription receives a test notification'],
   },
   VERIFY: {
-    paths: [/^src\/pages\/(Verify|ContractResultPage|VerificationCasePage|ContractsHistoryPage|ContractsPage)/, /^src\/(verify|components\/verify|components\/contracts|components\/research)\//, /^src\/services\/(verifyResult|verifyDocumentFile|verifyReportPrefetch)\.ts$/, fn('research-agent', 'verify-synthesis', 'verify-queue', 'verify-scaling', 'verification-handoff', 'browserbase-handoff', 'revalidate-evidence', 'homatch-research')],
+    paths: [/^src\/pages\/(Verify|ContractResultPage|VerificationCasePage|ContractsHistoryPage|ContractsPage)/, /^src\/(verify|components\/verify|components\/contracts|components\/research|contracts)\//, /^src\/services\/(verifyResult|verifyDocumentFile|verifyReportPrefetch)\.ts$/, fn('research-agent', 'verify-synthesis', 'verify-queue', 'verify-scaling', 'verification-handoff', 'browserbase-handoff', 'revalidate-evidence', 'homatch-research')],
     suites: ['mobile:verify', 'mobile:routes'],
   },
-  MORTGAGE: { paths: [/^src\/(pages\/MortgagePage|components\/mortgage|mortgage)/], suites: ['mobile:mortgage', 'mobile:routes', 'mobile:admin-mortgage'] },
+  MORTGAGE: { paths: [/^src\/(pages\/Mortgage(Page|TermsPage|TermPage)|components\/mortgage|mortgage)/, /^src\/services\/mortgageFxRates\.ts$/, /^scripts\/ux-mortgage-i18n/, fn('mortgage-fx-rates')], suites: ['mobile:mortgage', 'mobile:routes', 'mobile:admin-mortgage'] },
   /* For Expats and My Georgia by HOMI (onboarding, dashboard, guide hub). */
   EXPATS: { paths: [/^src\/(pages\/(ForExpatsPage|Expat|MyGeorgia)|components\/expats|expats|myGeorgia)/, /^src\/services\/myGeorgia\.ts$/,
-    /^scripts\/expat-content\//, /^scripts\/homi-mygeorgia-i18n-data\.mjs$/, /^tests\/mobile\/myGeorgia\.test\.mjs$/], suites: ['mobile:expats'] },
+    /^scripts\/expat-content\//, /^scripts\/homi-mygeorgia-i18n-data\.mjs$/, /^scripts\/ux-expats-i18n-(data|apply)\.mjs$/, /^tests\/mobile\/myGeorgia\.test\.mjs$/], suites: ['mobile:expats'] },
   // PUBLISH TO PORTALS: the standalone listing-publishing workspace (/publishing),
   // its edge function and its publishing_* / publishing_engine_* objects.
   PUBLISHING: {
@@ -251,11 +253,15 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(site_|app_content|studio_)/, 'SITE_STUDIO'],
   [/^public\.(dt_|developer_|dev_)/, 'DEVELOPER'],
   [/^public\.(push_|notification)/, 'PWA_PUSH'],
+  // The finished-job notification outbox, its trigger function and drain RPCs (20261204103000).
+  [/^public\.(job_notification_|background_jobs_enqueue_notification$)/, 'PWA_PUSH'],
   [/^public\.(publishing_)/, 'PUBLISHING'],
   [/^public\.(broker)/, 'BROKER'],
   [/^public\.(mortgage)/, 'MORTGAGE'],
   [/^public\.(expat)/, 'EXPATS'],
   [/^public\.(research_|verify|verification|deal_room)/, 'VERIFY'],
+  // Contracts: revisions, owner-only deletion and the fixed price the entry page shows.
+  [/^public\.(contract_revisions|contract_document_delete$|contract_fixed_price$)/, 'VERIFY'],
   // homatch_refuse_spend_while_viewed: the BEFORE INSERT guard on credit_ledger / usage_reservations.
   [/^public\.(billing|credit|payment|wallet|cost_events|ledger|unlock|homatch_refuse_spend_while_viewed$)/, 'BILLING'],
   // Finance V2: tax profiles, commercial policies, the service registry and its admin ledger views/RPCs.
@@ -308,7 +314,9 @@ export const I18N_KEY_OWNERS = [
   [/^(pubw|publishing)_/, 'PUBLISHING'],
   [/^broker_/, 'BROKER'],
   [/^(verify|dr)_/, 'VERIFY'],
-  [/^(pwa|notif)_/, 'PWA_PUSH'],
+  // Contracts (entry, result, history) and the UX round's contracts copy.
+  [/^(ct|ux_ct)_/, 'VERIFY'],
+  [/^(pwa|notif|jobdone)_/, 'PWA_PUSH'],
   [/^auth_/, 'AUTH_SECURITY'],
   [/^admin_/, 'ADMIN'],
   // Admin → Finance (incl. Finance V2 per-service dashboards).

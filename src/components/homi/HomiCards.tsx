@@ -12,6 +12,9 @@ import {
   type HomiDeterministicIntent,
 } from '@/lib/homi/content';
 import { HOMI_CHECKLISTS, type HomiCardRef } from '@/lib/homi/cards';
+import { serviceOfIntent } from '@/lib/homi/serviceVisibility';
+import { SERVICE_ACTION_SERVICE } from '@/lib/ai/serviceActions';
+import { useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
 /*
  * HOMI CARDS — the parts of a conversation you click instead of type.
@@ -37,11 +40,18 @@ function numberOrNull(raw: string): number | null {
 
 export function HomiStartCard({ onChip, disabled }: { onChip: HomiChipHandler; disabled?: boolean }) {
   const { lang } = useLanguage();
+  /* A service Admin has hidden is not offered as a starting direction. */
+  const { services } = useServiceControls();
+  const options = HOMI_START_OPTIONS.filter((o) => {
+    const id = serviceOfIntent(o.intent);
+    const key = id ? SERVICE_ACTION_SERVICE[id] : undefined;
+    return !key || services[key as ServiceKey]?.frontend !== false;
+  });
   return (
     <div className={CARD} data-homi-card="START">
       <p className="mb-3 text-sm font-semibold text-foreground">{pick(HOMI_START_TITLE, lang)}</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {HOMI_START_OPTIONS.map((o) => {
+        {options.map((o) => {
           const label = pick(o.label, lang);
           return (
             <button

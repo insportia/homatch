@@ -10,7 +10,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Search } from 'lucide-react';
+import { ChevronLeft, History, Search } from 'lucide-react';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,15 +47,24 @@ export default function ContractsHistoryPage() {
   return (
     <AppLayout noPadding>
       <div className="hm-invest hm-invest-canvas min-h-[calc(100vh-4rem)]">
-        <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6 pb-24 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8">
           <Button variant="ghost" size="sm" className="-ms-2" onClick={() => navigate('/contracts')}>
-            <ChevronLeft className="me-1.5 h-4 w-4" aria-hidden="true" />
+            <ChevronLeft className="me-1.5 h-4 w-4 rtl:rotate-180" aria-hidden="true" />
             {t('ct_back')}
           </Button>
 
-          <h1 className="min-w-0 break-words text-xl font-semibold sm:text-2xl">
-            {t('ct_history_title')}
-          </h1>
+          <header className="relative overflow-hidden rounded-2xl bg-[#0C1119] px-5 py-6 text-white shadow-hover sm:px-7">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_90%_at_100%_0%,hsl(38_92%_56%/0.18),transparent_60%)]" aria-hidden="true" />
+            <div className="relative flex min-w-0 items-center gap-2.5">
+              <History className="h-5 w-5 shrink-0 text-[hsl(38_92%_60%)] sm:h-6 sm:w-6" aria-hidden="true" />
+              <h1 className="min-w-0 break-words font-display text-xl font-bold sm:text-3xl">
+                {t('ct_history_title')}
+              </h1>
+            </div>
+            <p className="relative mt-2 min-w-0 break-words text-[15px] leading-relaxed text-white/80">
+              {items ? t('ux_ct_history_sub', { n: items.length }) : ' '}
+            </p>
+          </header>
 
           <div className="relative">
             <Search
@@ -75,6 +84,7 @@ export default function ContractsHistoryPage() {
             items={filtered}
             emptyTitle={q.trim() ? t('ct_history_no_match') : t('ct_empty_title')}
             emptyHint={q.trim() ? t('ct_history_no_match_hint') : t('ct_empty_hint')}
+            onDeleted={(id) => setItems((cur) => (cur ? cur.filter((c) => c.id !== id) : cur))}
           />
 
           <RetentionPanel product="CONTRACT_DOCUMENT" />

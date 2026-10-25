@@ -20,6 +20,7 @@ import { goToPreviousScreen } from '@/lib/backNavigation';
 import { MatchBadge } from '@/components/matching/internal/InternalMatchesSection';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
+import { followLatest } from '@/lib/scrollWithin';
 import { scoreDemoMatch, type DemoMatchPayload } from '@/matching/internalMatch';
 import {
   deliveryState,
@@ -102,7 +103,8 @@ function DemoConversationContent() {
   }, [propertyId, conversationId]);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [messages]);
+  /* The thread's own box only, never the page around it. */
+  useEffect(() => { followLatest(bottomRef.current); }, [messages]);
 
   const scored = useMemo(() => (context ? scoreDemoMatch(context) : null), [context]);
   /* The conversation is opened from the buyer profile page: one step back returns

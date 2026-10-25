@@ -312,7 +312,9 @@ test('the Georgian mortgage page says what it means, on a phone', opts, async (t
       if (panels !== 1) note('ka/390', `${panels} consultant panels on the page`);
       /* Nothing may be sent by a press: that would spend a credit on a
          click the person did not make. */
-      const bubbles = await page.$$eval('#consultant [class*="rounded-2xl"]', (els) => els.length);
+      /* Messages are counted by their own marker: the suggested-reply chips
+         under the composer are rounded too, and are not a conversation. */
+      const bubbles = await page.$$eval('#consultant [data-consultant-message]', (els) => els.length);
       if (bubbles > 0) note('ka/390', 'pressing Ask Homatch started a conversation on its own');
     }
     await ctx.close();

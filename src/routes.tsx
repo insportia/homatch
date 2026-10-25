@@ -57,6 +57,9 @@ const DeveloperProfilePage = lazyRoute(() => import('./pages/DeveloperProfilePag
 const AIPage = lazyRoute(() => import('./pages/AIPage'));
 const VerifyPage = lazyRoute(() => import('./pages/VerifyPage'));
 const MortgagePage = lazyRoute(withFeatureStrings(() => import('./pages/MortgagePage')));
+/* The mortgage glossary: an index and one page per term. Public. */
+const MortgageTermsPage = lazyRoute(withFeatureStrings(() => import('./pages/MortgageTermsPage')));
+const MortgageTermPage = lazyRoute(withFeatureStrings(() => import('./pages/MortgageTermPage')));
 const ForExpatsPage = lazyRoute(withFeatureStrings(() => import('./pages/ForExpatsPage')));
 /* HOMATCH Design Studio. Lazy, and the workspace separately from the
    launcher, because only the workspace pulls three.js. */
@@ -327,6 +330,8 @@ const routeTable: RouteConfig[] = [
   // / mortgage_offers RLS (auth_user_id()-based, see the migration), not by
   // gating this route.
   { name: 'Mortgage',          path: '/mortgage',                 element: <MortgagePage />,      public: true },
+  { name: 'Mortgage terms',    path: '/mortgage/terms',           element: <MortgageTermsPage />, public: true },
+  { name: 'Mortgage term',     path: '/mortgage/terms/:slug',     element: <MortgageTermPage />,  public: true },
   // Public for the same reason /mortgage is: every figure on the page is
   // computed in the browser by src/investment/calculations, so a signed-out
   // visitor gets the complete analytical product. The Consultant and the
@@ -375,6 +380,11 @@ const routeTable: RouteConfig[] = [
    * Only the plan requires an account, and it requires one because it
    * stores somebody's citizenship and family — not to gate the value.
    *
+   * Since 2026-10-25 For Expats opens My Georgia (owner): /for-expats/georgia
+   * sends a visitor without a finished profile to the welcome, and an owner
+   * with one to their dashboard. /my-georgia is public: its guide and places
+   * tabs are for everyone, its personal sections render only for the owner.
+   *
    * The topic route is LAST of the three so that /for-expats/georgia/plan
    * could never be swallowed by :slug. It cannot today — the plan lives at
    * /for-expats/plan — and the ordering keeps it true if that ever moves.
@@ -383,7 +393,7 @@ const routeTable: RouteConfig[] = [
   { name: 'For Expats',        path: '/for-expats/georgia',       element: <ForExpatsPage />,     public: true },
   /* The plan now lives in My Georgia by HOMI (2026-10-24): one place for the profile, the plan and the guides. */
   { name: 'My Expat Plan',     path: '/for-expats/plan',          element: <Navigate to="/my-georgia" replace />, public: true, visible: false },
-  { name: 'My Georgia',        path: '/my-georgia',               element: <MyGeorgiaPage />,     public: false },
+  { name: 'My Georgia',        path: '/my-georgia',               element: <MyGeorgiaPage />,     public: true },
   { name: 'My Georgia start',  path: '/my-georgia/start',         element: <MyGeorgiaStartPage />, public: true },
   { name: 'For Expats topic',  path: '/for-expats/georgia/:slug', element: <ExpatTopicPage />,    public: true },
   /*

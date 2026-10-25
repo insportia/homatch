@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { AppLayout } from '@/components/layouts/AppLayout';
+import { followLatest } from '@/lib/scrollWithin';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -12,18 +13,25 @@ import { supabase } from '@/db/supabase';
 import { Streamdown } from 'streamdown';
 import {
   Bot, Send, StopCircle, PlusCircle, MessageSquare, RotateCcw,
-  ChevronRight,
+  ChevronRight, ArrowLeft,
   ExternalLink, Star, AlertTriangle,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { SuggestedReplies } from '@/components/ai/SuggestedReplies';
-import { ServiceActions, WebContextLine } from '@/components/ai/ServiceActions';
+import { WebContextLine } from '@/components/ai/ServiceActions';
+import { HomiAnswerBlocks } from '@/components/homi/HomiAnswerBlocks';
+import { HomiPitchCard, HomiServiceCards, type HomiServiceContext } from '@/components/homi/HomiServiceCards';
+import { consumeHomiOrigin, queueHomiRestore } from '@/components/homi/useHomiReturn';
+import { sanitizeReturnTarget, type HomiReturnTarget } from '@/lib/homi/returnTarget';
+import type { HomiMessageMeta } from '@/lib/homi/messageMeta';
 import { HomiAvatar } from '@/components/homi/HomiAvatar';
 import type { HomiState } from '@/components/homi/homiStates';
 import { HomiHomeStage } from '@/components/homi/HomiHomeStage';
 import { HomiCards, HomiStartCard, type HomiChipHandler } from '@/components/homi/HomiCards';
 import { HOMI_INTRO, pick } from '@/lib/homi/content';
+import { VoiceMessageButton } from '@/components/ai/VoiceMessageButton';
+import { VoiceMessageBubble, type VoiceNote } from '@/components/ai/VoiceMessageBubble';
 
 /*
  * The composer sits at the bottom of the window, which on a modern phone
@@ -167,8 +175,22 @@ function EmptyState({ onChip }: { onChip: HomiChipHandler }) {
   );
 }
 
+/*
+ * HOMI'S PROSE, TYPESET. Streamdown renders the Markdown; these rules give it
+ * a real hierarchy inside the bubble (headings, lists, emphasis, spacing)
+ * so an answer reads as a designed card rather than a block of text.
+ */
+const ANSWER_PROSE = [
+  '[&_h1]:mb-1.5 [&_h1]:mt-4 [&_h1]:text-lg [&_h1]:font-semibold [&_h1:first-child]:mt-0',
+  '[&_h2]:mb-1.5 [&_h2]:mt-4 [&_h2]:text-[1.05rem] [&_h2]:font-semibold [&_h2:first-child]:mt-0',
+  '[&_h3]:mb-1 [&_h3]:mt-3.5 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-foreground [&_h3:first-child]:mt-0',
+  '[&_p+p]:mt-2.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-1 [&_li]:leading-relaxed',
+  '[&_strong]:font-semibold [&_strong]:text-foreground',
+  '[&_a]:font-medium [&_a]:text-[hsl(var(--gold-ink))] [&_a]:underline-offset-2 hover:[&_a]:underline',
+].join(' ');
+
 function MessageBubble({
-  role, content, streaming, onNavigate, homiState,
+  role, content, streaming, onNavigate, homiState, meta, serviceContext,
 }: {
   role: string;
   content: string;
@@ -176,6 +198,9 @@ function MessageBubble({
   onNavigate?: (p: string) => void;
   /** While this answer is being written, HOMI's live state. */
   homiState?: HomiState;
+  /** The answer's designed blocks, service cards and service note. */
+  meta?: HomiMessageMeta;
+  serviceContext?: HomiServiceContext;
 }) {
   const isUser = role === 'user';
 
@@ -218,13 +243,25 @@ function MessageBubble({
           {isUser ? (
             <span>{content}</span>
           ) : (
-            <Streamdown parseIncompleteMarkdown isAnimating={streaming}>
-              {displayContent}
-            </Streamdown>
+            <div className={ANSWER_PROSE}>
+              <Streamdown parseIncompleteMarkdown isAnimating={streaming}>
+                {displayContent}
+              </Streamdown>
+            </div>
+          )}
+          {!isUser && meta && meta.blocks.length > 0 && (
+            <HomiAnswerBlocks blocks={meta.blocks} className="mt-3.5" />
           )}
         </div>
         {researchReport && onNavigate && (
           <ResearchCard report={researchReport} onNavigate={onNavigate} />
+        )}
+        {/* The HOMATCH services this answer touched, as cards that open them. */}
+        {!isUser && meta && meta.services.length > 0 && (
+          <HomiServiceCards services={meta.services} context={serviceContext ?? {}} className="mt-2.5" />
+        )}
+        {!isUser && meta?.pitch && (
+          <HomiPitchCard pitch={meta.pitch} context={serviceContext ?? {}} className="mt-2.5" />
         )}
       </div>
     </div>
@@ -233,20 +270,50 @@ function MessageBubble({
 
 function AIPageInner() {
   const { session } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const location = useLocation();
   const navigate = useNavigate();
   const [input, setInput] = useState('');
+  /* Voice messages sent this session, by the text they became. */
+  const [voiceNotes, setVoiceNotes] = useState<Record<string, VoiceNote>>({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const didAutoSend = useRef(false);
+  const navigationType = useNavigationType();
+
+  /*
+   * THE WAY BACK (owner: "a back button that returns to EXACTLY the same page
+   * and place"). The target arrives with the handoff: either stated by the
+   * page in router state (`homiReturn`), or captured from the click that
+   * opened HOMI (components/homi/useHomiReturn.ts). It is then written into
+   * this history entry, so a reload keeps it. `entryIdx` is the history slot
+   * this chat was pushed into: while we are still in it, one step back IS the
+   * origin, with everything the browser kept for it.
+   */
+  const [returnTo] = useState<{ target: HomiReturnTarget; entryIdx: number | null } | null>(() => {
+    const state = location.state as { homiReturn?: unknown; homiReturnIdx?: unknown } | null;
+    const stated = sanitizeReturnTarget(state?.homiReturn);
+    if (stated) return { target: stated, entryIdx: typeof state?.homiReturnIdx === 'number' ? state.homiReturnIdx : null };
+    if (navigationType !== 'PUSH') return null;
+    const captured = consumeHomiOrigin();
+    if (!captured) return null;
+    const idx = (window.history.state as { idx?: unknown } | null)?.idx;
+    return { target: captured, entryIdx: typeof idx === 'number' ? idx : null };
+  });
+  const goBack = () => {
+    if (!returnTo) return;
+    queueHomiRestore(returnTo.target);
+    const idx = (window.history.state as { idx?: unknown } | null)?.idx;
+    if (returnTo.entryIdx !== null && returnTo.entryIdx > 0 && idx === returnTo.entryIdx) navigate(-1);
+    else navigate(returnTo.target.path);
+  };
 
   const {
     messages, streaming, streamContent, conversations, activeConvId,
     sendMessage, cancelStream, resetChat, loadConversations,
     loadConversation, newConversation, pageContext, setPageContext,
-    anonLimitReached, suggestedReplies, suggestedActions, lastWebChecked, lastSources, insufficientCredits,
+    anonLimitReached, suggestedReplies, lastWebChecked, lastSources, insufficientCredits,
     lastCards, homiState, noteTyping,
   } = useAIChat();
 
@@ -273,6 +340,18 @@ function AIPageInner() {
     } else if (ctx?.prompt && !session) {
       // Not signed in — pre-fill input so user sees what they asked
       setInput(ctx.prompt);
+    }
+    /* Keep the way back in this history entry (a reload keeps it), and drop
+       the one-shot prompt so a reload does not ask the same question again. */
+    if (returnTo || (ctx?.prompt && session)) {
+      navigate(`${location.pathname}${location.search}`, {
+        replace: true,
+        state: {
+          ...(ctx?.context ? { context: ctx.context } : {}),
+          ...(ctx?.prompt && !session ? { prompt: ctx.prompt } : {}),
+          ...(returnTo ? { homiReturn: returnTo.target, homiReturnIdx: returnTo.entryIdx } : {}),
+        },
+      });
     }
     if (session) loadConversations();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -305,7 +384,8 @@ function AIPageInner() {
 
   useEffect(() => {
     if (!following) return;
-    bottomRef.current?.scrollIntoView({ behavior: streaming ? 'instant' : 'smooth' });
+    /* The transcript's own box: scrollIntoView also nudged the page on every token. */
+    followLatest(bottomRef.current, { smooth: !streaming });
   }, [messages, streamContent, following, streaming]);
 
   /*
@@ -437,7 +517,21 @@ function AIPageInner() {
             white name, and the REAL Beta status restyled as a gold-outline
             chip instead of a grey pill. Same structural grammar as Live
             Chat and Private Messages; the conversation reads on white. */}
-        <div className="flex shrink-0 items-center gap-3 bg-[#0C1119] px-4 py-3 text-white">
+        <div className="flex shrink-0 items-center gap-2.5 bg-[#0C1119] px-3 py-3 text-white sm:gap-3 sm:px-4">
+          {/* BACK TO WHERE THEY WERE: the page, the place on it, and whatever
+              that page keeps in its address. Only when HOMI was opened from
+              somewhere in the app. */}
+          {returnTo && (
+            <button
+              type="button"
+              onClick={goBack}
+              aria-label={t('homi_back_aria')}
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-[hsl(38_92%_56%)]/60 bg-white/[0.06] pe-3.5 ps-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]"
+            >
+              <ArrowLeft className="h-4 w-4 text-[hsl(38_92%_62%)] rtl:-scale-x-100" aria-hidden="true" />
+              {t('homi_back')}
+            </button>
+          )}
           <Button
             variant="ghost" size="sm"
             className="md:hidden h-8 w-8 p-0 text-white/75 hover:bg-white/10 hover:text-white"
@@ -472,8 +566,16 @@ function AIPageInner() {
             <EmptyState onChip={onChip} />
           ) : (
             <div className="max-w-2xl mx-auto space-y-4">
-              {messages.map(m => (
-                <MessageBubble key={m.id} role={m.role} content={m.content} onNavigate={navigate} />
+              {messages.map((m, i) => (m.role === 'user' && voiceNotes[m.content]
+                ? <VoiceMessageBubble key={m.id} note={voiceNotes[m.content]} transcript={m.content} />
+                : <MessageBubble
+                  key={m.id} role={m.role} content={m.content} onNavigate={navigate} meta={m.meta}
+                  serviceContext={m.role === 'assistant' ? {
+                    /* The question this answer was about: Find Property starts from it. */
+                    findQuery: messages[i - 1]?.role === 'user' ? messages[i - 1].content : null,
+                    propertyId: typeof pageContext.data?.propertyId === 'string' ? pageContext.data.propertyId : null,
+                  } : undefined}
+                />
               ))}
               {streaming && streamContent && (
                 <MessageBubble role="assistant" content={streamContent} streaming onNavigate={navigate} homiState={homiState} />
@@ -512,20 +614,16 @@ function AIPageInner() {
               {!streaming && lastCards.length > 0 && (
                 <div className="ps-10"><HomiCards cards={lastCards} onChip={onChip} /></div>
               )}
-              {!streaming && suggestedReplies.length > 0 && (
+              {/* What the person would probably say next, after EVERY answer
+                  (the server always sends a set). Only the latest answer's,
+                  never a previous turn's: the hook clears them the moment a
+                  turn starts or another conversation opens. Service cards
+                  now live inside each answer (MessageBubble). */}
+              {!streaming && suggestedReplies.length > 0 && messages[messages.length - 1]?.role === 'assistant' && (
                 <SuggestedReplies
                   replies={suggestedReplies}
                   onSelect={(text, reply) => { void sendMessage(text, reply.intent ? { intent: reply.intent } : {}); }}
-                  className="ps-10"
-                />
-              )}
-              {/* TYPE B, visually the opposite of a reply: solid navy,
-                  gold arrow, navigates to a real product, spends nothing. */}
-              {!streaming && (
-                <ServiceActions
-                  actions={suggestedActions}
-                  className="ps-10"
-                  context={{ propertyId: typeof pageContext.data?.propertyId === 'string' ? pageContext.data.propertyId : null }}
+                  className="ps-11"
                 />
               )}
               <div ref={bottomRef} />
@@ -582,7 +680,7 @@ function AIPageInner() {
             white conversation is framed by structure top and bottom and
             the crisp white field is unmissable inside it. */}
         <div className={`shrink-0 bg-[#0C1119] px-5 pt-3 sm:px-4 ${session ? NAV_CLEARANCE : BOTTOM_INSET}`}>
-          <div className="mx-auto flex max-w-2xl items-end gap-2">
+          <div className="relative mx-auto flex max-w-2xl items-end gap-2">
             {/* HOMI in the corner, standing on the edge of the conversation:
                 one live 3D HOMI that reacts to the whole exchange (listening,
                 the mood of what was written, writing, the answer's mood). */}
@@ -622,7 +720,19 @@ function AIPageInner() {
                 + 'focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] disabled:opacity-60'
               }
             />
-            {streaming ? (
+            {/* ONE ROUND BUTTON BESIDE THE FIELD, like any messenger: the mic
+                while the field is empty, send once there is text. Two buttons
+                side by side narrowed the field until the placeholder wrapped
+                to three lines at 320px. Voice needs a wallet, so an account. */}
+            {session && !streaming && !input.trim() ? (
+              <VoiceMessageButton
+                locale={lang}
+                onTranscript={(text, note) => {
+                  setVoiceNotes(prev => ({ ...prev, [text.trim()]: note }));
+                  void sendMessage(text);
+                }}
+              />
+            ) : streaming ? (
               <Button
                 variant="ghost" onClick={cancelStream}
                 aria-label={t('ai_stop')}
@@ -644,9 +754,8 @@ function AIPageInner() {
               </Button>
             )}
           </div>
-          <p className="mt-2 text-center text-[13px] text-white/60">
-            {t('ai_disclaimer')}
-          </p>
+          {/* No footer disclaimer under the composer (owner, 2026-10-25): on a
+              phone it ate a line of the conversation for no new information. */}
         </div>
       </div>
     </div>

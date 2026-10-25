@@ -47,6 +47,7 @@ export function EarlyRepaymentView({
         <div className="space-y-6">
           <NumberField
             field="extraPaymentAmount"
+            persist
             labelKey="mortgage_label_extra_amount"
             hintKey="mortgage_label_extra_amount_hint"
             kind="money"
@@ -69,6 +70,7 @@ export function EarlyRepaymentView({
           />
           <NumberField
             field="recurringMonthlyExtra"
+            persist
             labelKey="mortgage_label_recurring_extra"
             hintKey="mortgage_label_recurring_extra_hint"
             kind="money"
@@ -79,6 +81,7 @@ export function EarlyRepaymentView({
           />
           <NumberField
             field="knownEarlyRepaymentFeeFlat"
+            persist
             labelKey="mortgage_label_early_fee"
             hintKey="mortgage_label_early_fee_hint"
             kind="money"
@@ -101,7 +104,7 @@ export function EarlyRepaymentView({
               decode four controls to remember the scenario they built. */}
           {draft.extraPaymentAmount !== null && draft.extraPaymentMonth !== null ? (
             <div className="mb-4 max-w-[64ch] rounded-xl border border-border bg-card px-4 py-3.5 shadow-card">
-              <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <p className="text-2xs font-semibold text-muted-foreground">
                 {t('mortgage_early_choice_title')}
               </p>
               <p className="mt-1.5 text-[15px] leading-relaxed text-foreground">
@@ -137,7 +140,7 @@ export function EarlyRepaymentView({
               declared "better"; the numbers carry the trade-off. */}
           <div className="mt-5 grid gap-4 lg:grid-cols-3">
             <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-              <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <p className="text-2xs font-semibold text-muted-foreground">
                 {t('mortgage_early_before_title')}
               </p>
               <div className="mt-2">
@@ -150,7 +153,7 @@ export function EarlyRepaymentView({
             {result.keepTerm ? (
               <div className="relative overflow-hidden rounded-xl border border-[hsl(var(--gold-border))] bg-card p-4 shadow-hover">
                 <span className="absolute inset-y-0 start-0 w-[3px] bg-gold" aria-hidden="true" />
-                <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">
+                <p className="text-2xs font-semibold text-[hsl(var(--gold-ink))]">
                   {t('mortgage_early_scenario_a_title')}
                 </p>
                 <div className="mt-2">
@@ -171,7 +174,7 @@ export function EarlyRepaymentView({
             ) : null}
             <div className="relative overflow-hidden rounded-xl border border-[hsl(var(--gold-border))] bg-card p-4 shadow-hover">
               <span className="absolute inset-y-0 start-0 w-[3px] bg-gold" aria-hidden="true" />
-              <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">
+              <p className="text-2xs font-semibold text-[hsl(var(--gold-ink))]">
                 {t('mortgage_early_scenario_b_title')}
               </p>
               <div className="mt-2">
@@ -260,6 +263,7 @@ export function RefinancingView({
           <h3 className="font-display text-base font-semibold text-foreground">{t('mortgage_refi_current')}</h3>
           <NumberField
             field="ownRemainingPrincipal"
+            persist
             labelKey="mortgage_label_own_principal"
             kind="money"
             currency={currency}
@@ -314,6 +318,7 @@ export function RefinancingView({
           />
           <NumberField
             field="refinancingFeesFlat"
+            persist
             labelKey="mortgage_label_refi_fees"
             hintKey="mortgage_label_refi_fees_hint"
             kind="money"

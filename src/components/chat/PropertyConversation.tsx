@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { intlLocaleFor } from '@/components/workspace/primitives';
 import { cn } from '@/lib/utils';
+import { followLatest } from '@/lib/scrollWithin';
 import { toast } from 'sonner';
 import {
   mergeMessage, newClientMessageId, shouldBroadcastTyping, typingActive, TYPING_TTL_MS, isChatLanguage,
@@ -123,9 +124,9 @@ export function PropertyConversation({ conv, myId, onBack, onShareContact, onRep
     void typingChannel.current.send({ type: 'broadcast', event: 'typing', payload: { userId: myId } });
   };
 
+  /* The thread's own box only; scrollIntoView also moved the page around it. */
   useEffect(() => {
-    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    bottomRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'end' });
+    followLatest(bottomRef.current, { smooth: true });
   }, [messages.length, theirTypingAt]);
 
   const canSend = ctx ? ctx.canSend : conv.status !== 'BLOCKED';

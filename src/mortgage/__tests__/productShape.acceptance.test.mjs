@@ -382,13 +382,22 @@ test('no mortgage component formats money in a fixed currency', () => {
   }
 });
 
-test('nothing in the mortgage product converts between currencies', () => {
-  // The calculation never needs a rate, and inventing one would put an
-  // unquoted number into somebody's repayment total.
+test('currencies are converted in one place, with the official rate, never inside the engines', () => {
+  // The premise changed on the owner's instruction (2026-10-25): a person may
+  // type an amount in ANY currency and it is turned into the loan currency.
+  // What must still hold: the engines never see a rate (a scenario is still
+  // calculated in one currency), conversion lives in src/mortgage/fx.ts with
+  // the National Bank's published rate, and the only callers are the entry
+  // components. A rate nobody quoted still has no way in.
+  const CONVERTERS = new Set(['src/mortgage/fx.ts', 'src/components/mortgage/fxRates.tsx', 'src/components/mortgage/MoneyField.tsx']);
   for (const file of [...UI_FILES, ...walk('src/mortgage')]) {
-    const src = read(file).replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '');
-    assert.ok(!/exchangeRate|fxRate|convertCurrency/i.test(src), `${file} looks like it converts currency`);
+    if (CONVERTERS.has(file)) continue;
+    const src = read(file).replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '').replace(/^import .*$/gm, '');
+    assert.ok(!/exchangeRate|fxRate|convertCurrency|convertAmount|gelPerUnit/i.test(src), `${file} converts currency outside the entry layer`);
   }
+  for (const file of ENGINE_FILES) assert.ok(!/from '\.\.\/fx/.test(read(file)), `${file} imports the rates`);
+  const fx = read('src/mortgage/fx.ts');
+  assert.ok(fx.includes('if (!a || !b) return null;'), 'a missing rate converts to null, never to a number');
 });
 
 test('a signed-out visitor can actually reach the consultant', () => {

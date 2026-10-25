@@ -10,12 +10,14 @@
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import { ChipField, ChoiceField, SourceBadge, TextField } from '@/components/workspace/controls';
+import { ChipField, SourceBadge, TextField } from '@/components/workspace/controls';
 import type { ValueSource } from '@/components/workspace/sources';
 import { FigureValue, type FigureKind } from '@/components/workspace/primitives';
 import { mortgagePresetsFor, type PresetContext } from '@/mortgage/presets';
 import type { ValueOrigin } from '@/mortgage/types';
 import { LabelTerm } from './TermInfo';
+import { MoneyField } from './MoneyField';
+import { OptionCards } from './OptionCards';
 
 /**
  * A plain number as the shared figure shape.
@@ -54,10 +56,13 @@ export function NumberField({
   onChange,
   context,
   required,
+  persist,
   /** Rendered under the control — a derived figure, a warning, anything. */
   children,
 }: {
   field: string;
+  /** `field` is a scenario field: a money amount typed in another currency is saved with the scenario. */
+  persist?: boolean;
   labelKey: string;
   hintKey?: string;
   kind: FigureKind | 'moneyPerSqm';
@@ -84,14 +89,29 @@ export function NumberField({
       {hintKey ? (
         <p className="mb-2.5 max-w-[60ch] text-2xs leading-relaxed text-muted-foreground">{t(hintKey)}</p>
       ) : null}
-      <ChipField
-        presets={presets}
-        value={value ?? undefined}
-        onChange={(next) => onChange(next)}
-        kind={kind as never}
-        currency={currency}
-        labelledBy={labelId}
-      />
+      {kind === 'money' ? (
+        /* Any currency in: the chips stay for the loan currency, another
+           currency gets a plain amount box and the official rate under it. */
+        <MoneyField persistKey={persist ? field : undefined} loanCurrency={currency} value={value} onChange={onChange} labelledBy={labelId}>
+          <ChipField
+            presets={presets}
+            value={value ?? undefined}
+            onChange={(next) => onChange(next)}
+            kind={kind as never}
+            currency={currency}
+            labelledBy={labelId}
+          />
+        </MoneyField>
+      ) : (
+        <ChipField
+          presets={presets}
+          value={value ?? undefined}
+          onChange={(next) => onChange(next)}
+          kind={kind as never}
+          currency={currency}
+          labelledBy={labelId}
+        />
+      )}
       {children}
     </div>
   );
@@ -121,7 +141,7 @@ export function OptionField({
       {hintKey ? (
         <p className="mb-2.5 max-w-[60ch] text-2xs leading-relaxed text-muted-foreground">{t(hintKey)}</p>
       ) : null}
-      <ChoiceField options={options} value={value ?? undefined} onChange={onChange} labelledBy={labelId} />
+      <OptionCards options={options} value={value} onChange={onChange} labelledBy={labelId} />
     </div>
   );
 }

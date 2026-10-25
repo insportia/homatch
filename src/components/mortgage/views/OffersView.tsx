@@ -60,7 +60,7 @@ function OfferEditor({
   return (
     <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <span className="text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--gold-ink))]">
+        <span className="text-2xs font-semibold text-[hsl(var(--gold-ink))]">
           {t('mortgage_offer_n', { n: index + 1 })}
         </span>
         <button
@@ -414,7 +414,7 @@ export function OffersView({
               <caption className="sr-only">{t('mortgage_mod_compare_title')}</caption>
               <thead>
                 <tr>
-                  <th scope="col" className="py-2 text-start text-2xs uppercase tracking-wide text-muted-foreground">
+                  <th scope="col" className="py-2 text-start text-2xs text-muted-foreground">
                     {t('mortgage_offer_column')}
                   </th>
                   {comparison.rows.map((row, index) => (

@@ -94,6 +94,11 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, deepOffered =
         setSearch(null); setOpen(null); setCompare([]);
         if (location.pathname.endsWith('/new')) {
           const draft = readDraft();
+          /* Arriving from HOMI's Find Property card: the person's own words
+             start the description (router state, never the URL). Nothing is
+             submitted; they review and continue. */
+          const fromHomi = (location.state as { homiQuery?: unknown } | null)?.homiQuery;
+          if (!draft && typeof fromHomi === 'string' && fromHomi.trim()) setText(fromHomi.trim().slice(0, 500));
           if (draft) { setBrief(draft); setView('BUILD'); } else setView('INTRO');
         } else setView('MODE');
         return;

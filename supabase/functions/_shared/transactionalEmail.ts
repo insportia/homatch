@@ -15,12 +15,20 @@
 
 import { renderNotificationEmail, sendNotificationEmail } from './notifyEmail.ts';
 
-export type EmailEvent = 'VERIFY_DONE' | 'CONTRACT_DONE' | 'PAYMENT_OK' | 'PAYMENT_FAILED' | 'SERVICE_FAILED';
+export type EmailEvent = 'VERIFY_DONE' | 'CONTRACT_DONE' | 'SEARCH_DONE' | 'PAYMENT_OK' | 'PAYMENT_FAILED' | 'SERVICE_FAILED';
 type Lang = 'ka' | 'en' | 'ru' | 'tr' | 'ar' | 'he';
 const LANGS: Lang[] = ['ka', 'en', 'ru', 'tr', 'ar', 'he'];
 
-/** Which notifications earn an email. Everything else stays in-app and push. */
-export function emailEventFor(type: string): EmailEvent | null {
+/**
+ * Which notifications earn an email. Everything else stays in-app and push.
+ *
+ * `kind` (metadata.kind) is read where one type means several things: a Find
+ * Buyers / Find Tenants search the person ran is SEARCH_COMPLETE with kind
+ * FIND_CLIENTS_DONE and earns an email; a saved search noticing a new listing
+ * is SEARCH_COMPLETE too and does not.
+ */
+export function emailEventFor(type: string, kind?: string | null): EmailEvent | null {
+  if (type === 'SEARCH_COMPLETE') return kind === 'FIND_CLIENTS_DONE' ? 'SEARCH_DONE' : null;
   switch (type) {
     case 'VERIFY_COMPLETE': return 'VERIFY_DONE';
     case 'DOCUMENT_ANALYZED': return 'CONTRACT_DONE';
@@ -52,6 +60,15 @@ const COPY: Record<EmailEvent, Copy[]> = {
     { title: 'Sözleşme analizi tamamlandı', body: 'Belgen hazır.', cta: 'Belgeyi aç', next: 'Hangi maddelerin dikkat gerektirdiğini ve hangi değişiklikleri önerebileceğini gör.' },
     { title: 'اكتمل تحليل العقد', body: 'مستندك جاهز.', cta: 'فتح المستند', next: 'اطلع على البنود التي تحتاج إلى انتباه والتغييرات التي يمكنك اقتراحها.' },
     { title: 'ניתוח החוזה הושלם', body: 'המסמך שלך מוכן.', cta: 'פתח את המסמך', next: 'ראה אילו סעיפים דורשים תשומת לב ואילו שינויים אפשר להציע.' },
+  ],
+  /* Never "confirmed buyer": the results are people who may be interested. */
+  SEARCH_DONE: [
+    { title: 'დაინტერესებული ადამიანების ძებნა დასრულდა', body: 'შენი ქონებისთვის ძებნა დასრულდა და შედეგები უკვე მზად არის.', cta: 'შედეგების ნახვა', next: 'გახსენი შედეგები, ნახე ვინ შეიძლება დაინტერესდეს შენი ქონებით და დაუკავშირდი მათ.' },
+    { title: 'Your search for interested people is complete', body: 'The search for your property has finished and the results are ready.', cta: 'View the results', next: 'Open the results to see who may be interested in your property and get in touch.' },
+    { title: 'Поиск заинтересованных людей завершён', body: 'Поиск по твоему объекту завершён, результаты готовы.', cta: 'Посмотреть результаты', next: 'Открой результаты, чтобы увидеть, кого может заинтересовать твой объект, и свяжись с ними.' },
+    { title: 'İlgilenebilecek kişi araması tamamlandı', body: 'Mülkün için arama bitti ve sonuçlar hazır.', cta: 'Sonuçları gör', next: 'Mülkünle kimlerin ilgilenebileceğini görmek ve onlarla iletişime geçmek için sonuçları aç.' },
+    { title: 'اكتمل البحث عن الأشخاص المهتمين', body: 'انتهى البحث الخاص بعقارك والنتائج جاهزة.', cta: 'عرض النتائج', next: 'افتح النتائج لترى من قد يهتم بعقارك وتواصل معهم.' },
+    { title: 'החיפוש אחר אנשים מתעניינים הושלם', body: 'החיפוש עבור הנכס שלך הסתיים והתוצאות מוכנות.', cta: 'צפה בתוצאות', next: 'פתח את התוצאות כדי לראות מי עשוי להתעניין בנכס שלך וליצור איתם קשר.' },
   ],
   PAYMENT_OK: [
     { title: 'გადახდა წარმატებით შესრულდა', body: 'შენი კრედიტების ბალანსი განახლდა.', cta: 'გადახდის დეტალები', next: 'ბალანსი და გადახდების ისტორია ნებისმიერ დროს შეგიძლია ნახო.' },
@@ -125,9 +142,9 @@ export function buildTransactionalEmail(event: EmailEvent, langRaw: string | nul
 type Sb = any;
 
 /** After a notification row exists: email it if the event earns one and the person allows it. Never throws. */
-export async function maybeEmailNotification(sb: Sb, input: { notificationId: string; userId: string; type: string; deepLink?: string | null }): Promise<string> {
+export async function maybeEmailNotification(sb: Sb, input: { notificationId: string; userId: string; type: string; kind?: string | null; deepLink?: string | null }): Promise<string> {
   try {
-    const event = emailEventFor(input.type);
+    const event = emailEventFor(input.type, input.kind);
     if (!event || typeof sb?.from !== 'function') return 'NOT_EMAILED';
     const [{ data: user }, { data: prefs }] = await Promise.all([
       sb.from('users').select('preferred_language').eq('id', input.userId).maybeSingle(),

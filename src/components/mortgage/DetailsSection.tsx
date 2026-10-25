@@ -83,7 +83,7 @@ export function DetailsSection({
         <div className="hm-customer-panel p-5 sm:p-6">
           <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3">
             <div>
-              <p className="text-2xs uppercase tracking-[0.12em] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 {t('mortgage_details_nominal')}
               </p>
               <p className="mt-1 font-display text-2xl font-semibold tabular-nums text-foreground">
@@ -91,7 +91,7 @@ export function DetailsSection({
               </p>
             </div>
             <div>
-              <p className="text-2xs uppercase tracking-[0.12em] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 {t('mortgage_details_effective')}
               </p>
               <p className="mt-1 font-display text-2xl font-semibold tabular-nums text-[hsl(var(--gold-ink))]">

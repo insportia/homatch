@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Sparkles, Send } from 'lucide-react';
+import { followLatest } from '@/lib/scrollWithin';
 
 export interface AskMessage {
   id: string;
@@ -39,8 +40,12 @@ export function AskHomatchPanel({
   const [draft, setDraft] = useState('');
   const endRef = useRef<HTMLDivElement | null>(null);
 
+  /* Not on arrival (it pulled the page down to an empty panel), and on a new
+     answer only as far as needed to show it. */
+  const arrived = useRef(false);
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    if (!arrived.current) { arrived.current = true; return; }
+    followLatest(endRef.current, { smooth: true, allowPage: true });
   }, [messages.length, busy]);
 
   const submit = () => {

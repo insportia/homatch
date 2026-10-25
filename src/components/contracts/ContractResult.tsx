@@ -95,24 +95,52 @@ const ATTENTION_KEY: Record<string, string> = {
 export function ContractResult({
   analysis,
   comparison,
+  part = 'all',
 }: {
   analysis: DocumentAnalysis;
   /** Empty when this contract was not uploaded against a verified property. */
   comparison?: ComparisonRow[];
+  /**
+   * The result page shows the summary first, then the proposed edits
+   * (ContractReview), then the rest. 'details' leaves out the flagged clauses
+   * and missing protections that carry a proposal: they are already on screen
+   * as edits, with exactly what changes, and repeating them is noise.
+   */
+  part?: 'all' | 'summary' | 'details';
 }) {
-  const { t } = useLanguage();
+  const showSummary = part !== 'details';
+  const showDetails = part !== 'summary';
+  const skipReviewed = part === 'details';
 
   // Only clauses the analyser actually flagged. A list containing every
   // ordinary clause marked NORMAL is a readout again, and it buries the two
   // that matter among forty that do not.
-  const flagged = (analysis.clauses ?? []).filter((c) => c.attention && c.attention !== 'NORMAL');
+  const flagged = (analysis.clauses ?? []).filter((c) => c.attention && c.attention !== 'NORMAL' && !(skipReviewed && c.review));
+  const missing = (analysis.missingProtections ?? []).filter((m) => !(skipReviewed && m.review));
+
+  if (!showDetails) {
+    return (
+      /* data-contract-result: the mobile overflow harness waits on this to
+         know the result has actually rendered. A generic tag would be
+         satisfied by the loading state and measure the wrong screen. */
+      <div className="space-y-5" data-contract-result>
+        <SummarySection analysis={analysis} />
+      </div>
+    );
+  }
 
   return (
-    /* data-contract-result: the mobile overflow harness waits on this to
-       know the result has actually rendered. A generic tag would be
-       satisfied by the loading state and measure the wrong screen. */
-    <div className="space-y-5" data-contract-result>
-      {/* 1 + 2 — name it, then explain it. */}
+    <div className="space-y-5" {...(showSummary ? { 'data-contract-result': '' } : {})}>
+      {showSummary ? <SummarySection analysis={analysis} /> : null}
+      <Details analysis={analysis} comparison={comparison} flagged={flagged} missing={missing} />
+    </div>
+  );
+}
+
+/* 1 + 2: name it, then explain it. */
+function SummarySection({ analysis }: { analysis: DocumentAnalysis }) {
+  const { t } = useLanguage();
+  return (
       <VerifySection
         eyebrow={t('ct_eyebrow_what')}
         title={analysis.documentType || t('ct_unknown_type')}
@@ -133,7 +161,20 @@ export function ContractResult({
           <p className="text-sm text-muted-foreground">{t('ct_no_summary')}</p>
         )}
       </VerifySection>
+  );
+}
 
+function Details({
+  analysis, comparison, flagged, missing,
+}: {
+  analysis: DocumentAnalysis;
+  comparison?: ComparisonRow[];
+  flagged: DocumentAnalysis['clauses'];
+  missing: DocumentAnalysis['missingProtections'];
+}) {
+  const { t } = useLanguage();
+  return (
+    <>
       {/* 3 — what binds the reader. */}
       {analysis.obligations?.length ? (
         <VerifySection
@@ -145,7 +186,8 @@ export function ContractResult({
             {analysis.obligations.map((o, i) => (
               <Item
                 key={i}
-                label={`${t(PARTY_KEY[o.party] ?? 'ct_party_unclear')} — ${o.label}`}
+                /* An unclear party says nothing: the label stands alone then. */
+                label={o.party && o.party !== 'UNCLEAR' && PARTY_KEY[o.party] ? `${t(PARTY_KEY[o.party])} · ${o.label}` : o.label}
                 body={o.plain}
                 quote={o.quote}
                 page={o.page}
@@ -204,14 +246,14 @@ export function ContractResult({
       {comparison?.length ? <ContractVerifyMatch rows={comparison} /> : null}
 
       {/* 8 — what a contract like this usually has, and this one does not. */}
-      {analysis.missingProtections?.length ? (
+      {missing.length ? (
         <VerifySection
           eyebrow={t('ct_eyebrow_missing')}
           title={t('ct_missing_title')}
           subtitle={t('ct_missing_subtitle')}
         >
           <ul className="space-y-3">
-            {analysis.missingProtections.map((m, i) => (
+            {missing.map((m, i) => (
               <Item key={i} label={m.label} body={m.plain} />
             ))}
           </ul>
@@ -242,6 +284,6 @@ export function ContractResult({
       <p className="min-w-0 break-words px-1 text-2xs leading-relaxed text-muted-foreground">
         {t('ct_disclaimer')}
       </p>
-    </div>
+    </>
   );
 }

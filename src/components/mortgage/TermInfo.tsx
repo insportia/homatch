@@ -6,12 +6,14 @@
 // for more. Nothing is forced before calculating; it is there when needed.
 
 import React, { createContext, useContext, useState } from 'react';
-import { Info } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, BookOpen, Info } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { formatMoney, formatPercent, intlLocaleFor } from '@/components/workspace/primitives';
-import { GLOSSARY_TERMS, TERM_FOR_LABEL, termBodyKey, termExample, termTitleKey, type ExampleScenario, type GlossaryTerm } from '@/mortgage/glossary';
+import { TERM_FOR_LABEL, termBodyKey, termExample, termTitleKey, type ExampleScenario, type GlossaryTerm } from '@/mortgage/glossary';
+import { TERMS_INDEX_PATH, TERM_PAGES, pageTitleKey, termPath } from '@/mortgage/termPages';
 import { useMortgageAsk } from './askConsultant';
 
 const ScenarioContext = createContext<ExampleScenario | null>(null);
@@ -59,7 +61,7 @@ export function TermInfo({ term, className, chip }: { term: GlossaryTerm; classN
         {example ? (
           showExample ? (
             <div className="mt-3 rounded-lg bg-[hsl(var(--gold-soft))] px-3 py-2.5">
-              <p className="text-2xs font-semibold uppercase tracking-wide text-[hsl(var(--gold-ink))]">
+              <p className="text-xs font-semibold text-[hsl(var(--gold-ink))]">
                 {t(example.sample ? 'mortgage_term_example_sample' : 'mortgage_term_example_yours')}
               </p>
               <p className="mt-1 text-sm leading-relaxed text-foreground">{t(example.key, vars)}</p>
@@ -79,6 +81,14 @@ export function TermInfo({ term, className, chip }: { term: GlossaryTerm; classN
             {t('mortgage_term_ask_homi')}
           </button>
         ) : null}
+        <Link
+          to={termPath(term)}
+          onClick={() => setOpen(false)}
+          className="mt-2 flex min-h-11 items-center justify-between gap-2 rounded-xl bg-[#0C1119] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#161d29]"
+        >
+          {t('mortgage_tp_open')}
+          <ArrowRight className="h-4 w-4 shrink-0 text-[hsl(38_92%_60%)] rtl:rotate-180" aria-hidden="true" />
+        </Link>
       </PopoverContent>
     </Popover>
   );
@@ -90,15 +100,44 @@ export function LabelTerm({ labelKey, className }: { labelKey: string; className
   return term ? <TermInfo term={term} className={className} /> : null;
 }
 
-/** Every term in one place, for the person who wants to read before they calculate. */
+/** The most asked words first; the full list is one tap away. */
+const FEATURED = ['EFFECTIVE_RATE', 'NOMINAL_RATE', 'PTI', 'LTV', 'DOWN_PAYMENT', 'ANNUITY', 'EARLY_REPAYMENT', 'CURRENCY_RISK'] as const;
+
+/**
+ * Every term in one place, for the person who wants to read before they
+ * calculate. Each chip is a link to the term's own page, not a tooltip: the
+ * short popover text was the "tiny almost zero information snippet" people
+ * complained about, so the glossary now leads to the full explanation.
+ */
 export function GlossaryPanel() {
   const { t } = useLanguage();
   return (
-    <section aria-labelledby="mortgage-glossary-title" className="rounded-2xl border border-border bg-card p-5 shadow-card sm:p-6">
-      <h2 id="mortgage-glossary-title" className="font-display text-lg font-semibold text-foreground">{t('mortgage_glossary_title')}</h2>
-      <p className="mt-1.5 max-w-[60ch] text-sm text-muted-foreground">{t('mortgage_glossary_sub')}</p>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {GLOSSARY_TERMS.map((term) => <TermInfo key={term} term={term} chip />)}
+    <section aria-labelledby="mortgage-glossary-title" className="relative overflow-hidden rounded-3xl bg-[#0C1119] p-5 text-white shadow-hover sm:p-8">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(14rem_14rem_at_100%_0%,hsl(38_92%_56%/0.2),transparent_70%)]" />
+      <div className="relative">
+        <div className="flex items-start gap-3">
+          <span aria-hidden="true" className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(38_92%_56%/0.35)] bg-[hsl(38_92%_56%/0.12)] text-[hsl(38_92%_60%)]">
+            <BookOpen className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h2 id="mortgage-glossary-title" className="font-display text-xl font-semibold text-white sm:text-2xl">{t('mortgage_glossary_title')}</h2>
+            <p className="mt-1.5 max-w-[60ch] text-sm leading-relaxed text-white/75 sm:text-base">{t('mortgage_tp_glossary_card_body')}</p>
+          </div>
+        </div>
+        <ul className="mt-5 flex flex-wrap gap-2">
+          {FEATURED.map((term) => (
+            <li key={term}>
+              <Link to={termPath(term)} className="inline-flex min-h-11 items-center rounded-full border border-white/15 bg-white/[0.06] px-4 text-sm font-medium text-white transition-colors hover:border-[hsl(38_92%_56%)] hover:bg-white/[0.1]">
+                {t(pageTitleKey(term))}
+              </Link>
+            </li>
+          ))}
+        </ul>
+        <Link to={TERMS_INDEX_PATH} className="mt-5 inline-flex min-h-12 items-center gap-2 rounded-full bg-[hsl(38_92%_56%)] px-6 text-base font-bold text-[#161309] transition-colors hover:bg-[hsl(38_92%_62%)]">
+          {t('mortgage_tp_glossary_cta')}
+          <span className="text-sm font-semibold opacity-75">· {t('mortgage_tp_index_count', { n: TERM_PAGES.length })}</span>
+          <ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
+        </Link>
       </div>
     </section>
   );

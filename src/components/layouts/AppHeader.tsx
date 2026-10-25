@@ -160,16 +160,9 @@ export function AppHeader() {
                 />
               </Button>
 
-              {/* Ask AI shortcut (not offered while the assistant is paused) */}
-              {pathAvailable('/ai') && <Button
-                variant="ghost"
-                size="sm"
-                className="hidden md:flex gap-1.5 text-primary hover:text-primary h-8"
-                onClick={() => navigate('/ai')}
-              >
-                <Bot className="h-4 w-4" />
-                <span className="text-xs font-medium">{t('nav_ask_ai_short')}</span>
-              </Button>}
+              {/* The small "Ask AI" corner button was removed (owner,
+                  2026-10-25): HOMI lives inside the services and in the
+                  bottom-nav AI tab. */}
 
               {/* Add property */}
               <Button

@@ -26,6 +26,7 @@
 import { supabase } from '@/db/supabase';
 import { createDocumentVerificationCase } from '@/services/dealRooms';
 import { uploadDocument, analyzeDocument, type AnalysisState } from '@/services/dealRoomDocuments';
+import { removeRouted } from '@/services/storage/routed';
 
 /** One contract in the customer's own list. */
 export interface ContractSummary {
@@ -146,6 +147,52 @@ export async function getContract(documentId: string): Promise<ContractSummary |
     address: room?.address ?? null,
     verifyJobId: room?.verify_job_id ?? null,
   };
+}
+
+/**
+ * The fixed price of one analysis, from the server (contract_fixed_price,
+ * migration 20261204100100). Null when the product is not fixed-priced or the
+ * price cannot be read: the page then shows no number rather than a guess.
+ */
+export async function getContractPrice(): Promise<{ credits: number; usd: number } | null> {
+  const { data, error } = await supabase.rpc('contract_fixed_price');
+  if (error || !data) return null;
+  const p = data as { mode?: string; cents?: number | string; credits?: number | string };
+  if (p.mode !== 'FIXED') return null;
+  const credits = Number(p.credits);
+  const cents = Number(p.cents);
+  if (!Number.isFinite(credits) || credits <= 0 || !Number.isFinite(cents)) return null;
+  return { credits, usd: cents / 100 };
+}
+
+/** Why the server refused a deletion, in words the page can translate. */
+export type ContractDeleteRefusal = 'busy' | 'on_hold' | 'not_found' | 'failed';
+
+/**
+ * Delete one of the customer's own contracts.
+ *
+ * THE SERVER DECIDES. `contract_document_delete` (migration 20261204100000)
+ * checks ownership itself and refuses a contract that is still being read, is
+ * under a retention hold, or is being purged right now; it deletes the row and
+ * everything hanging off it (findings, events, saved revisions) and returns the
+ * stored file's path. The file is removed afterwards. A failure there is not
+ * reported as a failed deletion: the row is already gone, the bucket is
+ * private, and the retention sweep removes objects nothing references.
+ */
+export async function deleteContract(documentId: string): Promise<{ ok: true } | { ok: false; reason: ContractDeleteRefusal }> {
+  const { data, error } = await supabase.rpc('contract_document_delete', { p_document_id: documentId });
+  if (error) {
+    const m = `${error.message ?? ''}`;
+    if (m.includes('contract_busy')) return { ok: false, reason: 'busy' };
+    if (m.includes('contract_on_hold')) return { ok: false, reason: 'on_hold' };
+    if (m.includes('contract_not_found')) return { ok: false, reason: 'not_found' };
+    return { ok: false, reason: 'failed' };
+  }
+  const path = (data as { storage_path?: string | null } | null)?.storage_path ?? null;
+  if (path) {
+    try { await removeRouted('deal-room-documents', [path]); } catch { /* see above */ }
+  }
+  return { ok: true };
 }
 
 /**

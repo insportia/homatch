@@ -183,8 +183,10 @@ function literalRoutes() {
 
 test('every internal FOR EXPATS link resolves to a route or an anchor on its page', () => {
   const routes = literalRoutes();
+  /* The guide's sections live in My Georgia since 2026-10-25. */
   const anchorIds = new Set(
-    [...read('src/pages/ForExpatsPage.tsx').matchAll(/id="([a-z0-9-]+)"/g)].map((m) => m[1]),
+    ['src/components/expats/MyGeorgiaGuide.tsx', 'src/pages/MyGeorgiaPage.tsx']
+      .flatMap((f) => [...read(f).matchAll(/id="([a-z0-9-]+)"/g)].map((m) => m[1])),
   );
 
   const files = [
@@ -219,15 +221,18 @@ test('every internal FOR EXPATS link resolves to a route or an anchor on its pag
   assert.deepEqual(dead, [], `links to nowhere:\n  ${dead.join('\n  ')}`);
 });
 
-test('the landing page still offers every pathway and every city', () => {
+test('My Georgia still offers every part and every city', () => {
   /* The fix for seven dead links was to stop them being links. That is only
      correct while the content is still THERE — a later tidy-up that drops
      the cards because "they do not go anywhere" would remove the product's
-     orientation, so the hooks are pinned. */
-  const hero = read('src/components/expats/ExpatHero.tsx');
-  for (const p of ['MOVE', 'LIVE', 'BUY', 'INVEST']) {
-    assert.ok(hero.includes(`${p}: '#`), `hero pathway ${p} is not an in-page anchor`);
+     orientation, so the hooks are pinned. Since 2026-10-25 the orientation is
+     My Georgia's three tabs (the hero's four pathways went with the landing
+     page), and the guide tab still renders the city cards. */
+  const page = read('src/pages/MyGeorgiaPage.tsx');
+  for (const tab of ['plan', 'guide', 'places']) {
+    assert.ok(page.includes(`key: '${tab}'`), `My Georgia lost its ${tab} tab`);
   }
+  assert.match(read('src/components/expats/MyGeorgiaGuide.tsx'), /<GeorgiaAtAGlance \/>/, 'the guide lost the cities');
   const glance = read('src/components/expats/GeorgiaAtAGlance.tsx');
   assert.match(glance, /data-expat-city=\{city\.key\}/, 'the city cards lost their hook');
   assert.match(glance, /city\.blurbKey/, 'the city cards lost their orientation line');

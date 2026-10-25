@@ -27,7 +27,7 @@ export const QUOTE_CAP = 600;
 export type DecisionStatus = 'ACCEPTED' | 'EDITED' | 'REJECTED';
 export interface Decision { key: string; status: DecisionStatus; text?: string }
 
-export interface ReviewLike { risk: string; why: string; favours: string; suggestion: string; tradeoffs: string | null }
+export interface ReviewLike { risk: string; why: string; favours: string; suggestion: string; tradeoffs: string | null; benefit?: string }
 export interface AnalysisLike {
   clauses: { label: string; plain: string; quote: string; page: number | null; attention: string; review?: ReviewLike; quoteTruncated?: boolean }[];
   missingProtections: { label: string; plain: string; review?: ReviewLike }[];

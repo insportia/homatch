@@ -124,7 +124,7 @@ export function BeforeYouSignView() {
                   <p className="max-w-[64ch] text-[15px] leading-relaxed text-foreground/85">{t(topic.whatKey)}</p>
 
                   <div>
-                    <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--gold-ink))]">
+                    <p className="text-2xs font-semibold text-[hsl(var(--gold-ink))]">
                       {t('mortgage_sign_why_label')}
                     </p>
                     <p className="mt-1.5 max-w-[64ch] text-[15px] leading-relaxed text-foreground">{t(topic.whyKey)}</p>
@@ -133,14 +133,14 @@ export function BeforeYouSignView() {
                   {/* Two reading columns, divided by a rule — not two more boxes. */}
                   <div className="grid gap-5 border-t border-border pt-4 sm:grid-cols-2 sm:gap-8">
                     <div>
-                      <p className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">
+                      <p className="flex items-center gap-1.5 text-2xs font-semibold text-[hsl(var(--gold-ink))]">
                         <MessageCircleQuestion className="h-3.5 w-3.5" aria-hidden="true" />
                         {t('mortgage_sign_ask_label')}
                       </p>
                       <p className="mt-2 text-[15px] leading-relaxed text-foreground">{t(topic.askKey)}</p>
                     </div>
                     <div>
-                      <p className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">
+                      <p className="flex items-center gap-1.5 text-2xs font-semibold text-[hsl(var(--gold-ink))]">
                         <FileSearch className="h-3.5 w-3.5" aria-hidden="true" />
                         {t('mortgage_sign_check_label')}
                       </p>
@@ -208,7 +208,7 @@ export function ChecklistView({ input, result, breakdown }: ChecklistContext) {
           const items = CHECKLIST.filter((item) => item.group === group);
           return (
             <div key={group}>
-              <h3 className="mb-2.5 text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--gold-ink))]">
+              <h3 className="mb-2.5 text-2xs font-semibold text-[hsl(var(--gold-ink))]">
                 {t(CHECKLIST_GROUP_LABELS[group])}
               </h3>
               <ul className="space-y-1.5">

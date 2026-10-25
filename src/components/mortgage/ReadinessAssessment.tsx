@@ -3,8 +3,9 @@ import { CheckCircle2, AlertTriangle, XCircle, HelpCircle, ChevronDown, RotateCc
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { formatMoney } from '@/components/workspace/primitives';
-import { ChoiceField, YesNoField } from '@/components/workspace/controls';
 import { AskHomatch } from '@/components/mortgage/askConsultant';
+import { OptionCards, YesNoCards } from '@/components/mortgage/OptionCards';
+import { MoneyField, MONEY_INPUT_CLASS } from '@/components/mortgage/MoneyField';
 import { HomiAvatar } from '@/components/homi/HomiAvatar';
 import { HomiChecklistCard } from '@/components/homi/HomiCards';
 import type { LtvLimitRuleData, MortgageInput, MortgageRule, PtiLimitRuleData } from '@/mortgage/types';
@@ -47,25 +48,29 @@ const num = (v: string): number | null => {
 const STEPS = ['income', 'source', 'debt', 'co', 'collateral', 'situation', 'credit'] as const;
 type Step = typeof STEPS[number];
 
+/** A money question: any currency in, the loan currency out (see MoneyField). */
 function MoneyInput({ id, value, onChange, currency, labelKey }: { id: string; value: number | null; onChange: (v: number | null) => void; currency: string; labelKey: string }) {
   const { t } = useLanguage();
   const [text, setText] = useState(value === null ? '' : String(value));
   return (
-    <label htmlFor={id} className="grid gap-1.5 text-sm text-muted-foreground">
-      {t(labelKey)}
-      <span className="flex items-center gap-2">
-        <input
-          id={id}
-          inputMode="decimal"
-          value={text}
-          onChange={(e) => { setText(e.target.value); onChange(num(e.target.value)); }}
-          className="h-11 w-full max-w-xs rounded-xl border border-border bg-background px-3 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]"
-        />
-        <span className="text-sm font-medium text-foreground">{currency}</span>
-      </span>
-    </label>
+    <div className="grid gap-2">
+      <label id={`${id}-label`} htmlFor={id} className="text-[15px] font-medium text-foreground">{t(labelKey)}</label>
+      <div className="max-w-md">
+        <MoneyField id={id} loanCurrency={currency} value={value} onChange={onChange} labelledBy={`${id}-label`}>
+          <input
+            id={id}
+            inputMode="decimal"
+            value={text}
+            onChange={(e) => { setText(e.target.value); onChange(num(e.target.value)); }}
+            className={MONEY_INPUT_CLASS}
+          />
+        </MoneyField>
+      </div>
+    </div>
   );
 }
+
+const yn = (v: boolean | null) => (v === null ? null : v ? 'YES' : 'NO');
 
 const STATUS_ICON = {
   OK: <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />,
@@ -165,14 +170,14 @@ export function ReadinessAssessment({
                 <MoneyInput id="rd-income" value={answers.income} onChange={(v) => set('income', v)} currency={currency} labelKey="mortgage_rd_q_income" />
                 {foreign && (
                   <>
-                    <div className="grid gap-2">
-                      <p id="rd-hedged" className="text-sm text-foreground">{t('mortgage_rd_q_same_currency', { currency })}</p>
-                      <YesNoField labelledBy="rd-hedged" value={answers.incomeInLoanCurrency === null ? undefined : answers.incomeInLoanCurrency ? 'YES' : 'NO'} onChange={(v) => set('incomeInLoanCurrency', v === null ? null : v === 'YES')} />
+                    <div className="grid gap-2.5">
+                      <p id="rd-hedged" className="text-[15px] font-medium text-foreground">{t('mortgage_rd_q_same_currency', { currency })}</p>
+                      <YesNoCards labelledBy="rd-hedged" value={yn(answers.incomeInLoanCurrency)} onChange={(v) => set('incomeInLoanCurrency', v === null ? null : v === 'YES')} />
                     </div>
                     {band !== null && (
-                      <div className="grid gap-2">
-                        <p id="rd-band" className="text-sm text-foreground">{t('mortgage_rd_q_band', { amount: band.toLocaleString(lang) })}</p>
-                        <YesNoField labelledBy="rd-band" value={answers.incomeAtLeastBand === null ? undefined : answers.incomeAtLeastBand ? 'YES' : 'NO'} onChange={(v) => set('incomeAtLeastBand', v === null ? null : v === 'YES')} />
+                      <div className="grid gap-2.5">
+                        <p id="rd-band" className="text-[15px] font-medium text-foreground">{t('mortgage_rd_q_band', { amount: band.toLocaleString(lang) })}</p>
+                        <YesNoCards labelledBy="rd-band" value={yn(answers.incomeAtLeastBand)} onChange={(v) => set('incomeAtLeastBand', v === null ? null : v === 'YES')} />
                       </div>
                     )}
                   </>
@@ -182,15 +187,15 @@ export function ReadinessAssessment({
 
             {current === 'source' && (
               <>
-                <div className="grid gap-2">
-                  <p id="rd-source" className="text-sm font-medium text-foreground">{t('mortgage_rd_q_source')}</p>
-                  <ChoiceField labelledBy="rd-source" value={answers.source ?? undefined}
+                <div className="grid gap-2.5">
+                  <p id="rd-source" className="text-[15px] font-medium text-foreground">{t('mortgage_rd_q_source')}</p>
+                  <OptionCards labelledBy="rd-source" value={answers.source}
                     options={INCOME_SOURCES.map((s) => ({ value: s, labelKey: `mortgage_rd_src_${s.toLowerCase()}` }))}
                     onChange={(v) => set('source', v as IncomeSource | null)} />
                 </div>
-                <div className="grid gap-2">
-                  <p id="rd-history" className="text-sm font-medium text-foreground">{t('mortgage_rd_q_history')}</p>
-                  <ChoiceField labelledBy="rd-history" value={answers.history ?? undefined}
+                <div className="grid gap-2.5">
+                  <p id="rd-history" className="text-[15px] font-medium text-foreground">{t('mortgage_rd_q_history')}</p>
+                  <OptionCards labelledBy="rd-history" value={answers.history}
                     options={INCOME_HISTORY.map((h) => ({ value: h, labelKey: `mortgage_rd_hist_${h.toLowerCase()}` }))}
                     onChange={(v) => set('history', v as IncomeHistory | null)} />
                 </div>
@@ -199,16 +204,16 @@ export function ReadinessAssessment({
 
             {current === 'debt' && (
               <div className="grid gap-3">
-                <p id="rd-debt" className="text-sm font-medium text-foreground">{t('mortgage_rd_q_debt')}</p>
-                <YesNoField labelledBy="rd-debt" value={answers.hasDebt === null ? undefined : answers.hasDebt ? 'YES' : 'NO'} onChange={(v) => set('hasDebt', v === null ? null : v === 'YES')} />
+                <p id="rd-debt" className="text-[15px] font-medium text-foreground">{t('mortgage_rd_q_debt')}</p>
+                <YesNoCards labelledBy="rd-debt" value={yn(answers.hasDebt)} onChange={(v) => set('hasDebt', v === null ? null : v === 'YES')} />
                 {answers.hasDebt && <MoneyInput id="rd-debt-amt" value={answers.debt} onChange={(v) => set('debt', v)} currency={currency} labelKey="mortgage_rd_q_debt_amount" />}
               </div>
             )}
 
             {current === 'co' && (
               <div className="grid gap-3">
-                <p id="rd-co" className="text-sm font-medium text-foreground">{t('mortgage_rd_q_co')}</p>
-                <YesNoField labelledBy="rd-co" value={answers.hasCoBorrower === null ? undefined : answers.hasCoBorrower ? 'YES' : 'NO'} onChange={(v) => set('hasCoBorrower', v === null ? null : v === 'YES')} />
+                <p id="rd-co" className="text-[15px] font-medium text-foreground">{t('mortgage_rd_q_co')}</p>
+                <YesNoCards labelledBy="rd-co" value={yn(answers.hasCoBorrower)} onChange={(v) => set('hasCoBorrower', v === null ? null : v === 'YES')} />
                 {answers.hasCoBorrower && (
                   <>
                     <MoneyInput id="rd-co-inc" value={answers.coIncome} onChange={(v) => set('coIncome', v)} currency={currency} labelKey="mortgage_rd_q_co_income" />
@@ -221,8 +226,8 @@ export function ReadinessAssessment({
 
             {current === 'collateral' && (
               <div className="grid gap-3">
-                <p id="rd-col" className="text-sm font-medium text-foreground">{t('mortgage_rd_q_collateral')}</p>
-                <YesNoField labelledBy="rd-col" value={answers.hasCollateral === null ? undefined : answers.hasCollateral ? 'YES' : 'NO'} onChange={(v) => set('hasCollateral', v === null ? null : v === 'YES')} />
+                <p id="rd-col" className="text-[15px] font-medium text-foreground">{t('mortgage_rd_q_collateral')}</p>
+                <YesNoCards labelledBy="rd-col" value={yn(answers.hasCollateral)} onChange={(v) => set('hasCollateral', v === null ? null : v === 'YES')} />
                 {answers.hasCollateral && <MoneyInput id="rd-col-val" value={answers.collateral} onChange={(v) => set('collateral', v)} currency={currency} labelKey="mortgage_rd_q_collateral_value" />}
                 <p className="text-sm text-muted-foreground">{t('mortgage_rd_collateral_note')}</p>
               </div>
@@ -230,28 +235,28 @@ export function ReadinessAssessment({
 
             {current === 'situation' && (
               <div className="grid gap-5">
-                <div className="grid gap-2">
-                  <p id="rd-res" className="text-sm font-medium text-foreground">{t('mortgage_rd_q_residency')}</p>
-                  <ChoiceField labelledBy="rd-res" value={answers.residency ?? undefined}
+                <div className="grid gap-2.5">
+                  <p id="rd-res" className="text-[15px] font-medium text-foreground">{t('mortgage_rd_q_residency')}</p>
+                  <OptionCards labelledBy="rd-res" value={answers.residency}
                     options={RESIDENCY.map((r) => ({ value: r, labelKey: `mortgage_rd_res_${r.toLowerCase()}` }))}
                     onChange={(v) => set('residency', v as Residency | null)} />
                 </div>
-                <div className="grid gap-2">
-                  <p id="rd-guar" className="text-sm font-medium text-foreground">{t('mortgage_rd_q_guarantor')}</p>
-                  <YesNoField labelledBy="rd-guar" value={answers.hasGuarantor === null ? undefined : answers.hasGuarantor ? 'YES' : 'NO'} onChange={(v) => set('hasGuarantor', v === null ? null : v === 'YES')} />
+                <div className="grid gap-2.5">
+                  <p id="rd-guar" className="text-[15px] font-medium text-foreground">{t('mortgage_rd_q_guarantor')}</p>
+                  <YesNoCards labelledBy="rd-guar" value={yn(answers.hasGuarantor)} onChange={(v) => set('hasGuarantor', v === null ? null : v === 'YES')} />
                 </div>
-                <div className="grid gap-2">
-                  <p id="rd-costs" className="text-sm font-medium text-foreground">{t('mortgage_rd_q_costs')}</p>
-                  <YesNoField labelledBy="rd-costs" value={answers.costsKnown === null ? undefined : answers.costsKnown ? 'YES' : 'NO'} onChange={(v) => set('costsKnown', v === null ? null : v === 'YES')} />
+                <div className="grid gap-2.5">
+                  <p id="rd-costs" className="text-[15px] font-medium text-foreground">{t('mortgage_rd_q_costs')}</p>
+                  <YesNoCards labelledBy="rd-costs" value={yn(answers.costsKnown)} onChange={(v) => set('costsKnown', v === null ? null : v === 'YES')} />
                   <p className="text-sm text-muted-foreground">{t('mortgage_rd_costs_note')}</p>
                 </div>
               </div>
             )}
 
             {current === 'credit' && (
-              <div className="grid gap-2">
-                <p id="rd-credit" className="text-sm font-medium text-foreground">{t('mortgage_rd_q_credit')}</p>
-                <ChoiceField labelledBy="rd-credit" value={answers.credit ?? undefined}
+              <div className="grid gap-2.5">
+                <p id="rd-credit" className="text-[15px] font-medium text-foreground">{t('mortgage_rd_q_credit')}</p>
+                <OptionCards labelledBy="rd-credit" value={answers.credit}
                   options={CREDIT_HISTORY.map((c) => ({ value: c, labelKey: `mortgage_rd_credit_${c.toLowerCase()}` }))}
                   onChange={(v) => set('credit', v as CreditHistory | null)} />
               </div>
@@ -324,7 +329,7 @@ function ResultView({
   return (
     <div className="mt-6 grid gap-6">
       <div className={cn('rounded-2xl border p-5', tierTone)}>
-        <p className="text-sm font-semibold uppercase tracking-[0.08em]">{t('mortgage_rd_result_label')}</p>
+        <p className="text-sm font-semibold">{t('mortgage_rd_result_label')}</p>
         <p className="mt-1 font-display text-2xl font-semibold">{tierText}</p>
         <p className="mt-2 text-sm">{t('mortgage_rd_no_probability')}</p>
       </div>

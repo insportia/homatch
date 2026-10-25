@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
+import { followLatest } from '@/lib/scrollWithin';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { AppLayout } from '@/components/layouts/AppLayout';
@@ -322,7 +323,8 @@ export default function LiveChatPage() {
     return () => { supabase.removeChannel(channel); };
   }, [profile, loadProfiles]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages.length]);
+  /* The message list's own box only, never the page around it. */
+  useEffect(() => { followLatest(bottomRef.current, { smooth: true }); }, [messages.length]);
 
   /* Recorder teardown on unmount, so navigating away releases the mic. */
   useEffect(() => () => {

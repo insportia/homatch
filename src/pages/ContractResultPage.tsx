@@ -20,7 +20,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, ChevronLeft, AlertCircle, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronLeft, AlertCircle, ShieldCheck, History } from 'lucide-react';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -28,6 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ContractProgress } from '@/components/contracts/ContractProgress';
 import { ContractResult } from '@/components/contracts/ContractResult';
 import { ContractReview } from '@/components/contracts/ContractReview';
+import { ContractHomiGuide } from '@/components/contracts/ContractHomiGuide';
 import { typesDisagree, type ContractTypeId } from '@/components/contracts/contractTypes';
 import { getContract, listContracts, type ContractSummary } from '@/services/contracts';
 import {
@@ -180,23 +181,36 @@ export default function ContractResultPage() {
     (contract?.uploadedAt ? new Date(contract.uploadedAt).getTime() : Date.now());
 
   const mismatchedType = typesDisagree(nav.declaredType, analysis?.documentType);
+  const flaggedCount = (analysis?.clauses ?? []).filter((c) => c.attention && c.attention !== 'NORMAL').length
+    + (analysis?.missingProtections?.length ?? 0);
 
   return (
     <AppLayout noPadding>
       <div className="hm-invest hm-invest-canvas min-h-[calc(100vh-4rem)]">
-        <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6 pb-24 sm:px-6 lg:px-8">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ms-2"
-            onClick={() => navigate('/contracts')}
-          >
-            <ChevronLeft className="me-1.5 h-4 w-4" aria-hidden="true" />
-            {t('ct_back')}
-          </Button>
+        {/* Bottom padding clears the mobile tab bar (3.75rem + safe area) and the
+            review's slim save bar, so the last line of the page is never covered. */}
+        <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-6 md:pb-24 lg:px-8">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="-ms-2"
+              onClick={() => navigate('/contracts')}
+            >
+              <ChevronLeft className="me-1.5 h-4 w-4 rtl:rotate-180" aria-hidden="true" />
+              {t('ct_back')}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/contracts/history')}>
+              <History className="me-1.5 h-4 w-4" aria-hidden="true" />
+              {t('ux_ct_open_history')}
+            </Button>
+          </div>
 
           <header className="min-w-0 space-y-1">
-            <h1 className="min-w-0 break-words text-xl font-semibold sm:text-2xl">
+            {state === 'DONE' && analysis?.documentType ? (
+              <p className="text-sm font-medium text-[hsl(var(--gold-ink))]">{analysis.documentType}</p>
+            ) : null}
+            <h1 className="min-w-0 break-words font-display text-2xl font-bold sm:text-3xl">
               {contract?.label || t('ct_untitled')}
             </h1>
             {contract?.address || contract?.cadastralCode ? (
@@ -254,13 +268,24 @@ export default function ContractResultPage() {
             </p>
           ) : null}
 
+          {/* What the document is, in plain words, first. */}
           {state === 'DONE' && analysis ? (
-            <ContractResult analysis={analysis} comparison={comparison} />
+            <ContractResult analysis={analysis} comparison={comparison} part="summary" />
           ) : null}
 
-          {/* What could be better, as choices the signer makes; exports and history. */}
+          {/* HOMI beside the result, offering to explain it. */}
+          {state === 'DONE' && analysis ? (
+            <ContractHomiGuide mode="result" analysis={analysis} title={contract?.label || t('ct_untitled')} flaggedCount={flaggedCount} />
+          ) : null}
+
+          {/* Right after: the edits, each with exactly what changes; exports and history. */}
           {state === 'DONE' && analysis && id ? (
             <ContractReview documentId={id} title={contract?.label || t('ct_untitled')} analysis={analysis} />
+          ) : null}
+
+          {/* Everything else the reading found. Points already shown as edits above are not repeated. */}
+          {state === 'DONE' && analysis ? (
+            <ContractResult analysis={analysis} comparison={comparison} part="details" />
           ) : null}
 
           {/* Move between contracts without going back to a list each time. */}

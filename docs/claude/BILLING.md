@@ -253,6 +253,21 @@ warns when a diff enters this domain.
   standing "HOMATCH Curated Leads" email list in the same transaction.
 - Internal-match unlock prices (3 / 5 / 10 credits) are unchanged and separate.
 
+## HOMI voice messages (owner, 2026-10-25)
+
+- Product `HOMI_VOICE_MESSAGE` (migration `20261204105000`): **0.3 credits per minute = $0.03**,
+  FIXED, VAT-inclusive, PAYG, billed **per started 10 seconds (0.05 credits)** on the duration
+  Google billed (recorded length only when Google reported none); at most 2 minutes per message.
+  Finance V2 service `homi_voice`, policy `fixed_retail_v1`.
+- Edge `homi-voice-transcribe`: consent once per account (`homi_voice_consents`, service-role
+  writes only; refused without it, `CONSENT_REQUIRED`) → `beginExecution` (hold = price of the
+  recorded length + one step) → worker `/speech/transcribe` (Google chirp_3, WORKER_TOKEN) →
+  `settleExecution({ priceCredits })`. HOMATCH-side failure or no words heard → full release.
+- COGS: `provider_price_book` GOOGLE / chirp_3 / AUDIO_SECOND ($0.016/min) at the seconds Google
+  billed (× attempts when a refused language was retried with `auto`); no rate → UNPRICED.
+  Landed ≈ $0.0189/min, so the fixed price is ≈ 37 % gross margin: below the 55 % cost-based
+  floor by owner decision (product config `pricing_policy` CUSTOM).
+
 ## Where it lives
 
 - Edge: `supabase/functions/{billing,credits-topup,payment-webhook,

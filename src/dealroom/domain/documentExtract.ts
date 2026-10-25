@@ -300,7 +300,9 @@ export function buildAnalysisPrompt(
     '  document, ready to paste into the contract, balanced and realistic, never',
     '  misleading, never a change of meaning beyond the point being fixed, and',
     '  with no number that is not already in the document), tradeoffs (what the',
-    '  other side may push back on, in one or two sentences). Put the interests',
+    '  other side may push back on, in one or two sentences), benefit (one plain',
+    '  sentence for the signer: what the suggested wording changes for them',
+    '  compared with the current wording; no legal verdict). Put the interests',
     '  of the person who will sign first, but propose wording a reasonable',
     '  counterparty could accept.',
     '- A clause `suggestion` REPLACES EXACTLY the text in that clause\'s `quote`,',
@@ -327,11 +329,11 @@ export function buildAnalysisPrompt(
     '{',
     '  "documentType": string,',
     '  "summary": [string],',
-    '  "clauses":    [{"label","plain","quote","page","attention","review":{"risk","why","favours","suggestion","tradeoffs"}}],',
+    '  "clauses":    [{"label","plain","quote","page","attention","review":{"risk","why","favours","suggestion","tradeoffs","benefit"}}],',
     '  "obligations":[{"party","label","plain","quote","page"}],',
     '  "deadlines":  [{"label","value","quote","page"}],',
     '  "financial":  [{"label","value","quote","page"}],',
-    '  "missingProtections":[{"label","plain","review":{"risk","why","favours","suggestion","tradeoffs"}}],',
+    '  "missingProtections":[{"label","plain","review":{"risk","why","favours","suggestion","tradeoffs","benefit"}}],',
     '  "questions":  [string],',
     '  "findings":   [{"type","label","value","quote","page","status"}]',
     '}',
@@ -374,6 +376,12 @@ export interface ClauseReview {
   favours: Party;
   suggestion: string;
   tradeoffs: string | null;
+  /**
+   * One plain sentence: what the proposed wording changes for the signer,
+   * compared with the current wording. Optional: analyses written before it
+   * existed simply do not carry it, and the page falls back to `why`.
+   */
+  benefit?: string;
 }
 
 export interface AnalyzedClause {
@@ -565,7 +573,13 @@ export function parseAnalysis(raw: string, documentText: string): ContractAnalys
       return undefined;
     }
     const favours = PARTIES.includes(x.favours as Party) ? (x.favours as Party) : 'UNCLEAR';
-    return { risk, why, favours, suggestion, tradeoffs: safeProse(str(x.tradeoffs, MAX_PLAIN), `${what} tradeoffs`) };
+    // Optional and never required for the review to stand; when present it passes the same gates.
+    const benefit = x.benefit == null ? null : safeProse(str(x.benefit, MAX_PLAIN), `${what} benefit`);
+    return {
+      risk, why, favours, suggestion,
+      tradeoffs: safeProse(str(x.tradeoffs, MAX_PLAIN), `${what} tradeoffs`),
+      ...(benefit ? { benefit } : {}),
+    };
   };
 
   /* ---- summary ---- */

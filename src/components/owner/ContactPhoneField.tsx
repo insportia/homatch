@@ -51,6 +51,8 @@ export function ContactPhoneField({
   accountPhone,
   showProblem,
   label,
+  published,
+  onPublishedChange,
 }: {
   /** The raw text, owned by the form. */
   value: string;
@@ -62,6 +64,12 @@ export function ContactPhoneField({
   /** Show the failure. False while the field has not been submitted or blurred yet. */
   showProblem?: boolean;
   label?: string;
+  /**
+   * The advertiser's choice to show this number on the listing. Omitted on screens
+   * that do not create or edit a listing; off by default wherever it is offered.
+   */
+  published?: boolean;
+  onPublishedChange?: (next: boolean) => void;
 }) {
   const { t } = useLanguage();
   const fieldId = useId();
@@ -150,7 +158,28 @@ export function ContactPhoneField({
         </button>
       )}
 
-      {/* WHO WILL CALL IT, SAID WHERE IT IS ENTERED: matched people only, never published. */}
+      {/*
+        PUBLISHED ONLY BY CHOICE. A listing number is shown to the people who find the
+        listing only once its advertiser ticks this; nothing ticks it for them, and the
+        account phone is never put in its place (src/lib/legal/operator.ts governs the
+        wording in the Terms and the Privacy Policy).
+      */}
+      {onPublishedChange && (
+        <label className="flex items-start gap-2.5 rounded-lg border border-border px-3 py-2.5 text-2xs" data-contact-publish>
+          <input
+            type="checkbox"
+            checked={published === true}
+            onChange={(event) => onPublishedChange(event.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[hsl(var(--primary))]"
+          />
+          <span className="min-w-0">
+            <span className="block font-medium text-foreground">{t('contact_phone_publish_label')}</span>
+            <span className="block text-muted-foreground">{t('contact_phone_publish_hint')}</span>
+          </span>
+        </label>
+      )}
+
+      {/* WHO WILL REACH THEM, SAID WHERE IT IS ENTERED. */}
       <p className="break-words text-2xs text-muted-foreground" data-contact-match-notice>
         {t('contact_phone_match_notice')}
       </p>

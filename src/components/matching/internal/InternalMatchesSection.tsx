@@ -498,7 +498,7 @@ function ContactLine({ contact }: { contact: NativeContact }) {
           {t('native_call_number_label')}{' '}
           <a href={`tel:${contact.phone}`} dir="ltr" className="font-semibold text-[hsl(34_90%_35%)] underline-offset-2 hover:underline">{contact.phone}</a>
         </>
-      ) : contact.reason === 'NOT_SHARED' ? t('native_call_not_shared') : t('native_call_no_number')}
+      ) : contact.reason === 'NOT_SHARED' ? t('native_call_not_shared') : contact.reason === 'NOT_PUBLISHED' ? t('native_call_not_published') : t('native_call_no_number')}
     </p>
   );
 }

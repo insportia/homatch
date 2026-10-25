@@ -66,7 +66,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { readContactPhone } from '@/lib/propertyContact';
-import { setPropertyContact, uploadPropertyPhoto } from '@/services/api';
+import { setPropertyContact, setPropertyContactPublication, uploadPropertyPhoto } from '@/services/api';
 import {
   allPhotos,
   attachPhoto,
@@ -191,6 +191,9 @@ export default function EditPropertyPage() {
    * is what gets stored, and the field says so as they type.
    */
   const [contactPhone, setContactPhone] = useState('');
+  /* The advertiser's saved choice to show the number on the listing, and the form's copy. */
+  const [contactPhonePublic, setContactPhonePublic] = useState(false);
+  const [savedPhonePublic, setSavedPhonePublic] = useState(false);
   const [showPhoneProblem, setShowPhoneProblem] = useState(false);
 
   const deepLink = (typeof window !== 'undefined' ? window.location.hash : '').replace('#', '');
@@ -247,6 +250,8 @@ export default function EditPropertyPage() {
       setAddressVisibility(String(f?.address_visibility ?? 'CITY_ONLY'));
       setDescription(String(f?.description ?? ''));
       setContactPhone(String(row.contact_phone_raw ?? row.contact_phone_e164 ?? ''));
+      setContactPhonePublic(row.contact_phone_public === true);
+      setSavedPhonePublic(row.contact_phone_public === true);
       setShowPhoneProblem(false);
     } catch (error) {
       setFailed(error instanceof Error ? error.message : String(error));
@@ -360,6 +365,11 @@ export default function EditPropertyPage() {
               : 'contact_phone_unreachable',
           ));
         }
+      }
+
+      if (contactPhonePublic !== savedPhonePublic) {
+        if (await setPropertyContactPublication(id, contactPhonePublic)) setSavedPhonePublic(contactPhonePublic);
+        else { toast.error(t('contact_phone_publish_failed')); await load(); return; }
       }
 
       /*
@@ -770,6 +780,8 @@ export default function EditPropertyPage() {
             <ContactPhoneField
               value={contactPhone}
               onChange={(next) => { setContactPhone(next); setShowPhoneProblem(false); }}
+              published={contactPhonePublic}
+              onPublishedChange={setContactPhonePublic}
               defaultCountry="GE"
               accountPhone={homatchUser?.phone ?? null}
               showProblem={showPhoneProblem}

@@ -396,6 +396,8 @@ export interface Property {
    * client-side rule is something a client can skip.
    */
   contact_phone_e164?: string | null;
+  /** The advertiser chose to show contact_phone_e164 on the listing (set via set_property_contact_publication). */
+  contact_phone_public?: boolean;
   /** What the owner typed, kept so a refused number can be shown back unaltered. */
   contact_phone_raw?: string | null;
   /** The ISO country the parse resolved to, so a local number can be re-read. */

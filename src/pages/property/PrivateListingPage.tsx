@@ -25,7 +25,7 @@ import { readContactPhone } from '@/lib/propertyContact';
 import {addPropertyPhoto,
   createProperty, createSearchProfile,
   logActivity, updateProperty,
-  uploadPropertyPhoto, upsertPropertyFacts, 
+  uploadPropertyPhoto, upsertPropertyFacts, setPropertyContactPublication,
 } from '@/services/api';
 import type { PropertyFacts } from '@/types/types';
 import { GE_LOCATIONS } from '@/types/types';
@@ -159,6 +159,8 @@ function PrivateListingContent() {
    * number is wrong while they are still writing the third digit of it.
    */
   const [contactPhone, setContactPhone] = useState('');
+  /* Off until the advertiser chooses to show the number on the listing. */
+  const [contactPhonePublic, setContactPhonePublic] = useState(false);
   const [showPhoneProblem, setShowPhoneProblem] = useState(false);
 
   const set = (key: keyof FormState, value: string | boolean) =>
@@ -281,6 +283,7 @@ function PrivateListingContent() {
         propertyType: form.propertyType as any,
       });
       if (!propId) throw new Error('Failed to create property');
+      if (contactPhonePublic && !(await setPropertyContactPublication(propId, true))) toast.error(t('contact_phone_publish_failed'));
 
       const facts: Partial<PropertyFacts> = {
         property_id: propId,
@@ -752,6 +755,8 @@ function PrivateListingContent() {
                 <ContactPhoneField
                   value={contactPhone}
                   onChange={(next) => { setContactPhone(next); setShowPhoneProblem(false); }}
+                  published={contactPhonePublic}
+                  onPublishedChange={setContactPhonePublic}
                   defaultCountry={form.country || 'GE'}
                   accountPhone={homatchUser?.phone ?? null}
                   showProblem={showPhoneProblem}

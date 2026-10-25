@@ -63,8 +63,9 @@ export async function openNativeConversation(kind: NativeKind, id: string): Prom
 
 export interface NativeContact {
   phone: string | null;
-  /** Why there is no number: NOT_SHARED (the other person never shared one) or NO_NUMBER. */
-  reason: 'NOT_SHARED' | 'NO_NUMBER' | null;
+  /** Why there is no number: NOT_SHARED (the other person never shared one), NOT_PUBLISHED
+      (the advertiser has not chosen to show the listing number) or NO_NUMBER. */
+  reason: 'NOT_SHARED' | 'NOT_PUBLISHED' | 'NO_NUMBER' | null;
 }
 
 /** The number this relationship entitles the caller to, recorded server-side. */
@@ -74,7 +75,7 @@ export async function revealNativeContact(kind: NativeKind, id: string): Promise
   const value = (data ?? {}) as { phone?: string | null; reason?: string | null };
   return {
     phone: value.phone ?? null,
-    reason: value.reason === 'NOT_SHARED' || value.reason === 'NO_NUMBER' ? value.reason : null,
+    reason: value.reason === 'NOT_SHARED' || value.reason === 'NOT_PUBLISHED' || value.reason === 'NO_NUMBER' ? value.reason : null,
   };
 }
 

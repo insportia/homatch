@@ -371,4 +371,117 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
     assert.ok(footer.includes('Tariel Chachua') && !footer.includes('01027085016'), 'footer names the operator but not the ID number');
     await ctx.close();
   });
+
+  /**
+   * A signed-in page whose REST reads come from fixtures, so a listing screen and the
+   * seeker's match card can be driven without a database. Every rpc call is recorded.
+   */
+  async function openWithData({ lang = 'en', width = 390, tables = {}, rpc = {} } = {}) {
+    const ctx = await browser.newContext({ viewport: { width, height: 900 }, isMobile: width < 700, hasTouch: width < 700 });
+    await ctx.addInitScript(([s, locale]) => {
+      localStorage.setItem('homatch_lang', locale);
+      localStorage.setItem('sb-stubproj-auth-token', JSON.stringify(s));
+    }, [fakeSession(), lang]);
+    const page = await ctx.newPage();
+    const calls = [];
+    const json = (body) => ({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+    await page.route('**', async (r) => {
+      const req = r.request();
+      const url = req.url();
+      if (url.startsWith(BASE)) return r.continue();
+      if (req.method() === 'OPTIONS') return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } });
+      if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
+      if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
+      const m = url.match(/\/rest\/v1\/rpc\/([a-z_0-9]+)/);
+      if (m) {
+        calls.push({ fn: m[1], body: JSON.parse(req.postData() || '{}') });
+        if (m[1] === 'policy_acceptance_status') return r.fulfill(json({ required: false, missing: [] }));
+        const fx = rpc[m[1]];
+        return r.fulfill(json(typeof fx === 'function' ? fx(calls[calls.length - 1].body) : (fx ?? null)));
+      }
+      const tm = url.match(/\/rest\/v1\/([a-z_0-9]+)/);
+      if (tm && req.method() === 'GET') {
+        const rows = tables[tm[1]] ?? [];
+        const single = (req.headers()['accept'] || '').includes('vnd.pgrst.object');
+        return r.fulfill(json(single ? (rows[0] ?? null) : rows));
+      }
+      /* A write answers with the row it touched, the way PostgREST does with select(). */
+      if (tm) return r.fulfill(json((tables[tm[1]] ?? [{ id: 'ok' }]).slice(0, 1)));
+      return r.fulfill(json({}));
+    });
+    return { ctx, page, calls };
+  }
+
+  const USER_ROW = { id: '00000000-0000-4000-8000-0000000000a1', auth_id: fakeSession().user.id, email: 'legal@example.test', full_name: 'Owner', phone: '+995599000001', preferred_language: 'en' };
+  const PROPERTY_ROW = {
+    id: '00000000-0000-4000-8000-0000000000c1', user_id: USER_ROW.id, title: 'Flat in Vake', homatch_id: 123456,
+    transaction_type: 'SALE', property_type: 'APARTMENT', source_type: 'PRIVATE_LISTING', matching_status: 'ACTIVE',
+    is_deleted: false, contact_phone_e164: '+995555123456', contact_phone_raw: '+995 555 123 456', contact_phone_country: 'GE',
+    contact_phone_public: false, facts: [{ city: 'Tbilisi', total_price: 120000, currency: 'USD', area: 80 }], photos: [],
+  };
+
+  await t.test('listing contact: publication is an explicit, unticked choice saved through the server', async () => {
+    for (const lang of ['ka', 'en', 'ar']) {
+      /* English runs at desktop width: at 390px the app's bottom nav sits over the edit
+         form's Save bar (pre-existing, reported separately), which blocks a real click. */
+      const { ctx, page, calls } = await openWithData({
+        lang, width: lang === 'en' ? 1280 : 390, tables: { users: [USER_ROW], properties: [PROPERTY_ROW] },
+        rpc: { set_property_contact_publication: true, renew_property: { ok: true, renewed: false } },
+      });
+      await page.goto(`${BASE}/property/${PROPERTY_ROW.id}/edit`, { waitUntil: 'domcontentloaded' });
+      const toggle = page.locator('#section-contact > button[aria-expanded]');
+      await toggle.waitFor({ timeout: 20000 });
+      if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+      const box = page.locator('[data-contact-publish] input[type="checkbox"]');
+      await box.waitFor({ timeout: 20000 });
+      assert.equal(await box.isChecked(), false, `${lang}: an existing listing is not published by default`);
+      const overflow = await page.evaluate(() => document.body.scrollWidth > document.documentElement.clientWidth + 1);
+      assert.equal(overflow, false, `${lang}: no horizontal overflow on the edit form`);
+      if (lang === 'en') {
+        // The listing number is what the field holds; the account phone is never put there.
+        assert.equal(await page.locator('input[type="tel"]').inputValue(), '+995 555 123 456');
+        await box.check();
+        const save = page.getByRole('button', { name: 'Save changes' }).first();
+        await save.scrollIntoViewIfNeeded();
+        await save.click();
+        for (let i = 0; i < 50 && !calls.some((c) => c.fn === 'set_property_contact_publication'); i += 1) await page.waitForTimeout(100);
+        const call = calls.find((c) => c.fn === 'set_property_contact_publication');
+        assert.deepEqual(call?.body, { p_property_id: PROPERTY_ROW.id, p_public: true }, 'the choice goes through the owner-only RPC');
+      }
+      await ctx.close();
+    }
+  });
+
+  await t.test('seeker card: the published listing number with a working Call action; unpublished stays private', async () => {
+    const ROW = {
+      kind: 'MATCH', id: '00000000-0000-4000-8000-0000000000d1', role: 'SEEKER', property_id: PROPERTY_ROW.id, homatch_id: 123456,
+      property_title: null, counterparty_name: 'Nino', match_score: 0.9, agreed: [], preference_misses: [], deal_kind: 'SALE',
+      state: 'MATCHED', viewing_requested: false, has_conversation: false, updated_at: new Date().toISOString(),
+      city: 'Tbilisi', district: 'Vake', property_type: 'APARTMENT', transaction_type: 'SALE', price: 120000, currency: 'USD', area: 80, rooms: 3, bedrooms: 2,
+    };
+    const cases = [[{ phone: '+995555123456', reason: null }, true], [{ phone: null, reason: 'NOT_PUBLISHED' }, false]];
+    for (const [answer, expectPhone] of cases) {
+      const { ctx, page, calls } = await openWithData({
+        tables: { users: [USER_ROW] },
+        rpc: { my_native_matches: [ROW], reveal_native_contact: answer },
+      });
+      await page.goto(`${BASE}/find-property?tab=searches`, { waitUntil: 'domcontentloaded' });
+      const actions = page.locator('[data-native-actions]').first();
+      await actions.waitFor({ timeout: 20000 });
+      // No number is shipped to the page before Call is pressed.
+      assert.equal(await page.locator('a[href^="tel:"]').count(), 0);
+      await actions.locator('button').nth(1).click();
+      for (let i = 0; i < 50 && !calls.some((c) => c.fn === 'reveal_native_contact'); i += 1) await page.waitForTimeout(100);
+      await page.waitForTimeout(300);
+      if (expectPhone) {
+        const tel = page.locator('[data-native-phone] a[href^="tel:"]');
+        assert.equal(await tel.getAttribute('href'), 'tel:+995555123456', 'Call dials the listing number');
+        assert.ok(!(await page.content()).includes('+995599000001'), 'the account phone never appears');
+      } else {
+        assert.equal(await page.locator('a[href^="tel:"]').count(), 0);
+        assert.match(await page.locator('[role="status"]').last().innerText(), /chosen to show a phone number/);
+      }
+      await ctx.close();
+    }
+  });
 });

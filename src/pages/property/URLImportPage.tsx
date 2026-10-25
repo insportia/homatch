@@ -17,7 +17,7 @@ import { supabase } from '@/db/supabase';
 import { readContactPhone } from '@/lib/propertyContact';
 import {
   createImport, createProperty, 
-  createSearchProfile, logActivity, updateProperty, upsertPropertyFacts
+  createSearchProfile, logActivity, updateProperty, upsertPropertyFacts, setPropertyContactPublication,
 } from '@/services/api';
 import type { PropertyFacts } from '@/types/types';
 
@@ -170,6 +170,8 @@ function URLImportContent() {
      The seller's number on the source page, where there was one, belongs to whoever
      published that listing and is not a commitment by the person importing it. */
   const [contactPhone, setContactPhone] = useState('');
+  /* Off until the advertiser chooses to show the number on the listing. */
+  const [contactPhonePublic, setContactPhonePublic] = useState(false);
   const [showPhoneProblem, setShowPhoneProblem] = useState(false);
 
   const handleSave = async (facts: ReviewSavePayload, title: string) => {
@@ -207,6 +209,7 @@ function URLImportContent() {
         // NOTE: fall through to finally — do NOT return here (spinner would stick)
         return;
       }
+      if (contactPhonePublic && !(await setPropertyContactPublication(propertyId, true))) toast.error(t('contact_phone_publish_failed'));
       // Persist facts (includes cover_image + gallery_images)
       await upsertPropertyFacts({ ...pureFactFields, property_id: propertyId });
       if (pureFactFields.cover_image) {
@@ -247,6 +250,8 @@ function URLImportContent() {
             <ContactPhoneField
               value={contactPhone}
               onChange={(next) => { setContactPhone(next); setShowPhoneProblem(false); }}
+              published={contactPhonePublic}
+              onPublishedChange={setContactPhonePublic}
               defaultCountry={extractedFacts?.country_code || extractedFacts?.country || 'GE'}
               accountPhone={homatchUser?.phone ?? null}
               showProblem={showPhoneProblem}

@@ -38,7 +38,14 @@ export default function TermsPage() {
         <p>{t('terms_comm_p3')}</p>
         <p><strong>{t('terms_comm_p4')}</strong></p>
         <p>{t('terms_comm_p5')}</p>
-        <p>{t('terms_comm_listing')}</p>
+      </>,
+    },
+    {
+      id: 'listing-contact', title: t('terms_listing_contact_title'), content: <>
+        <p>{t('terms_listing_contact_p1')}</p>
+        <p>{t('terms_listing_contact_p2')}</p>
+        <p>{t('terms_listing_contact_p3')}</p>
+        <p><strong>{t('terms_listing_contact_p4')}</strong></p>
       </>,
     },
     {

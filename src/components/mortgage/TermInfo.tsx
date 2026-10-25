@@ -113,7 +113,7 @@ export function GlossaryPanel() {
   const { t } = useLanguage();
   return (
     <section aria-labelledby="mortgage-glossary-title" className="relative overflow-hidden rounded-3xl bg-[#0C1119] p-5 text-white shadow-hover sm:p-8">
-      <div aria-hidden="true" className="pointer-events-none absolute -end-20 -top-20 h-56 w-56 rounded-full bg-[radial-gradient(circle,hsl(38_92%_56%/0.2),transparent_65%)]" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(14rem_14rem_at_100%_0%,hsl(38_92%_56%/0.2),transparent_70%)]" />
       <div className="relative">
         <div className="flex items-start gap-3">
           <span aria-hidden="true" className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(38_92%_56%/0.35)] bg-[hsl(38_92%_56%/0.12)] text-[hsl(38_92%_60%)]">

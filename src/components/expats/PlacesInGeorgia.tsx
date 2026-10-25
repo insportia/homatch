@@ -88,7 +88,7 @@ export function PlaceCard({ place, text }: { place: PlaceMeta; text: PlaceTexts[
     <article data-place={place.id} className="flex min-w-0 flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-card">
       <div className={cn('relative isolate flex min-h-[7.5rem] flex-col justify-end overflow-hidden bg-gradient-to-br p-5 text-white', look.band)}>
         {/* Soft ridges: two blurred shapes give the band depth without an image. */}
-        <span aria-hidden="true" className="absolute -end-10 -top-16 -z-10 h-44 w-44 rounded-full bg-white/15 blur-2xl" />
+        <span aria-hidden="true" className="absolute inset-0 -z-10 bg-[radial-gradient(11rem_11rem_at_100%_0%,rgb(255_255_255/0.15),transparent_70%)]" />
         <span aria-hidden="true" className="absolute -bottom-20 -start-8 -z-10 h-40 w-56 rotate-12 rounded-[40%] bg-black/20 blur-xl" />
         <span aria-hidden="true" className="absolute end-4 top-4 flex h-11 w-11 items-center justify-center rounded-full border border-white/30 bg-white/15 backdrop-blur">
           <Icon className="h-5 w-5" />

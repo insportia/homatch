@@ -40,7 +40,7 @@ export function TermHero({ eyebrow, title, lead, children }: { eyebrow: React.Re
     <header className="relative overflow-hidden rounded-3xl bg-[#0C1119] px-5 py-7 text-white shadow-hover sm:px-10 sm:py-11">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -end-24 -top-24 h-64 w-64 rounded-full bg-[radial-gradient(circle,hsl(38_92%_56%/0.22),transparent_65%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(16rem_16rem_at_100%_0%,hsl(38_92%_56%/0.22),transparent_70%)]"
       />
       <div className="relative">
         <div className="text-sm font-semibold text-[hsl(38_92%_62%)]">{eyebrow}</div>

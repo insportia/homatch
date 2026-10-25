@@ -720,8 +720,11 @@ function AIPageInner() {
                 + 'focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] disabled:opacity-60'
               }
             />
-            {/* Voice messages need a wallet, so an account. */}
-            {session && !streaming && (
+            {/* ONE ROUND BUTTON BESIDE THE FIELD, like any messenger: the mic
+                while the field is empty, send once there is text. Two buttons
+                side by side narrowed the field until the placeholder wrapped
+                to three lines at 320px. Voice needs a wallet, so an account. */}
+            {session && !streaming && !input.trim() ? (
               <VoiceMessageButton
                 locale={lang}
                 onTranscript={(text, note) => {
@@ -729,8 +732,7 @@ function AIPageInner() {
                   void sendMessage(text);
                 }}
               />
-            )}
-            {streaming ? (
+            ) : streaming ? (
               <Button
                 variant="ghost" onClick={cancelStream}
                 aria-label={t('ai_stop')}

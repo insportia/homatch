@@ -266,7 +266,7 @@ export default function MortgagePage() {
                 title, gold eyebrow and a hairline of gold light. The WORK
                 happens on the white panels below it. */}
             <header className="relative overflow-hidden rounded-3xl bg-[#0C1119] px-5 py-6 text-white shadow-hover sm:px-9 sm:py-10">
-              <div aria-hidden="true" className="pointer-events-none absolute -end-24 -top-24 h-64 w-64 rounded-full bg-[radial-gradient(circle,hsl(38_92%_56%/0.22),transparent_65%)]" />
+              <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(16rem_16rem_at_100%_0%,hsl(38_92%_56%/0.22),transparent_70%)]" />
               <div className="relative">
                 <p className="text-[13px] font-semibold text-[hsl(38_92%_60%)]">
                   {t('mortgage_product_eyebrow')}

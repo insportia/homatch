@@ -60,7 +60,7 @@ export function ContractHomiGuide({
       aria-label={t('ux_ct_homi_label')}
       data-testid="contract-homi"
     >
-      <div className="pointer-events-none absolute -end-16 -top-16 h-56 w-56 rounded-full bg-[radial-gradient(closest-side,hsl(38_92%_56%/0.25),transparent)]" aria-hidden="true" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(14rem_14rem_at_100%_0%,hsl(38_92%_56%/0.25),transparent_70%)]" aria-hidden="true" />
       <div className="relative flex min-w-0 items-end gap-3 p-4 sm:gap-5 sm:p-5">
         <HomiHomeStage gesture={gesture} framing="upper" className="h-28 w-24 shrink-0 sm:h-36 sm:w-32" />
         <div className="min-w-0 flex-1 pb-1">

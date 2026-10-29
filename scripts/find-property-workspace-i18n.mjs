@@ -40,7 +40,7 @@ const strings = {
   fpw_next_photo: ['Next photo', 'შემდეგი ფოტო', 'Следующее фото', 'Sonraki fotoğraf', 'الصورة التالية', 'התמונה הבאה'],
   fpw_photo: ['Photo {{n}}', 'ფოტო {{n}}', 'Фото {{n}}', 'Fotoğraf {{n}}', 'الصورة {{n}}', 'תמונה {{n}}'],
   fpw_ai: ['AI Property Analysis', 'ქონების AI ანალიზი', 'AI-анализ объекта', 'AI mülk analizi', 'تحليل العقار بالذكاء الاصطناعي', 'ניתוח נכס באמצעות AI'],
-  fpw_ai_credits: ['Uses Credits through AI Chat. Each response is billed by measured usage.', 'იყენებს Credits-ს AI ჩატის მეშვეობით. თითოეული პასუხი ფაქტობრივი გამოყენებით ფასდება.', 'Использует Credits через AI-чат. Ответ оплачивается по фактическому использованию.', 'AI sohbet üzerinden Credits kullanır. Her yanıt ölçülen kullanıma göre ücretlendirilir.', 'يستخدم Credits عبر محادثة AI. تُحسب تكلفة كل إجابة وفق الاستخدام الفعلي.', 'משתמש ב-Credits דרך צ׳אט AI. כל תשובה מחויבת לפי השימוש שנמדד.'],
+  fpw_ai_credits: ['Uses AI chat. Each answer is billed by measured usage.', 'იყენებს AI ჩატს. თითოეული პასუხი ფაქტობრივი გამოყენებით ფასდება.', 'Использует AI-чат. Каждый ответ оплачивается по фактическому использованию.', 'AI sohbetini kullanır. Her yanıt ölçülen kullanıma göre ücretlendirilir.', 'يستخدم محادثة الذكاء الاصطناعي. تُحتسب كل إجابة حسب الاستخدام الفعلي.', 'משתמש בצ׳אט AI. כל תשובה מחויבת לפי השימוש בפועל.'],
 };
 const statuses = {
   CREATED: ['Queued', 'რიგშია', 'В очереди', 'Sırada', 'في الانتظار', 'בתור'],

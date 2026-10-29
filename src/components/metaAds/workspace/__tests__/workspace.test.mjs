@@ -115,7 +115,9 @@ test('customer copy: no "Refund", no "confirmed buyer", Georgian terminology', (
     assert.doesNotMatch(values[1], /შესატყვისი/, key);
   }
   for (const f of FILES) assert.doesNotMatch(code(f), /['"`][^'"`]*Refund[^'"`]*['"`]/, `${f} has no Refund literal`);
-  assert.match(W.mm_w_kpi_leads[1], /ლიდ/);
+  // Owner, 2026-10-30: a lead is a კონტაქტი in Georgian copy, never the loanword ლიდი.
+  assert.match(W.mm_w_kpi_leads[1], /კონტაქტ/);
+  assert.doesNotMatch(W.mm_w_kpi_leads[1], /ლიდ/);
 });
 
 test('balance card copy: $100 → $9 at 9%, 0% needs no top-up, Non-refundable, no broken interpolation, mobile-safe dialog', async () => {

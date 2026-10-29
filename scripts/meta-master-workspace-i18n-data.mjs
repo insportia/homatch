@@ -41,14 +41,7 @@ export const META_MASTER_WORKSPACE_STRINGS = {
     'Managed actions are paused', 'მართული მოქმედებები შეჩერებულია', 'Управляемые действия приостановлены',
     'Yönetilen işlemler duraklatıldı', 'الإجراءات المُدارة متوقفة مؤقتًا', 'הפעולות המנוהלות מושהות',
   ],
-  mm_w_guard_suspended_body: [
-    'Managed Meta Ads actions are paused for this ad account after repeated changes outside HOMATCH. Your statistics and leads remain available. Contact support to review.',
-    'ამ სარეკლამო ანგარიშზე მართული Meta Ads მოქმედებები შეჩერებულია HOMATCH-ის გარეთ განმეორებითი ცვლილებების გამო. თქვენი სტატისტიკა და ლიდები ხელმისაწვდომი რჩება. განსახილველად დაუკავშირდით მხარდაჭერას.',
-    'Управляемые действия Meta Ads для этого рекламного аккаунта приостановлены после повторных изменений вне HOMATCH. Ваша статистика и лиды остаются доступны. Свяжитесь с поддержкой для проверки.',
-    'HOMATCH dışında tekrarlanan değişiklikler nedeniyle bu reklam hesabı için yönetilen Meta Ads işlemleri duraklatıldı. İstatistikleriniz ve potansiyel müşterileriniz erişilebilir olmaya devam ediyor. İnceleme için destekle iletişime geçin.',
-    'تم إيقاف إجراءات Meta Ads المُدارة مؤقتًا لهذا الحساب الإعلاني بعد تغييرات متكررة خارج HOMATCH. تبقى إحصاءاتك وعملاؤك المحتملون متاحين. تواصل مع الدعم للمراجعة.',
-    'הפעולות המנוהלות של Meta Ads הושהו עבור חשבון המודעות הזה לאחר שינויים חוזרים מחוץ ל-HOMATCH. הנתונים והלידים שלכם נשארים זמינים. פנו לתמיכה לבדיקה.',
-  ],
+  mm_w_guard_suspended_body: ['Managed Meta Ads actions are paused for this ad account after repeated changes outside HOMATCH. Your statistics and leads remain available. Contact support to review.', 'ამ სარეკლამო ანგარიშზე მართული Meta Ads მოქმედებები შეჩერებულია HOMATCH-ის გარეთ განმეორებითი ცვლილებების გამო. თქვენი სტატისტიკა და კონტაქტები ხელმისაწვდომი რჩება. განსახილველად დაუკავშირდით მხარდაჭერას.', 'Управляемые действия Meta Ads для этого рекламного аккаунта приостановлены после повторных изменений вне HOMATCH. Ваша статистика и лиды остаются доступны. Свяжитесь с поддержкой для проверки.', 'HOMATCH dışında tekrarlanan değişiklikler nedeniyle bu reklam hesabı için yönetilen Meta Ads işlemleri duraklatıldı. İstatistikleriniz ve potansiyel müşterileriniz erişilebilir olmaya devam ediyor. İnceleme için destekle iletişime geçin.', 'تم إيقاف إجراءات Meta Ads المُدارة مؤقتًا لهذا الحساب الإعلاني بعد تغييرات متكررة خارج HOMATCH. تبقى إحصاءاتك وعملاؤك المحتملون متاحين. تواصل مع الدعم للمراجعة.', 'הפעולות המנוהלות של Meta Ads הושהו עבור חשבון המודעות הזה לאחר שינויים חוזרים מחוץ ל-HOMATCH. הנתונים והלידים שלכם נשארים זמינים. פנו לתמיכה לבדיקה.'],
   mm_w_guard_strikes: [
     '{{count}} of {{max}} strikes', '{{count}} / {{max}} გაფრთხილება', 'Нарушений: {{count}} из {{max}}',
     '{{max}} ihlalden {{count}}', '{{count}} من {{max}} مخالفات', '{{count}} מתוך {{max}} התראות חמורות',
@@ -99,10 +92,7 @@ export const META_MASTER_WORKSPACE_STRINGS = {
     'Needs attention', 'ყურადღებას საჭიროებს', 'Требуют внимания',
     'İlgi gerektiriyor', 'تحتاج إلى انتباه', 'דורשים תשומת לב',
   ],
-  mm_w_summary_title: [
-    'Results in {{currency}}', 'შედეგები — {{currency}}', 'Результаты в {{currency}}',
-    '{{currency}} cinsinden sonuçlar', 'النتائج بعملة {{currency}}', 'תוצאות ב-{{currency}}',
-  ],
+  mm_w_summary_title: ['Results in {{currency}}', 'შედეგები: {{currency}}', 'Результаты в {{currency}}', '{{currency}} cinsinden sonuçlar', 'النتائج بعملة {{currency}}', 'תוצאות ב-{{currency}}'],
   mm_w_summary_campaigns: [
     'Campaigns: {{count}}', '{{count}} კამპანია', 'Кампаний: {{count}}',
     'Kampanya: {{count}}', 'الحملات: {{count}}', 'קמפיינים: {{count}}',
@@ -133,15 +123,9 @@ export const META_MASTER_WORKSPACE_STRINGS = {
     'Cost per result', 'ფასი ერთ შედეგზე', 'Цена за результат',
     'Sonuç başına maliyet', 'التكلفة لكل نتيجة', 'עלות לתוצאה',
   ],
-  mm_w_kpi_leads: ['Leads', 'ლიდები', 'Лиды', 'Potansiyel müşteriler', 'العملاء المحتملون', 'לידים'],
-  mm_w_kpi_cpl: [
-    'Cost per lead', 'ფასი ერთ ლიდზე', 'Цена за лид',
-    'Potansiyel müşteri başına maliyet', 'التكلفة لكل عميل محتمل', 'עלות לליד',
-  ],
-  mm_w_kpi_cpql: [
-    'Cost per qualified lead', 'ფასი ერთ კვალიფიციურ ლიდზე', 'Цена за квалифицированный лид',
-    'Nitelikli potansiyel müşteri başına maliyet', 'التكلفة لكل عميل محتمل مؤهَّل', 'עלות לליד מוכשר',
-  ],
+  mm_w_kpi_leads: ['Leads', 'კონტაქტები', 'Лиды', 'Potansiyel müşteriler', 'العملاء المحتملون', 'לידים'],
+  mm_w_kpi_cpl: ['Cost per lead', 'ფასი ერთ კონტაქტზე', 'Цена за лид', 'Potansiyel müşteri başına maliyet', 'التكلفة لكل عميل محتمل', 'עלות לליד'],
+  mm_w_kpi_cpql: ['Cost per qualified lead', 'ფასი ერთ კვალიფიციურ კონტაქტზე', 'Цена за квалифицированный лид', 'Nitelikli potansiyel müşteri başına maliyet', 'التكلفة لكل عميل محتمل مؤهَّل', 'עלות לליד מוכשר'],
   mm_w_kpi_qual_rate: [
     'Qualification rate', 'კვალიფიკაციის მაჩვენებელი', 'Доля квалифицированных',
     'Nitelik oranı', 'نسبة التأهيل', 'שיעור הכשרה',
@@ -239,10 +223,7 @@ export const META_MASTER_WORKSPACE_STRINGS = {
     'لا توجد إيداعات بعد. أضف رصيدًا لإطلاق أول حملة مُدارة.',
     'עדיין אין הפקדות. הוסיפו כספים כדי להשיק את הקמפיין המנוהל הראשון.',
   ],
-  mm_w_bal_currency: [
-    'Balance in {{currency}}', 'ბალანსი — {{currency}}', 'Баланс в {{currency}}',
-    '{{currency}} bakiyesi', 'الرصيد بعملة {{currency}}', 'יתרה ב-{{currency}}',
-  ],
+  mm_w_bal_currency: ['Balance in {{currency}}', 'ბალანსი: {{currency}}', 'Баланс в {{currency}}', '{{currency}} bakiyesi', 'الرصيد بعملة {{currency}}', 'יתרה ב-{{currency}}'],
   mm_w_bal_fee: [
     'Your service fee: {{percent}}%', 'თქვენი მომსახურების საკომისიო: {{percent}}%', 'Ваш сервисный сбор: {{percent}}%',
     'Hizmet bedeliniz: %{{percent}}', 'رسوم الخدمة الخاصة بك: {{percent}}%', 'דמי השירות שלכם: {{percent}}%',
@@ -252,26 +233,14 @@ export const META_MASTER_WORKSPACE_STRINGS = {
   ],
 
   // ── Leads Center ────────────────────────────────────────────────────────
-  mm_w_leads_intro: [
-    'Each lead is a potentially interested person who answered your form. Move them through the pipeline as you follow up.',
-    'თითოეული ლიდი პოტენციურად დაინტერესებული პირია, რომელმაც თქვენი ფორმა შეავსო. გადაიტანეთ ისინი ეტაპებზე კომუნიკაციისას.',
-    'Каждый лид — потенциально заинтересованный человек, заполнивший вашу форму. Переводите его по этапам по мере работы.',
-    'Her potansiyel müşteri, formunuzu yanıtlamış potansiyel olarak ilgilenen bir kişidir. Takip ettikçe onları aşamalar arasında ilerletin.',
-    'كل عميل محتمل هو شخص قد يكون مهتمًا أجاب على نموذجك. انقله عبر المراحل أثناء المتابعة.',
-    'כל ליד הוא אדם שעשוי להתעניין וענה על הטופס שלכם. העבירו אותו בין השלבים תוך כדי מעקב.',
-  ],
+  mm_w_leads_intro: ['Each lead is a potentially interested person who answered your form. Move them through the pipeline as you follow up.', 'თითოეული კონტაქტი პოტენციურად დაინტერესებული პირია, რომელმაც თქვენი ფორმა შეავსო. გადაიტანეთ ისინი ეტაპებზე კომუნიკაციისას.', 'Каждый лид — потенциально заинтересованный человек, заполнивший вашу форму. Переводите его по этапам по мере работы.', 'Her potansiyel müşteri, formunuzu yanıtlamış potansiyel olarak ilgilenen bir kişidir. Takip ettikçe onları aşamalar arasında ilerletin.', 'كل عميل محتمل هو شخص قد يكون مهتمًا أجاب على نموذجك. انقله عبر المراحل أثناء المتابعة.', 'כל ליד הוא אדם שעשוי להתעניין וענה על הטופס שלכם. העבירו אותו בין השלבים תוך כדי מעקב.'],
   mm_w_leads_campaign: ['Campaign', 'კამპანია', 'Кампания', 'Kampanya', 'الحملة', 'קמפיין'],
   mm_w_leads_all_campaigns: [
     'All campaigns', 'ყველა კამპანია', 'Все кампании', 'Tüm kampanyalar', 'كل الحملات', 'כל הקמפיינים',
   ],
   mm_w_leads_status: ['Status', 'სტატუსი', 'Статус', 'Durum', 'الحالة', 'סטטוס'],
-  mm_w_leads_search_label: [
-    'Search leads', 'ლიდების ძიება', 'Поиск лидов', 'Potansiyel müşteri ara', 'ابحث في العملاء المحتملين', 'חיפוש לידים',
-  ],
-  mm_w_leads_counts_label: [
-    'Leads by status', 'ლიდები სტატუსის მიხედვით', 'Лиды по статусам',
-    'Duruma göre potansiyel müşteriler', 'العملاء المحتملون حسب الحالة', 'לידים לפי סטטוס',
-  ],
+  mm_w_leads_search_label: ['Search leads', 'კონტაქტების ძიება', 'Поиск лидов', 'Potansiyel müşteri ara', 'ابحث في العملاء المحتملين', 'חיפוש לידים'],
+  mm_w_leads_counts_label: ['Leads by status', 'კონტაქტები სტატუსის მიხედვით', 'Лиды по статусам', 'Duruma göre potansiyel müşteriler', 'العملاء المحتملون حسب الحالة', 'לידים לפי סטטוס'],
   mm_w_lead_status_NEW: ['New', 'ახალი', 'Новый', 'Yeni', 'جديد', 'חדש'],
   mm_w_lead_status_CONTACTED: ['Contacted', 'დაკავშირებული', 'Связались', 'İletişime geçildi', 'تم التواصل', 'נוצר קשר'],
   mm_w_lead_status_QUALIFIED: ['Qualified', 'კვალიფიციური', 'Квалифицирован', 'Nitelikli', 'مؤهَّل', 'מוכשר'],
@@ -279,10 +248,7 @@ export const META_MASTER_WORKSPACE_STRINGS = {
   mm_w_lead_status_NEGOTIATING: ['Negotiating', 'მოლაპარაკება', 'Переговоры', 'Pazarlık', 'تفاوض', 'משא ומתן'],
   mm_w_lead_status_WON: ['Won', 'წარმატებული', 'Сделка', 'Kazanıldı', 'تمّت الصفقة', 'נסגר בהצלחה'],
   mm_w_lead_status_LOST: ['Lost', 'დაკარგული', 'Потерян', 'Kaybedildi', 'لم يُكمل', 'לא התממש'],
-  mm_w_lead_open: [
-    'Open lead record', 'ლიდის ბარათის გახსნა', 'Открыть карточку лида',
-    'Potansiyel müşteri kaydını aç', 'فتح سجل العميل المحتمل', 'פתיחת רשומת הליד',
-  ],
+  mm_w_lead_open: ['Open lead record', 'კონტაქტის ბარათის გახსნა', 'Открыть карточку лида', 'Potansiyel müşteri kaydını aç', 'فتح سجل العميل المحتمل', 'פתיחת רשומת הליד'],
   mm_w_lead_change_status: [
     'Pipeline status', 'ეტაპი', 'Этап воронки', 'Süreç durumu', 'مرحلة المتابعة', 'שלב בתהליך',
   ],
@@ -298,10 +264,7 @@ export const META_MASTER_WORKSPACE_STRINGS = {
     'Earlier status', 'წინა სტატუსი', 'Прежний статус', 'Önceki durum', 'الحالة السابقة', 'סטטוס קודם',
   ],
   mm_w_lead_contact: ['Contact', 'კონტაქტი', 'Контакт', 'İletişim', 'التواصل', 'פרטי קשר'],
-  mm_w_lead_contact_private: [
-    'Private — visible only to you.', 'პირადი — ხედავთ მხოლოდ თქვენ.', 'Конфиденциально — видно только вам.',
-    'Gizli — yalnızca siz görebilirsiniz.', 'خاص — مرئي لك فقط.', 'פרטי — גלוי רק לכם.',
-  ],
+  mm_w_lead_contact_private: ['Private — visible only to you.', 'პირადი: ხედავთ მხოლოდ თქვენ.', 'Конфиденциально — видно только вам.', 'Gizli — yalnızca siz görebilirsiniz.', 'خاص — مرئي لك فقط.', 'פרטי — גלוי רק לכם.'],
   mm_w_lead_name: ['Name', 'სახელი', 'Имя', 'Ad', 'الاسم', 'שם'],
   mm_w_lead_email: ['Email', 'ელფოსტა', 'Эл. почта', 'E-posta', 'البريد الإلكتروني', 'דוא״ל'],
   mm_w_lead_phone: ['Phone', 'ტელეფონი', 'Телефон', 'Telefon', 'الهاتف', 'טלפון'],
@@ -313,10 +276,7 @@ export const META_MASTER_WORKSPACE_STRINGS = {
     'В этой форме не было уточняющих вопросов.', 'Bu formda nitelendirme sorusu yoktu.',
     'لم يتضمن هذا النموذج أسئلة تأهيل.', 'בטופס הזה לא היו שאלות סינון.',
   ],
-  mm_w_lead_attribution: [
-    'Where this lead came from', 'საიდან მოვიდა ეს ლიდი', 'Откуда пришёл лид',
-    'Bu potansiyel müşteri nereden geldi', 'من أين جاء هذا العميل المحتمل', 'מאיפה הגיע הליד',
-  ],
+  mm_w_lead_attribution: ['Where this lead came from', 'საიდან მოვიდა ეს კონტაქტი', 'Откуда пришёл лид', 'Bu potansiyel müşteri nereden geldi', 'من أين جاء هذا العميل المحتمل', 'מאיפה הגיע הליד'],
   mm_w_lead_attr_campaign: ['Campaign', 'კამპანია', 'Кампания', 'Kampanya', 'الحملة', 'קמפיין'],
   mm_w_lead_attr_ad: ['Ad', 'რეკლამა', 'Объявление', 'Reklam', 'الإعلان', 'מודעה'],
   mm_w_lead_attr_adset: ['Ad set', 'რეკლამების ჯგუფი', 'Группа объявлений', 'Reklam seti', 'مجموعة الإعلانات', 'קבוצת מודעות'],
@@ -396,9 +356,9 @@ export const META_MASTER_WORKSPACE_STRINGS = {
   // ── Honest empty metrics ─────────────────────────────────────────────────
   mm_w_metric_no_results: ["No results yet", "შედეგი ჯერ არ არის", "Пока нет результатов", "Henüz sonuç yok", "لا نتائج بعد", "אין עדיין תוצאות"],
   mm_w_metric_no_spend: ["No spend yet", "ხარჯი ჯერ არ დაფიქსირებულა", "Пока нет расходов", "Henüz harcama yok", "لا إنفاق بعد", "אין עדיין הוצאה"],
-  mm_w_metric_leads_later: ["Lead quality metrics appear after the first lead.", "ლიდების ხარისხის მაჩვენებლები პირველი ლიდის შემდეგ გამოჩნდება.", "Показатели качества лидов появятся после первого лида.", "Potansiyel müşteri kalite ölçümleri ilk talepten sonra görünür.", "تظهر مقاييس جودة العملاء المحتملين بعد أول عميل محتمل.", "מדדי איכות הלידים יופיעו אחרי הליד הראשון."],
+  mm_w_metric_leads_later: ['Lead quality metrics appear after the first lead.', 'კონტაქტების ხარისხის მაჩვენებლები პირველი კონტაქტის შემდეგ გამოჩნდება.', 'Показатели качества лидов появятся после первого лида.', 'Potansiyel müşteri kalite ölçümleri ilk talepten sonra görünür.', 'تظهر مقاييس جودة العملاء المحتملين بعد أول عميل محتمل.', 'מדדי איכות הלידים יופיעו אחרי הליד הראשון.'],
   // ── One warning line per card ────────────────────────────────────────────
-  mm_w_warn_access: ["HOMATCH can no longer manage this campaign — reconnect Meta.", "HOMATCH-ს ამ კამპანიის მართვა აღარ შეუძლია — ხელახლა დააკავშირეთ Meta.", "HOMATCH больше не может управлять кампанией — переподключите Meta.", "HOMATCH bu kampanyayı artık yönetemiyor — Meta'yı yeniden bağlayın.", "لم يعد بإمكان HOMATCH إدارة هذه الحملة — أعد ربط Meta.", "HOMATCH כבר לא יכול לנהל את הקמפיין — חברו מחדש את Meta."],
+  mm_w_warn_access: ['HOMATCH can no longer manage this campaign — reconnect Meta.', 'HOMATCH-ს ამ კამპანიის მართვა აღარ შეუძლია, ხელახლა დააკავშირეთ Meta.', 'HOMATCH больше не может управлять кампанией — переподключите Meta.', 'HOMATCH bu kampanyayı artık yönetemiyor — Meta\'yı yeniden bağlayın.', 'لم يعد بإمكان HOMATCH إدارة هذه الحملة — أعد ربط Meta.', 'HOMATCH כבר לא יכול לנהל את הקמפיין — חברו מחדש את Meta.'],
   mm_w_warn_locked: ["Held until the change made outside HOMATCH is reviewed.", "შეჩერებულია, სანამ HOMATCH-ის გარეთ განხორციელებული ცვლილება არ შემოწმდება.", "Приостановлена до проверки изменения вне HOMATCH.", "HOMATCH dışında yapılan değişiklik incelenene kadar bekletiliyor.", "معلّقة حتى تُراجع التغييرات التي أُجريت خارج HOMATCH.", "מוחזק עד שהשינוי שנעשה מחוץ ל-HOMATCH ייבדק."],
   mm_w_warn_failed: ["The launch did not complete. Open it to see why.", "გაშვება ვერ დასრულდა. მიზეზის სანახავად გახსენით კამპანია.", "Запуск не завершился. Откройте, чтобы узнать причину.", "Yayına alma tamamlanmadı. Nedenini görmek için açın.", "لم يكتمل الإطلاق. افتحها لمعرفة السبب.", "ההשקה לא הושלמה. פתחו כדי לראות למה."],
   mm_w_warn_rejected: ["Meta did not approve the ads.", "Meta-მ რეკლამები არ დაამტკიცა.", "Meta не одобрила объявления.", "Meta reklamları onaylamadı.", "لم توافق Meta على الإعلانات.", "Meta לא אישרה את המודעות."],
@@ -408,6 +368,6 @@ export const META_MASTER_WORKSPACE_STRINGS = {
   mm_w_ago_min: ["Synced with Meta · {{n}} min ago", "სინქრონიზებულია Meta-ში · {{n}} წთ წინ", "Синхронизировано с Meta · {{n}} мин назад", "Meta ile eşitlendi · {{n}} dk önce", "متزامنة مع Meta · قبل {{n}} د", "מסונכרן עם Meta · לפני {{n}} דק׳"],
   mm_w_ago_hour: ["Synced with Meta · {{n}} h ago", "სინქრონიზებულია Meta-ში · {{n}} სთ წინ", "Синхронизировано с Meta · {{n}} ч назад", "Meta ile eşitlendi · {{n}} sa önce", "متزامنة مع Meta · قبل {{n}} س", "מסונכרן עם Meta · לפני {{n}} שע׳"],
   mm_w_ago_day: ["Synced with Meta · {{n}} d ago", "სინქრონიზებულია Meta-ში · {{n}} დღის წინ", "Синхронизировано с Meta · {{n}} дн назад", "Meta ile eşitlendi · {{n}} gün önce", "متزامنة مع Meta · قبل {{n}} يوم", "מסונכרן עם Meta · לפני {{n}} ימים"],
-  mm_w_no_delivery: ["No delivery yet — Meta has not shown the ads.", "ჩვენება ჯერ არ ყოფილა — Meta-ს რეკლამები არ უჩვენებია.", "Показов пока нет — Meta ещё не показывала объявления.", "Henüz gösterim yok — Meta reklamları göstermedi.", "لا عرض بعد — لم تعرض Meta الإعلانات.", "עדיין אין הצגה — Meta לא הציגה את המודעות."],
+  mm_w_no_delivery: ['No delivery yet — Meta has not shown the ads.', 'ჩვენება ჯერ არ ყოფილა, Meta-ს რეკლამები არ უჩვენებია.', 'Показов пока нет — Meta ещё не показывала объявления.', 'Henüz gösterim yok — Meta reklamları göstermedi.', 'لا عرض بعد — لم تعرض Meta الإعلانات.', 'עדיין אין הצגה — Meta לא הציגה את המודעות.'],
   mm_w_metric_no_spend_yet: ["Nothing spent yet, so there is no cost per result to show.", "ხარჯი ჯერ არ ყოფილა, ამიტომ ერთ შედეგზე ფასი ჯერ არ ჩანს.", "Расходов ещё не было, поэтому цены за результат пока нет.", "Henüz harcama olmadığından sonuç başına maliyet yok.", "لم يُنفق شيء بعد، لذا لا توجد تكلفة لكل نتيجة.", "עדיין לא הוצא כסף, ולכן אין עלות לתוצאה."],
 };

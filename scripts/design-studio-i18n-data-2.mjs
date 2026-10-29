@@ -12,14 +12,7 @@ export const DS_STRINGS_2 = {
     'מרחב עיצוב בתלת־ממד. גררו לסיבוב, גללו או צבטו לזום, הקישו לבחירה.',
   ],
   ds_canvas_role: ['3D workspace', '3D სამუშაო სივრცე', '3D-рабочая область', '3B çalışma alanı', 'مساحة عمل ثلاثية الأبعاد', 'סביבת עבודה בתלת־ממד'],
-  ds_webgl_missing: [
-    'This browser cannot show 3D. Try an up-to-date browser or turn on hardware acceleration — your design is saved either way.',
-    'ამ ბრაუზერს 3D-ის ჩვენება არ შეუძლია. სცადეთ განახლებული ბრაუზერი ან ჩართეთ აპარატული აჩქარება — თქვენი დიზაინი ნებისმიერ შემთხვევაში შენახულია.',
-    'Этот браузер не может показать 3D. Попробуйте обновлённый браузер или включите аппаратное ускорение — ваш дизайн в любом случае сохранён.',
-    'Bu tarayıcı 3B gösteremiyor. Güncel bir tarayıcı deneyin veya donanım hızlandırmayı açın — tasarımınız her durumda kayıtlı.',
-    'لا يستطيع هذا المتصفح عرض المحتوى ثلاثي الأبعاد. جرّب متصفحًا محدّثًا أو فعّل تسريع الأجهزة — تصميمك محفوظ في كل الأحوال.',
-    'הדפדפן הזה לא יכול להציג תלת־ממד. נסו דפדפן מעודכן או הפעילו האצת חומרה — העיצוב שלכם שמור בכל מקרה.',
-  ],
+  ds_webgl_missing: ['This browser cannot show 3D. Try an up-to-date browser or turn on hardware acceleration — your design is saved either way.', 'ამ ბრაუზერს 3D-ის ჩვენება არ შეუძლია. სცადეთ განახლებული ბრაუზერი ან ჩართეთ აპარატული აჩქარება, თქვენი დიზაინი ნებისმიერ შემთხვევაში შენახულია.', 'Этот браузер не может показать 3D. Попробуйте обновлённый браузер или включите аппаратное ускорение — ваш дизайн в любом случае сохранён.', 'Bu tarayıcı 3B gösteremiyor. Güncel bir tarayıcı deneyin veya donanım hızlandırmayı açın — tasarımınız her durumda kayıtlı.', 'لا يستطيع هذا المتصفح عرض المحتوى ثلاثي الأبعاد. جرّب متصفحًا محدّثًا أو فعّل تسريع الأجهزة — تصميمك محفوظ في كل الأحوال.', 'הדפדפן הזה לא יכול להציג תלת־ממד. נסו דפדפן מעודכן או הפעילו האצת חומרה — העיצוב שלכם שמור בכל מקרה.'],
   ds_model_failed: [
     'The 3D model could not be loaded. Your design is not affected.',
     '3D მოდელი ვერ ჩაიტვირთა. თქვენს დიზაინზე ეს გავლენას არ ახდენს.',
@@ -84,14 +77,7 @@ export const DS_STRINGS_2 = {
     'الهيكل مبني على أبعاد معروفة. الأثاث والمواد والإضاءة معاينة تصميم.',
     'המבנה מבוסס על מידות ידועות. רהיטים, חומרים ותאורה הם תצוגה מקדימה של העיצוב.',
   ],
-  ds_rooms_unavailable_model: [
-    'Rooms are not identified in this 3D model yet, so it can be viewed and lit but not designed room by room.',
-    'ამ 3D მოდელში ოთახები ჯერ არ არის განსაზღვრული, ამიტომ მისი ნახვა და განათება შეიძლება, მაგრამ ოთახ-ოთახ დიზაინი — არა.',
-    'Комнаты в этой 3D-модели пока не определены, поэтому её можно смотреть и освещать, но не оформлять покомнатно.',
-    'Bu 3B modelde odalar henüz tanımlanmadı; görüntülenebilir ve aydınlatılabilir ama oda oda tasarlanamaz.',
-    'لم تُحدَّد الغرف في هذا النموذج ثلاثي الأبعاد بعد، لذا يمكن عرضه وإضاءته لكن لا يمكن تصميمه غرفةً غرفة.',
-    'החדרים במודל התלת־ממד הזה עדיין לא זוהו, לכן אפשר לצפות בו ולהאיר אותו אבל לא לעצב אותו חדר אחר חדר.',
-  ],
+  ds_rooms_unavailable_model: ['Rooms are not identified in this 3D model yet, so it can be viewed and lit but not designed room by room.', 'ამ 3D მოდელში ოთახები ჯერ არ არის განსაზღვრული, ამიტომ მისი ნახვა და განათება შეიძლება, მაგრამ ოთახ-ოთახ დიზაინი, არა.', 'Комнаты в этой 3D-модели пока не определены, поэтому её можно смотреть и освещать, но не оформлять покомнатно.', 'Bu 3B modelde odalar henüz tanımlanmadı; görüntülenebilir ve aydınlatılabilir ama oda oda tasarlanamaz.', 'لم تُحدَّد الغرف في هذا النموذج ثلاثي الأبعاد بعد، لذا يمكن عرضه وإضاءته لكن لا يمكن تصميمه غرفةً غرفة.', 'החדרים במודל התלת־ממד הזה עדיין לא זוהו, לכן אפשר לצפות בו ולהאיר אותו אבל לא לעצב אותו חדר אחר חדר.'],
   ds_editability_visual_body: [
     'This model is one baked surface. Its furniture cannot be moved piece by piece; HOMATCH will not pretend otherwise.',
     'ეს მოდელი ერთიანი ზედაპირია. მისი ავეჯის ცალ-ცალკე გადაადგილება შეუძლებელია; HOMATCH სხვა რამეს არ მოგაჩვენებთ.',

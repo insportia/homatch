@@ -48,12 +48,5 @@ export const INVESTMENT_STRINGS_9B = {
     'اختياري، يضيّق نطاق البحث',
     'רשות, מצמצם את החיפוש',
   ],
-  inv_location_needed: [
-    'Add a city and Homatch will look up what similar homes are asking. Nothing you have entered changes.',
-    'მიუთითეთ ქალაქი და Homatch მოძებნის, რას ითხოვენ მსგავს ბინებზე. თქვენ მიერ შეყვანილი არაფერი შეიცვლება.',
-    'Укажите город, и Homatch посмотрит, сколько просят за похожие объекты. Ничего из введённого вами не изменится.',
-    'Bir şehir girin; Homatch benzer evlerin ne istediğine baksın. Girdiğiniz hiçbir şey değişmez.',
-    'أضف مدينة ليبحث Homatch عمّا تُطلب به المنازل المشابهة. لن يتغير أي شيء أدخلته.',
-    'הוסיפו עיר ו-Homatch יבדוק מה מבקשים על דירות דומות. שום דבר שהזנתם לא ישתנה.',
-  ],
+  inv_location_needed: ['Add a city and Homatch will look up what similar homes are asking. Nothing you have entered changes.', 'მიუთითეთ ქალაქი და HOMATCH მოძებნის, რას ითხოვენ მსგავს ბინებზე. თქვენ მიერ შეყვანილი არაფერი შეიცვლება.', 'Укажите город, и Homatch посмотрит, сколько просят за похожие объекты. Ничего из введённого вами не изменится.', 'Bir şehir girin; Homatch benzer evlerin ne istediğine baksın. Girdiğiniz hiçbir şey değişmez.', 'أضف مدينة ليبحث Homatch عمّا تُطلب به المنازل المشابهة. لن يتغير أي شيء أدخلته.', 'הוסיפו עיר ו-Homatch יבדוק מה מבקשים על דירות דומות. שום דבר שהזנתם לא ישתנה.'],
 };

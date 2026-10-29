@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom';
+import { LegalContactCard, LegalLayout, LegalList, type LegalSection, LegalSub, useOperatorVars } from '@/components/legal/LegalLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { editionKey } from '@/lib/legal/operator';
+import { useLegalEdition } from '@/lib/legal/useLegalEdition';
 import { PageBlocks } from '@/site/render/PageBlocks';
-import { LegalContactCard, LegalLayout, LegalList, LegalSub, type LegalSection, useOperatorVars } from '@/components/legal/LegalLayout';
 
 /*
  * Privacy Policy. Controller first (who is responsible), then what, from
@@ -13,6 +15,9 @@ import { LegalContactCard, LegalLayout, LegalList, LegalSub, type LegalSection, 
 export default function PrivacyPage() {
   const { t } = useLanguage();
   const v = useOperatorVars('privacy');
+  /* 2026-10-30 removed Stripe; earlier editions render their original wording. */
+  const edition = useLegalEdition('privacy');
+  const k = (key: string) => editionKey(key, edition) as 'privacy_s1d_body';
   const mail = <a href={`mailto:${v.email}`} dir="ltr">{v.email}</a>;
 
   const sections: LegalSection[] = [
@@ -32,14 +37,14 @@ export default function PrivacyPage() {
         <LegalSub>{t('privacy_s1a_title')}</LegalSub><p>{t('privacy_s1a_body')}</p>
         <LegalSub>{t('privacy_s1b_title')}</LegalSub><p>{t('privacy_s1b_body')}</p>
         <LegalSub>{t('privacy_s1c_title')}</LegalSub><p>{t('privacy_s1c_body')}</p>
-        <LegalSub>{t('privacy_s1d_title')}</LegalSub><p>{t('privacy_s1d_body')}</p>
+        <LegalSub>{t('privacy_s1d_title')}</LegalSub><p>{t(k('privacy_s1d_body'))}</p>
         <LegalSub>{t('privacy_s1e_title')}</LegalSub><p>{t('privacy_s1e_body')}</p>
         <LegalSub>{t('privacy_s1f_title')}</LegalSub><p>{t('privacy_s1f_body')}</p>
       </>,
     },
     {
       id: 'sources', title: t('privacy_sources_title'), content:
-        <LegalList items={[1, 2, 3, 4, 5].map((n) => t(`privacy_sources_li${n}` as 'privacy_sources_li1'))} />,
+        <LegalList items={[1, 2, 3, 4, 5].map((n) => t(k(`privacy_sources_li${n}`)))} />,
     },
     {
       id: 'purposes', title: t('privacy_s2_title'), content: <>
@@ -83,7 +88,7 @@ export default function PrivacyPage() {
       id: 'recipients', title: t('privacy_s4_title'), content: <>
         <p>{t('privacy_s4_intro')}</p>
         <LegalList items={[1, 2, 3, 4, 5].map((n) => (
-          <><strong>{t(`privacy_s4_li${n}_label` as 'privacy_s4_li1_label')}</strong> {t(`privacy_s4_li${n}_body` as 'privacy_s4_li1_body')}</>
+          <><strong>{t(`privacy_s4_li${n}_label` as 'privacy_s4_li1_label')}</strong> {t(k(`privacy_s4_li${n}_body`))}</>
         ))} />
         <p>{t('privacy_s4_vendors_p')}</p>
       </>,

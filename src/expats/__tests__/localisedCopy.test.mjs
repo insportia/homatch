@@ -72,7 +72,7 @@ const EXPAT_KEYS = Object.keys(EN).filter((k) => k.startsWith('expat_')).sort();
  * to be a name without being allowed to be a sentence.
  */
 const LATIN_ALLOWED = new Set([
-  'Homatch', 'Magticom', 'GEL', 'USD', 'EUR', 'UTC', 'IT',
+  'Homatch', 'HOMATCH', 'Magticom', 'GEL', 'USD', 'EUR', 'UTC', 'IT',
   'Mbps', 'kWh', 'GNERC',
 ]);
 

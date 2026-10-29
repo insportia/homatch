@@ -28,14 +28,7 @@ export const DS_STRINGS_1 = {
     'انقل عقارك إلى مساحة تصميم تفاعلية.',
     'הביאו את הנכס שלכם לסביבת עיצוב אינטראקטיבית.',
   ],
-  ds_launcher_subtitle: [
-    'Design it before you renovate or furnish it — in 3D, in its real layout, with every version saved.',
-    'დაგეგმეთ დიზაინი რემონტამდე ან გაწყობამდე — 3D-ში, რეალური განლაგებით, ყველა ვერსიის შენახვით.',
-    'Спроектируйте интерьер до ремонта или покупки мебели — в 3D, в реальной планировке, с сохранением каждой версии.',
-    'Tadilattan veya mobilya almadan önce tasarlayın — 3B olarak, gerçek yerleşimiyle, her sürüm kaydedilerek.',
-    'صمّمه قبل التجديد أو التأثيث — بتقنية ثلاثية الأبعاد، وبتخطيطه الحقيقي، مع حفظ كل نسخة.',
-    'עצבו אותו לפני שיפוץ או ריהוט — בתלת־ממד, בפריסה האמיתית, עם שמירה של כל גרסה.',
-  ],
+  ds_launcher_subtitle: ['Design it before you renovate or furnish it — in 3D, in its real layout, with every version saved.', 'დაგეგმეთ დიზაინი რემონტამდე ან გაწყობამდე, 3D-ში, რეალური განლაგებით, ყველა ვერსიის შენახვით.', 'Спроектируйте интерьер до ремонта или покупки мебели — в 3D, в реальной планировке, с сохранением каждой версии.', 'Tadilattan veya mobilya almadan önce tasarlayın — 3B olarak, gerçek yerleşimiyle, her sürüm kaydedilerek.', 'صمّمه قبل التجديد أو التأثيث — بتقنية ثلاثية الأبعاد، وبتخطيطه الحقيقي، مع حفظ كل نسخة.', 'עצבו אותו לפני שיפוץ או ריהוט — בתלת־ממד, בפריסה האמיתית, עם שמירה של כל גרסה.'],
   ds_action_choose_property: [
     'Choose my property', 'ჩემი ქონების არჩევა', 'Выбрать мою недвижимость', 'Mülkümü seç', 'اختر عقاري', 'בחירת הנכס שלי',
   ],
@@ -152,7 +145,7 @@ export const DS_STRINGS_1 = {
   ds_geometry_verified: ['Verified dimensions', 'დადასტურებული ზომები', 'Подтверждённые размеры', 'Doğrulanmış ölçüler', 'أبعاد موثّقة', 'מידות מאומתות'],
   ds_editability_full: ['Structured model', 'სტრუქტურირებული მოდელი', 'Структурированная модель', 'Yapılandırılmış model', 'نموذج منظَّم', 'מודל מובנה'],
   ds_editability_partial: ['Partly structured model', 'ნაწილობრივ სტრუქტურირებული მოდელი', 'Частично структурированная модель', 'Kısmen yapılandırılmış model', 'نموذج منظَّم جزئيًا', 'מודל מובנה חלקית'],
-  ds_editability_visual: ['Visual model — contents not separable', 'ვიზუალური მოდელი — შიგთავსი არ იყოფა', 'Визуальная модель — содержимое не разделяется', 'Görsel model — içerik ayrılamaz', 'نموذج مرئي — لا يمكن فصل محتوياته', 'מודל חזותי — לא ניתן להפריד את התוכן'],
+  ds_editability_visual: ['Visual model — contents not separable', 'ვიზუალური მოდელი: შიგთავსი არ იყოფა', 'Визуальная модель — содержимое не разделяется', 'Görsel model — içerik ayrılamaz', 'نموذج مرئي — لا يمكن فصل محتوياته', 'מודל חזותי — לא ניתן להפריד את התוכן'],
 
   ds_loading_preparing_space: ['Preparing space', 'სივრცე მზადდება', 'Подготовка пространства', 'Alan hazırlanıyor', 'جارٍ تجهيز المساحة', 'מכינים את המרחב'],
   ds_nospace_title: [
@@ -163,14 +156,7 @@ export const DS_STRINGS_1 = {
     'لا توجد لهذا المشروع مساحة ثلاثية الأبعاد بعد',
     'לפרויקט הזה עדיין אין מרחב תלת־ממד',
   ],
-  ds_nospace_body: [
-    'HOMATCH does not have 3D geometry for this property yet. A design workspace opens once the space exists — HOMATCH will not show an invented room in its place.',
-    'HOMATCH-ს ამ ქონების 3D გეომეტრია ჯერ არ აქვს. დიზაინის სივრცე გაიხსნება, როგორც კი სივრცე შეიქმნება — HOMATCH მის ნაცვლად გამოგონილ ოთახს არ აჩვენებს.',
-    'У HOMATCH пока нет 3D-геометрии этого объекта. Рабочее пространство откроется, как только появится пространство — HOMATCH не покажет вместо него выдуманную комнату.',
-    'HOMATCH\'te bu mülkün 3B geometrisi henüz yok. Alan oluştuğunda tasarım çalışma alanı açılır — HOMATCH onun yerine uydurma bir oda göstermez.',
-    'لا تملك HOMATCH بعدُ هندسة ثلاثية الأبعاد لهذا العقار. تُفتح مساحة التصميم بمجرد توفّر المساحة — ولن تعرض HOMATCH غرفة مختلَقة بدلًا منها.',
-    'ל־HOMATCH עדיין אין גאומטריה בתלת־ממד של הנכס הזה. סביבת העיצוב תיפתח ברגע שהמרחב יהיה קיים — HOMATCH לא תציג במקומו חדר מומצא.',
-  ],
+  ds_nospace_body: ['HOMATCH does not have 3D geometry for this property yet. A design workspace opens once the space exists — HOMATCH will not show an invented room in its place.', 'HOMATCH-ს ამ ქონების 3D გეომეტრია ჯერ არ აქვს. დიზაინის სივრცე გაიხსნება, როგორც კი სივრცე შეიქმნება, HOMATCH მის ნაცვლად გამოგონილ ოთახს არ აჩვენებს.', 'У HOMATCH пока нет 3D-геометрии этого объекта. Рабочее пространство откроется, как только появится пространство — HOMATCH не покажет вместо него выдуманную комнату.', 'HOMATCH\'te bu mülkün 3B geometrisi henüz yok. Alan oluştuğunda tasarım çalışma alanı açılır — HOMATCH onun yerine uydurma bir oda göstermez.', 'لا تملك HOMATCH بعدُ هندسة ثلاثية الأبعاد لهذا العقار. تُفتح مساحة التصميم بمجرد توفّر المساحة — ولن تعرض HOMATCH غرفة مختلَقة بدلًا منها.', 'ל־HOMATCH עדיין אין גאומטריה בתלת־ממד של הנכס הזה. סביבת העיצוב תיפתח ברגע שהמרחב יהיה קיים — HOMATCH לא תציג במקומו חדר מומצא.'],
   ds_reject_stale_upstream: [
     'The developer has published an updated version of this apartment since this design started.',
     'ამ დიზაინის დაწყების შემდეგ დეველოპერმა ამ ბინის განახლებული ვერსია გამოაქვეყნა.',
@@ -228,14 +214,7 @@ export const DS_STRINGS_1 = {
     'המרחב של הפרויקט הזה חלקי ולא ניתן לפתוח אותו.',
   ],
 
-  ds_error_generic: [
-    'Something went wrong. Nothing was changed — please try again.',
-    'რაღაც შეცდომა მოხდა. არაფერი შეცვლილა — სცადეთ ხელახლა.',
-    'Что-то пошло не так. Ничего не изменено — попробуйте ещё раз.',
-    'Bir şeyler ters gitti. Hiçbir şey değiştirilmedi — lütfen tekrar deneyin.',
-    'حدث خطأ ما. لم يتغيّر شيء — يُرجى المحاولة مرة أخرى.',
-    'משהו השתבש. שום דבר לא השתנה — נסו שוב.',
-  ],
+  ds_error_generic: ['Something went wrong. Nothing was changed — please try again.', 'რაღაც შეცდომა მოხდა. არაფერი შეცვლილა: სცადეთ ხელახლა.', 'Что-то пошло не так. Ничего не изменено — попробуйте ещё раз.', 'Bir şeyler ters gitti. Hiçbir şey değiştirilmedi — lütfen tekrar deneyin.', 'حدث خطأ ما. لم يتغيّر شيء — يُرجى المحاولة مرة أخرى.', 'משהו השתבש. שום דבר לא השתנה — נסו שוב.'],
   ds_error_load: [
     'Design Studio could not load. Check your connection and try again.',
     'დიზაინ სტუდიო ვერ ჩაიტვირთა. შეამოწმეთ კავშირი და სცადეთ ხელახლა.',

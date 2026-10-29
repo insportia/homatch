@@ -30,14 +30,7 @@ export const EXPAT_STRINGS_1 = {
   nav_for_expats: ['For Expats', 'უცხოელებისთვის', 'Для иностранцев', 'Yabancılar için', 'للمقيمين الأجانب', 'לתושבים זרים'],
 
   /* ── Page metadata ──────────────────────────────────────────────── */
-  expat_meta_title: [
-    'Living, buying and investing in Georgia — Homatch',
-    'ცხოვრება, ყიდვა და ინვესტიცია საქართველოში — Homatch',
-    'Жизнь, покупка и инвестиции в Грузии — Homatch',
-    'Gürcistan\'da yaşamak, satın almak ve yatırım yapmak — Homatch',
-    'العيش والشراء والاستثمار في جورجيا — Homatch',
-    'לחיות, לקנות ולהשקיע בגאורגיה — Homatch',
-  ],
+  expat_meta_title: ['Living, buying and investing in Georgia — Homatch', 'ცხოვრება, ყიდვა და ინვესტიცია საქართველოში, HOMATCH', 'Жизнь, покупка и инвестиции в Грузии — Homatch', 'Gürcistan\'da yaşamak, satın almak ve yatırım yapmak — Homatch', 'العيش والشراء والاستثمار في جورجيا — Homatch', 'לחיות, לקנות ולהשקיע בגאורגיה — Homatch'],
   expat_meta_description: [
     'What life costs, where to live, what your budget buys, and what you actually have to do — with the source and date behind every figure.',
     'რა ჯდება ცხოვრება, სად იცხოვროთ, რას იყიდით თქვენი ბიუჯეტით და რა უნდა გააკეთოთ სინამდვილეში. ყოველ ციფრს თან ახლავს წყარო და თარიღი.',
@@ -48,7 +41,7 @@ export const EXPAT_STRINGS_1 = {
   ],
 
   /* ── Hero ───────────────────────────────────────────────────────── */
-  expat_hero_eyebrow: ['Homatch for expats', 'Homatch უცხოელებისთვის', 'Homatch для иностранцев', 'Yabancılar için Homatch', 'Homatch للمقيمين الأجانب', 'Homatch לתושבים זרים'],
+  expat_hero_eyebrow: ['Homatch for expats', 'HOMATCH უცხოელებისთვის', 'Homatch для иностранцев', 'Yabancılar için Homatch', 'Homatch للمقيمين الأجانب', 'Homatch לתושבים זרים'],
   expat_hero_line1: ['Live in Georgia.', 'იცხოვრეთ საქართველოში.', 'Живите в Грузии.', 'Gürcistan\'da yaşayın.', 'عش في جورجيا.', 'חיו בגאורגיה.'],
   expat_hero_line2: ['Buy in Georgia.', 'იყიდეთ საქართველოში.', 'Покупайте в Грузии.', 'Gürcistan\'da satın alın.', 'اشترِ في جورجيا.', 'קנו בגאורגיה.'],
   expat_hero_line3: ['Understand both.', 'გაიგეთ ორივე.', 'Понимайте и то и другое.', 'İkisini de anlayın.', 'وافهم الأمرين.', 'והבינו את שניהם.'],
@@ -194,7 +187,7 @@ export const EXPAT_STRINGS_1 = {
   ],
 
   /* ── Ecosystem ──────────────────────────────────────────────────── */
-  expat_ecosystem_title: ['The rest of Homatch', 'Homatch-ის დანარჩენი ნაწილი', 'Остальной Homatch', 'Homatch\'in geri kalanı', 'بقية Homatch', 'שאר Homatch'],
+  expat_ecosystem_title: ['The rest of Homatch', 'HOMATCH-ის დანარჩენი ნაწილი', 'Остальной Homatch', 'Homatch\'in geri kalanı', 'بقية Homatch', 'שאר Homatch'],
   expat_ecosystem_body: [
     'Five products that already exist, in the order a purchase actually happens. Each one answers a question this product can only introduce.',
     'ხუთი უკვე არსებული პროდუქტი იმ თანმიმდევრობით, როგორც ყიდვა რეალურად ხდება. თითოეული პასუხობს კითხვას, რომლის მხოლოდ გაცნობაც შეუძლია ამ პროდუქტს.',
@@ -204,7 +197,7 @@ export const EXPAT_STRINGS_1 = {
     'חמישה מוצרים שכבר קיימים, בסדר שבו רכישה באמת מתרחשת. כל אחד עונה על שאלה שהמוצר הזה יכול רק להציג.',
   ],
   expat_eco_find_title: ['Find a property', 'ქონების პოვნა', 'Найти недвижимость', 'Gayrimenkul bul', 'ابحث عن عقار', 'מצאו נכס'],
-  expat_eco_find_body: ['Describe what you want and let Homatch search for it', 'აღწერეთ, რა გინდათ, და Homatch მოძებნის', 'Опишите, что вам нужно, и Homatch будет искать', 'Ne istediğinizi anlatın, Homatch arasın', 'صف ما تريده ودع Homatch يبحث عنه', 'תארו מה אתם רוצים ותנו ל‑Homatch לחפש'],
+  expat_eco_find_body: ['Describe what you want and let Homatch search for it', 'აღწერეთ, რა გინდათ, და HOMATCH მოძებნის', 'Опишите, что вам нужно, и Homatch будет искать', 'Ne istediğinizi anlatın, Homatch arasın', 'صف ما تريده ودع Homatch يبحث عنه', 'תארו מה אתם רוצים ותנו ל‑Homatch לחפש'],
   expat_eco_verify_title: ['Verify it', 'შემოწმება', 'Проверить', 'Doğrula', 'تحقق منه', 'אמתו אותו'],
   expat_eco_verify_body: ['Who owns it, what is registered against it and what the registry says', 'ვის ეკუთვნის, რა არის რეგისტრირებული და რას ამბობს რეესტრი', 'Кто владеет, что зарегистрировано и что говорит реестр', 'Kime ait, üzerinde ne kayıtlı ve sicil ne diyor', 'من يملكه، وما المسجل عليه، وماذا يقول السجل', 'מי הבעלים, מה רשום עליו ומה אומר הרישום'],
   expat_eco_invest_title: ['Analyse the investment', 'ინვესტიციის ანალიზი', 'Проанализировать инвестицию', 'Yatırımı analiz et', 'حلّل الاستثمار', 'נתחו את ההשקעה'],

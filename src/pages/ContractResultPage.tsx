@@ -18,26 +18,27 @@
  * not success. A page that polls forever because the analyser said
  * UNSUPPORTED is a battery bug on a phone and a cost on the server.
  */
+
+import { AlertCircle, ArrowLeft, ArrowRight, ChevronLeft, History, ShieldCheck } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, ChevronLeft, AlertCircle, ShieldCheck, History } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { Button } from '@/components/ui/button';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { Skeleton } from '@/components/ui/skeleton';
+import { ContractHomiGuide } from '@/components/contracts/ContractHomiGuide';
 import { ContractProgress } from '@/components/contracts/ContractProgress';
 import { ContractResult } from '@/components/contracts/ContractResult';
 import { ContractReview } from '@/components/contracts/ContractReview';
-import { ContractHomiGuide } from '@/components/contracts/ContractHomiGuide';
-import { typesDisagree, type ContractTypeId } from '@/components/contracts/contractTypes';
-import { getContract, listContracts, type ContractSummary } from '@/services/contracts';
+import { type ContractTypeId, typesDisagree } from '@/components/contracts/contractTypes';
+import { AppLayout } from '@/components/layouts/AppLayout';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { type ContractSummary, getContract, listContracts } from '@/services/contracts';
 import {
-  getDocumentAnalysis, analyzeDocument,
-  type AnalysisState, type DocumentAnalysis,
+  type AnalysisState, analyzeDocument,type DocumentAnalysis,
+  getDocumentAnalysis, 
 } from '@/services/dealRoomDocuments';
 import { getVerifyCompany } from '@/services/verifyResult';
-import { compareContractToVerify, type ComparisonRow } from '@/verify/intelligence/contractMatch';
 import type { CompanyIntelligence } from '@/verify/intelligence/companyIntelligence';
+import { type ComparisonRow, compareContractToVerify } from '@/verify/intelligence/contractMatch';
 
 const TERMINAL = new Set<AnalysisState>(['DONE', 'FAILED', 'UNSUPPORTED', 'REQUIRES_OCR']);
 const POLL_MS = 3_000;
@@ -249,6 +250,11 @@ export default function ContractResultPage() {
               </p>
               {failure && FAILURE_KEYS[failure] ? (
                 <p className="min-w-0 break-words text-sm text-muted-foreground">{t(FAILURE_KEYS[failure])}</p>
+              ) : null}
+              {/* Usage is committed only when an analysis is delivered (saas_usage, success-only); a
+                  failed run released it, so the customer is told nothing was used. */}
+              {state === 'FAILED' && failure !== 'BILLING_REQUIRED' ? (
+                <p className="min-w-0 break-words text-sm text-muted-foreground">{t('sub_analysis_failed_not_charged')}</p>
               ) : null}
               {failure === 'BILLING_REQUIRED' ? (
                 <Button size="sm" onClick={() => navigate('/pricing')}>{t('sub_see_plans')}</Button>

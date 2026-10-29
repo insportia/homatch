@@ -97,14 +97,7 @@ export const DS_STRINGS_12 = {
 
   // ── Live Here ────────────────────────────────────────────────────────
   ds_live_title: ['Live here', 'იცხოვრე აქ', 'Пожить здесь', 'Burada yaşa', 'عِش هنا', 'לגור כאן'],
-  ds_live_intro: [
-    'Small moments in this home, made from what is actually in it.',
-    'პატარა მომენტები ამ სახლში — იმისგან, რაც მასში ნამდვილად არის.',
-    'Маленькие моменты в этом доме — из того, что в нём действительно есть.',
-    'Bu evde, gerçekten içinde olanlarla küçük anlar.',
-    'لحظات صغيرة في هذا المنزل، مما يوجد فيه فعلًا.',
-    'רגעים קטנים בבית הזה, ממה שבאמת נמצא בו.',
-  ],
+  ds_live_intro: ['Small moments in this home, made from what is actually in it.', 'პატარა მომენტები ამ სახლში, იმისგან, რაც მასში ნამდვილად არის.', 'Маленькие моменты в этом доме — из того, что в нём действительно есть.', 'Bu evde, gerçekten içinde olanlarla küçük anlar.', 'لحظات صغيرة في هذا المنزل، مما يوجد فيه فعلًا.', 'רגעים קטנים בבית הזה, ממה שבאמת נמצא בו.'],
   ds_live_coffee: ['Make a coffee', 'ყავის მომზადება', 'Сварить кофе', 'Bir kahve yap', 'حضّر قهوة', 'להכין קפה'],
   ds_live_balcony: ['Relax on the balcony', 'დასვენება აივანზე', 'Отдохнуть на балконе', 'Balkonda dinlen', 'استرخِ في الشرفة', 'להירגע במרפסת'],
   ds_live_tv: ['Watch TV', 'ტელევიზორის ყურება', 'Посмотреть телевизор', 'Televizyon izle', 'شاهد التلفاز', 'לראות טלוויזיה'],

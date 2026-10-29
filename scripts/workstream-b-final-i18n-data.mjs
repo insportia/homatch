@@ -12,14 +12,7 @@ export const WORKSTREAM_B_FINAL_STRINGS = {
     'هذا العقار ليس في حسابك. اختر أحد عقاراتك.',
     'הנכס הזה אינו בחשבון שלכם. בחרו אחד מהנכסים שלכם.',
   ],
-  madsb_launch_retry: [
-    'That launch attempt was already used. Press Launch again to try once more — you will not be charged twice.',
-    'ეს გაშვების მცდელობა უკვე გამოყენებულია. ხელახლა დააჭირეთ „გაშვებას“ — ორჯერ არ ჩამოგეჭრებათ.',
-    'Эта попытка запуска уже использована. Нажмите «Запустить» ещё раз — дважды списания не будет.',
-    'Bu başlatma denemesi zaten kullanıldı. Tekrar denemek için Başlat’a yeniden basın — iki kez ücret alınmaz.',
-    'تم استخدام محاولة الإطلاق هذه بالفعل. اضغط «إطلاق» مرة أخرى للمحاولة — لن يُخصم منك مرتين.',
-    'ניסיון ההשקה הזה כבר נוצל. לחצו שוב על "השקה" כדי לנסות שוב — לא תחויבו פעמיים.',
-  ],
+  madsb_launch_retry: ['That launch attempt was already used. Press Launch again to try once more — you will not be charged twice.', 'ეს გაშვების მცდელობა უკვე გამოყენებულია. ხელახლა დააჭირეთ „გაშვებას“, ორჯერ არ ჩამოგეჭრებათ.', 'Эта попытка запуска уже использована. Нажмите «Запустить» ещё раз — дважды списания не будет.', 'Bu başlatma denemesi zaten kullanıldı. Tekrar denemek için Başlat’a yeniden basın — iki kez ücret alınmaz.', 'تم استخدام محاولة الإطلاق هذه بالفعل. اضغط «إطلاق» مرة أخرى للمحاولة — لن يُخصم منك مرتين.', 'ניסיון ההשקה הזה כבר נוצל. לחצו שוב על "השקה" כדי לנסות שוב — לא תחויבו פעמיים.'],
   madsb_money_meta_bills: [
     'Meta bills your ad account directly for the ad budget (up to {{amount}}).',
     'სარეკლამო ბიუჯეტს (მაქსიმუმ {{amount}}) Meta პირდაპირ თქვენს სარეკლამო ანგარიშს ჩამოაჭრის.',
@@ -42,14 +35,7 @@ export const WORKSTREAM_B_FINAL_STRINGS = {
   madsb_health_reconnect_required: [
     'Reconnect required', 'საჭიროა ხელახლა დაკავშირება', 'Нужно переподключиться', 'Yeniden bağlanma gerekli', 'إعادة الاتصال مطلوبة', 'נדרשת התחברות מחדש',
   ],
-  madsb_health_reconnect_required_d: [
-    'HOMATCH can no longer use the saved Facebook access. Reconnect to continue — your drafts are kept.',
-    'HOMATCH-ს შენახული Facebook-ის წვდომის გამოყენება აღარ შეუძლია. გასაგრძელებლად ხელახლა დაკავშირდით — მონახაზები შენახულია.',
-    'HOMATCH больше не может использовать сохранённый доступ к Facebook. Переподключитесь — черновики сохранены.',
-    'HOMATCH kayıtlı Facebook erişimini artık kullanamıyor. Devam etmek için yeniden bağlanın — taslaklarınız saklanır.',
-    'لم يعد بإمكان HOMATCH استخدام صلاحية Facebook المحفوظة. أعد الاتصال للمتابعة — مسوداتك محفوظة.',
-    'HOMATCH כבר לא יכול להשתמש בגישה השמורה ל-Facebook. התחברו מחדש כדי להמשיך — הטיוטות נשמרות.',
-  ],
+  madsb_health_reconnect_required_d: ['HOMATCH can no longer use the saved Facebook access. Reconnect to continue — your drafts are kept.', 'HOMATCH-ს შენახული Facebook-ის წვდომის გამოყენება აღარ შეუძლია. გასაგრძელებლად ხელახლა დაკავშირდით, მონახაზები შენახულია.', 'HOMATCH больше не может использовать сохранённый доступ к Facebook. Переподключитесь — черновики сохранены.', 'HOMATCH kayıtlı Facebook erişimini artık kullanamıyor. Devam etmek için yeniden bağlanın — taslaklarınız saklanır.', 'لم يعد بإمكان HOMATCH استخدام صلاحية Facebook المحفوظة. أعد الاتصال للمتابعة — مسوداتك محفوظة.', 'HOMATCH כבר לא יכול להשתמש בגישה השמורה ל-Facebook. התחברו מחדש כדי להמשיך — הטיוטות נשמרות.'],
   madsb_health_no_eligible_ad_account: [
     'No usable ad account', 'გამოსადეგი სარეკლამო ანგარიში არ არის', 'Нет доступного рекламного аккаунта', 'Kullanılabilir reklam hesabı yok', 'لا يوجد حساب إعلاني صالح', 'אין חשבון מודעות זמין',
   ],
@@ -177,14 +163,7 @@ export const WORKSTREAM_B_FINAL_STRINGS = {
   broker_desk_promote_meta: [
     'Promote on Facebook', 'Facebook-ზე რეკლამა', 'Реклама в Facebook', 'Facebook’ta tanıt', 'روّج على Facebook', 'קידום ב-Facebook',
   ],
-  broker_err_invalid_transition: [
-    'A lead cannot move to that stage from where it is now.',
-    'ლიდი ამ ეტაპზე მიმდინარე მდგომარეობიდან ვერ გადავა.',
-    'Лид не может перейти на этот этап из текущего.',
-    'Potansiyel müşteri mevcut aşamadan bu aşamaya geçemez.',
-    'لا يمكن نقل العميل المحتمل إلى هذه المرحلة من مرحلته الحالية.',
-    'אי אפשר להעביר את הליד לשלב הזה מהשלב הנוכחי.',
-  ],
+  broker_err_invalid_transition: ['A lead cannot move to that stage from where it is now.', 'კონტაქტი ამ ეტაპზე მიმდინარე მდგომარეობიდან ვერ გადავა.', 'Лид не может перейти на этот этап из текущего.', 'Potansiyel müşteri mevcut aşamadan bu aşamaya geçemez.', 'لا يمكن نقل العميل المحتمل إلى هذه المرحلة من مرحلته الحالية.', 'אי אפשר להעביר את הליד לשלב הזה מהשלב הנוכחי.'],
   broker_err_match_closed: [
     'This match is closed and can no longer be updated.',
     'ეს დამთხვევა დახურულია და მისი განახლება აღარ შეიძლება.',
@@ -247,14 +226,7 @@ export const WORKSTREAM_B_FINAL_STRINGS = {
   broker_found_evidence: [
     'Seen on', 'ნანახია', 'Замечено на', 'Görüldüğü yer', 'شوهد على', 'נראה ב־',
   ],
-  broker_directory_empty_compact: [
-    'No broker or agency has a current paid Homatch listing yet.',
-    'ჯერ არცერთ ბროკერს ან სააგენტოს არ აქვს მოქმედი ფასიანი Homatch-ის განცხადება.',
-    'Пока ни у одного брокера или агентства нет действующего платного размещения в Homatch.',
-    'Henüz hiçbir emlakçı veya ajansın geçerli ücretli Homatch listelemesi yok.',
-    'لا يوجد حتى الآن وسيط أو وكالة لديهم إدراج مدفوع ساري في Homatch.',
-    'עדיין לאף מתווך או סוכנות אין רישום בתשלום פעיל ב-Homatch.',
-  ],
+  broker_directory_empty_compact: ['No broker or agency has a current paid Homatch listing yet.', 'ჯერ არცერთ ბროკერს ან სააგენტოს არ აქვს მოქმედი ფასიანი HOMATCH-ის განცხადება.', 'Пока ни у одного брокера или агентства нет действующего платного размещения в Homatch.', 'Henüz hiçbir emlakçı veya ajansın geçerli ücretli Homatch listelemesi yok.', 'لا يوجد حتى الآن وسيط أو وكالة لديهم إدراج مدفوع ساري في Homatch.', 'עדיין לאף מתווך או סוכנות אין רישום בתשלום פעיל ב-Homatch.'],
   madsb_connect_test_token: [
     'This connection was made in test mode and is not linked to a real Meta account. Reconnect to connect your Meta account.',
     'ეს კავშირი სატესტო რეჟიმში შეიქმნა და რეალურ Meta-ს ანგარიშთან დაკავშირებული არ არის. ხელახლა დაუკავშირდით, რომ თქვენი Meta-ს ანგარიში დააკავშიროთ.',

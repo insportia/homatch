@@ -25,23 +25,24 @@
  * label the upload and to notice — on the result page — when the analyser
  * concluded something different, which is itself worth knowing.
  */
+
+import { ArrowRight, Coins, FileCheck2, FileSignature, Gift, GitCompare, ListChecks, ShieldCheck } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FileSignature, ArrowRight, ShieldCheck, GitCompare, FileCheck2, ListChecks, Gift, Coins } from 'lucide-react';
+import { ContractList } from '@/components/contracts/ContractList';
+import { useReaderPulls } from '@/components/contracts/ContractProgress';
+import { CONTRACT_TYPES, type ContractTypeId } from '@/components/contracts/contractTypes';
+import { DocumentReader } from '@/components/contracts/DocumentReader';
+import { DropZone } from '@/components/documents/DropZone';
+import { HomiHomeStage } from '@/components/homi/HomiHomeStage';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
-import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { featureOf, useEntitlementStatus } from '@/subscriptions/useEntitlementStatus';
-import { DropZone } from '@/components/documents/DropZone';
-import { ContractList } from '@/components/contracts/ContractList';
-import { DocumentReader } from '@/components/contracts/DocumentReader';
-import { useReaderPulls } from '@/components/contracts/ContractProgress';
-import { HomiHomeStage } from '@/components/homi/HomiHomeStage';
-import { CONTRACT_TYPES, type ContractTypeId } from '@/components/contracts/contractTypes';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { type ContractSummary, getContractPrice, listContracts, startContractAnalysis } from '@/services/contracts';
 import { ALLOWED_MIME } from '@/services/dealRoomDocuments';
-import { getContractPrice, listContracts, startContractAnalysis, type ContractSummary } from '@/services/contracts';
 import { rememberPendingPath } from '@/services/returnTo';
+import { featureOf, useEntitlementStatus } from '@/subscriptions/useEntitlementStatus';
 
 /** How many of a customer's contracts the entry page shows before "see all". */
 export const RECENT_LIMIT = 6;
@@ -93,10 +94,14 @@ export default function ContractsPage() {
    * an account that still holds a legacy balance; everyone else is pointed at the plans. */
   const contract = featureOf(ent.status, 'CONTRACT_ANALYSIS');
   const included = !!homatchUser && !!contract && (contract.trialAvailable || (contract.included && (contract.unlimited || (contract.remaining ?? 0) > 0)));
+  /* Why it is not included, in the owner's words: the plan's month is used up, the free first
+     analysis was already used, or there is simply no subscription. */
+  const exhausted = !!contract?.included && !contract.unlimited && (contract.remaining ?? 0) <= 0;
+  const trialUsed = !!contract && contract.trialEnabled && contract.trialState === 'CONSUMED';
   const priceLabel = !homatchUser || !ent.status
     ? null
     : included
-      ? (contract?.trialAvailable ? t('sub_badge_first_free')
+      ? (contract?.trialAvailable ? t('sub_badge_first_free_contract')
         : contract?.unlimited ? t('sub_badge_included_unlimited')
         : t('sub_badge_included', { remaining: String(contract?.remaining ?? '') }))
       : ent.status.hasLegacyBalance && price
@@ -104,7 +109,14 @@ export default function ContractsPage() {
             credits: price.credits.toLocaleString(lang, { maximumFractionDigits: 2 }),
             usd: price.usd.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }),
           })
-        : t('sub_prompt_subscribe');
+        : t(exhausted ? 'sub_badge_allowance_exhausted' : 'sub_badge_subscription_needed');
+  const priceHint = included
+    ? (contract?.trialAvailable ? t('ux_ct_price_free_hint')
+      : contract?.unlimited ? t('sub_unlimited')
+      : t('sub_used_of', { used: String(contract?.used ?? 0), limit: String(contract?.limit ?? 0) }))
+    : ent.status?.hasLegacyBalance && price ? t('ux_ct_price_paid_hint')
+    : t(exhausted ? 'sub_prompt_exhausted' : trialUsed ? 'sub_trial_used_prompt' : 'sub_prompt_subscribe');
+  const needsPlan = !included && !(ent.status?.hasLegacyBalance && price);
 
   const onFile = useCallback(
     async (file: File) => {
@@ -204,7 +216,10 @@ export default function ContractsPage() {
               ) : null}
             </div>
             {priceLabel ? (
-              <p className="-mt-2 text-sm leading-relaxed text-ink-soft">{included ? t('ux_ct_price_free_hint') : ent.status?.hasLegacyBalance ? t('ux_ct_price_paid_hint') : <Link className="font-medium underline" to="/pricing">{t('sub_see_plans')}</Link>}</p>
+              <p className="-mt-2 text-sm leading-relaxed text-ink-soft">
+                {priceHint}
+                {needsPlan ? <> <Link className="font-medium underline" to="/pricing">{t('sub_see_plans')}</Link></> : null}
+              </p>
             ) : null}
 
             {/* Optional, and visibly optional: the default is already chosen. */}

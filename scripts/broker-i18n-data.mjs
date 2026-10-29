@@ -12,14 +12,7 @@
 
 export const BROKER_STRINGS = {
   /* ── /brokers: the directory ─────────────────────────────────────────── */
-  broker_dir_eyebrow: [
-    'Homatch broker directory',
-    'Homatch-ის ბროკერების კატალოგი',
-    'Каталог брокеров Homatch',
-    'Homatch emlakçı rehberi',
-    'دليل وسطاء Homatch',
-    'מדריך המתווכים של Homatch',
-  ],
+  broker_dir_eyebrow: ['Homatch broker directory', 'HOMATCH-ის ბროკერების კატალოგი', 'Каталог брокеров Homatch', 'Homatch emlakçı rehberi', 'دليل وسطاء Homatch', 'מדריך המתווכים של Homatch'],
   broker_dir_lead: [
     'Every broker and agency in this directory applied to Homatch, was reviewed, and has a paid listing that is currently running. Firms we only see on public listings are never added here.',
     'ამ კატალოგში ყველა ბროკერმა და სააგენტომ თავად მოგვმართა, განიხილეს და აქვს ფასიანი განთავსება, რომელიც ახლა მოქმედებს. ფირმები, რომლებსაც მხოლოდ საჯარო განცხადებებში ვხედავთ, აქ არასოდეს ემატება.',
@@ -52,14 +45,7 @@ export const BROKER_STRINGS = {
     'يُراجَع قبل أن يظهر',
     'נבדק לפני שהוא מופיע',
   ],
-  broker_dir_point_review_body: [
-    'Homatch reviews every application. Applying does not publish anything by itself.',
-    'Homatch ყველა განაცხადს განიხილავს. თავად განაცხადის გაგზავნა არაფერს აქვეყნებს.',
-    'Homatch проверяет каждую заявку. Сама по себе подача заявки ничего не публикует.',
-    'Homatch her başvuruyu inceler. Başvurmak tek başına hiçbir şeyi yayınlamaz.',
-    'تراجع Homatch كل طلب. تقديم الطلب وحده لا ينشر أي شيء.',
-    'Homatch בודקת כל בקשה. הגשת בקשה כשלעצמה לא מפרסמת דבר.',
-  ],
+  broker_dir_point_review_body: ['Homatch reviews every application. Applying does not publish anything by itself.', 'HOMATCH ყველა განაცხადს განიხილავს. თავად განაცხადის გაგზავნა არაფერს აქვეყნებს.', 'Homatch проверяет каждую заявку. Сама по себе подача заявки ничего не публикует.', 'Homatch her başvuruyu inceler. Başvurmak tek başına hiçbir şeyi yayınlamaz.', 'تراجع Homatch كل طلب. تقديم الطلب وحده لا ينشر أي شيء.', 'Homatch בודקת כל בקשה. הגשת בקשה כשלעצמה לא מפרסמת דבר.'],
   broker_dir_point_found_title: [
     'Observed firms stay separate',
     'დაკვირვებული ფირმები ცალკეა',
@@ -68,14 +54,7 @@ export const BROKER_STRINGS = {
     'الشركات المرصودة تبقى منفصلة',
     'חברות שנצפו נשארות בנפרד',
   ],
-  broker_dir_point_found_body: [
-    'A firm we read on a public listing has no relationship with Homatch and is never listed here or described as registered.',
-    'ფირმას, რომელიც საჯარო განცხადებაში ამოვიკითხეთ, Homatch-თან კავშირი არ აქვს. ის აქ არასოდეს განთავსდება და რეგისტრირებულად არ მოიხსენიება.',
-    'Фирма, которую мы прочитали в открытом объявлении, не связана с Homatch: она никогда не размещается здесь и не называется зарегистрированной.',
-    'Herkese açık bir ilanda okuduğumuz bir firmanın Homatch ile ilişkisi yoktur; burada asla listelenmez ve kayıtlı olarak tanımlanmaz.',
-    'الشركة التي قرأنا اسمها في إعلان عام لا علاقة لها بـ Homatch، ولا تُدرج هنا أبدًا ولا توصف بأنها مسجَّلة.',
-    'לחברה שקראנו עליה במודעה פומבית אין קשר ל-Homatch; היא לעולם לא נרשמת כאן ולא מתוארת כרשומה.',
-  ],
+  broker_dir_point_found_body: ['A firm we read on a public listing has no relationship with Homatch and is never listed here or described as registered.', 'ფირმას, რომელიც საჯარო განცხადებაში ამოვიკითხეთ, HOMATCH-თან კავშირი არ აქვს. ის აქ არასოდეს განთავსდება და რეგისტრირებულად არ მოიხსენიება.', 'Фирма, которую мы прочитали в открытом объявлении, не связана с Homatch: она никогда не размещается здесь и не называется зарегистрированной.', 'Herkese açık bir ilanda okuduğumuz bir firmanın Homatch ile ilişkisi yoktur; burada asla listelenmez ve kayıtlı olarak tanımlanmaz.', 'الشركة التي قرأنا اسمها في إعلان عام لا علاقة لها بـ Homatch، ولا تُدرج هنا أبدًا ولا توصف بأنها مسجَّلة.', 'לחברה שקראנו עליה במודעה פומבית אין קשר ל-Homatch; היא לעולם לא נרשמת כאן ולא מתוארת כרשומה.'],
   broker_dir_search_placeholder: [
     'Search by name',
     'ძებნა სახელით',
@@ -190,22 +169,8 @@ export const BROKER_STRINGS = {
   ],
 
   /* ── /brokers: applying ──────────────────────────────────────────────── */
-  broker_apply_heading: [
-    'List your agency with Homatch',
-    'განათავსეთ სააგენტო Homatch-ზე',
-    'Разместите агентство в Homatch',
-    'Acentenizi Homatch\'te listeleyin',
-    'أدرج مكتبك في Homatch',
-    'רשמו את הסוכנות שלכם ב-Homatch',
-  ],
-  broker_apply_intro: [
-    'Apply once. Homatch reviews the application, and your listing appears in the directory only after it is approved and its paid period has started.',
-    'განაცხადი ერთხელ გააგზავნეთ. Homatch მას განიხილავს, ხოლო თქვენი განთავსება კატალოგში მხოლოდ დამტკიცებისა და ფასიანი პერიოდის დაწყების შემდეგ გამოჩნდება.',
-    'Подайте заявку один раз. Homatch её проверит, а ваше размещение появится в каталоге только после одобрения и начала оплаченного периода.',
-    'Bir kez başvurun. Homatch başvurunuzu inceler; kaydınız rehberde yalnızca onaylandıktan ve ücretli süresi başladıktan sonra görünür.',
-    'قدّم طلبك مرة واحدة. تراجع Homatch الطلب، ولا يظهر إدراجك في الدليل إلا بعد الموافقة عليه وبدء فترته المدفوعة.',
-    'הגישו בקשה פעם אחת. Homatch בודקת אותה, והרישום שלכם יופיע במדריך רק אחרי שיאושר ותתחיל התקופה ששולמה.',
-  ],
+  broker_apply_heading: ['List your agency with Homatch', 'განათავსეთ სააგენტო HOMATCH-ზე', 'Разместите агентство в Homatch', 'Acentenizi Homatch\'te listeleyin', 'أدرج مكتبك في Homatch', 'רשמו את הסוכנות שלכם ב-Homatch'],
+  broker_apply_intro: ['Apply once. Homatch reviews the application, and your listing appears in the directory only after it is approved and its paid period has started.', 'განაცხადი ერთხელ გააგზავნეთ. HOMATCH მას განიხილავს, ხოლო თქვენი განთავსება კატალოგში მხოლოდ დამტკიცებისა და ფასიანი პერიოდის დაწყების შემდეგ გამოჩნდება.', 'Подайте заявку один раз. Homatch её проверит, а ваше размещение появится в каталоге только после одобрения и начала оплаченного периода.', 'Bir kez başvurun. Homatch başvurunuzu inceler; kaydınız rehberde yalnızca onaylandıktan ve ücretli süresi başladıktan sonra görünür.', 'قدّم طلبك مرة واحدة. تراجع Homatch الطلب، ولا يظهر إدراجك في الدليل إلا بعد الموافقة عليه وبدء فترته المدفوعة.', 'הגישו בקשה פעם אחת. Homatch בודקת אותה, והרישום שלכם יופיע במדריך רק אחרי שיאושר ותתחיל התקופה ששולמה.'],
   broker_apply_signin: [
     'Sign in to apply',
     'განაცხადისთვის შედით სისტემაში',
@@ -318,14 +283,7 @@ export const BROKER_STRINGS = {
     'تم استلام الطلب',
     'הבקשה התקבלה',
   ],
-  broker_apply_success_body: [
-    'It is pending review. Nothing appears in the directory until Homatch has approved it and the listing is paid.',
-    'ის განხილვას ელოდება. კატალოგში არაფერი გამოჩნდება, სანამ Homatch არ დაამტკიცებს და განთავსება არ იქნება გადახდილი.',
-    'Она ожидает проверки. В каталоге ничего не появится, пока Homatch её не одобрит и размещение не будет оплачено.',
-    'İnceleme bekliyor. Homatch onaylayıp kayıt ücreti ödenene kadar rehberde hiçbir şey görünmez.',
-    'الطلب قيد المراجعة. لن يظهر أي شيء في الدليل حتى توافق عليه Homatch ويُدفع الإدراج.',
-    'היא ממתינה לבדיקה. שום דבר לא יופיע במדריך עד ש-Homatch תאשר אותה והרישום ישולם.',
-  ],
+  broker_apply_success_body: ['It is pending review. Nothing appears in the directory until Homatch has approved it and the listing is paid.', 'ის განხილვას ელოდება. კატალოგში არაფერი გამოჩნდება, სანამ HOMATCH არ დაამტკიცებს და განთავსება არ იქნება გადახდილი.', 'Она ожидает проверки. В каталоге ничего не появится, пока Homatch её не одобрит и размещение не будет оплачено.', 'İnceleme bekliyor. Homatch onaylayıp kayıt ücreti ödenene kadar rehberde hiçbir şey görünmez.', 'الطلب قيد المراجعة. لن يظهر أي شيء في الدليل حتى توافق عليه Homatch ويُدفع الإدراج.', 'היא ממתינה לבדיקה. שום דבר לא יופיע במדריך עד ש-Homatch תאשר אותה והרישום ישולם.'],
   broker_apply_err_name: [
     'Enter the name customers know you by.',
     'შეიყვანეთ სახელი, რომლითაც კლიენტები გიცნობენ.',
@@ -824,14 +782,7 @@ export const BROKER_STRINGS = {
     'لا شيء يطابق هذه الفلاتر.',
     'שום דבר לא מתאים למסננים האלה.',
   ],
-  admin_brokers_intel_note: [
-    'Discovered firms have no relationship with Homatch. They are market intelligence: they cannot be approved, listed, or described to a customer as registered, verified or paid.',
-    'აღმოჩენილ ფირმებს Homatch-თან კავშირი არ აქვთ. ეს საბაზრო ინფორმაციაა: მათი დამტკიცება, განთავსება ან კლიენტისთვის რეგისტრირებულად, დადასტურებულად ან ფასიანად წარდგენა შეუძლებელია.',
-    'Обнаруженные фирмы не связаны с Homatch. Это рыночные сведения: их нельзя одобрить, разместить или представить клиенту как зарегистрированные, проверенные или платные.',
-    'Keşfedilen firmaların Homatch ile ilişkisi yoktur. Bunlar piyasa bilgisidir: onaylanamaz, listelenemez veya müşteriye kayıtlı, doğrulanmış ya da ücretli olarak tanıtılamaz.',
-    'الشركات المكتشَفة لا علاقة لها بـ Homatch. إنها معلومات سوقية: لا يمكن الموافقة عليها أو إدراجها أو تقديمها للعميل على أنها مسجَّلة أو موثَّقة أو مدفوعة.',
-    'לחברות שהתגלו אין קשר ל-Homatch. זה מידע שוק: אי אפשר לאשר אותן, לרשום אותן או להציג אותן ללקוח כרשומות, מאומתות או בתשלום.',
-  ],
+  admin_brokers_intel_note: ['Discovered firms have no relationship with Homatch. They are market intelligence: they cannot be approved, listed, or described to a customer as registered, verified or paid.', 'აღმოჩენილ ფირმებს HOMATCH-თან კავშირი არ აქვთ. ეს საბაზრო ინფორმაციაა: მათი დამტკიცება, განთავსება ან კლიენტისთვის რეგისტრირებულად, დადასტურებულად ან ფასიანად წარდგენა შეუძლებელია.', 'Обнаруженные фирмы не связаны с Homatch. Это рыночные сведения: их нельзя одобрить, разместить или представить клиенту как зарегистрированные, проверенные или платные.', 'Keşfedilen firmaların Homatch ile ilişkisi yoktur. Bunlar piyasa bilgisidir: onaylanamaz, listelenemez veya müşteriye kayıtlı, doğrulanmış ya da ücretli olarak tanıtılamaz.', 'الشركات المكتشَفة لا علاقة لها بـ Homatch. إنها معلومات سوقية: لا يمكن الموافقة عليها أو إدراجها أو تقديمها للعميل على أنها مسجَّلة أو موثَّقة أو مدفوعة.', 'לחברות שהתגלו אין קשר ל-Homatch. זה מידע שוק: אי אפשר לאשר אותן, לרשום אותן או להציג אותן ללקוח כרשומות, מאומתות או בתשלום.'],
   admin_brokers_payment_note: [
     'No payment path exists for directory listings. Activation records an admin-asserted payment with its reference.',
     'კატალოგის განთავსებისთვის გადახდის გზა არ არსებობს. გააქტიურება აფიქსირებს ადმინისტრატორის მიერ დადასტურებულ გადახდას მისი ნომრით.',
@@ -850,12 +801,5 @@ export const BROKER_STRINGS = {
     'متوقف نهائيًا',
     'הוצא משימוש',
   ],
-  admin_providers_retired_desc: [
-    'Retired from the Homatch architecture. It cannot be tested or enabled from here, and no code path can call it. Historical costs stay as recorded.',
-    'Homatch-ის არქიტექტურიდან ამოღებულია. აქედან მისი შემოწმება ან ჩართვა შეუძლებელია და არცერთ კოდს მისი გამოძახება არ შეუძლია. ისტორიული ხარჯები ჩაწერილი სახით რჩება.',
-    'Выведен из архитектуры Homatch. Его нельзя проверить или включить отсюда, и никакой код не может к нему обратиться. Исторические расходы сохраняются как записаны.',
-    'Homatch mimarisinden kaldırıldı. Buradan test edilemez veya etkinleştirilemez ve hiçbir kod yolu onu çağıramaz. Geçmiş maliyetler kaydedildiği gibi kalır.',
-    'أُخرج من بنية Homatch. لا يمكن اختباره أو تفعيله من هنا، ولا يوجد مسار برمجي يستطيع استدعاءه. تبقى التكاليف التاريخية كما سُجّلت.',
-    'הוצא מהארכיטקטורה של Homatch. אי אפשר לבדוק או להפעיל אותו מכאן, ואין נתיב קוד שיכול לקרוא לו. העלויות ההיסטוריות נשארות כפי שנרשמו.',
-  ],
+  admin_providers_retired_desc: ['Retired from the Homatch architecture. It cannot be tested or enabled from here, and no code path can call it. Historical costs stay as recorded.', 'HOMATCH-ის არქიტექტურიდან ამოღებულია. აქედან მისი შემოწმება ან ჩართვა შეუძლებელია და არცერთ კოდს მისი გამოძახება არ შეუძლია. ისტორიული ხარჯები ჩაწერილი სახით რჩება.', 'Выведен из архитектуры Homatch. Его нельзя проверить или включить отсюда, и никакой код не может к нему обратиться. Исторические расходы сохраняются как записаны.', 'Homatch mimarisinden kaldırıldı. Buradan test edilemez veya etkinleştirilemez ve hiçbir kod yolu onu çağıramaz. Geçmiş maliyetler kaydedildiği gibi kalır.', 'أُخرج من بنية Homatch. لا يمكن اختباره أو تفعيله من هنا، ولا يوجد مسار برمجي يستطيع استدعاءه. تبقى التكاليف التاريخية كما سُجّلت.', 'הוצא מהארכיטקטורה של Homatch. אי אפשר לבדוק או להפעיל אותו מכאן, ואין נתיב קוד שיכול לקרוא לו. העלויות ההיסטוריות נשארות כפי שנרשמו.'],
 };

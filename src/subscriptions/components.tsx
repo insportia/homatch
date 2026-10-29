@@ -66,7 +66,7 @@ export function EntitlementBadge({ feature, className = '' }: { feature: Extract
   if (!status || !f) return null;
   let text: string | null = null;
   let Icon = Sparkles;
-  if (f.trialAvailable) { text = t('sub_badge_first_free'); Icon = Gift; }
+  if (f.trialAvailable) { text = t(feature === 'VERIFY' ? 'sub_badge_first_free_verify' : 'sub_badge_first_free_contract'); Icon = Gift; }
   else if (f.included && f.unlimited) text = t('sub_badge_included_unlimited');
   else if (f.included && (f.remaining ?? 0) > 0) text = t('sub_badge_included', { remaining: String(f.remaining) });
   else if (status.hasLegacyBalance) text = t('sub_badge_legacy');
@@ -85,6 +85,7 @@ export function SubscribePrompt({ code, className = '' }: { code: string; classN
   return (
     <div role="status" className={`rounded-xl border border-[hsl(38_92%_54%)]/40 bg-gold-soft p-4 text-sm ${className}`}>
       <p className="font-medium text-foreground">{code === 'ALLOWANCE_EXHAUSTED' ? t('sub_prompt_exhausted') : t('sub_prompt_subscribe')}</p>
+      {/* No activation button into a payment flow that does not exist yet: the plans page explains it. */}
       <Button asChild size="sm" className="mt-3 bg-gold text-primary hover:bg-gold-hover">
         <Link to="/pricing">{t('sub_see_plans')}</Link>
       </Button>

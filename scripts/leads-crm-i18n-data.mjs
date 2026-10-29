@@ -7,7 +7,7 @@
 // "confirmed buyer". An unlock never equals marketing consent.
 export const LEADS_CRM_STRINGS = {
   /* ── page ── */
-  crm_eyebrow: ['HOMATCH Leads', 'HOMATCH ლიდები', 'HOMATCH Лиды', 'HOMATCH Potansiyel Müşteriler', 'عملاء HOMATCH المحتملون', 'לידים ב־HOMATCH'],
+  crm_eyebrow: ['HOMATCH Leads', 'HOMATCH კონტაქტები', 'HOMATCH Лиды', 'HOMATCH Potansiyel Müşteriler', 'عملاء HOMATCH المحتملون', 'לידים ב־HOMATCH'],
   crm_headline: ['Your Buyer Relationships', 'თქვენი ურთიერთობები მყიდველებთან', 'Ваши отношения с покупателями', 'Alıcı İlişkileriniz', 'علاقاتك مع المشترين', 'הקשרים שלך עם קונים'],
   crm_description: [
     'Keep every conversation, property offer and follow-up organized in one place.',

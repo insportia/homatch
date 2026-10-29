@@ -4,7 +4,7 @@
 // Order is [en, ka, ru, tr, ar, he].
 
 export const DS_STRINGS_16 = {
-  ds_fin_title: ['Design Studio AI economics', 'Design Studio — AI ეკონომიკა', 'Экономика ИИ Design Studio', 'Design Studio yapay zekâ ekonomisi', 'اقتصاديات الذكاء الاصطناعي في Design Studio', 'כלכלת ה-AI של Design Studio'],
+  ds_fin_title: ['Design Studio AI economics', 'Design Studio: AI ეკონომიკა', 'Экономика ИИ Design Studio', 'Design Studio yapay zekâ ekonomisi', 'اقتصاديات الذكاء الاصطناعي في Design Studio', 'כלכלת ה-AI של Design Studio'],
   ds_fin_hint: [
     'Variable AI cost per job from real samples, last 90 days. Unpriced jobs are counted but never averaged as zero. Fixed costs are in the Fixed costs tab.',
     'AI-ს ცვლადი ხარჯი ერთ სამუშაოზე რეალური ნიმუშებიდან, ბოლო 90 დღე. ფასის არმქონე სამუშაოები ითვლება, მაგრამ ნულად არასოდეს საშუალოვდება. ფიქსირებული ხარჯები ფიქსირებული ხარჯების ჩანართშია.',

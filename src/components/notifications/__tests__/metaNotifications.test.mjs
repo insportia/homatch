@@ -209,5 +209,6 @@ test('the data file itself is whole: six entries each, placeholders identical, G
     }
     assert.doesNotMatch(values[1], /შესატყვისი/, `${key}: match is დამთხვევა`);
   }
-  assert.match(META_MASTER_ADMIN_STRINGS.mm_n_cat_leads[1], /ლიდ/);
+  // Owner, 2026-10-30: a lead is a კონტაქტი in Georgian copy, never the loanword ლიდი.
+  assert.match(META_MASTER_ADMIN_STRINGS.mm_n_cat_leads[1], /კონტაქტ/);
 });

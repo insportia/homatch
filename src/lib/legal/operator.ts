@@ -48,10 +48,18 @@ export const LEGAL_OPERATOR = {
   supportEmail: 'support@homatch.live' as string | null,
   contactsVerified: false,
   /** Must equal public.legal_policy_versions (the server refuses any other). */
-  /* 2026-10-29: new operator (all three documents name it) and the Terms'
-     subscription section. Equal to supabase/migrations/20261207160000_policy_versions_operator_change.sql. */
-  versions: { terms: '2026-10-29', privacy: '2026-10-29', cookies: '2026-10-29' },
-  effectiveDates: { terms: '2026-10-29', privacy: '2026-10-29', cookies: '2026-10-29' },
+  /* 2026-10-30: obsolete voice and Stripe statements removed; payments described as processed by a
+     licensed Georgian bank payment provider once connected. Equal to
+     supabase/migrations/20261208120000_policy_versions_copy_2026_10_30.sql. The 2026-10-29 edition
+     (new operator, subscription Terms) stays readable in ARCHIVED_EDITIONS. */
+  versions: { terms: '2026-10-30', privacy: '2026-10-30', cookies: '2026-10-30' },
+  effectiveDates: { terms: '2026-10-30', privacy: '2026-10-30', cookies: '2026-10-30' },
+  /*
+   * The version a stored cookie choice must carry. It moves only when a cookie change needs a new
+   * choice. 2026-10-30 only removed Stripe's checkout cookies (one fewer third party, nothing new
+   * set), so a choice made under 2026-10-29 still stands and the banner is not shown again.
+   */
+  cookieConsentVersion: '2026-10-29',
 } as const;
 
 export type LegalDoc = 'terms' | 'privacy' | 'cookies';
@@ -102,10 +110,40 @@ export interface LegalEdition {
   operator: OperatorIdentity;
 }
 
+/** The operator the 2026-10-29 edition named (the same company as today). */
+export const OPERATOR_2026_10_29: OperatorIdentity = {
+  legalEntityType: 'llc',
+  legalEntityName: 'შპს „ულტრა ქონექშენ“',
+  legalEntityNameLatin: null,
+  identificationNumber: '406378511',
+  registeredAddress: null,
+};
+
 /** Newest first. The three documents have always been published together. */
 export const ARCHIVED_EDITIONS: readonly LegalEdition[] = [
+  { version: '2026-10-29', effectiveDate: '2026-10-29', supersededOn: '2026-10-30', operator: OPERATOR_2026_10_29 },
   { version: '2026-10-25', effectiveDate: '2026-10-25', supersededOn: '2026-10-29', operator: PREVIOUS_OPERATOR_2026_10_25 },
 ];
+
+/*
+ * EDITION-SPECIFIC TEXT (2026-10-30).
+ *
+ * These keys changed in 2026-10-30 (voice, Stripe, the payment provider). Every earlier edition
+ * (2026-10-25 and 2026-10-29) published the original wording, which is kept word for word under
+ * `<key>_e1029`. Reading an archived edition renders those; the current edition renders the key.
+ */
+export const KEYS_CHANGED_2026_10_30 = [
+  'terms_sub_included', 'terms_sub_provider', 'terms_s8_body',
+  'privacy_s1d_body', 'privacy_sources_li5', 'privacy_s4_li1_body',
+] as const;
+
+/** The Cookie Policy listed Stripe's checkout cookies until 2026-10-30; the current edition does not. */
+export const listsStripeCookies = (edition: Pick<LegalEdition, 'version'>): boolean => edition.version < '2026-10-30';
+
+/** The translation key to render for `key` in the given edition. */
+export function editionKey(key: string, edition: Pick<LegalEdition, 'version'>): string {
+  return edition.version < '2026-10-30' && (KEYS_CHANGED_2026_10_30 as readonly string[]).includes(key) ? `${key}_e1029` : key;
+}
 
 export function currentEdition(doc: LegalDoc): LegalEdition {
   return {

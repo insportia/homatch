@@ -90,24 +90,17 @@ export const DS_STRINGS_25 = {
   sf_customize: ['Customise details', 'დეტალების მორგება', 'Настроить детали', 'Ayrıntıları özelleştir', 'خصّص التفاصيل', 'התאמת פרטים'],
   sf_generate: ['Generate My Home', 'ჩემი სახლის შექმნა', 'Создать мой дом', 'Evimi Oluştur', 'أنشئ منزلي', 'צרו את הבית שלי'],
   sf_price_loading: ['Getting the price…', 'ფასს ვიღებთ…', 'Узнаём цену…', 'Fiyat alınıyor…', 'نحصل على السعر…', 'מקבלים מחיר…'],
-  sf_price_retry: ['Price unavailable — try again', 'ფასი მიუწვდომელია — სცადეთ თავიდან', 'Цена недоступна — повторить', 'Fiyat alınamadı — tekrar deneyin', 'السعر غير متاح — أعد المحاولة', 'המחיר לא זמין — נסו שוב'],
+  sf_price_retry: ['Price unavailable — try again', 'ფასი მიუწვდომელია: სცადეთ თავიდან', 'Цена недоступна — повторить', 'Fiyat alınamadı — tekrar deneyin', 'السعر غير متاح — أعد المحاولة', 'המחיר לא זמין — נסו שוב'],
 
   // ── Building ────────────────────────────────────────────────────────────
   sf_building_title: ['Creating your home', 'ვქმნით თქვენს სახლს', 'Создаём ваш дом', 'Eviniz oluşturuluyor', 'ننشئ منزلك', 'יוצרים את הבית שלכם'],
   sf_building_body: ['This takes a few minutes.', 'ამას რამდენიმე წუთი სჭირდება.', 'Это займёт несколько минут.', 'Bu birkaç dakika sürer.', 'يستغرق ذلك بضع دقائق.', 'זה לוקח כמה דקות.'],
-  sf_building_leave: ['You can leave — we will keep going.', 'შეგიძლიათ დატოვოთ — ჩვენ გავაგრძელებთ.', 'Можно уйти — мы продолжим.', 'Ayrılabilirsiniz — devam edeceğiz.', 'يمكنك المغادرة — سنواصل العمل.', 'אפשר לצאת — אנחנו ממשיכים.'],
+  sf_building_leave: ['You can leave — we will keep going.', 'შეგიძლიათ დატოვოთ: ჩვენ გავაგრძელებთ.', 'Можно уйти — мы продолжим.', 'Ayrılabilirsiniz — devam edeceğiz.', 'يمكنك المغادرة — سنواصل العمل.', 'אפשר לצאת — אנחנו ממשיכים.'],
   sf_stage_plan: ['Measuring your plan', 'გეგმის გაზომვა', 'Измеряем план', 'Planınız ölçülüyor', 'نقيس مخططك', 'מודדים את התוכנית'],
   sf_stage_design: ['Designing your home', 'თქვენი სახლის დიზაინი', 'Проектируем ваш дом', 'Eviniz tasarlanıyor', 'نصمم منزلك', 'מעצבים את הבית שלכם'],
   sf_stage_build: ['Creating the photorealistic design', 'ფოტორეალისტური დიზაინის შექმნა', 'Создаём фотореалистичный дизайн', 'Fotogerçekçi tasarım oluşturuluyor', 'ننشئ التصميم الواقعي', 'יוצרים את העיצוב הפוטוריאליסטי'],
   sf_stage_finish: ['Making it ready to edit', 'რედაქტირებისთვის მომზადება', 'Готовим к редактированию', 'Düzenlemeye hazırlanıyor', 'نجهزه للتعديل', 'מכינים לעריכה'],
-  sf_error_render: [
-    'Your design could not be created this time — nothing was charged. Please try again.',
-    'დიზაინის შექმნა ამჯერად ვერ მოხერხდა — არაფერი ჩამოგეჭრათ. გთხოვთ, სცადოთ თავიდან.',
-    'Не удалось создать дизайн — ничего не списано. Попробуйте ещё раз.',
-    'Tasarımınız bu kez oluşturulamadı — ücret alınmadı. Lütfen tekrar deneyin.',
-    'تعذّر إنشاء تصميمك هذه المرة — لم يُخصم شيء. يرجى المحاولة مرة أخرى.',
-    'לא ניתן היה ליצור את העיצוב הפעם — לא חויבת. נסו שוב.',
-  ],
+  sf_error_render: ['Your design could not be created this time — nothing was charged. Please try again.', 'დიზაინის შექმნა ამჯერად ვერ მოხერხდა, არაფერი ჩამოგეჭრათ. გთხოვთ, სცადოთ თავიდან.', 'Не удалось создать дизайн — ничего не списано. Попробуйте ещё раз.', 'Tasarımınız bu kez oluşturulamadı — ücret alınmadı. Lütfen tekrar deneyin.', 'تعذّر إنشاء تصميمك هذه المرة — لم يُخصم شيء. يرجى المحاولة مرة أخرى.', 'לא ניתן היה ליצור את העיצוב הפעם — לא חויבת. נסו שוב.'],
   sf_error_busy: [
     'Many designs are being created right now. Please try again in a few minutes.',
     'ამჟამად ბევრი დიზაინი იქმნება. გთხოვთ, სცადოთ რამდენიმე წუთში.',

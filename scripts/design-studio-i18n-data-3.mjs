@@ -121,14 +121,7 @@ export const DS_STRINGS_3 = {
   ds_issue_outside: ['That would be outside the room.', 'ეს ოთახის გარეთ აღმოჩნდებოდა.', 'Так предмет оказался бы вне комнаты.', 'Bu, odanın dışında kalırdı.', 'سيكون ذلك خارج الغرفة.', 'זה היה מחוץ לחדר.'],
   ds_issue_generic: ['Worth checking', 'შესამოწმებელია', 'Стоит проверить', 'Kontrol etmeye değer', 'يستحق التحقق', 'כדאי לבדוק'],
   ds_add_no_room: ['Choose a room first.', 'ჯერ აირჩიეთ ოთახი.', 'Сначала выберите комнату.', 'Önce bir oda seçin.', 'اختر غرفة أولًا.', 'בחרו קודם חדר.'],
-  ds_add_no_space: [
-    'No good free spot for this piece in {{room}} — drag it where you want it.',
-    '{{room}}: ამ ნივთისთვის კარგი თავისუფალი ადგილი ვერ მოიძებნა — გადაიტანეთ იქ, სადაც გსურთ.',
-    'В помещении «{{room}}» нет подходящего свободного места для этого предмета — перетащите его, куда нужно.',
-    '{{room}} içinde bu parça için uygun boş yer yok — istediğiniz yere sürükleyin.',
-    'لا يوجد مكان فارغ مناسب لهذه القطعة في {{room}} — اسحبها إلى المكان الذي تريده.',
-    'אין מקום פנוי מתאים לפריט הזה ב{{room}} — גררו אותו למקום שתרצו.',
-  ],
+  ds_add_no_space: ['No good free spot for this piece in {{room}} — drag it where you want it.', '{{room}}: ამ ნივთისთვის კარგი თავისუფალი ადგილი ვერ მოიძებნა, გადაიტანეთ იქ, სადაც გსურთ.', 'В помещении «{{room}}» нет подходящего свободного места для этого предмета — перетащите его, куда нужно.', '{{room}} içinde bu parça için uygun boş yer yok — istediğiniz yere sürükleyin.', 'لا يوجد مكان فارغ مناسب لهذه القطعة في {{room}} — اسحبها إلى المكان الذي تريده.', 'אין מקום פנוי מתאים לפריט הזה ב{{room}} — גררו אותו למקום שתרצו.'],
 
   ds_reject_op_placement: ['That placement is not possible here.', 'აქ ასე განთავსება შეუძლებელია.', 'Такое размещение здесь невозможно.', 'Bu yerleşim burada mümkün değil.', 'هذا الموضع غير ممكن هنا.', 'המיקום הזה לא אפשרי כאן.'],
   ds_reject_op_kept: [
@@ -229,7 +222,7 @@ export const DS_STRINGS_3 = {
   ds_save_saved: ['Saved', 'შენახულია', 'Сохранено', 'Kaydedildi', 'تم الحفظ', 'נשמר'],
   ds_save_unsaved: ['Unsaved changes', 'შეუნახავი ცვლილებები', 'Несохранённые изменения', 'Kaydedilmemiş değişiklikler', 'تغييرات غير محفوظة', 'שינויים שלא נשמרו'],
   ds_save_saving: ['Saving…', 'ინახება…', 'Сохраняем…', 'Kaydediliyor…', 'جارٍ الحفظ…', 'שומרים…'],
-  ds_save_offline: ['Offline — will save when back', 'კავშირი არ არის — შეინახება დაბრუნებისას', 'Нет сети — сохраним при подключении', 'Çevrimdışı — bağlantı gelince kaydedilecek', 'غير متصل — سيُحفظ عند عودة الاتصال', 'אין חיבור — יישמר כשיחזור'],
+  ds_save_offline: ['Offline — will save when back', 'კავშირი არ არის, შეინახება დაბრუნებისას', 'Нет сети — сохраним при подключении', 'Çevrimdışı — bağlantı gelince kaydedilecek', 'غير متصل — سيُحفظ عند عودة الاتصال', 'אין חיבור — יישמר כשיחזור'],
   ds_save_failed: ['Save failed', 'შენახვა ვერ მოხერხდა', 'Не удалось сохранить', 'Kaydedilemedi', 'فشل الحفظ', 'השמירה נכשלה'],
   ds_save_conflict: ['Changed in another window', 'სხვა ფანჯარაში შეიცვალა', 'Изменено в другом окне', 'Başka bir pencerede değiştirildi', 'تم التغيير في نافذة أخرى', 'שונה בחלון אחר'],
 };

@@ -5,14 +5,7 @@
 // warning says what to do next; no promised results.
 export const META_CLOSURE_STRINGS = {
   // ── Micro-explanations ─────────────────────────────────────────────────
-  mm_c_hint_goal: [
-    'The goal tells Meta what result to look for — messages, leads or visits.',
-    'მიზანი Meta-ს ეუბნება, რა შედეგს ეძებოს — შეტყობინებებს, ლიდებს თუ ვიზიტებს.',
-    'Цель подсказывает Meta, какой результат искать — сообщения, заявки или визиты.',
-    'Hedef, Meta’ya hangi sonucu araması gerektiğini söyler — mesaj, potansiyel müşteri veya ziyaret.',
-    'يخبر الهدف Meta بالنتيجة التي يبحث عنها — رسائل أو عملاء محتملون أو زيارات.',
-    'המטרה אומרת ל-Meta איזו תוצאה לחפש — הודעות, לידים או ביקורים.',
-  ],
+  mm_c_hint_goal: ['The goal tells Meta what result to look for — messages, leads or visits.', 'მიზანი Meta-ს ეუბნება, რა შედეგს ეძებოს, შეტყობინებებს, კონტაქტებს თუ ვიზიტებს.', 'Цель подсказывает Meta, какой результат искать — сообщения, заявки или визиты.', 'Hedef, Meta’ya hangi sonucu araması gerektiğini söyler — mesaj, potansiyel müşteri veya ziyaret.', 'يخبر الهدف Meta بالنتيجة التي يبحث عنها — رسائل أو عملاء محتملون أو زيارات.', 'המטרה אומרת ל-Meta איזו תוצאה לחפש — הודעות, לידים או ביקורים.'],
   mm_c_hint_location: [
     'Choose where the people who see your ad live or are right now. Nothing is chosen until you add it.',
     'აირჩიეთ, სად ცხოვრობენ ან იმყოფებიან ადამიანები, ვინც რეკლამას ნახავს. სანამ არ დაამატებთ, არაფერია არჩეული.',
@@ -21,14 +14,7 @@ export const META_CLOSURE_STRINGS = {
     'اختر أين يعيش أو يتواجد الأشخاص الذين سيرون إعلانك. لا شيء محدد حتى تضيفه.',
     'בחרו איפה גרים או נמצאים האנשים שיראו את המודעה. דבר לא נבחר עד שתוסיפו.',
   ],
-  mm_c_hint_radius: [
-    'The circle around a city or pin — Meta shows the ad to people inside it.',
-    'წრე ქალაქის ან წერტილის გარშემო — Meta რეკლამას მის შიგნით მყოფ ადამიანებს აჩვენებს.',
-    'Круг вокруг города или метки — Meta показывает рекламу людям внутри него.',
-    'Şehrin veya iğnenin çevresindeki daire — Meta reklamı içindeki kişilere gösterir.',
-    'الدائرة حول المدينة أو الدبوس — يعرض Meta الإعلان لمن بداخلها.',
-    'העיגול סביב עיר או נעץ — Meta מציגה את המודעה לאנשים שבתוכו.',
-  ],
+  mm_c_hint_radius: ['The circle around a city or pin — Meta shows the ad to people inside it.', 'წრე ქალაქის ან წერტილის გარშემო, Meta რეკლამას მის შიგნით მყოფ ადამიანებს აჩვენებს.', 'Круг вокруг города или метки — Meta показывает рекламу людям внутри него.', 'Şehrin veya iğnenin çevresindeki daire — Meta reklamı içindeki kişilere gösterir.', 'الدائرة حول المدينة أو الدبوس — يعرض Meta الإعلان لمن بداخلها.', 'העיגול סביב עיר או נעץ — Meta מציגה את המודעה לאנשים שבתוכו.'],
   mm_c_hint_age: [
     'Who can see the ad by age. Wider ranges usually reach more people.',
     'ვის შეუძლია რეკლამის ნახვა ასაკის მიხედვით. ფართო დიაპაზონი, როგორც წესი, მეტ ადამიანს აღწევს.',
@@ -45,14 +31,7 @@ export const META_CLOSURE_STRINGS = {
     'اترك «الكل» ما لم يكن عرضك لفئة واحدة فعلًا.',
     'השאירו „כולם“, אלא אם ההצעה באמת מיועדת לקבוצה אחת בלבד.',
   ],
-  mm_c_hint_languages: [
-    'Reach people whose phone is set to these languages — useful for foreign buyers.',
-    'მიაღწიეთ ადამიანებს, ვისაც ტელეფონი ამ ენებზე აქვს — სასარგებლოა უცხოელი მყიდველებისთვის.',
-    'Охват людей, у которых телефон на этих языках, — полезно для иностранных покупателей.',
-    'Telefonu bu dillerde olan kişilere ulaşın — yabancı alıcılar için kullanışlı.',
-    'الوصول إلى من يستخدمون هواتفهم بهذه اللغات — مفيد للمشترين الأجانب.',
-    'הגיעו לאנשים שהטלפון שלהם מוגדר בשפות האלה — שימושי לקונים מחו״ל.',
-  ],
+  mm_c_hint_languages: ['Reach people whose phone is set to these languages — useful for foreign buyers.', 'მიაღწიეთ ადამიანებს, ვისაც ტელეფონი ამ ენებზე აქვს, სასარგებლოა უცხოელი მყიდველებისთვის.', 'Охват людей, у которых телефон на этих языках, — полезно для иностранных покупателей.', 'Telefonu bu dillerde olan kişilere ulaşın — yabancı alıcılar için kullanışlı.', 'الوصول إلى من يستخدمون هواتفهم بهذه اللغات — مفيد للمشترين الأجانب.', 'הגיעו לאנשים שהטלפון שלהם מוגדר בשפות האלה — שימושי לקונים מחו״ל.'],
   mm_c_hint_advantage: [
     'Lets Meta also show the ad to similar people beyond your choices when it expects better results.',
     'Meta-ს საშუალებას აძლევს, რეკლამა მსგავს ადამიანებსაც აჩვენოს თქვენი არჩევანის მიღმა, როცა უკეთეს შედეგს ელის.',
@@ -93,14 +72,7 @@ export const META_CLOSURE_STRINGS = {
     'ما يحدث عندما يضغط أحدهم على إعلانك.',
     'מה קורה כשמישהו לוחץ על המודעה.',
   ],
-  mm_c_hint_forms: [
-    'An instant form opens inside Facebook or Instagram, so people can leave their contact without leaving the app.',
-    'მყისიერი ფორმა Facebook-ში ან Instagram-ში იხსნება — ადამიანები კონტაქტს აპლიკაციიდან გაუსვლელად ტოვებენ.',
-    'Мгновенная форма открывается в Facebook или Instagram — люди оставляют контакт, не выходя из приложения.',
-    'Anlık form Facebook veya Instagram içinde açılır; kişiler uygulamadan çıkmadan iletişim bilgisini bırakır.',
-    'يُفتح النموذج الفوري داخل فيسبوك أو إنستغرام، فيترك الناس بيانات التواصل دون مغادرة التطبيق.',
-    'טופס מיידי נפתח בתוך Facebook או Instagram, כך שאנשים משאירים פרטים בלי לצאת מהאפליקציה.',
-  ],
+  mm_c_hint_forms: ['An instant form opens inside Facebook or Instagram, so people can leave their contact without leaving the app.', 'მყისიერი ფორმა Facebook-ში ან Instagram-ში იხსნება, ადამიანები კონტაქტს აპლიკაციიდან გაუსვლელად ტოვებენ.', 'Мгновенная форма открывается в Facebook или Instagram — люди оставляют контакт, не выходя из приложения.', 'Anlık form Facebook veya Instagram içinde açılır; kişiler uygulamadan çıkmadan iletişim bilgisini bırakır.', 'يُفتح النموذج الفوري داخل فيسبوك أو إنستغرام، فيترك الناس بيانات التواصل دون مغادرة التطبيق.', 'טופס מיידי נפתח בתוך Facebook או Instagram, כך שאנשים משאירים פרטים בלי לצאת מהאפליקציה.'],
   mm_c_hint_pixel: [
     'The pixel tells Meta which visits became contacts, so it can find more people like them.',
     'პიქსელი Meta-ს ეუბნება, რომელი ვიზიტი იქცა კონტაქტად, რათა მსგავსი ადამიანები იპოვოს.',
@@ -128,14 +100,7 @@ export const META_CLOSURE_STRINGS = {
 
   // ── Goal / terms states ────────────────────────────────────────────────
   mm_c_goal_check: ['Check with Meta', 'Meta-ში გადამოწმება', 'Проверить в Meta', 'Meta ile kontrol et', 'تحقق مع Meta', 'בדיקה מול Meta'],
-  mm_c_lf_perms: [
-    'HOMATCH needs your permission to create and read instant forms. Reconnect Meta and approve the lead permissions.',
-    'HOMATCH-ს სჭირდება თქვენი ნებართვა მყისიერი ფორმების შესაქმნელად და წასაკითხად. ხელახლა დაუკავშირდით Meta-ს და დაადასტურეთ ლიდების ნებართვები.',
-    'HOMATCH нужно ваше разрешение на создание и чтение мгновенных форм. Переподключите Meta и подтвердите разрешения на заявки.',
-    'HOMATCH’in anlık form oluşturma ve okuma izninize ihtiyacı var. Meta’yı yeniden bağlayın ve potansiyel müşteri izinlerini onaylayın.',
-    'يحتاج HOMATCH إلى إذنك لإنشاء النماذج الفورية وقراءتها. أعد ربط Meta ووافق على أذونات العملاء المحتملين.',
-    'HOMATCH צריכה את אישורכם ליצור ולקרוא טפסים מיידיים. חברו מחדש את Meta ואשרו את הרשאות הלידים.',
-  ],
+  mm_c_lf_perms: ['HOMATCH needs your permission to create and read instant forms. Reconnect Meta and approve the lead permissions.', 'HOMATCH-ს სჭირდება თქვენი ნებართვა მყისიერი ფორმების შესაქმნელად და წასაკითხად. ხელახლა დაუკავშირდით Meta-ს და დაადასტურეთ კონტაქტების ნებართვები.', 'HOMATCH нужно ваше разрешение на создание и чтение мгновенных форм. Переподключите Meta и подтвердите разрешения на заявки.', 'HOMATCH’in anlık form oluşturma ve okuma izninize ihtiyacı var. Meta’yı yeniden bağlayın ve potansiyel müşteri izinlerini onaylayın.', 'يحتاج HOMATCH إلى إذنك لإنشاء النماذج الفورية وقراءتها. أعد ربط Meta ووافق على أذونات العملاء المحتملين.', 'HOMATCH צריכה את אישורכם ליצור ולקרוא טפסים מיידיים. חברו מחדש את Meta ואשרו את הרשאות הלידים.'],
   mm_c_lf_terms_unknown: [
     'Meta hasn’t confirmed the Lead Ads Terms either way yet. Check again, or open Meta’s page to see them.',
     'Meta-ს ჯერ არ დაუდასტურებია Lead Ads-ის პირობების სტატუსი. შეამოწმეთ ხელახლა ან გახსენით Meta-ს გვერდი.',
@@ -200,12 +165,5 @@ export const META_CLOSURE_STRINGS = {
     'מפה של {{n}} מקומות ממוקדים, {{drawn}} מסומנים',
   ],
   mm_c_map_not_drawn: ['not on the map', 'რუკაზე არ არის', 'нет на карте', 'haritada yok', 'غير ظاهر على الخريطة', 'לא במפה'],
-  mm_c_map_not_drawn_why: [
-    'Some places are targeted but not drawn — HOMATCH draws only places whose exact position it knows.',
-    'ზოგი ადგილი სამიზნეა, მაგრამ არ არის დახატული — HOMATCH მხოლოდ ზუსტად ცნობილ ადგილებს ხატავს.',
-    'Некоторые места выбраны, но не показаны — HOMATCH рисует только места с точными координатами.',
-    'Bazı yerler hedefte ama çizilmedi — HOMATCH yalnızca konumunu tam bildiği yerleri çizer.',
-    'بعض الأماكن مستهدفة لكنها غير مرسومة — يرسم HOMATCH فقط ما يعرف موقعه بدقة.',
-    'חלק מהמקומות ממוקדים אך לא מסומנים — HOMATCH מסמנת רק מקומות שמיקומם ידוע במדויק.',
-  ],
+  mm_c_map_not_drawn_why: ['Some places are targeted but not drawn — HOMATCH draws only places whose exact position it knows.', 'ზოგი ადგილი სამიზნეა, მაგრამ არ არის დახატული, HOMATCH მხოლოდ ზუსტად ცნობილ ადგილებს ხატავს.', 'Некоторые места выбраны, но не показаны — HOMATCH рисует только места с точными координатами.', 'Bazı yerler hedefte ama çizilmedi — HOMATCH yalnızca konumunu tam bildiği yerleri çizer.', 'بعض الأماكن مستهدفة لكنها غير مرسومة — يرسم HOMATCH فقط ما يعرف موقعه بدقة.', 'חלק מהמקומות ממוקדים אך לא מסומנים — HOMATCH מסמנת רק מקומות שמיקומם ידוע במדויק.'],
 };

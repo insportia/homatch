@@ -4,7 +4,7 @@
  * Order: en, ka, ru, tr, ar, he (LANGS in lib/i18nSplice.mjs). {{var}} survive in every locale.
  */
 export const ALL_RESULTS_STRINGS = {
-  fpv_outside_title: ['Also found — not everything you asked for', 'ასევე ვიპოვეთ — ყველა მოთხოვნას არ ერგება', 'Также найдено — не всё, что вы просили', 'Ayrıca bulundu — her isteğinize uymuyor', 'وجدنا أيضًا — لا تطابق كل ما طلبته', 'נמצאו גם — לא כל מה שביקשתם'],
+  fpv_outside_title: ['Also found — not everything you asked for', 'ასევე ვიპოვეთ: ყველა მოთხოვნას არ ერგება', 'Также найдено — не всё, что вы просили', 'Ayrıca bulundu — her isteğinize uymuyor', 'وجدنا أيضًا — لا تطابق كل ما طلبته', 'נמצאו גם — לא כל מה שביקשתם'],
   fpv_outside_body: [
     'Real listings from the same sites that miss at least one of your requirements. Each card says what differs.',
     'რეალური განცხადებები იმავე საიტებიდან, რომლებიც ერთ-ერთ მოთხოვნას მაინც არ აკმაყოფილებს. თითოეულ ბარათზე წერია, რით განსხვავდება.',

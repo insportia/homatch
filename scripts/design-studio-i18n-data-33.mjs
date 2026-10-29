@@ -13,14 +13,7 @@ export const DS_STRINGS_33 = {
     'داخل الصورة',
     'בתוך התמונה',
   ],
-  dsx_photo3d_body: [
-    'Step inside the design you chose: the picture itself becomes 3D — look around and walk in. Nothing in it is changed.',
-    'შედი შენ მიერ არჩეულ დიზაინში: თავად ფოტო იქცევა 3D-ად — მიმოიხედე და შედი შიგნით. მასში არაფერი იცვლება.',
-    'Войдите в выбранный дизайн: само изображение становится 3D — осмотритесь и пройдите внутрь. Ничего в нём не меняется.',
-    'Seçtiğiniz tasarımın içine girin: görselin kendisi 3D olur — etrafa bakın ve içeri yürüyün. İçindeki hiçbir şey değişmez.',
-    'ادخل إلى التصميم الذي اخترته: تصبح الصورة نفسها ثلاثية الأبعاد — تجوّل بنظرك وادخل. لا يتغير فيها شيء.',
-    'היכנסו לעיצוב שבחרתם: התמונה עצמה הופכת לתלת־ממד — הביטו סביב והיכנסו פנימה. דבר בה אינו משתנה.',
-  ],
+  dsx_photo3d_body: ['Step inside the design you chose: the picture itself becomes 3D — look around and walk in. Nothing in it is changed.', 'შედი შენ მიერ არჩეულ დიზაინში: თავად ფოტო იქცევა 3D-ად, მიმოიხედე და შედი შიგნით. მასში არაფერი იცვლება.', 'Войдите в выбранный дизайн: само изображение становится 3D — осмотритесь и пройдите внутрь. Ничего в нём не меняется.', 'Seçtiğiniz tasarımın içine girin: görselin kendisi 3D olur — etrafa bakın ve içeri yürüyün. İçindeki hiçbir şey değişmez.', 'ادخل إلى التصميم الذي اخترته: تصبح الصورة نفسها ثلاثية الأبعاد — تجوّل بنظرك وادخل. لا يتغير فيها شيء.', 'היכנסו לעיצוב שבחרתם: התמונה עצמה הופכת לתלת־ממד — הביטו סביב והיכנסו פנימה. דבר בה אינו משתנה.'],
   dsx_photo3d_enter: [
     'Step inside the picture',
     'შედი ფოტოში',

@@ -135,14 +135,7 @@ export const PART_1 = {
 
   /* The button every card ends with, and the only way into the chat
      from outside it. See src/components/mortgage/askConsultant.tsx. */
-  mortgage_ask_homatch: [
-    'Ask Homatch',
-    'ჰკითხე Homatch-ს',
-    'Спросить Homatch',
-    "Homatch'a sor",
-    'اسأل Homatch',
-    'שאלו את Homatch',
-  ],
+  mortgage_ask_homatch: ['Ask Homatch', 'ჰკითხე HOMATCH-ს', 'Спросить Homatch', 'Homatch\'a sor', 'اسأل Homatch', 'שאלו את Homatch'],
 
   /* ── The five optional tools ─────────────────────────────────────── */
 

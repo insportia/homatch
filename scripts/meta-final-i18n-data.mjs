@@ -6,14 +6,7 @@
 // jargon; never a promise of results.
 export const META_FINAL_STRINGS = {
   // ── Audience step ───────────────────────────────────────────────────────
-  mm_f_audience_lead: [
-    "Tell us where and who. HOMATCH turns it into a sound audience — you decide what matters, we handle the technical side.",
-    "გვითხარით სად და ვისთვის. HOMATCH ამას სწორ აუდიტორიად აქცევს — თქვენ წყვეტთ მთავარს, ტექნიკურ მხარეს ჩვენ ვმართავთ.",
-    "Расскажите, где и для кого. HOMATCH превратит это в грамотную аудиторию — вы решаете главное, техническую часть берём на себя мы.",
-    "Nerede ve kime ulaşmak istediğinizi söyleyin. HOMATCH bunu doğru bir kitleye dönüştürür — önemli olana siz karar verirsiniz, teknik kısmı biz yönetiriz.",
-    "أخبرنا أين ولمن. يحوّل HOMATCH ذلك إلى جمهور مدروس — أنت تقرر ما يهم، ونحن نتولى الجانب التقني.",
-    "ספרו לנו איפה ולמי. HOMATCH הופך את זה לקהל נכון — אתם מחליטים מה חשוב, אנחנו מטפלים בצד הטכני.",
-  ],
+  mm_f_audience_lead: ['Tell us where and who. HOMATCH turns it into a sound audience — you decide what matters, we handle the technical side.', 'გვითხარით სად და ვისთვის. HOMATCH ამას სწორ აუდიტორიად აქცევს, თქვენ წყვეტთ მთავარს, ტექნიკურ მხარეს ჩვენ ვმართავთ.', 'Расскажите, где и для кого. HOMATCH превратит это в грамотную аудиторию — вы решаете главное, техническую часть берём на себя мы.', 'Nerede ve kime ulaşmak istediğinizi söyleyin. HOMATCH bunu doğru bir kitleye dönüştürür — önemli olana siz karar verirsiniz, teknik kısmı biz yönetiriz.', 'أخبرنا أين ولمن. يحوّل HOMATCH ذلك إلى جمهور مدروس — أنت تقرر ما يهم، ونحن نتولى الجانب التقني.', 'ספרו לנו איפה ולמי. HOMATCH הופך את זה לקהל נכון — אתם מחליטים מה חשוב, אנחנו מטפלים בצד הטכני.'],
   mm_f_smart_body: [
     "Choose the places, ages and languages that matter to you. HOMATCH recommends what usually works best, but the choice stays yours.",
     "აირჩიეთ თქვენთვის მნიშვნელოვანი ადგილები, ასაკი და ენები. HOMATCH გირჩევთ იმას, რაც ჩვეულებრივ საუკეთესოდ მუშაობს, მაგრამ არჩევანი თქვენია.",
@@ -66,14 +59,7 @@ export const META_FINAL_STRINGS = {
     "{{n}} من الأماكن المختارة لا يمكن رسمها هنا، لكنها مستهدفة تمامًا كما اخترت.",
     "{{n}} מקומות שנבחרו לא מוצגים במפה, אבל המודעה מכוונת אליהם בדיוק כפי שבחרתם.",
   ],
-  mm_f_map_whole_ge: [
-    "All of Georgia is highlighted — the ads reach the whole country.",
-    "მონიშნულია მთელი საქართველო — რეკლამა მთელ ქვეყანას მოიცავს.",
-    "Выделена вся Грузия — реклама охватывает всю страну.",
-    "Tüm Gürcistan vurgulandı — reklam tüm ülkeye ulaşır.",
-    "جورجيا كلها مميزة — يصل الإعلان إلى البلد بأكمله.",
-    "כל גאורגיה מסומנת — המודעה מגיעה לכל המדינה.",
-  ],
+  mm_f_map_whole_ge: ['All of Georgia is highlighted — the ads reach the whole country.', 'მონიშნულია მთელი საქართველო, რეკლამა მთელ ქვეყანას მოიცავს.', 'Выделена вся Грузия — реклама охватывает всю страну.', 'Tüm Gürcistan vurgulandı — reklam tüm ülkeye ulaşır.', 'جورجيا كلها مميزة — يصل الإعلان إلى البلد بأكمله.', 'כל גאורגיה מסומנת — המודעה מגיעה לכל המדינה.'],
   mm_f_map_live: [
     "Each circle is the real area Meta will use. Change a radius and it redraws at once.",
     "თითოეული წრე ის რეალური არეალია, რომელსაც Meta გამოიყენებს. რადიუსის შეცვლისას მაშინვე ხელახლა ჩაიხატება.",
@@ -140,14 +126,7 @@ export const META_FINAL_STRINGS = {
     "الوصول إلى المشترين الدوليين / المغتربين",
     "קונים בינלאומיים / תושבי חוץ",
   ],
-  mm_f_intl_body: [
-    "Turn this on if the property is meant for people from abroad. Tell us who you mean — HOMATCH turns it into places and languages you can see and confirm.",
-    "ჩართეთ, თუ ქონება საზღვარგარეთიდან მომავალი ადამიანებისთვისაა. გვითხარით ვის გულისხმობთ — HOMATCH ამას ადგილებად და ენებად აქცევს, რომლებსაც ნახავთ და დაადასტურებთ.",
-    "Включите, если объект рассчитан на людей из-за рубежа. Скажите, кого вы имеете в виду, — HOMATCH превратит это в места и языки, которые вы увидите и подтвердите.",
-    "Mülk yurt dışından gelenler içinse bunu açın. Kimi kastettiğinizi söyleyin — HOMATCH bunu görüp onaylayabileceğiniz yerlere ve dillere dönüştürür.",
-    "فعّل هذا إذا كان العقار موجّهًا لأشخاص من الخارج. أخبرنا من تقصد — يحوّل HOMATCH ذلك إلى أماكن ولغات تراها وتؤكدها.",
-    "הפעילו אם הנכס מיועד לאנשים מחו\"ל. ספרו לנו למי הכוונה — HOMATCH יהפוך את זה למקומות ושפות שתראו ותאשרו.",
-  ],
+  mm_f_intl_body: ['Turn this on if the property is meant for people from abroad. Tell us who you mean — HOMATCH turns it into places and languages you can see and confirm.', 'ჩართეთ, თუ ქონება საზღვარგარეთიდან მომავალი ადამიანებისთვისაა. გვითხარით ვის გულისხმობთ, HOMATCH ამას ადგილებად და ენებად აქცევს, რომლებსაც ნახავთ და დაადასტურებთ.', 'Включите, если объект рассчитан на людей из-за рубежа. Скажите, кого вы имеете в виду, — HOMATCH превратит это в места и языки, которые вы увидите и подтвердите.', 'Mülk yurt dışından gelenler içinse bunu açın. Kimi kastettiğinizi söyleyin — HOMATCH bunu görüp onaylayabileceğiniz yerlere ve dillere dönüştürür.', 'فعّل هذا إذا كان العقار موجّهًا لأشخاص من الخارج. أخبرنا من تقصد — يحوّل HOMATCH ذلك إلى أماكن ولغات تراها وتؤكدها.', 'הפעילו אם הנכס מיועד לאנשים מחו"ל. ספרו לנו למי הכוונה — HOMATCH יהפוך את זה למקומות ושפות שתראו ותאשרו.'],
   mm_f_intl_who: [
     "Who are you mainly trying to reach?",
     "ძირითადად ვის მიწვდომა გსურთ?",
@@ -364,14 +343,7 @@ export const META_FINAL_STRINGS = {
     "غالبًا ما يمنح الجمهور الأوسع الحملة مساحة أكبر للتعلّم والعثور على الأكثر تجاوبًا. إن كنت تعرف بالضبط من تريد الوصول إليه، يمكنك إبقاؤه محددًا.",
     "קהל רחב יותר נותן לרוב לקמפיין יותר מרחב ללמוד ולמצוא את מי שהכי סביר שיגיבו. אם אתם יודעים בדיוק למי אתם רוצים להגיע, אפשר להשאיר כך.",
   ],
-  mm_f_rec_broad: [
-    "All adults and every gender — the broad start HOMATCH recommends. Narrow it only if you know exactly who you want.",
-    "ყველა ზრდასრული და ყველა სქესი — ფართო დასაწყისი, რომელსაც HOMATCH გირჩევთ. შეავიწროვეთ მხოლოდ მაშინ, თუ ზუსტად იცით ვინ გინდათ.",
-    "Все взрослые и любой пол — широкий старт, который рекомендует HOMATCH. Сужайте, только если точно знаете, кто вам нужен.",
-    "Tüm yetişkinler ve her cinsiyet — HOMATCH'in önerdiği geniş başlangıç. Yalnızca kimi istediğinizi tam olarak biliyorsanız daraltın.",
-    "جميع البالغين ومن كل الأجناس — البداية الواسعة التي يوصي بها HOMATCH. ضيّقها فقط إن كنت تعرف بالضبط من تريد.",
-    "כל המבוגרים וכל המגדרים — ההתחלה הרחבה ש-HOMATCH ממליץ עליה. צמצמו רק אם אתם יודעים בדיוק את מי אתם רוצים.",
-  ],
+  mm_f_rec_broad: ['All adults and every gender — the broad start HOMATCH recommends. Narrow it only if you know exactly who you want.', 'ყველა ზრდასრული და ყველა სქესი, ფართო დასაწყისი, რომელსაც HOMATCH გირჩევთ. შეავიწროვეთ მხოლოდ მაშინ, თუ ზუსტად იცით ვინ გინდათ.', 'Все взрослые и любой пол — широкий старт, который рекомендует HOMATCH. Сужайте, только если точно знаете, кто вам нужен.', 'Tüm yetişkinler ve her cinsiyet — HOMATCH\'in önerdiği geniş başlangıç. Yalnızca kimi istediğinizi tam olarak biliyorsanız daraltın.', 'جميع البالغين ومن كل الأجناس — البداية الواسعة التي يوصي بها HOMATCH. ضيّقها فقط إن كنت تعرف بالضبط من تريد.', 'כל המבוגרים וכל המגדרים — ההתחלה הרחבה ש-HOMATCH ממליץ עליה. צמצמו רק אם אתם יודעים בדיוק את מי אתם רוצים.'],
   mm_f_how_learning: [
     "How the first days work",
     "როგორ მიდის პირველი დღეები",
@@ -400,25 +372,11 @@ export const META_FINAL_STRINGS = {
     "نستخدم النتائج لمعرفة ما ينجح، وتقليل العرض المهدور، والتركيز على التركيبات التي تحقق نتائج أفضل.",
     "אנחנו משתמשים בתוצאות כדי לראות מה עובד, לצמצם חשיפות מבוזבזות ולהתמקד בשילובים שמביאים תוצאות טובות יותר.",
   ],
-  mm_f_managed_note: [
-    "Some advanced settings — budget split, bidding, placements — are managed by HOMATCH on purpose, so the campaign has room to learn and optimise without you configuring technical advertising settings.",
-    "ზოგიერთ დეტალურ პარამეტრს — ბიუჯეტის განაწილებას, ფსონებს, განთავსებებს — HOMATCH განზრახ თავად მართავს, რომ კამპანიას სწავლისა და ოპტიმიზაციის სივრცე ჰქონდეს და თქვენ ტექნიკური სარეკლამო პარამეტრების მორგება არ მოგიწიოთ.",
-    "Некоторыми расширенными настройками — распределением бюджета, ставками, площадками — HOMATCH управляет намеренно, чтобы у кампании было пространство для обучения и оптимизации, а вам не пришлось настраивать технические параметры рекламы.",
-    "Bazı gelişmiş ayarlar — bütçe dağılımı, teklif, yerleşimler — kampanyanın öğrenip optimize olabilmesi ve sizin teknik reklam ayarlarıyla uğraşmamanız için bilerek HOMATCH tarafından yönetilir.",
-    "بعض الإعدادات المتقدمة — توزيع الميزانية والمزايدة والمواضع — يديرها HOMATCH عمدًا، لتمنح الحملة مساحة للتعلّم والتحسين دون أن تضطر لضبط إعدادات إعلانية تقنية.",
-    "חלק מההגדרות המתקדמות — חלוקת התקציב, הבידינג, המיקומים — מנוהלות על ידי HOMATCH בכוונה, כדי שלקמפיין יהיה מרחב ללמוד ולהשתפר בלי שתצטרכו להגדיר הגדרות פרסום טכניות.",
-  ],
+  mm_f_managed_note: ['Some advanced settings — budget split, bidding, placements — are managed by HOMATCH on purpose, so the campaign has room to learn and optimise without you configuring technical advertising settings.', 'ზოგიერთ დეტალურ პარამეტრს, ბიუჯეტის განაწილებას, ფსონებს, განთავსებებს, HOMATCH განზრახ თავად მართავს, რომ კამპანიას სწავლისა და ოპტიმიზაციის სივრცე ჰქონდეს და თქვენ ტექნიკური სარეკლამო პარამეტრების მორგება არ მოგიწიოთ.', 'Некоторыми расширенными настройками — распределением бюджета, ставками, площадками — HOMATCH управляет намеренно, чтобы у кампании было пространство для обучения и оптимизации, а вам не пришлось настраивать технические параметры рекламы.', 'Bazı gelişmiş ayarlar — bütçe dağılımı, teklif, yerleşimler — kampanyanın öğrenip optimize olabilmesi ve sizin teknik reklam ayarlarıyla uğraşmamanız için bilerek HOMATCH tarafından yönetilir.', 'بعض الإعدادات المتقدمة — توزيع الميزانية والمزايدة والمواضع — يديرها HOMATCH عمدًا، لتمنح الحملة مساحة للتعلّم والتحسين دون أن تضطر لضبط إعدادات إعلانية تقنية.', 'חלק מההגדרות המתקדמות — חלוקת התקציב, הבידינג, המיקומים — מנוהלות על ידי HOMATCH בכוונה, כדי שלקמפיין יהיה מרחב ללמוד ולהשתפר בלי שתצטרכו להגדיר הגדרות פרסום טכניות.'],
 
   // ── Creatives ───────────────────────────────────────────────────────────
   mm_f_options_title: ["Give us options", "მოგვეცით არჩევანი", "Дайте нам варианты", "Bize seçenek verin", "امنحنا خيارات", "תנו לנו אפשרויות"],
-  mm_f_options_body: [
-    "Good creative matters a lot — it's the first thing people notice. The more strong photos or videos you add, the more room HOMATCH has to find what gets the best response.",
-    "კარგ კრეატივს დიდი მნიშვნელობა აქვს — ის ადამიანები პირველივე წამს ამჩნევენ. რაც მეტ ძლიერ ფოტოს ან ვიდეოს დაამატებთ, მით მეტი სივრცე აქვს HOMATCH-ს, რომ საუკეთესო რეაქციის მომტანი იპოვოს.",
-    "Хороший креатив решает многое — его замечают первым. Чем больше сильных фото или видео вы добавите, тем больше у HOMATCH возможностей найти то, на что лучше всего откликаются.",
-    "İyi kreatif çok önemlidir — insanların ilk fark ettiği şeydir. Ne kadar çok güçlü fotoğraf veya video eklerseniz, HOMATCH'in en iyi tepkiyi alanı bulması için o kadar çok alanı olur.",
-    "التصميم الجيد مهم جدًا — فهو أول ما يلاحظه الناس. كلما أضفت صورًا أو فيديوهات قوية أكثر، زادت مساحة HOMATCH لإيجاد ما يحقق أفضل تجاوب.",
-    "קריאייטיב טוב חשוב מאוד — זה הדבר הראשון שאנשים שמים לב אליו. ככל שתוסיפו יותר תמונות או סרטונים חזקים, ל-HOMATCH יהיה יותר מרחב למצוא את מה שמקבל את התגובה הטובה ביותר.",
-  ],
+  mm_f_options_body: ['Good creative matters a lot — it\'s the first thing people notice. The more strong photos or videos you add, the more room HOMATCH has to find what gets the best response.', 'კარგ კრეატივს დიდი მნიშვნელობა აქვს, ის ადამიანები პირველივე წამს ამჩნევენ. რაც მეტ ძლიერ ფოტოს ან ვიდეოს დაამატებთ, მით მეტი სივრცე აქვს HOMATCH-ს, რომ საუკეთესო რეაქციის მომტანი იპოვოს.', 'Хороший креатив решает многое — его замечают первым. Чем больше сильных фото или видео вы добавите, тем больше у HOMATCH возможностей найти то, на что лучше всего откликаются.', 'İyi kreatif çok önemlidir — insanların ilk fark ettiği şeydir. Ne kadar çok güçlü fotoğraf veya video eklerseniz, HOMATCH\'in en iyi tepkiyi alanı bulması için o kadar çok alanı olur.', 'التصميم الجيد مهم جدًا — فهو أول ما يلاحظه الناس. كلما أضفت صورًا أو فيديوهات قوية أكثر، زادت مساحة HOMATCH لإيجاد ما يحقق أفضل تجاوب.', 'קריאייטיב טוב חשוב מאוד — זה הדבר הראשון שאנשים שמים לב אליו. ככל שתוסיפו יותר תמונות או סרטונים חזקים, ל-HOMATCH יהיה יותר מרחב למצוא את מה שמקבל את התגובה הטובה ביותר.'],
   mm_f_priority_title: ["Priority creative", "პრიორიტეტული კრეატივი", "Приоритетный креатив", "Öncelikli kreatif", "التصميم ذو الأولوية", "קריאייטיב מועדף"],
   mm_f_priority_body: [
     "Star a photo or video you especially want us to focus on. HOMATCH always includes it and gives it priority, while results still decide what's shown most.",
@@ -439,25 +397,11 @@ export const META_FINAL_STRINGS = {
     "جمهورك يتحدث {{lang}}",
     "הקהל שלכם מדבר {{lang}}",
   ],
-  mm_f_lang_mismatch_body: [
-    "This ad is in another language. HOMATCH AI can adapt it so it reads naturally — every fact stays exactly as you wrote it.",
-    "ეს რეკლამა სხვა ენაზეა. HOMATCH AI-ს შეუძლია მისი ბუნებრივად ადაპტაცია — ყველა ფაქტი ზუსტად ისე დარჩება, როგორც დაწერეთ.",
-    "Эта реклама на другом языке. HOMATCH AI может адаптировать её так, чтобы она звучала естественно, — все факты останутся ровно такими, как вы написали.",
-    "Bu reklam başka bir dilde. HOMATCH AI onu doğal okunacak şekilde uyarlayabilir — her bilgi tam yazdığınız gibi kalır.",
-    "هذا الإعلان بلغة أخرى. يمكن لذكاء HOMATCH تكييفه ليُقرأ بشكل طبيعي — وتبقى كل الحقائق كما كتبتها تمامًا.",
-    "המודעה הזו בשפה אחרת. HOMATCH AI יכול להתאים אותה כך שתישמע טבעית — כל העובדות יישארו בדיוק כפי שכתבתם.",
-  ],
+  mm_f_lang_mismatch_body: ['This ad is in another language. HOMATCH AI can adapt it so it reads naturally — every fact stays exactly as you wrote it.', 'ეს რეკლამა სხვა ენაზეა. HOMATCH AI-ს შეუძლია მისი ბუნებრივად ადაპტაცია, ყველა ფაქტი ზუსტად ისე დარჩება, როგორც დაწერეთ.', 'Эта реклама на другом языке. HOMATCH AI может адаптировать её так, чтобы она звучала естественно, — все факты останутся ровно такими, как вы написали.', 'Bu reklam başka bir dilde. HOMATCH AI onu doğal okunacak şekilde uyarlayabilir — her bilgi tam yazdığınız gibi kalır.', 'هذا الإعلان بلغة أخرى. يمكن لذكاء HOMATCH تكييفه ليُقرأ بشكل طبيعي — وتبقى كل الحقائق كما كتبتها تمامًا.', 'המודעה הזו בשפה אחרת. HOMATCH AI יכול להתאים אותה כך שתישמע טבעית — כל העובדות יישארו בדיוק כפי שכתבתם.'],
   mm_f_translate_now: ["Translate to {{lang}}", "თარგმნა: {{lang}}", "Перевести: {{lang}}", "{{lang}} diline çevir", "ترجم إلى {{lang}}", "תרגום ל{{lang}}"],
   mm_f_translate: ["Translate", "თარგმნა", "Перевести", "Çevir", "ترجمة", "תרגום"],
   mm_f_ai_translate_title: ["AI translation", "AI თარგმანი", "AI-перевод", "AI çeviri", "ترجمة بالذكاء الاصطناعي", "תרגום AI"],
-  mm_f_ai_translate_body: [
-    "HOMATCH can translate and adapt your message so it sounds natural for the audience you're targeting — not word for word. Prices, sizes, places and other facts stay exactly as you wrote them.",
-    "HOMATCH-ს შეუძლია თქვენი ტექსტის თარგმნა და ადაპტაცია ისე, რომ სამიზნე აუდიტორიისთვის ბუნებრივად ჟღერდეს — არა სიტყვასიტყვით. ფასი, ფართობი, ადგილი და სხვა ფაქტები ზუსტად ისე რჩება, როგორც დაწერეთ.",
-    "HOMATCH может перевести и адаптировать ваш текст так, чтобы он звучал естественно для вашей аудитории, — не дословно. Цены, площади, места и другие факты остаются ровно такими, как вы написали.",
-    "HOMATCH mesajınızı hedeflediğiniz kitleye doğal gelecek şekilde çevirip uyarlayabilir — kelimesi kelimesine değil. Fiyat, metrekare, konum ve diğer bilgiler tam yazdığınız gibi kalır.",
-    "يمكن لـ HOMATCH ترجمة رسالتك وتكييفها لتبدو طبيعية للجمهور المستهدف — لا ترجمة حرفية. وتبقى الأسعار والمساحات والأماكن وغيرها من الحقائق كما كتبتها تمامًا.",
-    "HOMATCH יכול לתרגם ולהתאים את ההודעה שלכם כך שתישמע טבעית לקהל היעד — לא מילה במילה. מחירים, גדלים, מקומות ועובדות אחרות נשארים בדיוק כפי שכתבתם.",
-  ],
+  mm_f_ai_translate_body: ['HOMATCH can translate and adapt your message so it sounds natural for the audience you\'re targeting — not word for word. Prices, sizes, places and other facts stay exactly as you wrote them.', 'HOMATCH-ს შეუძლია თქვენი ტექსტის თარგმნა და ადაპტაცია ისე, რომ სამიზნე აუდიტორიისთვის ბუნებრივად ჟღერდეს, არა სიტყვასიტყვით. ფასი, ფართობი, ადგილი და სხვა ფაქტები ზუსტად ისე რჩება, როგორც დაწერეთ.', 'HOMATCH может перевести и адаптировать ваш текст так, чтобы он звучал естественно для вашей аудитории, — не дословно. Цены, площади, места и другие факты остаются ровно такими, как вы написали.', 'HOMATCH mesajınızı hedeflediğiniz kitleye doğal gelecek şekilde çevirip uyarlayabilir — kelimesi kelimesine değil. Fiyat, metrekare, konum ve diğer bilgiler tam yazdığınız gibi kalır.', 'يمكن لـ HOMATCH ترجمة رسالتك وتكييفها لتبدو طبيعية للجمهور المستهدف — لا ترجمة حرفية. وتبقى الأسعار والمساحات والأماكن وغيرها من الحقائق كما كتبتها تمامًا.', 'HOMATCH יכול לתרגם ולהתאים את ההודעה שלכם כך שתישמע טבעית לקהל היעד — לא מילה במילה. מחירים, גדלים, מקומות ועובדות אחרות נשארים בדיוק כפי שכתבתם.'],
   mm_f_ai_translate_to: ["Translate to {{lang}}", "თარგმნა: {{lang}}", "Перевести: {{lang}}", "{{lang}} diline çevir", "ترجم إلى {{lang}}", "תרגום ל{{lang}}"],
   mm_f_ai_as_version: [
     "Add as a new language version",
@@ -467,14 +411,7 @@ export const META_FINAL_STRINGS = {
     "أضفها كنسخة لغوية جديدة",
     "הוסיפו כגרסת שפה חדשה",
   ],
-  mm_f_ai_version_added: [
-    "New language version added — same photo, new text.",
-    "ახალი ენობრივი ვერსია დაემატა — იგივე ფოტო, ახალი ტექსტი.",
-    "Новая языковая версия добавлена — то же фото, новый текст.",
-    "Yeni dil sürümü eklendi — aynı fotoğraf, yeni metin.",
-    "تمت إضافة نسخة لغوية جديدة — الصورة نفسها، نص جديد.",
-    "נוספה גרסת שפה חדשה — אותה תמונה, טקסט חדש.",
-  ],
+  mm_f_ai_version_added: ['New language version added — same photo, new text.', 'ახალი ენობრივი ვერსია დაემატა, იგივე ფოტო, ახალი ტექსტი.', 'Новая языковая версия добавлена — то же фото, новый текст.', 'Yeni dil sürümü eklendi — aynı fotoğraf, yeni metin.', 'تمت إضافة نسخة لغوية جديدة — الصورة نفسها، نص جديد.', 'נוספה גרסת שפה חדשה — אותה תמונה, טקסט חדש.'],
 
   // ── The owner's brief ───────────────────────────────────────────────────
   mm_f_brief_title: [
@@ -501,14 +438,7 @@ export const META_FINAL_STRINGS = {
     "هل هناك شيء آخر تريد أن يعرفه HOMATCH؟",
     "יש עוד משהו שתרצו ש-HOMATCH ידע?",
   ],
-  mm_f_brief_ph: [
-    "For example: I'm looking for buyers aged 30+ who are ready to buy in the next few months — say, a family that needs more room. The strongest points are the balcony, the quiet street and the short walk to the metro.",
-    "მაგალითად: ვეძებ 30+ ასაკის მყიდველუნარიან ადამიანებს, ვინც უახლოეს თვეებში ბინის ყიდვას გეგმავს — მაგალითად, ოჯახს, რომელსაც მეტი სივრცე სჭირდება. ბინის ყველაზე ძლიერი მხარეებია აივანი, მშვიდი ქუჩა და მეტროსთან სიახლოვე.",
-    "Например: ищу покупателей от 30 лет, готовых купить в ближайшие месяцы — скажем, семью, которой нужно больше места. Самое сильное в квартире — балкон, тихая улица и метро в паре минут.",
-    "Örneğin: Önümüzdeki birkaç ay içinde satın almaya hazır, 30 yaş üstü alıcılar arıyorum — mesela daha geniş bir eve ihtiyacı olan bir aile. Dairenin en güçlü yanları balkonu, sakin sokağı ve metroya yakınlığı.",
-    "مثلًا: أبحث عن مشترين بعمر 30 عامًا فأكثر مستعدين للشراء خلال الأشهر القليلة القادمة — كعائلة تحتاج إلى مساحة أكبر. أقوى ما في الشقة: الشرفة والشارع الهادئ وقربها من المترو.",
-    "למשל: אני מחפש קונים בני 30 ומעלה שמוכנים לקנות בחודשים הקרובים — נגיד, משפחה שצריכה יותר מקום. החוזקות של הדירה: המרפסת, הרחוב השקט והקרבה למטרו.",
-  ],
+  mm_f_brief_ph: ['For example: I\'m looking for buyers aged 30+ who are ready to buy in the next few months — say, a family that needs more room. The strongest points are the balcony, the quiet street and the short walk to the metro.', 'მაგალითად: ვეძებ 30+ ასაკის მყიდველუნარიან ადამიანებს, ვინც უახლოეს თვეებში ბინის ყიდვას გეგმავს, მაგალითად, ოჯახს, რომელსაც მეტი სივრცე სჭირდება. ბინის ყველაზე ძლიერი მხარეებია აივანი, მშვიდი ქუჩა და მეტროსთან სიახლოვე.', 'Например: ищу покупателей от 30 лет, готовых купить в ближайшие месяцы — скажем, семью, которой нужно больше места. Самое сильное в квартире — балкон, тихая улица и метро в паре минут.', 'Örneğin: Önümüzdeki birkaç ay içinde satın almaya hazır, 30 yaş üstü alıcılar arıyorum — mesela daha geniş bir eve ihtiyacı olan bir aile. Dairenin en güçlü yanları balkonu, sakin sokağı ve metroya yakınlığı.', 'مثلًا: أبحث عن مشترين بعمر 30 عامًا فأكثر مستعدين للشراء خلال الأشهر القليلة القادمة — كعائلة تحتاج إلى مساحة أكبر. أقوى ما في الشقة: الشرفة والشارع الهادئ وقربها من المترو.', 'למשל: אני מחפש קונים בני 30 ומעלה שמוכנים לקנות בחודשים הקרובים — נגיד, משפחה שצריכה יותר מקום. החוזקות של הדירה: המרפסת, הרחוב השקט והקרבה למטרו.'],
   mm_f_brief_optional: [
     "Optional. HOMATCH uses it as guidance, never as a hard rule.",
     "არასავალდებულოა. HOMATCH მას ორიენტირად იყენებს და არა მკაცრ წესად.",
@@ -519,14 +449,7 @@ export const META_FINAL_STRINGS = {
   ],
   mm_f_brief_read: ["Let HOMATCH read it", "წაიკითხოს HOMATCH-მა", "Пусть HOMATCH прочитает", "HOMATCH okusun", "دع HOMATCH يقرأه", "תנו ל-HOMATCH לקרוא"],
   mm_f_brief_reread: ["Read it again", "თავიდან წაკითხვა", "Прочитать заново", "Tekrar oku", "اقرأه مجددًا", "קראו שוב"],
-  mm_f_brief_changed: [
-    "You changed the text — read it again to update what HOMATCH understood.",
-    "ტექსტი შეცვალეთ — თავიდან წააკითხეთ, რომ HOMATCH-ის გაგება განახლდეს.",
-    "Вы изменили текст — прочитайте заново, чтобы обновить понимание HOMATCH.",
-    "Metni değiştirdiniz — HOMATCH'in anladığını güncellemek için tekrar okutun.",
-    "لقد غيّرت النص — اقرأه مجددًا لتحديث ما فهمه HOMATCH.",
-    "שיניתם את הטקסט — קראו שוב כדי לעדכן את מה ש-HOMATCH הבין.",
-  ],
+  mm_f_brief_changed: ['You changed the text — read it again to update what HOMATCH understood.', 'ტექსტი შეცვალეთ: თავიდან წააკითხეთ, რომ HOMATCH-ის გაგება განახლდეს.', 'Вы изменили текст — прочитайте заново, чтобы обновить понимание HOMATCH.', 'Metni değiştirdiniz — HOMATCH\'in anladığını güncellemek için tekrar okutun.', 'لقد غيّرت النص — اقرأه مجددًا لتحديث ما فهمه HOMATCH.', 'שיניתם את הטקסט — קראו שוב כדי לעדכן את מה ש-HOMATCH הבין.'],
   mm_f_brief_failed: [
     "HOMATCH couldn't read the brief right now. Your text is saved.",
     "HOMATCH-მა ახლა ვერ წაიკითხა ტექსტი. თქვენი ტექსტი შენახულია.",
@@ -549,22 +472,8 @@ export const META_FINAL_STRINGS = {
     "تم استبعاده عمدًا",
     "הושאר בצד בכוונה",
   ],
-  mm_f_understood_nothing: [
-    "Nothing specific to use yet — that's fine, the brief is optional.",
-    "ჯერჯერობით კონკრეტული არაფერია — ეს ნორმალურია, ტექსტი არასავალდებულოა.",
-    "Пока нечего конкретного учесть — это нормально, текст необязателен.",
-    "Henüz kullanılacak belirli bir şey yok — sorun değil, metin isteğe bağlı.",
-    "لا شيء محدد لاستخدامه بعد — لا بأس، النص اختياري.",
-    "עדיין אין משהו ספציפי לשימוש — זה בסדר, הטקסט לא חובה.",
-  ],
-  mm_f_understood_ai: [
-    "Read by HOMATCH AI. Remove anything that isn't right — nothing changes your campaign until you apply it.",
-    "წაიკითხა HOMATCH AI-მ. წაშალეთ ყველაფერი, რაც არ არის სწორი — არაფერი შეცვლის კამპანიას, სანამ თავად არ გამოიყენებთ.",
-    "Прочитано HOMATCH AI. Удалите всё, что неверно, — ничто не изменит кампанию, пока вы сами это не примените.",
-    "HOMATCH AI tarafından okundu. Doğru olmayanı kaldırın — siz uygulamadan hiçbir şey kampanyanızı değiştirmez.",
-    "قرأه ذكاء HOMATCH. احذف أي شيء غير صحيح — لا شيء يغيّر حملتك حتى تطبّقه بنفسك.",
-    "נקרא על ידי HOMATCH AI. הסירו כל מה שלא נכון — שום דבר לא משנה את הקמפיין עד שתחילו אותו בעצמכם.",
-  ],
+  mm_f_understood_nothing: ['Nothing specific to use yet — that\'s fine, the brief is optional.', 'ჯერჯერობით კონკრეტული არაფერია, ეს ნორმალურია, ტექსტი არასავალდებულოა.', 'Пока нечего конкретного учесть — это нормально, текст необязателен.', 'Henüz kullanılacak belirli bir şey yok — sorun değil, metin isteğe bağlı.', 'لا شيء محدد لاستخدامه بعد — لا بأس، النص اختياري.', 'עדיין אין משהו ספציפי לשימוש — זה בסדר, הטקסט לא חובה.'],
+  mm_f_understood_ai: ['Read by HOMATCH AI. Remove anything that isn\'t right — nothing changes your campaign until you apply it.', 'წაიკითხა HOMATCH AI-მ. წაშალეთ ყველაფერი, რაც არ არის სწორი, არაფერი შეცვლის კამპანიას, სანამ თავად არ გამოიყენებთ.', 'Прочитано HOMATCH AI. Удалите всё, что неверно, — ничто не изменит кампанию, пока вы сами это не примените.', 'HOMATCH AI tarafından okundu. Doğru olmayanı kaldırın — siz uygulamadan hiçbir şey kampanyanızı değiştirmez.', 'قرأه ذكاء HOMATCH. احذف أي شيء غير صحيح — لا شيء يغيّر حملتك حتى تطبّقه بنفسك.', 'נקרא על ידי HOMATCH AI. הסירו כל מה שלא נכון — שום דבר לא משנה את הקמפיין עד שתחילו אותו בעצמכם.'],
   mm_f_understood_rules: [
     "Read by HOMATCH's keyword reader (AI wasn't available). Remove anything that isn't right.",
     "წაიკითხა HOMATCH-ის საკვანძო სიტყვების ამომცნობმა (AI მიუწვდომელი იყო). წაშალეთ ყველაფერი, რაც არ არის სწორი.",
@@ -626,14 +535,7 @@ export const META_FINAL_STRINGS = {
 
   // ── The campaign, explained ─────────────────────────────────────────────
   mm_f_story_title: ["Your campaign, explained", "თქვენი კამპანია, მარტივად", "Ваша кампания простыми словами", "Kampanyanız, açıkça", "حملتك بوضوح", "הקמפיין שלכם, בפשטות"],
-  mm_f_story_lead: [
-    "Everything below comes from your actual choices — nothing generic.",
-    "ქვემოთ ყველაფერი თქვენი ნამდვილი არჩევანიდან მოდის — არაფერი ზოგადი.",
-    "Всё ниже основано на ваших реальных выборах — ничего шаблонного.",
-    "Aşağıdaki her şey gerçek seçimlerinizden gelir — genel hiçbir şey yok.",
-    "كل ما يلي مأخوذ من اختياراتك الفعلية — لا شيء عام.",
-    "כל מה שלמטה מבוסס על הבחירות האמיתיות שלכם — שום דבר כללי.",
-  ],
+  mm_f_story_lead: ['Everything below comes from your actual choices — nothing generic.', 'ქვემოთ ყველაფერი თქვენი ნამდვილი არჩევანიდან მოდის, არაფერი ზოგადი.', 'Всё ниже основано на ваших реальных выборах — ничего шаблонного.', 'Aşağıdaki her şey gerçek seçimlerinizden gelir — genel hiçbir şey yok.', 'كل ما يلي مأخوذ من اختياراتك الفعلية — لا شيء عام.', 'כל מה שלמטה מבוסס על הבחירות האמיתיות שלכם — שום דבר כללי.'],
   mm_f_story_h_goal: ["Your goal", "თქვენი მიზანი", "Ваша цель", "Hedefiniz", "هدفك", "המטרה שלכם"],
   mm_f_story_h_who: ["Who we'll look for", "ვის მოვძებნით", "Кого будем искать", "Kimi arayacağız", "من سنبحث عنه", "את מי נחפש"],
   mm_f_story_h_where: ["Where", "სად", "Где", "Nerede", "أين", "איפה"],
@@ -690,30 +592,9 @@ export const META_FINAL_STRINGS = {
     "جعل عدد أكبر من الناس يرون منشورك ويتفاعلون معه.",
     "שיותר אנשים יראו את הפוסט שלכם ויגיבו אליו.",
   ],
-  mm_f_story_who_broad: [
-    "All adults of every gender — the broad start that gives the campaign the most room to learn.",
-    "ყველა ზრდასრული, ნებისმიერი სქესის — ფართო დასაწყისი, რომელიც კამპანიას სწავლისთვის ყველაზე მეტ სივრცეს აძლევს.",
-    "Все взрослые любого пола — широкий старт, дающий кампании больше всего простора для обучения.",
-    "Her cinsiyetten tüm yetişkinler — kampanyaya öğrenmesi için en geniş alanı tanıyan başlangıç.",
-    "جميع البالغين من كل الأجناس — البداية الواسعة التي تمنح الحملة أكبر مساحة للتعلّم.",
-    "כל המבוגרים מכל המגדרים — ההתחלה הרחבה שנותנת לקמפיין הכי הרבה מרחב ללמוד.",
-  ],
-  mm_f_story_who_chosen: [
-    "Ages {{min}}–{{max}}, {{gender}} — your choice.",
-    "ასაკი {{min}}–{{max}}, {{gender}} — თქვენი არჩევანი.",
-    "Возраст {{min}}–{{max}}, {{gender}} — ваш выбор.",
-    "Yaş {{min}}–{{max}}, {{gender}} — sizin seçiminiz.",
-    "الأعمار {{min}}–{{max}}، {{gender}} — اختيارك.",
-    "גילאים {{min}}–{{max}}, {{gender}} — הבחירה שלכם.",
-  ],
-  mm_f_story_who_meta_rule: [
-    "All adults of every gender — Meta requires this for property ads in {{countries}}.",
-    "ყველა ზრდასრული, ნებისმიერი სქესის — Meta ამას ქონების რეკლამისთვის მოითხოვს აქ: {{countries}}.",
-    "Все взрослые любого пола — Meta требует этого для рекламы недвижимости в: {{countries}}.",
-    "Her cinsiyetten tüm yetişkinler — Meta bunu {{countries}} ülkelerindeki emlak reklamları için şart koşar.",
-    "جميع البالغين من كل الأجناس — تشترط Meta ذلك لإعلانات العقارات في {{countries}}.",
-    "כל המבוגרים מכל המגדרים — Meta דורשת זאת למודעות נדל\"ן ב{{countries}}.",
-  ],
+  mm_f_story_who_broad: ['All adults of every gender — the broad start that gives the campaign the most room to learn.', 'ყველა ზრდასრული, ნებისმიერი სქესის, ფართო დასაწყისი, რომელიც კამპანიას სწავლისთვის ყველაზე მეტ სივრცეს აძლევს.', 'Все взрослые любого пола — широкий старт, дающий кампании больше всего простора для обучения.', 'Her cinsiyetten tüm yetişkinler — kampanyaya öğrenmesi için en geniş alanı tanıyan başlangıç.', 'جميع البالغين من كل الأجناس — البداية الواسعة التي تمنح الحملة أكبر مساحة للتعلّم.', 'כל המבוגרים מכל המגדרים — ההתחלה הרחבה שנותנת לקמפיין הכי הרבה מרחב ללמוד.'],
+  mm_f_story_who_chosen: ['Ages {{min}}–{{max}}, {{gender}} — your choice.', 'ასაკი {{min}}–{{max}}, {{gender}}, თქვენი არჩევანი.', 'Возраст {{min}}–{{max}}, {{gender}} — ваш выбор.', 'Yaş {{min}}–{{max}}, {{gender}} — sizin seçiminiz.', 'الأعمار {{min}}–{{max}}، {{gender}} — اختيارك.', 'גילאים {{min}}–{{max}}, {{gender}} — הבחירה שלכם.'],
+  mm_f_story_who_meta_rule: ['All adults of every gender — Meta requires this for property ads in {{countries}}.', 'ყველა ზრდასრული, ნებისმიერი სქესის, Meta ამას ქონების რეკლამისთვის მოითხოვს აქ: {{countries}}.', 'Все взрослые любого пола — Meta требует этого для рекламы недвижимости в: {{countries}}.', 'Her cinsiyetten tüm yetişkinler — Meta bunu {{countries}} ülkelerindeki emlak reklamları için şart koşar.', 'جميع البالغين من كل الأجناس — تشترط Meta ذلك لإعلانات العقارات في {{countries}}.', 'כל המבוגרים מכל המגדרים — Meta דורשת זאת למודעות נדל"ן ב{{countries}}.'],
   mm_f_story_who_brief_LOCAL_RESIDENTS: ["From your brief: people who live locally.", "თქვენი ტექსტიდან: ადგილობრივი მაცხოვრებლები.", "Из ваших пожеланий: местные жители.", "Notunuzdan: yerel halk.", "من ملاحظتك: السكان المحليون.", "מההנחיות שלכם: תושבים מקומיים."],
   mm_f_story_who_brief_FOREIGNERS_IN_COUNTRY: ["From your brief: foreigners living here.", "თქვენი ტექსტიდან: აქ მცხოვრები უცხოელები.", "Из ваших пожеланий: иностранцы, живущие здесь.", "Notunuzdan: burada yaşayan yabancılar.", "من ملاحظتك: الأجانب المقيمون هنا.", "מההנחיות שלכם: זרים שגרים כאן."],
   mm_f_story_who_brief_MOVING_HERE: ["From your brief: people moving here.", "თქვენი ტექსტიდან: აქ გადმოსვლის მსურველები.", "Из ваших пожеланий: те, кто переезжает.", "Notunuzdan: buraya taşınanlar.", "من ملاحظتك: من ينتقلون إلى هنا.", "מההנחיות שלכם: אנשים שעוברים לכאן."],
@@ -734,7 +615,7 @@ export const META_FINAL_STRINGS = {
   mm_f_story_lang_all: ["Shown in every language.", "აჩვენება ყველა ენაზე.", "Показывается на всех языках.", "Tüm dillerde gösterilir.", "يُعرض بكل اللغات.", "מוצג בכל השפות."],
   mm_f_story_lang_copy: ["Your ad text is in {{lang}}.", "თქვენი რეკლამის ტექსტის ენა: {{lang}}.", "Текст рекламы на языке: {{lang}}.", "Reklam metniniz {{lang}} dilinde.", "نص إعلانك بـ{{lang}}.", "טקסט המודעה ב{{lang}}."],
   mm_f_story_lang_international: ["International mode: {{markets}}.", "საერთაშორისო რეჟიმი: {{markets}}.", "Международный режим: {{markets}}.", "Uluslararası mod: {{markets}}.", "الوضع الدولي: {{markets}}.", "מצב בינלאומי: {{markets}}."],
-  mm_f_story_creative_one: ["One creative — adding more gives HOMATCH more to compare.", "ერთი კრეატივი — მეტის დამატება HOMATCH-ს შედარების მეტ საშუალებას აძლევს.", "Один креатив — если добавить ещё, HOMATCH будет что сравнивать.", "Tek kreatif — daha fazlası HOMATCH'e karşılaştırma imkânı verir.", "تصميم واحد — إضافة المزيد تمنح HOMATCH ما يقارنه.", "קריאייטיב אחד — הוספת עוד נותנת ל-HOMATCH יותר להשוות."],
+  mm_f_story_creative_one: ['One creative — adding more gives HOMATCH more to compare.', 'ერთი კრეატივი: მეტის დამატება HOMATCH-ს შედარების მეტ საშუალებას აძლევს.', 'Один креатив — если добавить ещё, HOMATCH будет что сравнивать.', 'Tek kreatif — daha fazlası HOMATCH\'e karşılaştırma imkânı verir.', 'تصميم واحد — إضافة المزيد تمنح HOMATCH ما يقارنه.', 'קריאייטיב אחד — הוספת עוד נותנת ל-HOMATCH יותר להשוות.'],
   mm_f_story_creative_many: ["{{n}} creatives for HOMATCH to compare.", "{{n}} კრეატივი HOMATCH-ის შესადარებლად.", "Креативов для сравнения: {{n}}.", "HOMATCH'in karşılaştırması için {{n}} kreatif.", "{{n}} تصاميم ليقارن بينها HOMATCH.", "{{n}} קריאייטיבים להשוואה של HOMATCH."],
   mm_f_story_creative_priority: ["⭐ {{n}} priority creative(s): always included and first in line.", "⭐ {{n}} პრიორიტეტული კრეატივი: ყოველთვის ჩართულია და პირველია რიგში.", "⭐ Приоритетных креативов: {{n}} — всегда включены и идут первыми.", "⭐ {{n}} öncelikli kreatif: her zaman dahil ve ilk sırada.", "⭐ {{n}} تصميم ذو أولوية: مضمّن دائمًا وأول في الترتيب.", "⭐ {{n}} קריאייטיבים מועדפים: תמיד כלולים וראשונים בתור."],
   mm_f_story_optimise_managed: [
@@ -777,14 +658,7 @@ export const META_FINAL_STRINGS = {
     "הקמפיין יכול ללמוד, אבל יותר תקציב, ימים או קריאייטיבים ייתנו ל-HOMATCH אותות ברורים יותר.",
   ],
   mm_f_room_TIGHT: ["Tight", "შეზღუდული", "Мало простора", "Sınırlı", "ضيّق", "מצומצם"],
-  mm_f_room_TIGHT_d: [
-    "The setup leaves little room to learn. It can still run — results are just harder to read early on.",
-    "ამ პარამეტრებით სწავლისთვის ცოტა სივრცე რჩება. კამპანია მაინც გაეშვება — უბრალოდ, შედეგების ადრეული წაკითხვა რთულია.",
-    "Настройка оставляет мало простора для обучения. Кампания всё равно запустится — просто ранние результаты сложнее оценить.",
-    "Kurulum öğrenmeye az alan bırakıyor. Yine de yayınlanabilir — sadece ilk sonuçları okumak zordur.",
-    "يترك هذا الإعداد مساحة قليلة للتعلّم. لا يزال بإمكانها العمل — لكن قراءة النتائج المبكرة أصعب.",
-    "ההגדרה משאירה מעט מרחב ללמידה. הקמפיין עדיין יכול לרוץ — פשוט קשה יותר לקרוא תוצאות מוקדמות.",
-  ],
+  mm_f_room_TIGHT_d: ['The setup leaves little room to learn. It can still run — results are just harder to read early on.', 'ამ პარამეტრებით სწავლისთვის ცოტა სივრცე რჩება. კამპანია მაინც გაეშვება, უბრალოდ, შედეგების ადრეული წაკითხვა რთულია.', 'Настройка оставляет мало простора для обучения. Кампания всё равно запустится — просто ранние результаты сложнее оценить.', 'Kurulum öğrenmeye az alan bırakıyor. Yine de yayınlanabilir — sadece ilk sonuçları okumak zordur.', 'يترك هذا الإعداد مساحة قليلة للتعلّم. لا يزال بإمكانها العمل — لكن قراءة النتائج المبكرة أصعب.', 'ההגדרה משאירה מעט מרחב ללמידה. הקמפיין עדיין יכול לרוץ — פשוט קשה יותר לקרוא תוצאות מוקדמות.'],
   mm_f_estimate_loading: ["Asking Meta for an audience estimate…", "Meta-ს აუდიტორიის შეფასებას ვეკითხებით…", "Запрашиваем у Meta оценку аудитории…", "Meta'dan kitle tahmini isteniyor…", "نطلب من Meta تقديرًا للجمهور…", "מבקשים מ-Meta הערכת קהל…"],
   mm_f_estimate_audience: [
     "Meta estimates this audience at about {{lower}}–{{upper}} people",
@@ -834,14 +708,7 @@ export const META_FINAL_STRINGS = {
     "{{days}} أيام: وقت للتعلّم أولًا ثم التحسين.",
     "{{days}} ימים: זמן ללמוד קודם ואז לשפר.",
   ],
-  mm_f_exp_days_short: [
-    "{{days}} days is short — most of it may go to learning.",
-    "{{days}} დღე მოკლეა — მისი დიდი ნაწილი შესაძლოა სწავლას მოხმარდეს.",
-    "{{days}} дней — это мало: большая часть может уйти на обучение.",
-    "{{days}} gün kısa — çoğu öğrenmeye gidebilir.",
-    "{{days}} أيام مدة قصيرة — قد يذهب معظمها للتعلّم.",
-    "{{days}} ימים זה קצר — רובם עשויים ללכת ללמידה.",
-  ],
+  mm_f_exp_days_short: ['{{days}} days is short — most of it may go to learning.', '{{days}} დღე მოკლეა, მისი დიდი ნაწილი შესაძლოა სწავლას მოხმარდეს.', '{{days}} дней — это мало: большая часть может уйти на обучение.', '{{days}} gün kısa — çoğu öğrenmeye gidebilir.', '{{days}} أيام مدة قصيرة — قد يذهب معظمها للتعلّم.', '{{days}} ימים זה קצר — רובם עשויים ללכת ללמידה.'],
   mm_f_exp_creatives_ok: [
     "{{n}} creatives give HOMATCH real options to compare.",
     "{{n}} კრეატივი HOMATCH-ს შედარების რეალურ საშუალებას აძლევს.",
@@ -850,33 +717,12 @@ export const META_FINAL_STRINGS = {
     "{{n}} تصاميم تمنح HOMATCH خيارات حقيقية للمقارنة.",
     "{{n}} קריאייטיבים נותנים ל-HOMATCH אפשרויות אמיתיות להשוואה.",
   ],
-  mm_f_exp_creatives_few: [
-    "Only {{n}} creative — results depend heavily on it.",
-    "მხოლოდ {{n}} კრეატივი — შედეგი ძლიერ არის მასზე დამოკიდებული.",
-    "Всего креативов: {{n}} — результат сильно зависит от него.",
-    "Yalnızca {{n}} kreatif — sonuçlar büyük ölçüde ona bağlı.",
-    "تصميم واحد فقط ({{n}}) — النتائج تعتمد عليه كثيرًا.",
-    "רק {{n}} קריאייטיב — התוצאות תלויות בו מאוד.",
-  ],
-  mm_f_expect_disclaimer: [
-    "HOMATCH never promises leads, sales or returns. Results vary with the creative and how the market responds.",
-    "HOMATCH არასოდეს გპირდებათ ლიდებს, გაყიდვებს ან შემოსავალს. შედეგები კრეატივსა და ბაზრის რეაქციაზეა დამოკიდებული.",
-    "HOMATCH никогда не обещает заявок, продаж или доходности. Результаты зависят от креатива и реакции рынка.",
-    "HOMATCH asla potansiyel müşteri, satış veya getiri vaat etmez. Sonuçlar kreatife ve pazarın tepkisine göre değişir.",
-    "لا يعد HOMATCH أبدًا بعملاء محتملين أو مبيعات أو عوائد. تختلف النتائج حسب التصميم وتجاوب السوق.",
-    "HOMATCH לעולם לא מבטיח לידים, מכירות או תשואה. התוצאות משתנות לפי הקריאייטיב ותגובת השוק.",
-  ],
+  mm_f_exp_creatives_few: ['Only {{n}} creative — results depend heavily on it.', 'მხოლოდ {{n}} კრეატივი, შედეგი ძლიერ არის მასზე დამოკიდებული.', 'Всего креативов: {{n}} — результат сильно зависит от него.', 'Yalnızca {{n}} kreatif — sonuçlar büyük ölçüde ona bağlı.', 'تصميم واحد فقط ({{n}}) — النتائج تعتمد عليه كثيرًا.', 'רק {{n}} קריאייטיב — התוצאות תלויות בו מאוד.'],
+  mm_f_expect_disclaimer: ['HOMATCH never promises leads, sales or returns. Results vary with the creative and how the market responds.', 'HOMATCH არასოდეს გპირდებათ კონტაქტებს, გაყიდვებს ან შემოსავალს. შედეგები კრეატივსა და ბაზრის რეაქციაზეა დამოკიდებული.', 'HOMATCH никогда не обещает заявок, продаж или доходности. Результаты зависят от креатива и реакции рынка.', 'HOMATCH asla potansiyel müşteri, satış veya getiri vaat etmez. Sonuçlar kreatife ve pazarın tepkisine göre değişir.', 'لا يعد HOMATCH أبدًا بعملاء محتملين أو مبيعات أو عوائد. تختلف النتائج حسب التصميم وتجاوب السوق.', 'HOMATCH לעולם לא מבטיח לידים, מכירות או תשואה. התוצאות משתנות לפי הקריאייטיב ותגובת השוק.'],
 
   // ── One holistic check ──────────────────────────────────────────────────
   mm_f_check_title: ["HOMATCH checked the whole build", "HOMATCH-მა მთელი კამპანია შეამოწმა", "HOMATCH проверил всю кампанию", "HOMATCH tüm kurulumu kontrol etti", "راجع HOMATCH الحملة بالكامل", "HOMATCH בדק את כל ההגדרה"],
-  mm_f_check_clear: [
-    "Everything fits together — no contradictions found.",
-    "ყველაფერი ერთმანეთს ერგება — წინააღმდეგობა არ არის.",
-    "Всё сходится — противоречий нет.",
-    "Her şey uyumlu — çelişki bulunmadı.",
-    "كل شيء متّسق — لم نجد تناقضات.",
-    "הכול מתאים — לא נמצאו סתירות.",
-  ],
+  mm_f_check_clear: ['Everything fits together — no contradictions found.', 'ყველაფერი ერთმანეთს ერგება, წინააღმდეგობა არ არის.', 'Всё сходится — противоречий нет.', 'Her şey uyumlu — çelişki bulunmadı.', 'كل شيء متّسق — لم نجد تناقضات.', 'הכול מתאים — לא נמצאו סתירות.'],
   mm_f_issue_COPY_LANGUAGE_NOT_TARGETED: [
     "Your text is in {{copy}}, but the audience is limited to {{chosen}}",
     "ტექსტის ენაა {{copy}}, აუდიტორია კი შეზღუდულია: {{chosen}}",
@@ -1028,5 +874,5 @@ export const META_FINAL_STRINGS = {
   mm_f_fix_ADD_CREATIVES: ["Add creatives", "კრეატივების დამატება", "Добавить креативы", "Kreatif ekle", "أضف تصاميم", "הוסיפו קריאייטיבים"],
   mm_f_fix_BROADEN_AGES: ["Use all adults, every gender", "ყველა ზრდასრული, ყველა სქესი", "Все взрослые, любой пол", "Tüm yetişkinler, her cinsiyet", "كل البالغين، كل الأجناس", "כל המבוגרים, כל המגדרים"],
   mm_f_fix_GO: ["Review", "ნახვა", "Посмотреть", "Gözden geçir", "مراجعة", "בדיקה"],
-  mm_f_fix_done: ["Done — you can change it back any time.", "მზადაა — ნებისმიერ დროს შეგიძლიათ დააბრუნოთ.", "Готово — вернуть можно в любой момент.", "Tamam — istediğiniz zaman geri alabilirsiniz.", "تم — يمكنك التراجع في أي وقت.", "בוצע — אפשר לשנות בחזרה בכל רגע."],
+  mm_f_fix_done: ['Done — you can change it back any time.', 'მზადაა: ნებისმიერ დროს შეგიძლიათ დააბრუნოთ.', 'Готово — вернуть можно в любой момент.', 'Tamam — istediğiniz zaman geri alabilirsiniz.', 'تم — يمكنك التراجع في أي وقت.', 'בוצע — אפשר לשנות בחזרה בכל רגע.'],
 };

@@ -81,6 +81,7 @@ function SubscriptionContent() {
                     {t(`sub_status_${live.status}`)}
                   </span>
                 </div>
+                {live.status === 'ACTIVE' ? <p className="text-sm">{t('sub_active_note')}</p> : null}
                 <p className="text-sm text-muted-foreground">{t('sub_period', { start: date(live.currentPeriodStart), end: date(live.currentPeriodEnd) })}</p>
                 {live.status === 'PAST_DUE' && live.graceUntil ? <p className="text-sm font-medium">{t('sub_grace_until', { date: date(live.graceUntil) })}</p> : null}
                 {live.cancelAtPeriodEnd ? <p className="text-sm">{t('sub_cancel_scheduled', { date: date(live.currentPeriodEnd) })}</p> : null}
@@ -111,7 +112,9 @@ function SubscriptionContent() {
               </section>
             ) : (
               <section className="rounded-2xl border border-border bg-card p-5">
-                <p className="text-sm">{t('sub_none')}</p>
+                {/* An ended subscription is said as such; a first visit gets the first-use rule. */}
+                <p className="text-sm">{sub?.status === 'EXPIRED' ? t('sub_expired_note') : t('sub_none')}</p>
+                {sub?.status !== 'EXPIRED' ? <p className="mt-1 text-sm text-muted-foreground">{t('sub_first_free_detail')}</p> : null}
                 <Button asChild className="mt-3 bg-gold text-primary hover:bg-gold-hover"><Link to="/pricing">{t('sub_see_plans')}</Link></Button>
               </section>
             )}
@@ -150,7 +153,7 @@ function SubscriptionContent() {
                   )
                 ))}
                 <p className="text-xs text-muted-foreground">{t('sub_upgrade_note')}</p>
-                {!connected ? <p className="text-xs text-muted-foreground">{t('sub_payments_pending_title')}</p> : null}
+                {!connected ? <p className="text-xs text-muted-foreground">{t('sub_payments_unavailable')}</p> : null}
               </section>
             ) : null}
 

@@ -16,25 +16,11 @@ export const ADMIN_STRINGS_2 = {
     'AI & communication', 'AI და კომუნიკაცია', 'ИИ и связь',
     'Yapay zekâ ve iletişim', 'الذكاء الاصطناعي والتواصل', 'בינה מלאכותית ותקשורת',
   ],
-  comms_admin_subtitle: [
-    'How Homatch talks to people — by voice, by phone, by email and on WhatsApp.',
-    'როგორ ესაუბრება Homatch ადამიანებს — ხმით, ტელეფონით, ელფოსტითა და WhatsApp-ით.',
-    'Как Homatch общается с людьми — голосом, по телефону, по email и в WhatsApp.',
-    'Homatch insanlarla nasıl konuşur — sesle, telefonla, e-postayla ve WhatsApp ile.',
-    'كيف يتحدث Homatch إلى الناس — بالصوت وبالهاتف وبالبريد وعبر واتساب.',
-    'איך Homatch מדבר עם אנשים — בקול, בטלפון, באימייל ובוואטסאפ.',
-  ],
+  comms_admin_subtitle: ['How Homatch talks to people — by voice, by phone, by email and on WhatsApp.', 'როგორ ესაუბრება HOMATCH ადამიანებს, ხმით, ტელეფონით, ელფოსტითა და WhatsApp-ით.', 'Как Homatch общается с людьми — голосом, по телефону, по email и в WhatsApp.', 'Homatch insanlarla nasıl konuşur — sesle, telefonla, e-postayla ve WhatsApp ile.', 'كيف يتحدث Homatch إلى الناس — بالصوت وبالهاتف وبالبريد وعبر واتساب.', 'איך Homatch מדבר עם אנשים — בקול, בטלפון, באימייל ובוואטסאפ.'],
   comms_card_ai_talk: [
     'AI TALK', 'AI TALK', 'AI TALK', 'AI TALK', 'AI TALK', 'AI TALK',
   ],
-  comms_card_ai_talk_desc: [
-    'Voice conversation inside the Homatch website.',
-    'ხმოვანი საუბარი Homatch-ის საიტზე.',
-    'Голосовой разговор внутри сайта Homatch.',
-    'Homatch web sitesi içinde sesli konuşma.',
-    'محادثة صوتية داخل موقع Homatch.',
-    'שיחה קולית בתוך אתר Homatch.',
-  ],
+  comms_card_ai_talk_desc: ['Voice conversation inside the Homatch website.', 'ხმოვანი საუბარი HOMATCH-ის საიტზე.', 'Голосовой разговор внутри сайта Homatch.', 'Homatch web sitesi içinde sesli konuşma.', 'محادثة صوتية داخل موقع Homatch.', 'שיחה קולית בתוך אתר Homatch.'],
   comms_card_call_center_desc: [
     'AI that makes and answers phone calls.',
     'AI, რომელიც რეკავს და პასუხობს ზარებს.',
@@ -84,22 +70,8 @@ export const ADMIN_STRINGS_2 = {
   voice_page_title: [
     'AI voices', 'AI ხმები', 'Голоса ИИ', 'Yapay zekâ sesleri', 'أصوات الذكاء الاصطناعي', 'קולות AI',
   ],
-  voice_page_subtitle: [
-    'Choose how Homatch sounds in AI TALK and the AI Call Center.',
-    'აირჩიეთ, როგორ ჟღერს Homatch AI TALK-სა და AI ქოლ-ცენტრში.',
-    'Выберите, как Homatch звучит в AI TALK и ИИ колл-центре.',
-    'Homatch’in AI TALK ve AI Çağrı Merkezi’nde nasıl duyulacağını seçin.',
-    'اختر كيف يبدو صوت Homatch في AI TALK ومركز الاتصال.',
-    'בחרו איך Homatch נשמע ב‑AI TALK ובמוקד הטלפוני.',
-  ],
-  voice_ai_talk_desc: [
-    'The voice visitors hear when they speak with Homatch on the website.',
-    'ხმა, რომელსაც ვიზიტორები ისმენენ, როცა საიტზე Homatch-ს ესაუბრებიან.',
-    'Голос, который слышат посетители, разговаривая с Homatch на сайте.',
-    'Ziyaretçilerin sitede Homatch ile konuşurken duyduğu ses.',
-    'الصوت الذي يسمعه الزوّار عند التحدث مع Homatch على الموقع.',
-    'הקול שמבקרים שומעים כשהם מדברים עם Homatch באתר.',
-  ],
+  voice_page_subtitle: ['Choose how Homatch sounds in AI TALK and the AI Call Center.', 'აირჩიეთ, როგორ ჟღერს HOMATCH AI TALK-სა და AI ქოლ-ცენტრში.', 'Выберите, как Homatch звучит в AI TALK и ИИ колл-центре.', 'Homatch’in AI TALK ve AI Çağrı Merkezi’nde nasıl duyulacağını seçin.', 'اختر كيف يبدو صوت Homatch في AI TALK ومركز الاتصال.', 'בחרו איך Homatch נשמע ב‑AI TALK ובמוקד הטלפוני.'],
+  voice_ai_talk_desc: ['The voice visitors hear when they speak with Homatch on the website.', 'ხმა, რომელსაც ვიზიტორები ისმენენ, როცა საიტზე HOMATCH-ს ესაუბრებიან.', 'Голос, который слышат посетители, разговаривая с Homatch на сайте.', 'Ziyaretçilerin sitede Homatch ile konuşurken duyduğu ses.', 'الصوت الذي يسمعه الزوّار عند التحدث مع Homatch على الموقع.', 'הקול שמבקרים שומעים כשהם מדברים עם Homatch באתר.'],
   voice_current: [
     'Current voice', 'მიმდინარე ხმა', 'Текущий голос',
     'Geçerli ses', 'الصوت الحالي', 'הקול הנוכחי',
@@ -203,14 +175,7 @@ export const ADMIN_STRINGS_2 = {
     'Pause before answering', 'პაუზა პასუხამდე', 'Пауза перед ответом',
     'Yanıttan önceki bekleme', 'التوقّف قبل الرد', 'השהיה לפני מענה',
   ],
-  voice_pause_help: [
-    'How long Homatch waits after the person stops speaking.',
-    'რამდენ ხანს იცდის Homatch მას შემდეგ, რაც ადამიანი ლაპარაკს შეწყვეტს.',
-    'Сколько Homatch ждёт после того, как человек замолчал.',
-    'Kişi konuşmayı bıraktıktan sonra Homatch ne kadar bekler.',
-    'كم ينتظر Homatch بعد أن يتوقف الشخص عن الكلام.',
-    'כמה זמן Homatch ממתין אחרי שהאדם מפסיק לדבר.',
-  ],
+  voice_pause_help: ['How long Homatch waits after the person stops speaking.', 'რამდენ ხანს იცდის HOMATCH მას შემდეგ, რაც ადამიანი ლაპარაკს შეწყვეტს.', 'Сколько Homatch ждёт после того, как человек замолчал.', 'Kişi konuşmayı bıraktıktan sonra Homatch ne kadar bekler.', 'كم ينتظر Homatch بعد أن يتوقف الشخص عن الكلام.', 'כמה זמן Homatch ממתין אחרי שהאדם מפסיק לדבר.'],
   voice_interrupt_label: [
     'Allow interruptions', 'შეწყვეტის დაშვება', 'Разрешить перебивать',
     'Sözünün kesilmesine izin ver', 'السماح بالمقاطعة', 'לאפשר הפרעה',

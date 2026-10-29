@@ -7,14 +7,7 @@
  */
 export const VERIFY_FIXED_PRICE_STRINGS = {
   verify_price_label: ['Price', 'ფასი', 'Цена', 'Fiyat', 'السعر', 'מחיר'],
-  verify_price_note: [
-    'One fixed price, VAT included. It is charged only when your report is ready — a stopped or failed check costs nothing. Your report stays available for {{days}} days.',
-    'ერთი ფიქსირებული ფასი, დღგ-ს ჩათვლით. თანხა ჩამოიჭრება მხოლოდ მაშინ, როცა ანგარიში მზად იქნება — შეჩერებული ან წარუმატებელი შემოწმება არაფერი ღირს. ანგარიში ხელმისაწვდომი იქნება {{days}} დღის განმავლობაში.',
-    'Одна фиксированная цена с НДС. Списывается только когда отчёт готов — остановленная или неудачная проверка ничего не стоит. Отчёт доступен {{days}} дней.',
-    'KDV dahil tek sabit fiyat. Yalnızca raporunuz hazır olduğunda tahsil edilir — durdurulan veya başarısız bir kontrol ücretsizdir. Raporunuz {{days}} gün erişilebilir kalır.',
-    'سعر ثابت واحد شامل ضريبة القيمة المضافة. يُخصم فقط عندما يصبح تقريرك جاهزًا — الفحص الذي يتوقف أو يفشل لا يكلّف شيئًا. يبقى تقريرك متاحًا لمدة {{days}} يومًا.',
-    'מחיר קבוע אחד, כולל מע״מ. הוא נגבה רק כשהדוח שלך מוכן — בדיקה שנעצרה או נכשלה אינה עולה דבר. הדוח שלך נשאר זמין למשך {{days}} ימים.',
-  ],
+  verify_price_note: ['One fixed price, VAT included. It is charged only when your report is ready — a stopped or failed check costs nothing. Your report stays available for {{days}} days.', 'ერთი ფიქსირებული ფასი, დღგ-ს ჩათვლით. თანხა ჩამოიჭრება მხოლოდ მაშინ, როცა ანგარიში მზად იქნება, შეჩერებული ან წარუმატებელი შემოწმება არაფერი ღირს. ანგარიში ხელმისაწვდომი იქნება {{days}} დღის განმავლობაში.', 'Одна фиксированная цена с НДС. Списывается только когда отчёт готов — остановленная или неудачная проверка ничего не стоит. Отчёт доступен {{days}} дней.', 'KDV dahil tek sabit fiyat. Yalnızca raporunuz hazır olduğunda tahsil edilir — durdurulan veya başarısız bir kontrol ücretsizdir. Raporunuz {{days}} gün erişilebilir kalır.', 'سعر ثابت واحد شامل ضريبة القيمة المضافة. يُخصم فقط عندما يصبح تقريرك جاهزًا — الفحص الذي يتوقف أو يفشل لا يكلّف شيئًا. يبقى تقريرك متاحًا لمدة {{days}} يومًا.', 'מחיר קבוע אחד, כולל מע״מ. הוא נגבה רק כשהדוח שלך מוכן — בדיקה שנעצרה או נכשלה אינה עולה דבר. הדוח שלך נשאר זמין למשך {{days}} ימים.'],
   verify_price_changed: [
     'The price has changed to {{n}} credits. Please confirm the new price to start.',
     'ფასი შეიცვალა და გახდა {{n}} კრედიტი. დასაწყებად დაადასტურეთ ახალი ფასი.',
@@ -23,14 +16,7 @@ export const VERIFY_FIXED_PRICE_STRINGS = {
     'تغيّر السعر إلى {{n}} رصيد. يُرجى تأكيد السعر الجديد للبدء.',
     'המחיר השתנה ל-{{n}} קרדיטים. אשרו את המחיר החדש כדי להתחיל.',
   ],
-  verify_price_running: [
-    'Fixed price: {{n}} credits — charged only when your report is ready.',
-    'ფიქსირებული ფასი: {{n}} კრედიტი — ჩამოიჭრება მხოლოდ ანგარიშის მზადყოფნისას.',
-    'Фиксированная цена: {{n}} кредитов — списывается только когда отчёт готов.',
-    'Sabit fiyat: {{n}} kredi — yalnızca raporunuz hazır olduğunda tahsil edilir.',
-    'السعر الثابت: {{n}} رصيد — يُخصم فقط عندما يصبح تقريرك جاهزًا.',
-    'מחיר קבוע: {{n}} קרדיטים — נגבה רק כשהדוח שלך מוכן.',
-  ],
+  verify_price_running: ['Fixed price: {{n}} credits — charged only when your report is ready.', 'ფიქსირებული ფასი: {{n}} კრედიტი, ჩამოიჭრება მხოლოდ ანგარიშის მზადყოფნისას.', 'Фиксированная цена: {{n}} кредитов — списывается только когда отчёт готов.', 'Sabit fiyat: {{n}} kredi — yalnızca raporunuz hazır olduğunda tahsil edilir.', 'السعر الثابت: {{n}} رصيد — يُخصم فقط عندما يصبح تقريرك جاهزًا.', 'מחיר קבוע: {{n}} קרדיטים — נגבה רק כשהדוח שלך מוכן.'],
   verify_price_paid: ['Price paid', 'გადახდილი ფასი', 'Оплаченная цена', 'Ödenen fiyat', 'السعر المدفوع', 'המחיר ששולם'],
   verify_report_expired_title: [
     'This report has expired',
@@ -40,14 +26,7 @@ export const VERIFY_FIXED_PRICE_STRINGS = {
     'انتهت صلاحية هذا التقرير',
     'תוקף הדוח הזה פג',
   ],
-  verify_rerun_cta: [
-    'Run new verification — {{n}} credits',
-    'ახალი ვერიფიკაცია — {{n}} კრედიტი',
-    'Новая проверка — {{n}} кредитов',
-    'Yeni doğrulama — {{n}} kredi',
-    'تحقق جديد — {{n}} رصيد',
-    'אימות חדש — {{n}} קרדיטים',
-  ],
+  verify_rerun_cta: ['Run new verification — {{n}} credits', 'ახალი ვერიფიკაცია: {{n}} კრედიტი', 'Новая проверка — {{n}} кредитов', 'Yeni doğrulama — {{n}} kredi', 'تحقق جديد — {{n}} رصيد', 'אימות חדש — {{n}} קרדיטים'],
   adm_vprice_title: ['Verify price', 'Verify-ის ფასი', 'Цена Verify', 'Verify fiyatı', 'سعر Verify', 'מחיר Verify'],
   adm_vprice_desc: [
     'The one customer price for every verification, V1 and V2 alike. Internal provider costs stay in Finance.',

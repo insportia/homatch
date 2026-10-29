@@ -3,30 +3,9 @@
 // identical search, and the notice shown when a new search could not also check live.
 // Order: [en, ka, ru, tr, ar, he].
 export const FP_CAPACITY_STRINGS = {
-  fpx_src_deferred_LIVE_REFRESH_LIMIT: [
-    'Live check limit reached — showing listings checked earlier',
-    'ცოცხალი შემოწმების ლიმიტი ამოიწურა — ნაჩვენებია ადრე შემოწმებული განცხადებები',
-    'Лимит живых проверок исчерпан — показаны ранее проверенные объявления',
-    'Canlı kontrol sınırına ulaşıldı — daha önce kontrol edilen ilanlar gösteriliyor',
-    'تم بلوغ حد التحقق المباشر — تُعرض الإعلانات التي تم التحقق منها سابقًا',
-    'הגעתם למגבלת הבדיקה החיה — מוצגות מודעות שנבדקו קודם',
-  ],
-  fpx_src_deferred_SOURCE_BUSY: [
-    'Portal busy — showing listings checked earlier',
-    'პორტალი დაკავებულია — ნაჩვენებია ადრე შემოწმებული განცხადებები',
-    'Портал занят — показаны ранее проверенные объявления',
-    'Portal yoğun — daha önce kontrol edilen ilanlar gösteriliyor',
-    'البوابة مشغولة — تُعرض الإعلانات التي تم التحقق منها سابقًا',
-    'הפורטל עמוס — מוצגות מודעות שנבדקו קודם',
-  ],
-  fpx_src_deferred_LIVE_REFRESH_UNAVAILABLE: [
-    'Live check unavailable — showing listings checked earlier',
-    'ცოცხალი შემოწმება ახლა მიუწვდომელია — ნაჩვენებია ადრე შემოწმებული განცხადებები',
-    'Живая проверка недоступна — показаны ранее проверенные объявления',
-    'Canlı kontrol şu an kullanılamıyor — daha önce kontrol edilen ilanlar gösteriliyor',
-    'التحقق المباشر غير متاح — تُعرض الإعلانات التي تم التحقق منها سابقًا',
-    'בדיקה חיה אינה זמינה — מוצגות מודעות שנבדקו קודם',
-  ],
+  fpx_src_deferred_LIVE_REFRESH_LIMIT: ['Live check limit reached — showing listings checked earlier', 'ცოცხალი შემოწმების ლიმიტი ამოიწურა, ნაჩვენებია ადრე შემოწმებული განცხადებები', 'Лимит живых проверок исчерпан — показаны ранее проверенные объявления', 'Canlı kontrol sınırına ulaşıldı — daha önce kontrol edilen ilanlar gösteriliyor', 'تم بلوغ حد التحقق المباشر — تُعرض الإعلانات التي تم التحقق منها سابقًا', 'הגעתם למגבלת הבדיקה החיה — מוצגות מודעות שנבדקו קודם'],
+  fpx_src_deferred_SOURCE_BUSY: ['Portal busy — showing listings checked earlier', 'პორტალი დაკავებულია: ნაჩვენებია ადრე შემოწმებული განცხადებები', 'Портал занят — показаны ранее проверенные объявления', 'Portal yoğun — daha önce kontrol edilen ilanlar gösteriliyor', 'البوابة مشغولة — تُعرض الإعلانات التي تم التحقق منها سابقًا', 'הפורטל עמוס — מוצגות מודעות שנבדקו קודם'],
+  fpx_src_deferred_LIVE_REFRESH_UNAVAILABLE: ['Live check unavailable — showing listings checked earlier', 'ცოცხალი შემოწმება ახლა მიუწვდომელია, ნაჩვენებია ადრე შემოწმებული განცხადებები', 'Живая проверка недоступна — показаны ранее проверенные объявления', 'Canlı kontrol şu an kullanılamıyor — daha önce kontrol edilen ilanlar gösteriliyor', 'التحقق المباشر غير متاح — تُعرض الإعلانات التي تم التحقق منها سابقًا', 'בדיקה חיה אינה זמינה — מוצגות מודעות שנבדקו קודם'],
   fpx_src_shared: [
     'Checking together with an identical search',
     'მოწმდება იდენტურ ძიებასთან ერთად',
@@ -83,12 +62,5 @@ export const FP_CAPACITY_STRINGS = {
     'التحقق المباشر غير متاح مؤقتًا. تُعرض الإعلانات التي سبق أن تحقق منها HOMATCH.',
     'בדיקות חיות אינן זמינות זמנית. מוצגות מודעות ש-HOMATCH כבר בדק.',
   ],
-  mps_reused_recent: [
-    'You ran this exact search a few minutes ago — here are its results.',
-    'ზუსტად ეს ძიება რამდენიმე წუთის წინ ჩაატარეთ — აი მისი შედეგები.',
-    'Вы выполняли точно такой же поиск несколько минут назад — вот его результаты.',
-    'Bu aramanın aynısını birkaç dakika önce yaptınız — sonuçları burada.',
-    'أجريت هذا البحث نفسه قبل دقائق — إليك نتائجه.',
-    'הרצתם בדיוק את החיפוש הזה לפני כמה דקות — הנה התוצאות שלו.',
-  ],
+  mps_reused_recent: ['You ran this exact search a few minutes ago — here are its results.', 'ზუსტად ეს ძიება რამდენიმე წუთის წინ ჩაატარეთ, აი მისი შედეგები.', 'Вы выполняли точно такой же поиск несколько минут назад — вот его результаты.', 'Bu aramanın aynısını birkaç dakika önce yaptınız — sonuçları burada.', 'أجريت هذا البحث نفسه قبل دقائق — إليك نتائجه.', 'הרצתם בדיוק את החיפוש הזה לפני כמה דקות — הנה התוצאות שלו.'],
 };

@@ -11,6 +11,9 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // Subscription plan names are product names (owner, 2026-10-30: "Standard, VIP და Unlimited"), the same as HOMI quotes them.
+  'sub_plan_STANDARD',
+  'sub_plan_UNLIMITED',
   // My Georgia by HOMI: the product name is the same in every language; Kutaisi and Zugdidi are spelled so in Turkish.
   'mg_product',
   'mg_city_kutaisi',

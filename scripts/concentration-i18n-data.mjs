@@ -17,14 +17,7 @@ export const CONCENTRATION_STRINGS = {
     'التركّز',
     'ריכוזיות',
   ],
-  admin_sources_concentration_note: [
-    'Share of the observations Homatch holds — not of the market. "Only here" counts properties no other source reached.',
-    'წილი Homatch-ის მიერ შენახულ დაკვირვებებში — არა ბაზარში. „მხოლოდ აქ" ითვლის ქონებას, რომელიც სხვა წყარომ ვერ იპოვა.',
-    'Доля от наблюдений, которые хранит Homatch, — не от рынка. «Только здесь» считает объекты, которых не нашёл ни один другой источник.',
-    'Homatch\'in elindeki gözlemlerdeki pay — pazardaki değil. "Yalnızca burada", başka hiçbir kaynağın ulaşmadığı mülkleri sayar.',
-    'حصة من الملاحظات التي يحتفظ بها Homatch — وليست من السوق. «هنا فقط» تحسب العقارات التي لم يصل إليها أي مصدر آخر.',
-    'חלק מתוך התצפיות ש-Homatch מחזיקה — לא מתוך השוק. "רק כאן" סופר נכסים ששום מקור אחר לא הגיע אליהם.',
-  ],
+  admin_sources_concentration_note: ['Share of the observations Homatch holds — not of the market. "Only here" counts properties no other source reached.', 'წილი HOMATCH-ის მიერ შენახულ დაკვირვებებში, არა ბაზარში. „მხოლოდ აქ" ითვლის ქონებას, რომელიც სხვა წყარომ ვერ იპოვა.', 'Доля от наблюдений, которые хранит Homatch, — не от рынка. «Только здесь» считает объекты, которых не нашёл ни один другой источник.', 'Homatch\'in elindeki gözlemlerdeki pay — pazardaki değil. "Yalnızca burada", başka hiçbir kaynağın ulaşmadığı mülkleri sayar.', 'حصة من الملاحظات التي يحتفظ بها Homatch — وليست من السوق. «هنا فقط» تحسب العقارات التي لم يصل إليها أي مصدر آخر.', 'חלק מתוך התצפיות ש-Homatch מחזיקה — לא מתוך השוק. "רק כאן" סופר נכסים ששום מקור אחר לא הגיע אליהם.'],
   admin_sources_concentration_empty: [
     'No supply observations yet',
     'ჯერ არ არის მიწოდების დაკვირვებები',

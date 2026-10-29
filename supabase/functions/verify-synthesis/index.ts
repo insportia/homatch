@@ -929,7 +929,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   };
   /* Code owns what it can compute exactly (report.ts FinalizeOptions). */
   const finalizeOpts = v3
-    ? { fieldOwnership: 'CODE' as const, metrics: codeSectionMetrics(bundle), advertising: adsVisible ? deterministicAdvertisingAssessment(pkg.developerAds) : null }
+    ? { fieldOwnership: 'CODE' as const, metrics: codeSectionMetrics(bundle), advertising: adsVisible ? deterministicAdvertisingAssessment(pkg.developerAds, pkg.items) : null }
     : {};
   /* One report call: the model's text and usage, or null on a transport
      failure. An availability refusal still throws (SILENT_FALLBACK = NO).

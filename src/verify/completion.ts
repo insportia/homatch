@@ -24,8 +24,10 @@
  *
  * "Settled, or failed" rather than "arrived" matters: a synthesis that cannot
  * be produced must still end the run, or a degraded verification would sit in
- * FINALIZING for ever. The page falls back to the evidence view in that case,
- * which is a real, readable result — just not the synthesised one.
+ * FINALIZING for ever. Since 2026-10-30 that end is an honest one: a report
+ * the server marks FAILED (every attempt spent, or past the settle grace) is
+ * FAILED here and the page says so; a report still being written stays
+ * FINALIZING. The evidence alone is never presented as a completed report.
  */
 
 export type VerifyCustomerState =
@@ -63,6 +65,12 @@ export interface VerifyCompletionInput {
   synthesisSettled: boolean;
   /** An anonymous run waiting for the visitor to create an account. */
   awaitingSignIn?: boolean;
+  /**
+   * What the server says about the REPORT once a fetch settled without one
+   * (src/verify/reportDelivery.ts): FAILED ends the run; anything else is
+   * still being prepared. Research completion alone is never a delivery.
+   */
+  reportDelivery?: string | null;
 }
 
 /** Stages after which nothing more is coming from research itself. */
@@ -92,6 +100,10 @@ export function verifyCustomerState(input: VerifyCompletionInput): VerifyCustome
     const settled = input.synthesisSettled && !input.synthesisLoading;
     if (!settled) return 'FINALIZING';
     if (!input.hasReport) return 'FAILED';
+    // DELIVERED = synthesis READY and the report exists (prod 674df06e,
+    // 2026-10-29: research COMPLETE, report FAILED, and the page called it
+    // complete over an evidence shell). No report: preparing, or failed.
+    if (!input.synthesis) return input.reportDelivery === 'FAILED' ? 'FAILED' : 'FINALIZING';
     return 'COMPLETE';
   }
 

@@ -70,9 +70,16 @@ export function resumeTarget(p: PauseRecord): ResumeTarget {
 /** How the open budget session of a job in this state is closed, or null to wait. */
 export function settlementOutcome(
   job: { status?: string | null; synthesis_state?: string | null; synthesis_attempts?: number | null; completed_at?: string | null; paused_at?: string | null },
-  opts: { maxSynthesisAttempts: number; synthesisGraceMs: number; now?: number; openSessionAt?: string | null; resumeGraceMs?: number; officialFound?: number | null },
+  opts: { maxSynthesisAttempts: number; synthesisGraceMs: number; now?: number; openSessionAt?: string | null; resumeGraceMs?: number; officialFound?: number | null; reportPresent?: boolean | null },
 ): 'COMPLETE' | 'STOPPED' | 'SYSTEM_FAILED' | null {
   const now = opts.now ?? Date.now();
+  // DELIVERED = READY *and* the report exists (src/verify/reportDelivery.ts).
+  // A READY marker with no report (known: reportPresent === false) is not a
+  // delivery: never charged, and released past the grace like any report
+  // that did not arrive. Unknown (null) keeps the old rule.
+  const synthesisState = job.status === 'COMPLETE' && job.synthesis_state === 'READY' && opts.reportPresent === false
+    ? 'PENDING'
+    : job.synthesis_state;
   switch (job.status) {
     case 'PAUSED': {
       // A budget opened AFTER the pause is a continuation in progress: it is
@@ -91,14 +98,14 @@ export function settlementOutcome(
       // No official source found the property (registry unavailable, or a code
       // nothing matched): the customer did not get a verification, so nothing
       // is charged (prod 1ff4b786). Unknown (null) keeps the old rule.
-      if (job.synthesis_state === 'READY' && opts.officialFound === 0) return 'SYSTEM_FAILED';
-      if (job.synthesis_state === 'READY') return 'COMPLETE';
+      if (synthesisState === 'READY' && opts.officialFound === 0) return 'SYSTEM_FAILED';
+      if (synthesisState === 'READY') return 'COMPLETE';
       // The research is done but the report could not be written: the
       // customer did not get what they paid for, so nothing is charged.
-      if (job.synthesis_state === 'FAILED' && (job.synthesis_attempts ?? 0) >= opts.maxSynthesisAttempts) return 'SYSTEM_FAILED';
+      if (synthesisState === 'FAILED' && (job.synthesis_attempts ?? 0) >= opts.maxSynthesisAttempts) return 'SYSTEM_FAILED';
       const done = Date.parse(job.completed_at ?? '');
       if (Number.isFinite(done) && now - done > opts.synthesisGraceMs) {
-        return job.synthesis_state === 'READY' ? 'COMPLETE' : 'SYSTEM_FAILED';
+        return synthesisState === 'READY' ? 'COMPLETE' : 'SYSTEM_FAILED';
       }
       return null;
     }

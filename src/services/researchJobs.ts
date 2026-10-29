@@ -21,7 +21,9 @@ import type { ResearchJobRecord } from '@/types/types';
 
 const LIST_COLUMNS =
   'id,mode,query,status,stage,error,case_id,supersedes_job_id,created_at,updated_at,completed_at,' +
-  'title,deleted_at,entity_name,project_name,address,developer_name,company_name,coverage_level,outstanding_count';
+  'title,deleted_at,entity_name,project_name,address,developer_name,company_name,coverage_level,outstanding_count,' +
+  // Research completion is not report delivery: the list says which reports are still being prepared or failed.
+  'synthesis_state,synthesis_attempts';
 const FULL_COLUMNS = `${LIST_COLUMNS},result_json`;
 
 // Fetches one job WITH its result_json — used to open a specific report

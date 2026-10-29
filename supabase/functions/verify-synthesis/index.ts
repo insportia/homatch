@@ -78,6 +78,7 @@ import { codeSectionMetrics } from '../../../src/verify/intelligence/codeMetrics
 import { storyKeptOnRebuild } from '../../../src/verify/intelligence/storyGuard.ts';
 import { reportStudyFor } from '../../../src/verify/intelligence/prompt.ts';
 import { notify } from '../_shared/notify.ts';
+import { recordReportFailure } from '../_shared/verifyReportFailure.ts';
 import { awaitOpenAIBudget, backoffMs, estimateTokens, limitsFor, retryAfterMs, RETRYABLE_STATUSES } from '../../../src/verify/openaiLimit.ts';
 
 /**
@@ -1558,6 +1559,8 @@ serve(async (req) => {
       })().catch(async (e) => {
         console.error(`verify-synthesis: background build failed for ${jobId}`, e instanceof Error ? e.message : String(e));
         await writer.from('research_jobs').update({ synthesis_state: 'FAILED' }).eq('id', jobId).eq('synthesis_state', 'PENDING');
+        // After the state: Admin reads WHY the report was not delivered (never a credential).
+        await recordReportFailure(writer, { jobId, source: 'BACKGROUND', error: e });
       });
       rt.waitUntil(work);
       return json({ pending: true, retryAfterMs: 5000 }, 202);

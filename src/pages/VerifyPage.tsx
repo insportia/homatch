@@ -51,6 +51,8 @@ import {buildDocumentRows,summarizeDocumentHistory,summarizeOfficialDocuments} f
 import {propertyTypeDisplay} from '@/verify/propertyType';
 import {parcelRelation,parentDisplayName} from '@/verify/cadastral';
 import {verifyCustomerState} from '@/verify/completion';
+import {VerifyReportDelivery,type VerifyReportDeliveryView} from '@/components/verify/VerifyReportDelivery';
+import {readReportDeliveryView} from '@/services/verifyDelivery';
 import {UtilitiesReadinessCard} from '@/components/verify/UtilitiesReadinessCard';
 import {CompanyOwnershipCard} from '@/components/verify/CompanyOwnershipCard';
 import {NextStepsCard} from '@/components/verify/NextStepsCard';
@@ -624,7 +626,7 @@ const[awaitingSignIn,setAwaitingSignIn]=useState(false);
 // customer to pick 'property' via the UI is removed. Existing 'property'-
 // mode research_jobs rows from before this change still open and render
 // normally (VerifyHistorySidebar's history list is untouched).
-const mode:Mode='cadastral';/* Seeded from ?code= so the Main Page's verification entry point can hand a cadastral code straight into this existing flow rather than standing up a second one. Lazy initialiser, not an effect: it must not re-seed and stomp what the customer types afterwards. */const[query,setQuery]=useState(()=>searchParams.get('code')??'');const[loading,setLoading]=useState(false);const[report,setReport]=useState<Report|null>(null);const[err,setErr]=useState<string|null>(null);const[captcha,setCaptcha]=useState<Report|null>(null);const[jobId,setJobId]=useState<string|null>(null);const[progress,setProgress]=useState<any>(null);const[synthesis,setSynthesis]=useState<VerifySynthesis|null>(null);const[synthesisLoading,setSynthesisLoading]=useState(false);/* Whether a synthesis fetch has FINISHED for this job, whatever it returned. Without it, "not fetched yet" and "fetched, and there is none" are the same value, and the finalizing state below could never end. See src/verify/completion.ts. */const[synthesisSettled,setSynthesisSettled]=useState(false);
+const mode:Mode='cadastral';/* Seeded from ?code= so the Main Page's verification entry point can hand a cadastral code straight into this existing flow rather than standing up a second one. Lazy initialiser, not an effect: it must not re-seed and stomp what the customer types afterwards. */const[query,setQuery]=useState(()=>searchParams.get('code')??'');const[loading,setLoading]=useState(false);const[report,setReport]=useState<Report|null>(null);const[err,setErr]=useState<string|null>(null);const[captcha,setCaptcha]=useState<Report|null>(null);const[jobId,setJobId]=useState<string|null>(null);const[progress,setProgress]=useState<any>(null);const[synthesis,setSynthesis]=useState<VerifySynthesis|null>(null);const[synthesisLoading,setSynthesisLoading]=useState(false);/* Whether a synthesis fetch has FINISHED for this job, whatever it returned. Without it, "not fetched yet" and "fetched, and there is none" are the same value, and the finalizing state below could never end. See src/verify/completion.ts. */const[synthesisSettled,setSynthesisSettled]=useState(false);/* Research completion is not report delivery (src/verify/reportDelivery.ts): what the server says about a report the page could not read. */const[reportDelivery,setReportDelivery]=useState<VerifyReportDeliveryView|null>(null);
 /* THE SERVER'S VIEW OF THIS RUN, kept verbatim.
    created_at is the ONLY authoritative start time — the run belongs to the
    server, not to this component's mount, so a customer returning after
@@ -744,7 +746,7 @@ if(data?.status==='COMPLETE'&&data.result_json){again=false;stop();setCaptcha(nu
 const SYNTHESIS_FETCH_TIMEOUT_MS=45000;
 /* How long the page waits for a report being built: past the server's own stale window (7 min), so a slow build is read, not abandoned. */
 const SYNTHESIS_WAIT_MS=9*60*1000;
-/* THE ONE COMPLETION PREDICATE (src/verify/completion.ts). Everything the customer reads about whether this run has finished derives from here, so the page and the global job indicator can no longer disagree about it. */const customerState=verifyCustomerState({jobStatus:jobMeta?.status,stage:jobMeta?.stage,hasReport:!!report,synthesis,synthesisLoading,synthesisSettled,awaitingSignIn});const loadSynthesis=async(id:string)=>{setSynthesisLoading(true);setSynthesisSettled(false);try{
+/* THE ONE COMPLETION PREDICATE (src/verify/completion.ts). Everything the customer reads about whether this run has finished derives from here, so the page and the global job indicator can no longer disagree about it. */const customerState=verifyCustomerState({jobStatus:jobMeta?.status,stage:jobMeta?.stage,hasReport:!!report,synthesis,synthesisLoading,synthesisSettled,awaitingSignIn,reportDelivery});const loadSynthesis=async(id:string)=>{setSynthesisLoading(true);setSynthesisSettled(false);try{
 /* The server is already writing this report (research-agent started it the
    moment research finished): wait for that one instead of starting a second
    build. Bounded — after ~3 minutes the page asks for it directly. */
@@ -772,9 +774,10 @@ for(;;){
   await new Promise((r)=>setTimeout(r,Math.min(8000,Math.max(2000,Number((data as any)?.retryAfterMs)||4000))));
 }
 if(error||(data as any)?.error||!data||(data as any)?.pending)throw new Error('synthesis unavailable');
-setSynthesis(data as VerifySynthesis);rememberVerifyReport(id,data)}
-catch(e){console.error('[Verify] synthesis unavailable:',e);setSynthesis(null)}
+setSynthesis(data as VerifySynthesis);setReportDelivery(null);rememberVerifyReport(id,data)}
+catch(e){console.error('[Verify] synthesis unavailable:',e);setSynthesis(null);/* Never the evidence as if it were the report: being prepared, failed for good, or not loaded here. */setReportDelivery(await readReportDeliveryView(id))}
 finally{setSynthesisLoading(false);setSynthesisSettled(true)}};
+/* A re-check of a report being prepared (or not loaded): reads the persisted one, or hears "pending" — the server claims a build, so this never starts a second one. */const retryReport=()=>{if(jobId&&!synthesisLoading)void loadSynthesis(jobId)};
 /* THE ONLY CANCELLATION.
    Navigating away, refreshing, backgrounding the tab and closing the browser
    are not cancellation and never reach this. A cancelled run is CANCELLED,
@@ -812,7 +815,7 @@ return()=>window.removeEventListener('homatch:anon-claimed',onClaimed)});
    asked directly rather than rendered to be observed. Costs nothing:
    allHistory is already loaded for the Center's own recent list. */
 const neighbours=useMemo(()=>neighboursFor(allHistory,jobId),[jobId,allHistory]);
-const openJob=(id:string,push=false)=>{stop();setErr(null);setPollNotice(null);transientRetryCount.current=0;setCaptcha(null);setReport(null);setSynthesis(null);setSynthesisSettled(false);setJobId(id);setJobMeta(null);setPartial(null);setExpired(false);setLoading(true);/* No fabricated percent here. openJob() knows nothing about this run yet;
+const openJob=(id:string,push=false)=>{stop();setErr(null);setPollNotice(null);transientRetryCount.current=0;setCaptcha(null);setReport(null);setSynthesis(null);setSynthesisSettled(false);setReportDelivery(null);setJobId(id);setJobMeta(null);setPartial(null);setExpired(false);setLoading(true);/* No fabricated percent here. openJob() knows nothing about this run yet;
    the first status poll supplies created_at and stage, and the estimate is
    computed from those. Guessing 30% would be the old lie in a new place. */setProgress(null);const params=new URLSearchParams(searchParams);params.set('job',id);setSearchParams(params,{replace:!push});prefetchVerifyReport(id);check(id)};
 useEffect(()=>{const urlJob=searchParams.get('job');if(urlJob)openJob(urlJob);
@@ -848,7 +851,7 @@ if(data?.id)openJob(data.id)}catch{/* best effort: a failed lookup must not bloc
 const loadLaunchQuote=async():Promise<LaunchQuote|null>=>{try{const{data,error}=await supabase.rpc('verify_launch_quote');if(error||!data)return null;return data as LaunchQuote}catch{return null}};
 const run=async()=>{if(!valid)return;if(supaUser){const q=await loadLaunchQuote();if(q?.enabled){setLaunchQuote(q);setLaunchOpen(true);return}}await startNow()};
 const confirmLaunch=async()=>{setLaunchOpen(false);await startNow()};
-const startNow=async()=>{if(!valid)return;stop();setLoading(true);setBilling(null);setResumeError(null);setErr(null);setPollNotice(null);transientRetryCount.current=0;setReport(null);setSynthesis(null);setSynthesisSettled(false);setCaptcha(null);setJobId(null);setJobMeta(null);setPartial(null);setProgress(null);setExpired(false);setSections(null);setLiveCounters(null);setAwaitingSignIn(false);try{
+const startNow=async()=>{if(!valid)return;stop();setLoading(true);setBilling(null);setResumeError(null);setErr(null);setPollNotice(null);transientRetryCount.current=0;setReport(null);setSynthesis(null);setSynthesisSettled(false);setReportDelivery(null);setCaptcha(null);setJobId(null);setJobMeta(null);setPartial(null);setProgress(null);setExpired(false);setSections(null);setLiveCounters(null);setAwaitingSignIn(false);try{
 /* Somebody can check a property before they have an account. The work belongs
    to a session the server issues; signing in hands it over, same job, same
    evidence, never run twice. */
@@ -967,7 +970,7 @@ const handleSidebarDelete=async(id:string)=>{setAllHistory(prev=>prev.filter(j=>
 // job — same back/forward reasoning as openJob(id,true) above: a user
 // clicking away from a report they were viewing should be able to hit
 // Back and land on that report again, not skip past /verify entirely.
-const startNewResearch=()=>{stop();setErr(null);setPollNotice(null);transientRetryCount.current=0;setCaptcha(null);setReport(null);setSynthesis(null);setSynthesisSettled(false);setJobId(null);setCaseId(null);setLoading(false);setProgress(null);setQuery('');const params=new URLSearchParams(searchParams);if(params.has('job')){params.delete('job');setSearchParams(params,{replace:false})}};
+const startNewResearch=()=>{stop();setErr(null);setPollNotice(null);transientRetryCount.current=0;setCaptcha(null);setReport(null);setSynthesis(null);setSynthesisSettled(false);setReportDelivery(null);setJobId(null);setCaseId(null);setLoading(false);setProgress(null);setQuery('');const params=new URLSearchParams(searchParams);if(params.has('job')){params.delete('job');setSearchParams(params,{replace:false})}};
 return <AppLayout noPadding>{homatchUser&&<VerifyHistorySidebar open={sidebarOpen} onOpenChange={setSidebarOpen} items={allHistory} loading={allHistoryLoading} activeJobId={jobId} onOpenJob={handleSidebarOpenJob} onRename={handleSidebarRename} onDelete={handleSidebarDelete}/>}<div className="hm-invest hm-invest-canvas min-h-[calc(100vh-4rem)]"><div className="mx-auto w-full max-w-5xl space-y-5 px-4 py-6 pb-24 sm:px-6 lg:px-8">{handoff&&<HumanVerificationHandoff offer={handoff} onComplete={completeHandoff} onCancel={cancelHandoff} onOpen={openHandoff} busy={handoffBusy} error={handoffErr}/>}{/* The verification product's navy identity band: structure above, the white report workspace below. */}<div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-3 overflow-hidden rounded-2xl bg-[#0C1119] px-5 py-5 text-white shadow-hover sm:px-7 sm:py-6"><div className="min-w-0 basis-full sm:basis-auto sm:flex-1"><div className="flex items-center gap-2"><Shield className="h-5 w-5 sm:h-6 sm:w-6 text-[hsl(38_92%_60%)] shrink-0"/><h1 className="text-xl sm:text-3xl font-display font-bold break-words text-white">{t('verify_title')}</h1></div><p className="measure mt-2 break-words text-[15px] leading-relaxed text-white/80">{t('verify_page_subtitle')}</p><span className="mt-3.5 block h-[3px] w-14 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true"/></div><div className="flex flex-wrap items-center gap-2">{(report||jobId||captcha||query)&&<Button size="sm" onClick={startNewResearch} className="shrink-0 border border-white/30 bg-white text-[#0C1119] hover:bg-white/90">{t('verify_new_research_button')}</Button>}{homatchUser&&<Button variant="ghost" size="sm" onClick={openVerifyHistorySidebar} className="shrink-0 border border-white/25 text-white/85 hover:bg-white/10 hover:text-white"><History className="h-3.5 w-3.5 mr-1.5"/>{t('verify_history_sidebar_button')}</Button>}</div>
 {/* v31: the Property/ქონება Tabs selector that used to sit here was removed
     (Verify mandate — cadastral-code entry only, see the `mode` comment
@@ -1003,21 +1006,7 @@ return <AppLayout noPadding>{homatchUser&&<VerifyHistorySidebar open={sidebarOpe
     company facts with official provenance, and rendering BOTH in this
     column is why every director appeared twice on the live report. Its
     remaining fields (representatives, history, related projects) moved
-    into that section rather than being dropped. */}<EvidenceCard title={t('verify_official_evidence_title')} items={report.officialEvidence}/><MarketRangeCard m={report.market}/><ComparablesCard comparables={report.market?.comparables}/><PriceDriversCard pd={report.market?.priceDrivers}/><EvidenceCard title={t('verify_market_extra_info_title')} items={report.market?.priceEvidence}/><EvidenceCard title={t('verify_public_evidence_title')} items={report.publicEvidence}/><EvidenceCard title={t('verify_positive_reviews_title')} items={report.reviews?.positive}/><EvidenceCard title={t('verify_negative_reviews_title')} items={report.reviews?.negative}/></div>}/>:<div className="space-y-4"><OverallAssessmentCard oa={report.overallAssessment} r={report}/><Card><CardContent className="pt-5 space-y-3"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold">{clean(report.entityName)||query}</h2><PropertyTypeBadge report={report} mode={mode}/></div><p className="text-sm text-muted-foreground leading-relaxed">{clean(report.summary)}</p><CoverageNote note={report.coverageNote}/></CardContent></Card>{(report.identifiedParent||report.exactUnit)&&<IdentifiedPropertyCard identifiedParent={report.identifiedParent} exactUnit={report.exactUnit} projectProfile={report.projectProfile} report={report}/>}<ReconciledIdentityCard ri={report.reconciledIdentity}/><ProjectProfileCard p={report.projectProfile}/><UtilitiesReadinessCard report={report}/><CompanyOwnershipCard report={report}/><LandProfileCard lp={report.landProfile}/><RightsAndRestrictionsCard rr={report.rightsAndRestrictions} report={report}/><LegalStatusMatrixCard ls={report.legalStatus}/>{/* v31: ManualVerificationActionsCard/TechnicalFactsCard/PublicResearchCard/
-    DiscoveredEntitiesCard permanently removed from the customer report (Verify
-    mandate: no technical/audit-trail clutter in the customer-facing view).
-    This used to be done post-build by scripts/apply-verify-ux-patch.mjs
-    string-deleting these 4 render lines from the built artifact only, leaving
-    them present (just unreached) in checked-in source. The component
-    functions themselves are left defined below, unused, since
-    report.manualVerificationActions/technicalFacts/publicResearch/
-    discoveredEntities are still computed and persisted server-side for
-    internal/admin diagnostics per that file's own header comment — only the
-    customer-facing render is removed here. */}<OfficialDocumentsCard docs={report.officialDocumentsRetrieved}/><RevisionTimelineCard timeline={report.revisionTimeline}/><HistoricalComparisonCard hc={report.historicalComparison}/>{/* CompanyProfileCard removed: CompanyOwnershipCard renders the same
-    company facts with official provenance, and rendering BOTH in this
-    column is why every director appeared twice on the live report. Its
-    remaining fields (representatives, history, related projects) moved
-    into that section rather than being dropped. */}<EvidenceCard title={t('verify_official_evidence_title')} items={report.officialEvidence}/><MarketRangeCard m={report.market}/><ComparablesCard comparables={report.market?.comparables}/><PriceDriversCard pd={report.market?.priceDrivers}/><EvidenceCard title={t('verify_market_extra_info_title')} items={report.market?.priceEvidence}/><EvidenceCard title={t('verify_public_evidence_title')} items={report.publicEvidence}/><EvidenceCard title={t('verify_positive_reviews_title')} items={report.reviews?.positive}/><EvidenceCard title={t('verify_negative_reviews_title')} items={report.reviews?.negative}/></div>}{/* A save that failed still has to say so. The action that used to
+    into that section rather than being dropped. */}<EvidenceCard title={t('verify_official_evidence_title')} items={report.officialEvidence}/><MarketRangeCard m={report.market}/><ComparablesCard comparables={report.market?.comparables}/><PriceDriversCard pd={report.market?.priceDrivers}/><EvidenceCard title={t('verify_market_extra_info_title')} items={report.market?.priceEvidence}/><EvidenceCard title={t('verify_public_evidence_title')} items={report.publicEvidence}/><EvidenceCard title={t('verify_positive_reviews_title')} items={report.reviews?.positive}/><EvidenceCard title={t('verify_negative_reviews_title')} items={report.reviews?.negative}/></div>}/>:<VerifyReportDelivery state={reportDelivery} busy={synthesisLoading} onRetry={retryReport}/>}{/* A save that failed still has to say so. The action that used to
      live here asked the customer to file their verification in a
      workspace; a verification persists by itself, and the contract for
      this property is offered by the report's own upload card rather

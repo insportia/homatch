@@ -25,6 +25,7 @@ import { awaitOpenAIBudget, backoffMs, estimateTokens, limitsFor, retryAfterMs, 
 import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, officialCodeNotFound, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
 import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
+import { recordReportFailure, synthesisHttpError } from '../_shared/verifyReportFailure.ts';
 import { engineForNewJob, engineOf, isV3, parseEngineSetting, VERIFY_ENGINE_SETTING_KEY, VERIFY_V3_RESEARCH_SETTING_KEY } from '../../../src/verify/engine.ts';
 import { codeSynthesis } from '../../../src/verify/v2/codeSynthesis.ts';
 import { checkCadastralInput } from '../../../src/verify/cadastralInput.ts';
@@ -7046,12 +7047,14 @@ async function driveSynthesis(sb: any): Promise<void> {
         },
         body: JSON.stringify({ jobId: j.id, internal: true }),
       });
-      if (!res.ok) throw new Error(`verify-synthesis ${res.status}`);
+      if (!res.ok) throw await synthesisHttpError(res);
       // verify-synthesis owns the READY write — it is the only thing that
       // knows whether a real report came out the other end.
     } catch (e) {
       console.error(`research-agent drive: synthesis failed for ${j.id}`, e);
       await sb.from('research_jobs').update({ synthesis_state: 'FAILED' }).eq('id', j.id);
+      // After the state, never instead of it: Admin reads WHY (boot error, 5xx, network).
+      await recordReportFailure(sb, { jobId: j.id, source: 'DRIVER', error: e, attempt: (j.synthesis_attempts ?? 0) + 1, httpStatus: (e as any)?.httpStatus ?? null });
     }
   }
 }
@@ -7097,13 +7100,14 @@ async function startSynthesisNow(sb: any, jobId: string): Promise<void> {
       },
       body: JSON.stringify({ jobId, internal: true, trigger: 'research' }),
     })
-      .then((res) => {
-        if (!res.ok) throw new Error(`verify-synthesis ${res.status}`);
+      .then(async (res) => {
+        if (!res.ok) throw await synthesisHttpError(res);
       })
       .catch(async (e) => {
         // Exactly what the driver does on failure: FAILED is swept again.
         console.error(`research-agent: immediate synthesis failed for ${jobId}`, e);
         await sb.from('research_jobs').update({ synthesis_state: 'FAILED' }).eq('id', jobId).eq('synthesis_state', 'PENDING');
+        await recordReportFailure(sb, { jobId, source: 'RESEARCH', error: e, attempt: attempts + 1, httpStatus: (e as any)?.httpStatus ?? null });
       });
     const rt = (globalThis as any).EdgeRuntime;
     if (rt?.waitUntil) rt.waitUntil(call);
@@ -7304,8 +7308,18 @@ async function settleVerifyBudgets(sb: any): Promise<void> {
     const { data: jobs } = await sb.from('research_jobs').select('id,status,synthesis_state,synthesis_attempts,completed_at,paused_at,official_found:result_json->officialSourcesConfirmedFound').in('id', ids);
     const { data: sessions } = await sb.from('verify_billing_sessions').select('job_id,created_at').in('job_id', ids).eq('state', 'RESERVED');
     const openedAt = new Map((sessions ?? []).map((x: any) => [x.job_id, x.created_at]));
+    /* DELIVERED = READY and the report exists (src/verify/reportDelivery.ts): a
+       READY marker without synthesis_json is never charged. The ids only, never
+       the payload; when this read fails, presence stays unknown (old rule). */
+    const readyIds = (jobs ?? []).filter((x: any) => x.synthesis_state === 'READY').map((x: any) => x.id);
+    let present: Set<string> | null = null;
+    if (readyIds.length) {
+      const { data: withReport, error: presentError } = await sb.from('research_jobs').select('id').in('id', readyIds).not('synthesis_json', 'is', null);
+      if (!presentError) present = new Set((withReport ?? []).map((x: any) => x.id));
+    }
     for (const job of jobs ?? []) {
-      const outcome = settlementOutcome(job, { maxSynthesisAttempts: MAX_SYNTHESIS_ATTEMPTS, synthesisGraceMs: SYNTHESIS_SETTLE_GRACE_MS, openSessionAt: openedAt.get(job.id) ?? null, officialFound: Array.isArray(job.official_found) ? job.official_found.length : null });
+      const reportPresent = job.synthesis_state === 'READY' && present ? present.has(job.id) : null;
+      const outcome = settlementOutcome(job, { maxSynthesisAttempts: MAX_SYNTHESIS_ATTEMPTS, synthesisGraceMs: SYNTHESIS_SETTLE_GRACE_MS, openSessionAt: openedAt.get(job.id) ?? null, officialFound: Array.isArray(job.official_found) ? job.official_found.length : null, reportPresent });
       if (outcome) await closeBilling(sb, job.id, outcome);
     }
   } catch (e) {

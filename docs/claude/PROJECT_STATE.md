@@ -1,9 +1,21 @@
 # PROJECT STATE
 
-last_updated: 2026-10-25
+last_updated: 2026-10-29
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Subscriptions, trials, checkout, billing admin (branch claude/saas-subs, 2026-10-29) — COMMITTED, NOT PUSHED / MIGRATED / DEPLOYED
+
+- Owner decision 2026-10-29 supersedes PAYG-only: STANDARD 9.90 / VIP 29 / UNLIMITED 99 GEL a month,
+  first-use trials, success-only allowances, new credit sales closed. Full model: docs/claude/BILLING.md
+  "Subscriptions".
+- Migrations (in order): 20261207100000_saas_subscriptions_core, 20261207100100_saas_entitlement_wiring.
+- Edge: saas-checkout (new, JWT), saas-payments-webhook (new, no JWT), jobs-worker, research-agent,
+  deal-room-document-analyze, developer-document-extract, atomic-unlock, credits-topup.
+- Production state at the time of writing (read-only check): NO payment secrets at all (no BOG_*,
+  TBC_*, PAYMENT_PROVIDER_SECRET, STRIPE_*); `verify_billing_enabled` true; 3 accounts hold credits;
+  `user_subscriptions` empty. Until a bank is live, plans activate only by the audited admin grant.
 
 ## Email Studio editor rebuild — drag & drop + mobile-first (branch claude/email-editor-ux-rebuild, 2026-10-25) — PR OPEN, NOT MERGED/DEPLOYED, AWAITING OWNER RELEASE APPROVAL
 

@@ -45,7 +45,7 @@ const POLL_MS = 3_000;
 const NONE_KICK_AFTER = 5;
 const NONE_GIVE_UP_AFTER = 20;
 /** Engineering reasons the customer should see in words, never as codes. */
-const FAILURE_KEYS: Record<string, string> = { BILLING_REQUIRED: 'ct_fail_billing', retry_failed: 'ct_fail_retry', stalled: 'ct_fail_stalled' };
+const FAILURE_KEYS: Record<string, string> = { BILLING_REQUIRED: 'sub_fail_billing', retry_failed: 'ct_fail_retry', stalled: 'ct_fail_stalled' };
 
 export default function ContractResultPage() {
   const { id } = useParams<{ id: string }>();
@@ -251,7 +251,7 @@ export default function ContractResultPage() {
                 <p className="min-w-0 break-words text-sm text-muted-foreground">{t(FAILURE_KEYS[failure])}</p>
               ) : null}
               {failure === 'BILLING_REQUIRED' ? (
-                <Button size="sm" onClick={() => navigate('/credits')}>{t('ct_fail_billing_cta')}</Button>
+                <Button size="sm" onClick={() => navigate('/pricing')}>{t('sub_see_plans')}</Button>
               ) : null}
               {state === 'FAILED' ? (
                 <Button size="sm" variant="outline" disabled={retrying} onClick={() => { void retry(); }}>

@@ -86,7 +86,7 @@ export function SelectionBar({
 }
 
 const ERROR_KEY: Record<string, string> = {
-  INSUFFICIENT_CREDITS: 'mw_err_insufficient', PRICE_CHANGED: 'mw_err_price_changed', SERVICE_DISABLED: 'mw_err_disabled',
+  INSUFFICIENT_CREDITS: 'mw_err_insufficient', SUBSCRIPTION_REQUIRED: 'sub_prompt_subscribe', PRICE_CHANGED: 'mw_err_price_changed', SERVICE_DISABLED: 'mw_err_disabled',
   PRODUCT_DISABLED: 'mw_err_disabled', TOO_MANY_SELECTED: 'mw_err_too_many', NOTHING_SELECTED: 'mw_err_nothing',
 };
 
@@ -147,7 +147,7 @@ export function UnlockConfirmDialog({
         {error ? (
           <div className="rounded-xl border border-[hsl(0_45%_80%)] bg-[hsl(0_60%_97%)] p-3 text-sm text-[hsl(0_55%_30%)]" role="alert" data-testid="mw-confirm-error" data-code={error}>
             <p className="flex items-start gap-1.5"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{t(ERROR_KEY[error] ?? 'mw_err_generic')}</p>
-            {error === 'INSUFFICIENT_CREDITS' ? <Link to="/credits" className="mt-2 inline-flex min-h-10 items-center font-semibold underline underline-offset-4">{t('mw_add_credits')}</Link> : null}
+            {error === 'INSUFFICIENT_CREDITS' || error === 'SUBSCRIPTION_REQUIRED' ? <Link to="/pricing" className="mt-2 inline-flex min-h-10 items-center font-semibold underline underline-offset-4">{t('sub_see_plans')}</Link> : null}
             {error === 'PRICE_CHANGED' ? <button type="button" onClick={onRequote} className="mt-2 inline-flex min-h-10 items-center font-semibold underline underline-offset-4" data-testid="mw-requote">{t('mw_requote')}</button> : null}
           </div>
         ) : null}
@@ -156,7 +156,7 @@ export function UnlockConfirmDialog({
              have been topped up elsewhere since, and the server decides (a refusal charges nothing). */
           <div className="rounded-xl border border-[hsl(38_70%_75%)] bg-[hsl(42_90%_96%)] p-3 text-sm text-[hsl(30_60%_25%)]" role="status" data-testid="mw-confirm-over-balance">
             <p className="flex items-start gap-1.5"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{t('mw_err_insufficient')}</p>
-            <Link to="/credits" className="mt-2 inline-flex min-h-10 items-center font-semibold underline underline-offset-4">{t('mw_add_credits')}</Link>
+            <Link to="/pricing" className="mt-2 inline-flex min-h-10 items-center font-semibold underline underline-offset-4">{t('sub_see_plans')}</Link>
           </div>
         ) : null}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

@@ -299,7 +299,7 @@ async function unlockInternalLeads(req: Request, supabaseUser: any, supabaseAdmi
   if (error) {
     const code = unlockErrorCode(error.message);
     if (code === 'INTERNAL') console.error('[atomic-unlock:internal_leads]', error.message);
-    return json({ error: code }, code === 'INSUFFICIENT_CREDITS' ? 402 : code === 'INTERNAL' ? 500 : 409);
+    return json({ error: code }, code === 'INSUFFICIENT_CREDITS' || code === 'SUBSCRIPTION_REQUIRED' ? 402 : code === 'INTERNAL' ? 500 : 409);
   }
   void req;
   return json({ success: true, ...(data as Record<string, unknown>) });

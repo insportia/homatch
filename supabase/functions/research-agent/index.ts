@@ -2082,6 +2082,8 @@ async function cancelJobTasks(sb: any, jobId: string, taskId: string | null = nu
  * wallet): this file only says WHEN — at start, on every status read (live
  * usage, keeps a long reservation alive), on stop, and when a job ends.
  */
+/** Refusals the page turns into the subscribe / upgrade prompt (or, for legacy holders, the balance). */
+const ENTITLEMENT_REFUSALS: ReadonlySet<string> = new Set(['INSUFFICIENT_CREDITS', 'SUBSCRIPTION_REQUIRED', 'ALLOWANCE_EXHAUSTED']);
 async function verifyBillingEnabled(sb: any): Promise<boolean> {
   const v = await adminSettingJson(sb, 'verify_billing_enabled');
   return v === true || v === 'true';
@@ -8074,7 +8076,7 @@ Deno.serve(async (req) => {
         }
         // A continuation never runs without an open budget.
         if (!o?.ok) {
-          return json({ error: o?.reason ?? 'BILLING_UNAVAILABLE', code: o?.reason ?? 'BILLING_UNAVAILABLE', requiredCredits: o?.requiredCredits ?? null, availableCredits: o?.availableCredits ?? null, billing: publicBilling(await billingStateFor(sb, id), j.result_json?._pause) }, o?.reason === 'INSUFFICIENT_CREDITS' || o?.reason === 'BUDGET_EXHAUSTED' ? 402 : 409);
+          return json({ error: o?.reason ?? 'BILLING_UNAVAILABLE', code: o?.reason ?? 'BILLING_UNAVAILABLE', requiredCredits: o?.requiredCredits ?? null, availableCredits: o?.availableCredits ?? null, billing: publicBilling(await billingStateFor(sb, id), j.result_json?._pause) }, ENTITLEMENT_REFUSALS.has(o?.reason) || o?.reason === 'BUDGET_EXHAUSTED' ? 402 : 409);
         }
       }
       const pause = j.result_json?._pause || { status: 'CREATED', stage: 'QUEUED' };
@@ -8323,8 +8325,10 @@ Deno.serve(async (req) => {
         await sb.from('research_jobs').delete().eq('id', j.id);
         if (oe) console.error('research-agent: verify_billing_open', oe.message);
         const reason = o?.reason ?? 'BILLING_UNAVAILABLE';
-        return json({ error: reason, code: reason, requiredCredits: o?.requiredCredits ?? null, availableCredits: o?.availableCredits ?? null, priceCredits: o?.priceCredits ?? null, priceCents: o?.priceCents ?? null },
-          reason === 'INSUFFICIENT_CREDITS' ? 402 : reason === 'PRICE_CHANGED' ? 409 : 503);
+        /* SUBSCRIPTION_REQUIRED / ALLOWANCE_EXHAUSTED (20261207100100): the page shows the plans
+           prompt. Trial and plan uses are committed only by verify_billing_close('COMPLETE'). */
+        return json({ error: reason, code: reason, requiredCredits: o?.requiredCredits ?? null, availableCredits: o?.availableCredits ?? null, priceCredits: o?.priceCredits ?? null, priceCents: o?.priceCents ?? null, trialBlocked: o?.trialBlocked ?? null },
+          ENTITLEMENT_REFUSALS.has(reason) ? 402 : reason === 'PRICE_CHANGED' ? 409 : 503);
       }
     }
     /*

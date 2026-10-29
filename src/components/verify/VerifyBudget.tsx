@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
+import { SubscribePrompt } from '@/subscriptions/components';
 
 export interface LaunchQuote {
   enabled: boolean;
@@ -46,6 +47,19 @@ export interface LaunchQuote {
   validityDays?: number | null;
   /** Set by the page when a start was refused because the price changed. */
   priceChanged?: boolean;
+  /**
+   * SUBSCRIPTIONS (20261207100100): what the next Verify would be funded by, decided on the server.
+   * TRIAL / PLAN cost nothing; LEGACY_CREDITS uses the fixed price from the old balance; NONE means
+   * the plans prompt (SUBSCRIPTION_REQUIRED / ALLOWANCE_EXHAUSTED).
+   */
+  entitlement?: {
+    funding: 'TRIAL' | 'PLAN' | 'LEGACY_CREDITS' | 'NONE';
+    unlimited?: boolean;
+    remaining?: number;
+    limit?: number;
+    reason?: string;
+    fallbackReason?: string;
+  } | null;
 }
 
 export interface PublicBilling {
@@ -153,7 +167,10 @@ export function VerifyLaunchDialog({
   const shown = options.includes(currency) ? currency : 'USD';
   const value = quote ? convertUsdCents(quote.usdCents, shown, quote.currencies, lang) : null;
   const available = quote?.availableCredits ?? null;
-  const missing = quote && available != null ? Math.max(0, Math.round((quote.maxCredits - available) * 100) / 100) : 0;
+  const funding = quote?.entitlement?.funding ?? null;
+  const included = funding === 'TRIAL' || funding === 'PLAN';
+  const refused = funding === 'NONE';
+  const missing = !included && !refused && quote && available != null ? Math.max(0, Math.round((quote.maxCredits - available) * 100) / 100) : 0;
   const pick = (c: string) => {
     setCurrency(c);
     try {
@@ -173,7 +190,17 @@ export function VerifyLaunchDialog({
             <DialogTitle className="font-display text-2xl font-semibold leading-tight text-foreground">{t('verify_budget_title')}</DialogTitle>
           </DialogHeader>
 
-          {quote ? (
+          {quote && included ? (
+            <div className="rounded-xl bg-[#0C1119] p-5 text-white shadow-card" role="status">
+              <p className="font-display text-2xl font-semibold leading-tight text-[hsl(38_92%_62%)]">
+                {funding === 'TRIAL' ? t('sub_badge_first_free')
+                  : quote.entitlement?.unlimited ? t('sub_badge_included_unlimited')
+                  : t('sub_badge_included', { remaining: String(quote.entitlement?.remaining ?? '') })}
+              </p>
+            </div>
+          ) : quote && refused ? (
+            <SubscribePrompt code={quote.entitlement?.reason ?? 'SUBSCRIPTION_REQUIRED'} />
+          ) : quote ? (
             <div className="rounded-xl bg-[#0C1119] p-5 text-white shadow-card">
               <p className="text-2xs font-medium uppercase tracking-[0.12em] text-white/60">{t(fixed ? 'verify_price_label' : 'verify_budget_required')}</p>
               <p className="mt-1.5 whitespace-nowrap font-display text-4xl font-semibold leading-none tracking-tight [font-variant-numeric:tabular-nums]">
@@ -217,15 +244,11 @@ export function VerifyLaunchDialog({
           </DialogDescription>
 
           {quote && missing > 0 ? (
-            <div className="space-y-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4">
-              <p className="text-sm font-medium leading-6 text-foreground break-words">{t('verify_budget_missing', { n: formatCreditAmount(missing, lang) })}</p>
-              <Button asChild className={FRAMED_ACTION}>
-                <Link to="/credits"><Wallet className="me-2 h-4 w-4 shrink-0" aria-hidden="true" />{t('verify_budget_add_credits')}</Link>
-              </Button>
-            </div>
+            /* Credits are no longer sold: a short legacy balance is answered with the plans. */
+            <SubscribePrompt code={quote.entitlement?.fallbackReason ?? 'SUBSCRIPTION_REQUIRED'} />
           ) : null}
 
-          <Button type="button" className={GOLD_ACTION} disabled={!quote || busy || missing > 0} onClick={onConfirm}>
+          <Button type="button" className={GOLD_ACTION} disabled={!quote || busy || missing > 0 || refused} onClick={onConfirm}>
             {busy ? <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
             {t('verify_budget_start')}
           </Button>
@@ -387,7 +410,7 @@ export function VerifyPausedCard({
       {resumeError === 'INSUFFICIENT_CREDITS' ? (
         <div className="space-y-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4">
           <p className="text-sm font-medium leading-6">{t('verify_resume_need_credits')}</p>
-          <Button asChild className={FRAMED_ACTION}><Link to="/credits"><Wallet className="me-2 h-4 w-4 shrink-0" aria-hidden="true" />{t('verify_budget_add_credits')}</Link></Button>
+          <Button asChild className={FRAMED_ACTION}><Link to="/pricing"><Wallet className="me-2 h-4 w-4 shrink-0" aria-hidden="true" />{t('sub_see_plans')}</Link></Button>
         </div>
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
@@ -483,7 +506,7 @@ export function VerifyBudgetExtendDialog({
             <div className="space-y-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] p-4">
               <p className="text-sm font-medium leading-6 text-foreground break-words">{t('verify_resume_need_credits')}</p>
               <Button asChild className={FRAMED_ACTION}>
-                <Link to="/credits"><Wallet className="me-2 h-4 w-4 shrink-0" aria-hidden="true" />{t('verify_budget_add_credits')}</Link>
+                <Link to="/pricing"><Wallet className="me-2 h-4 w-4 shrink-0" aria-hidden="true" />{t('sub_see_plans')}</Link>
               </Button>
             </div>
           ) : null}

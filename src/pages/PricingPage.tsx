@@ -1,168 +1,163 @@
-import React, { useEffect, useState } from 'react';
+import { Clock, Gift, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { useAuth } from '@/contexts/AuthContext';
-import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
-import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
-import { usePublicNavLinks } from '@/site/publicNav';
+import { HeaderSpacer, PublicHeader } from '@/components/home/PublicHeader';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
-import { PageBlocks } from '@/site/render/PageBlocks';
-import { SitePage } from '@/site/render/SitePage';
-import { usePublishedPage } from '@/site/render/usePublishedPage';
 import { Button } from '@/components/ui/button';
-import { getCatalogue, formatCredits } from '@/services/billing';
-import type { BillingCatalogue } from '@/types/billing';
-import { Loader2, ArrowRight, Wallet } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
+import { usePublicNavLinks } from '@/site/publicNav';
+import { PageBlocks } from '@/site/render/PageBlocks';
+import { PlanCard } from '@/subscriptions/components';
+import { getPlans, type PlanCode, type PlansResponse, SubscriptionError, startCheckout } from '@/subscriptions/service';
+import { useEntitlementStatus } from '@/subscriptions/useEntitlementStatus';
 
 /**
- * THE PRICING PAGE, WITH NOTHING TO COMPARE.
+ * THE PRICING PAGE: THREE MONTHLY PLANS (owner decision 2026-10-29).
  *
- * This was three plan cards, an upgrade-savings banner and a feature
- * comparison table. There are no plans now: no FREE/VIP/PREMIUM, no monthly
- * fee, no membership credits, no "Most Popular". An account is free, credits
- * are bought when they are wanted, and a search charges what it actually used.
+ * Every price and every allowance comes from the server (saas_plans / saas_plan_entitlements via
+ * saas-checkout `plans`), so an admin edit changes this page without a deploy. Prices are GEL,
+ * VAT included.
  *
- * So the page answers three questions and stops:
+ * Choosing a plan creates a checkout on the server and sends the customer to the bank; access is
+ * granted only when the bank's verified event arrives. Until a live bank is connected the page says
+ * so plainly ("online payment activation pending") and offers no button that pretends to work.
  *
- *   What does it cost me to be here?   Nothing.
- *   What does a thing cost?            A list, from the server.
- *   How do I get credits?              Any amount from $1.
- *
- * EVERY NUMBER STILL COMES FROM THE SERVER. billable_products carries the
- * price and admin_settings carries the conversion rate, so an operator
- * changing either changes this page without a deploy — which is the property
- * the plan grid had and the reason it is kept.
- *
- * WHAT IS DELIBERATELY ABSENT, AND STAYS ABSENT
- *
- * COGS, margin, provider budgets and the reference cost behind a price. The
- * catalogue endpoint does not select those columns at all, so this file could
- * not render them even if somebody asked it to.
+ * The Site Studio "pricing_intro" block is not rendered: its stored copy described the old
+ * credits-only model. Anything else an admin added below still renders.
  */
 
-const PAGE = 'mx-auto w-full max-w-[64rem] px-5 sm:px-8 lg:px-10';
+const PAGE = 'mx-auto w-full max-w-[72rem] px-4 sm:px-8 lg:px-10';
+
+const ERRORS: Record<string, string> = {
+  ALREADY_ACTIVE: 'sub_err_already_active',
+  USE_DOWNGRADE: 'sub_err_use_downgrade',
+  NEXT_PERIOD_ALREADY_PAID: 'sub_err_next_paid',
+  PAYMENTS_NOT_CONNECTED: 'sub_payments_pending_body',
+  PROVIDER_NOT_CONFIGURED: 'sub_payments_pending_body',
+};
 
 export default function PricingPage() {
   const { t } = useLanguage();
   const { homatchUser } = useAuth();
   const navigate = useNavigate();
   useSurfaceTheme('light');
+  const headerLinks = usePublicNavLinks();
+  const { status } = useEntitlementStatus();
 
-  const [catalogue, setCatalogue] = useState<BillingCatalogue | null>(null);
+  const [plans, setPlans] = useState<PlansResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const storedPage = usePublishedPage('pricing');
+  const [busy, setBusy] = useState<PlanCode | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [autoRenew, setAutoRenew] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    getCatalogue()
-      .then((c) => { if (alive) setCatalogue(c); })
-      .catch(() => { if (alive) setCatalogue(null); })
+    getPlans()
+      .then((p) => { if (alive) setPlans(p); })
+      .catch(() => { if (alive) setPlans(null); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, []);
 
-  const creditsPerUsd = catalogue?.creditsPerUsd ?? 10;
-  /* One dollar's worth, stated in the customer's own arithmetic. */
-  const rateCredits = String(creditsPerUsd);
-  const rateUsd = '1';
+  const currentPlan = status?.subscription?.hasAccess ? status.subscription.planCode : null;
+  const currentTier = plans?.plans.find((p) => p.code === currentPlan)?.priorityTier ?? 0;
+  const connected = plans?.paymentsConnected === true;
 
-  const headerLinks = usePublicNavLinks();
-
-  const products = (catalogue?.products ?? [])
-    .slice()
-    .sort((a, b) => a.sort_order - b.sort_order);
+  async function choose(code: PlanCode) {
+    if (!homatchUser) { navigate('/auth/signup?next=/pricing'); return; }
+    setError(null);
+    setBusy(code);
+    try {
+      const r = await startCheckout(code, { autoRenew: autoRenew && plans?.autoRenewAvailable === true });
+      window.location.assign(r.redirectUrl);
+    } catch (e) {
+      const code2 = e instanceof SubscriptionError ? e.code : 'REQUEST_FAILED';
+      setError(t(ERRORS[code2] ?? 'sub_err_generic'));
+      setBusy(null);
+    }
+  }
 
   return (
     <div className="hm-public min-h-screen bg-background text-foreground">
       <PublicHeader links={headerLinks} solid />
       <HeaderSpacer />
 
-      <main className={`${PAGE} py-12 sm:py-16 lg:py-20`}>
-        {/* Stored content the owner edits in Site Studio. */}
-        <SitePage slug="pricing" content={storedPage} only={['pricing_intro']} />
+      <main className={`${PAGE} py-10 sm:py-16`}>
+        <header className="max-w-[48rem]">
+          <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">{t('sub_pricing_title')}</h1>
+          <p className="mt-3 text-base leading-relaxed text-muted-foreground">{t('sub_pricing_sub')}</p>
+        </header>
 
-        {/*
-          The headline and the no-subscription sentence live in the stored
-          intro above, which is the page's one h1 and is editable in Site
-          Studio. Repeating them here would give the page two titles and say
-          the same thing twice.
-        */}
-        <p className="mt-6 text-sm font-medium text-gold-ink" dir="auto">
-          {t('payg_rate_line', { credits: rateCredits, usd: rateUsd })}
-        </p>
-
-        {/*
-          ── What things cost ────────────────────────────────────
-
-          Rendered only when there is something to render. An empty list left
-          a heading with a blank space under it on production for the window
-          between the frontend deploying and the catalogue function catching
-          up -- a page that looks broken rather than one that is simply
-          waiting. The same shape protects against the endpoint failing.
-        */}
-        {(loading || products.length > 0) && (
-        <section className="mt-10 sm:mt-14" aria-labelledby="payg-prices">
-          <h2 id="payg-prices" className="text-lg font-semibold tracking-tight">
-            {t('payg_prices_title')}
-          </h2>
-
-          {loading ? (
-            <div className="mt-8 flex justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
+        {!loading && plans && !connected ? (
+          <section role="status" className="mt-6 flex gap-3 rounded-xl border border-border bg-card p-4">
+            <Clock className="mt-0.5 h-5 w-5 shrink-0 text-gold-ink" aria-hidden="true" />
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold">{t('sub_payments_pending_title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{t('sub_payments_pending_body')}</p>
             </div>
-          ) : (
-            <ul className="mt-4 divide-y divide-border rounded-xl border border-border bg-card">
-              {products.map((p) => (
-                <li key={p.code} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3.5">
-                  <span className="min-w-0 flex-1 text-sm font-medium text-foreground">{p.name}</span>
-                  <span className="text-sm text-muted-foreground">
-                    {p.price_credits == null
-                      ? t('payg_price_unavailable')
-                      : p.billing_mode === 'VARIABLE'
-                        /* Variable cost: the figure is a starting point, not
-                           a flat price, and saying so is the honest form. */
-                        ? t('payg_price_from', { credits: formatCredits(p.price_credits) })
-                        : t('payg_price_each', { credits: formatCredits(p.price_credits) })}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
+          </section>
+        ) : null}
 
-          <p className="mt-3 max-w-[60ch] text-sm leading-relaxed text-muted-foreground">
-            {t('payg_only_actual')}
-          </p>
-        </section>
+        {loading ? (
+          <div className="mt-10 flex justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" /></div>
+        ) : !plans ? (
+          <p className="mt-8 text-sm text-muted-foreground" role="alert">{t('sub_err_generic')}</p>
+        ) : (
+          <>
+            <div className="mt-8 grid gap-4 md:grid-cols-3">
+              {plans.plans.map((p) => {
+                const isCurrent = currentPlan === p.code;
+                const lower = currentPlan !== null && p.priorityTier < currentTier;
+                return (
+                  <PlanCard
+                    key={p.code}
+                    plan={p}
+                    current={isCurrent}
+                    highlight={p.code === 'VIP'}
+                    action={
+                      !homatchUser ? (
+                        <Button className="h-11 w-full" onClick={() => navigate('/auth/signup?next=/pricing')}>{t('sub_signin_to_subscribe')}</Button>
+                      ) : isCurrent || lower ? (
+                        <Button variant="outline" className="h-11 w-full" onClick={() => navigate('/account/subscription')}>{t('sub_go_subscription')}</Button>
+                      ) : (
+                        <Button
+                          className="h-auto min-h-11 w-full whitespace-normal bg-gold text-primary hover:bg-gold-hover"
+                          disabled={!connected || busy !== null}
+                          onClick={() => void choose(p.code)}
+                        >
+                          {busy === p.code ? <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                          {busy === p.code ? t('sub_redirecting') : t('sub_choose', { plan: t(`sub_plan_${p.code}`) })}
+                        </Button>
+                      )
+                    }
+                  />
+                );
+              })}
+            </div>
+            {connected && plans.autoRenewAvailable && homatchUser ? (
+              <label className="mt-4 flex items-start gap-2 text-sm">
+                <input type="checkbox" className="mt-0.5 h-4 w-4" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} />
+                <span>{t('sub_auto_renew')}</span>
+              </label>
+            ) : null}
+            {error ? <p role="alert" className="mt-4 text-sm text-destructive">{error}</p> : null}
+            {currentPlan ? <p className="mt-4 text-sm text-muted-foreground">{t('sub_upgrade_note')}</p> : null}
+          </>
         )}
 
-        {/* ── Getting credits ───────────────────────────────────── */}
-        <section className="mt-10 sm:mt-14 rounded-2xl border border-border/60 bg-card/50 p-6 sm:p-8">
-          <h2 className="text-lg font-semibold tracking-tight">{t('payg_topup_title')}</h2>
-          <p className="mt-2 max-w-[52ch] text-sm leading-relaxed text-muted-foreground">
-            {t('payg_topup_body')}
-          </p>
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              size="lg"
-              className="h-auto min-h-11 whitespace-normal py-2.5 text-start leading-snug"
-              onClick={() => navigate(homatchUser ? '/credits' : '/auth/signup')}
-            >
-              <Wallet className="me-2 h-4 w-4 shrink-0" aria-hidden="true" />
-              {homatchUser ? t('payg_cta_wallet') : t('payg_cta_start')}
-              <ArrowRight className="ms-2 h-4 w-4 shrink-0 rtl:rotate-180" aria-hidden="true" />
-            </Button>
-            {!homatchUser && (
-              <span className="text-sm text-muted-foreground">{t('payg_free_account')}</span>
-            )}
+        <section className="mt-10 flex gap-3 rounded-2xl border border-border/60 bg-card/50 p-5 sm:p-6">
+          <Gift className="mt-0.5 h-5 w-5 shrink-0 text-gold-ink" aria-hidden="true" />
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold">{t('sub_trials_title')}</h2>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t('sub_trials_body')}</p>
           </div>
         </section>
+        <p className="mt-6 max-w-[60ch] text-sm leading-relaxed text-muted-foreground">{t('sub_extra_costs')}</p>
       </main>
 
-      {/* Everything an admin ADDED, below. The heading is excluded because it
-          has already been rendered above. */}
       <PageBlocks slug="pricing" except={['pricing_intro']} />
-
       <SiteFooter />
     </div>
   );

@@ -45,6 +45,15 @@ import { documentKind, extractDocxText, DOCX_MIME } from '../../../src/dealroom/
 import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { crossCheck, toFindingRows } from '../../../src/dealroom/domain/contractCheck.ts';
 import { beginExecution, settleExecution, releaseExecution, serviceClient } from '../_shared/billing.ts';
+import { beginEntitled, commitEntitled, releaseEntitled, type EntitledGrant } from '../_shared/entitlements.ts';
+import { deferCost, recordUsageCost, tokenUsage } from '../_shared/providerCost.ts';
+
+/* Give a started use back: the wallet hold (legacy credit holders) or the trial / plan slot. */
+// deno-lint-ignore no-explicit-any
+async function releaseGate(svc: any, g: EntitledGrant, reason: string): Promise<void> {
+  if (g.funding === 'LEGACY_CREDITS' && g.legacy) await releaseExecution(svc, g.legacy, reason);
+  else await releaseEntitled(svc, g, reason);
+}
 import { notify } from '../_shared/notify.ts';
 import { retentionBlocked } from '../_shared/retentionGuard.ts';
 import { readRouted } from '../_shared/storage/routed.ts';
@@ -118,7 +127,7 @@ serve(async (req) => {
   /* The hold this run placed, and whether it was settled or released. Any
    * exception after the hold gives the money back in the catch below instead
    * of leaving it reserved until the sweeper finds it. */
-  let heldGrant: Awaited<ReturnType<typeof beginExecution>> | null = null;
+  let heldGrant: EntitledGrant | null = null;
   let billingClosed = false;
   let svcForRelease: any = null;
 
@@ -388,23 +397,29 @@ serve(async (req) => {
     if (!hmUser?.id) return json({ error: 'unauthorized' }, 401);
 
     const analysisStartedAt = Date.now();
-    /* THE PRICE IS FIXED when billable_products says so (owner decision
-     * 2026-10-25: 3 credits = $0.30, migration 20261204100100). The hold is
-     * exactly that price, never shrunk to a smaller balance, and success
-     * settles exactly that price below. The monthly included analysis is
-     * untouched: beginExecution still funds it from the allowance first. */
+    /* SUBSCRIPTIONS (owner decision 2026-10-29). The first successful analysis is free, then the
+     * plan's allowance for the period; the old "1 free per month for everyone" is gone
+     * (allowIncluded: false). An account that still holds legacy credits may spend them at the
+     * fixed price (2026-10-25: 3 credits); nobody can buy new ones. Keyed to the document and its
+     * bytes: a retry after a failure re-reserves the same use, and re-running a delivered analysis
+     * of the same bytes consumes nothing new. */
     const fixedCredits = await fixedPriceCredits(svc, 'CONTRACT_INTELLIGENCE');
-    const grant = await beginExecution(svc, {
+    const grant = await beginEntitled(svc, {
       userId: hmUser.id,
-      productCode: 'CONTRACT_INTELLIGENCE',
-      // Keyed to the document's content hash, so re-analysing the SAME bytes
-      // after a transient failure reuses the hold rather than placing another.
-      idempotencyKey: `contract:${hmUser.id}:${sha}`,
+      feature: 'CONTRACT_ANALYSIS',
+      key: `contract:${documentId}:${sha}`,
       jobRef: documentId,
-      metadata: { pages, ...(fixedCredits != null ? { fixed_price_credits: fixedCredits } : {}) },
-      ...(fixedCredits != null
-        ? { authorizedMaxCredits: fixedCredits, budgetIsCeiling: true, requireFullBudget: true }
-        : {}),
+      legacy: () => beginExecution(svc, {
+        userId: hmUser.id,
+        productCode: 'CONTRACT_INTELLIGENCE',
+        idempotencyKey: `contract:${hmUser.id}:${sha}`,
+        jobRef: documentId,
+        allowIncluded: false,
+        metadata: { pages, ...(fixedCredits != null ? { fixed_price_credits: fixedCredits } : {}) },
+        ...(fixedCredits != null
+          ? { authorizedMaxCredits: fixedCredits, budgetIsCeiling: true, requireFullBudget: true }
+          : {}),
+      }),
     });
     heldGrant = grant.ok ? grant : null;
 
@@ -441,11 +456,11 @@ serve(async (req) => {
       if (refusalErr) console.error('[analyze] could not record billing refusal', refusalErr.message);
       return json({
         state: 'BILLING_REQUIRED',
-        reason: grant.reason ?? 'BILLING_REQUIRED',
-        planCode: grant.planCode,
+        // SUBSCRIPTION_REQUIRED / ALLOWANCE_EXHAUSTED: the page turns it into the plans prompt.
+        reason: grant.reason ?? 'SUBSCRIPTION_REQUIRED',
+        trialBlocked: grant.trialBlocked ?? null,
         walletBalance: Number(ent?.wallet?.balance ?? 0),
-        firstTopupPromoAvailable: !!ent?.first_topup_promo_available,
-      }, 402);
+      }, grant.reason === 'ERROR' ? 503 : 402);
     }
 
     const REASONING: Record<string, 'low' | 'medium' | 'high'> = {
@@ -466,7 +481,7 @@ serve(async (req) => {
             { role: 'system', content: system },
             { role: 'user', content: user },
           ],
-          reasoning: { effort: REASONING[grant.qualityTier] ?? 'low' },
+          reasoning: { effort: REASONING[grant.legacy?.qualityTier ?? 'STANDARD'] ?? 'low' },
         }),
       });
       if (res.ok) {
@@ -484,7 +499,7 @@ serve(async (req) => {
     // nothing and give an included slot back.
     if (!modelText) {
       billingClosed = true;
-      await releaseExecution(svc, grant, 'model_returned_nothing');
+      await releaseGate(svc, grant, 'model_returned_nothing');
     }
 
     const analysis = parseAnalysis(modelText, text);
@@ -569,8 +584,22 @@ serve(async (req) => {
         p_web_search_calls: 0,
       });
       billingClosed = true;
-      try {
-        const settled = await settleExecution(svc, grant, {
+      if (grant.funding !== 'LEGACY_CREDITS' || !grant.legacy) {
+        /* Trial / plan: delivered, so the use counts. COGS is still recorded (Finance V2: free to the
+         * customer is never free to HOMATCH). */
+        await commitEntitled(svc, grant);
+        deferCost(recordUsageCost(svc, {
+          provider: 'OPENAI',
+          operation: 'CONTRACT_ANALYSIS',
+          service: 'contract_intelligence',
+          model: modelId ?? MODEL,
+          correlationId: String(documentId),
+          idempotencyKey: `CONTRACT_ANALYSIS:${documentId}:${sha}:${grant.funding}`,
+          tokens: tokenUsage({ usage: modelUsage }),
+          success: true,
+        }));
+      } else try {
+        const settled = await settleExecution(svc, grant.legacy, {
           // Fixed price: exactly that, whatever the measured cost (which is
           // still recorded as COGS). Absent: the cost-based quote as before.
           ...(fixedCredits != null ? { priceCredits: fixedCredits } : {}),
@@ -582,7 +611,7 @@ serve(async (req) => {
           outputTokens: Number(modelUsage?.output_tokens ?? 0),
           durationMs: Date.now() - analysisStartedAt,
           aiCostCents: Number(aiCents ?? 0),
-          metadata: { pages, quality_tier: grant.qualityTier, findings: checked.length },
+          metadata: { pages, quality_tier: grant.legacy.qualityTier, findings: checked.length },
         }, 'SUCCESS');
         creditsCharged = settled.chargedCredits;
       } catch (e) {
@@ -633,8 +662,8 @@ serve(async (req) => {
       state: 'DONE',
       billing: {
         funding: grant.funding,
-        planCode: grant.planCode,
-        qualityTier: grant.qualityTier,
+        planCode: grant.legacy?.planCode ?? null,
+        qualityTier: grant.legacy?.qualityTier ?? 'STANDARD',
         creditsCharged,
       },
       pages,
@@ -667,7 +696,7 @@ serve(async (req) => {
     // Failed after the hold and before settlement: charge nothing.
     if (heldGrant && !billingClosed && svcForRelease) {
       billingClosed = true;
-      await releaseExecution(svcForRelease, heldGrant, 'analysis_failed').catch(() => {});
+      await releaseGate(svcForRelease, heldGrant, 'analysis_failed').catch(() => {});
     }
     if (supabase && documentId) {
       await supabase

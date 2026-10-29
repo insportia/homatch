@@ -12,7 +12,8 @@ export function edgeHandler(file, seams) {
   const withoutImports = ts.factory.updateSourceFile(source, source.statements.filter(s => !ts.isImportDeclaration(s)));
   const code = ts.transpileModule(ts.createPrinter().printFile(withoutImports), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
   let handler;
-  vm.runInNewContext(code, { ...seams, Request, Response, TextEncoder, crypto, console,
+  /* The runtime no-model guard (zero AI on the search path) is a no-op here unless a test seams it. */
+  vm.runInNewContext(code, { installNoModelGuard() {}, ...seams, Request, Response, TextEncoder, crypto, console,
     Deno: { serve(fn) { handler = fn; }, env: { get: key => ({ SUPABASE_URL: 'https://fixture.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'fixture-server-only' })[key] } } }, { filename: file });
   return handler;
 }

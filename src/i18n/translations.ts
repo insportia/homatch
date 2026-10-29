@@ -25263,6 +25263,14 @@ const en = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'Listings HOMATCH shows from other websites may include the seller contact that was published on the source listing. This is the advertiser\'s public listing contact, not data from HOMATCH accounts or from any lead database.',
+
+  /* ── FIND PROPERTY QUERY ENGINE (clarification chips) ── */
+  mps_clarify_title: 'Just to be sure',
+  mps_clarify_transaction: 'Do you want to buy or to rent?',
+  mps_clarify_property_type: 'Which kind of property should we search for?',
+  mps_clarify_currency: 'Which currency is that price in?',
+  mps_clarify_place: 'Which place did you mean?',
+  mps_clarify_city: 'Which city should we search in?',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -50440,6 +50448,14 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'სხვა ვებსაიტებიდან HOMATCH-ში ნაჩვენებ განცხადებებს შეიძლება ახლდეს წყარო განცხადებაში გამოქვეყნებული გამყიდველის კონტაქტი. ეს არის განმცხადებლის საჯარო საკონტაქტო ინფორმაცია და არა HOMATCH-ის ანგარიშების ან რომელიმე ლიდების ბაზის მონაცემი.',
+
+  /* ── FIND PROPERTY QUERY ENGINE (clarification chips) ── */
+  mps_clarify_title: 'მცირე დაზუსტება',
+  mps_clarify_transaction: 'ყიდვა გინდათ თუ ქირაობა?',
+  mps_clarify_property_type: 'როგორ ქონებას ვეძებთ?',
+  mps_clarify_currency: 'ეს ფასი რომელ ვალუტაშია?',
+  mps_clarify_place: 'რომელ ადგილს გულისხმობთ?',
+  mps_clarify_city: 'რომელ ქალაქში ვეძებოთ?',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -75608,6 +75624,14 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'Объявления с других сайтов, которые показывает HOMATCH, могут содержать контакт продавца, опубликованный в исходном объявлении. Это публичный контакт автора объявления, а не данные учётных записей HOMATCH или какой-либо базы лидов.',
+
+  /* ── FIND PROPERTY QUERY ENGINE (clarification chips) ── */
+  mps_clarify_title: 'Чтобы не ошибиться',
+  mps_clarify_transaction: 'Вы хотите купить или снять?',
+  mps_clarify_property_type: 'Какую недвижимость искать?',
+  mps_clarify_currency: 'В какой валюте эта цена?',
+  mps_clarify_place: 'Какое место вы имели в виду?',
+  mps_clarify_city: 'В каком городе искать?',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -100774,6 +100798,14 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'HOMATCH\'in diğer web sitelerinden gösterdiği ilanlar, kaynak ilanda yayınlanmış satıcı iletişim bilgisini içerebilir. Bu, ilan sahibinin kamuya açık ilan iletişim bilgisidir; HOMATCH hesaplarından veya herhangi bir potansiyel müşteri veritabanından alınan veri değildir.',
+
+  /* ── FIND PROPERTY QUERY ENGINE (clarification chips) ── */
+  mps_clarify_title: 'Emin olmak için',
+  mps_clarify_transaction: 'Satın almak mı, kiralamak mı istiyorsunuz?',
+  mps_clarify_property_type: 'Hangi tür mülkü arayalım?',
+  mps_clarify_currency: 'Bu fiyat hangi para biriminde?',
+  mps_clarify_place: 'Hangi yeri kastettiniz?',
+  mps_clarify_city: 'Hangi şehirde arayalım?',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -125940,6 +125972,14 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'قد تتضمن الإعلانات التي تعرضها HOMATCH من مواقع أخرى بيانات اتصال البائع المنشورة في الإعلان الأصلي. وهذه هي بيانات الاتصال العامة للمعلِن، وليست بيانات من حسابات HOMATCH أو من أي قاعدة بيانات للعملاء المحتملين.',
+
+  /* ── FIND PROPERTY QUERY ENGINE (clarification chips) ── */
+  mps_clarify_title: 'للتأكد فقط',
+  mps_clarify_transaction: 'هل تريد الشراء أم الإيجار؟',
+  mps_clarify_property_type: 'ما نوع العقار الذي نبحث عنه؟',
+  mps_clarify_currency: 'بأي عملة هذا السعر؟',
+  mps_clarify_place: 'أي مكان تقصد؟',
+  mps_clarify_city: 'في أي مدينة نبحث؟',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -151106,6 +151146,14 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'מודעות מאתרים אחרים ש-HOMATCH מציגה עשויות לכלול את פרטי הקשר של המוכר שפורסמו במודעת המקור. אלה פרטי הקשר הציבוריים של המפרסם, ולא נתונים מחשבונות HOMATCH או ממאגר לידים כלשהו.',
+
+  /* ── FIND PROPERTY QUERY ENGINE (clarification chips) ── */
+  mps_clarify_title: 'רק כדי לוודא',
+  mps_clarify_transaction: 'אתם רוצים לקנות או לשכור?',
+  mps_clarify_property_type: 'איזה סוג נכס לחפש?',
+  mps_clarify_currency: 'באיזה מטבע המחיר הזה?',
+  mps_clarify_place: 'לאיזה מקום התכוונתם?',
+  mps_clarify_city: 'באיזו עיר לחפש?',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

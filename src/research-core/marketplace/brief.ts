@@ -1,9 +1,12 @@
 // HOMATCH MARKETPLACE SEARCH — the Search Intelligence Brief.
 //
-// OpenAI reads the customer's first sentence and returns ONE FIXED SHAPE
-// (`SEARCH_BRIEF_JSON_SCHEMA`, strict structured output). This module turns that
-// untrusted shape into a brief in which every value came out of a closed set or
-// is absent, exactly the contract search-plan.ts established for the older plan.
+// The deterministic query engine (queryEngine.ts) reads the customer's first
+// sentence WITHOUT A MODEL (owner, 2026-10-29: zero AI on the search path) and
+// produces ONE FIXED SHAPE (`SEARCH_BRIEF_JSON_SCHEMA`, the reading contract the
+// model used to fill). This module turns that shape into a brief in which every
+// value came out of a closed set or is absent, exactly the contract
+// search-plan.ts established for the older plan. The reading is still treated as
+// untrusted: the same gate validates it.
 //
 // THREE STATUSES, AND THE DIFFERENCE IS THE PRODUCT
 //
@@ -11,23 +14,24 @@
 //              traced to digits in the customer's own words; a model that
 //              "reads" 150000 out of "around 150k, maybe a bit more" produced a
 //              range nobody typed, and it is demoted to PROPOSED.
-//   PROPOSED   the model suggests it. Shown, never searched on.
+//   PROPOSED   HOMATCH suggests it (an approximate figure, an inferred type, a
+//              price without a currency). Shown, never searched on.
 //   CONFIRMED  the customer accepted or edited it.
 //
 // Readiness (readiness.ts) counts STATED and CONFIRMED only. A proposed value
 // is not a confirmed value.
 
-import {
-  type Amenity, type BuildingChoice, type FloorPreference, type MarketplacePropertyType,
-  type MarketplaceTransaction, type RenovationChoice, type BuildingStatus, type RenovationStatus,
-  AMENITIES, BUILDING_STATUSES, FLOOR_PREFERENCES, MARKETPLACE_PROPERTY_TYPES, MARKETPLACE_TRANSACTIONS,
-  RENOVATION_STATUSES, SEARCH_LANGUAGES,
-  asAmenity, asBuildingStatus, asFloorPreference, asPropertyType, asRenovationStatus, asTransaction,
-  planPropertyTypeOf, searchGoalOf,
-} from './taxonomy.ts';
 import { resolvePlace } from '../normalize/place.ts';
-import { floorTraceable, statedFloorIntent } from './floor-intent.ts';
 import { statedConditions } from './condition-intent.ts';
+import { floorTraceable, statedFloorIntent } from './floor-intent.ts';
+import {
+  AMENITIES, 
+  type Amenity, 
+  asAmenity, asBuildingStatus, asFloorPreference, asPropertyType, asRenovationStatus, asTransaction,BUILDING_STATUSES, type BuildingChoice, type BuildingStatus, FLOOR_PREFERENCES, type FloorPreference, MARKETPLACE_PROPERTY_TYPES, MARKETPLACE_TRANSACTIONS,type MarketplacePropertyType,
+  type MarketplaceTransaction, 
+  planPropertyTypeOf, 
+  RENOVATION_STATUSES, type RenovationChoice, type RenovationStatus,SEARCH_LANGUAGES,searchGoalOf,
+} from './taxonomy.ts';
 
 export const SEARCH_BRIEF_VERSION = 'search-brief-1';
 
@@ -79,12 +83,14 @@ export interface SearchIntelligenceBrief {
   relevantSearchLanguages: string[];
   /** The customer's own words, verbatim. The brief is a reading of this. */
   originalText: string;
-  /** Things the model said that could not be kept, as i18n key + the customer's value. */
+  /** Things the reading said that could not be kept, as i18n key + the customer's value. */
   dropped: Array<{ key: string; value: string }>;
+  /** The budget as the customer stated it when it was not in USD; `price` holds the USD conversion. */
+  statedPrice?: { currency: 'GEL' | 'EUR'; min: number | null; max: number | null };
 }
 
 /* ------------------------------------------------------------------ *
- * OpenAI structured-output schema (strict)                           *
+ * The reading contract (formerly the model's strict output schema)   *
  * ------------------------------------------------------------------ */
 
 const nullable = (type: string) => ({ type: [type, 'null'] });
@@ -92,9 +98,9 @@ const enumOrNull = (values: readonly string[]) => ({ type: ['string', 'null'], e
 const enumArray = (values: readonly string[]) => ({ type: 'array', items: { type: 'string', enum: [...values] } });
 
 /**
- * The only shape the model may return. Strict mode: every key required, nothing
- * additional. `proposals` is the one place a model may suggest a value the
- * customer did not state; it never lands in a field directly.
+ * The only shape a reading may have. Every key required, nothing additional.
+ * `proposals` is the one place a reading may suggest a value the customer did not
+ * state; it never lands in a field directly.
  */
 export const SEARCH_BRIEF_JSON_SCHEMA = {
   type: 'object',
@@ -153,25 +159,6 @@ export const SEARCH_BRIEF_JSON_SCHEMA = {
     },
   },
 } as const;
-
-/** The system prompt for OpenAI call 1. Behaviour lives in the schema; this states the rules. */
-export const SEARCH_BRIEF_INSTRUCTIONS = [
-  'You read one message from a person looking for real estate and return ONLY what they said, in the given JSON schema.',
-  'Never invent a value. A field the person did not state is null (or an empty array).',
-  'Prices are USD. If the person stated a price in another currency, set priceCurrencyStated to it and leave priceMinUsd/priceMaxUsd null.',
-  'For a maximum only ("up to $150000"), set priceMaxUsd to that maximum and priceMinUsd to null. HOMATCH computes the default minimum; do not calculate or propose it. Preserve both ends when the person explicitly states a range.',
-  'A single approximate price ("around 150000") is NOT a range: leave priceMinUsd and priceMaxUsd null and add a proposal for field "price".',
-  'Rooms and bedrooms are different fields: "3 ოთახიანი" / "3-room" is rooms, "2 საძინებლიანი" / "2-bedroom" is bedrooms.',
-  'transactionType: BUY for purchase, MONTHLY_RENT for monthly/long-term rent, DAILY_RENT for daily/short-term rent.',
-  'buildingStatuses: NEW_BUILD for new/ახალაშენებული, UNDER_CONSTRUCTION for მშენებარე/under construction, OLD_BUILD for old/ძველი, ANY when they say it does not matter.',
-  'Requirements and preferences are different. buildingStatuses and renovationPreferences hold what the person REQUIRES or ACCEPTS ("must be renovated", "green frame is also fine"). A wish worded as better/preferably/ideally (უკეთესია, სასურველია, ჯობია, лучше, желательно, предпочтительно, preferably, ideally) goes ONLY to preferredBuildingStatuses / preferredRenovations. When building age is only a preference, set buildingStatuses to ["ANY"].',
-  'Building age (new/old/under construction) and finishing condition (renovated/green/white/black frame) are separate: green frame is a finishing condition, never a building age; "new building" never implies "renovated".',
-  'Floors: a numeric floor range goes to floorMin/floorMax ("2-დან 8-მდე სართული" → 2 and 8; "მეორე სართულიდან ზემოთ" / "from the 2nd floor up" / "не ниже 2 этажа" → floorMin 2). Never put a stated floor number into floorPreferences. "not the first floor" / "არა პირველი" / "не первый" is floorPreferences NOT_FIRST. LOW/MIDDLE/HIGH only for vague words like "a high floor". The number of floors in the building (9 სართულიანი) is not a floor range.',
-  'Distinguish cities from neighborhoods: Varketili/ვარკეთილი is a Tbilisi neighborhood, never a city. A known neighborhood implies its parent city. Put the neighborhood in districts; keep streets, microdistrict preferences and relative directions in locationPreferences, never in city or districts.',
-  'Copy named places without inventing extra neighborhoods or street filters. If their parent city is unknown, leave city null so the person is asked.',
-  'relevantSearchLanguages: only languages listings for this market are realistically published in.',
-  'Proposals are suggestions for missing ranges only; they are shown to the person, never searched on.',
-].join('\n');
 
 /* ------------------------------------------------------------------ *
  * Traceability: is a number really in the customer's words?          *
@@ -479,6 +466,7 @@ export function applyEdit(brief: SearchIntelligenceBrief, edit: BriefEdit): Sear
       return normalizeSearchLocations(next);
     }
     case 'price': case 'area': case 'rooms': case 'bedrooms': case 'bathrooms': {
+      if (edit.field === 'price') delete next.statedPrice;
       const isInt = edit.field !== 'price' && edit.field !== 'area';
       const r = edit.value ? range(isInt ? int(edit.value.min) : num(edit.value.min), isInt ? int(edit.value.max) : num(edit.value.max)) : null;
       set(edit.field, edit.field === 'price' && edit.value?.min == null ? primaryPriceRange(r) : r);
@@ -558,6 +546,11 @@ export function sanitizeBrief(raw: unknown): SearchIntelligenceBrief {
   brief.exclusions = listOf(raw.exclusions, asAmenity);
   brief.userLanguage = lang(raw.userLanguage);
   brief.relevantSearchLanguages = listOf(raw.relevantSearchLanguages, lang, 6);
+  const sp = raw.statedPrice;
+  if (brief.price && isRecord(sp) && (sp.currency === 'GEL' || sp.currency === 'EUR')) {
+    const r = range(num(sp.min), num(sp.max));
+    if (r) brief.statedPrice = { currency: sp.currency, min: r.min, max: r.max };
+  }
   return normalizeSearchLocations(brief);
 }
 

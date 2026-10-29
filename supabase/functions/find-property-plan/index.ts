@@ -6,19 +6,14 @@
 //
 // THE DIVISION OF LABOUR, WHICH IS THE WHOLE DESIGN
 //
-//   THE MODEL INTERPRETS. It reads prose and proposes a draft of one fixed shape. That
-//   is a real and hard job -- "2 bedrooms in Vake or Saburtalo, up to 150k, ideally a
-//   balcony" in Georgian, Russian or Hebrew -- and a model is the right tool for it.
-//
-//   NOTHING ELSE. The draft arrives as untrusted JSON and passes through
-//   normalisePlan(), which recognises values out of closed sets or discards them. The
-//   model cannot introduce a field, cannot widen a vocabulary, cannot emit a rule, and
-//   cannot emit anything that is executed. There is no generated code anywhere in this
-//   function and no path by which a model's output becomes one.
+//   CODE READS. The sentence is read by the deterministic six-language reader
+//   (research-core/intent/constraints.ts readConstraints) -- no model, on any path
+//   (owner, 2026-10-29: zero AI calls in Find Property). The reading arrives in the
+//   untrusted draft shape and passes through normalisePlan(), which recognises values
+//   out of closed sets or discards them. Nothing here is generated or executed.
 //
 //   THE CUSTOMER DECIDES. The draft is returned, not run. Every field is editable and
-//   what executes is the plan they confirm -- because a model's reading of somebody's
-//   requirements is a suggestion about their own life, and they are the authority.
+//   what executes is the plan they confirm.
 //
 //   THE MATCHER MATCHES. Confirming writes an intent_profiles row and an
 //   active_search_subscriptions row, and stops. supply-matching -- deterministic,
@@ -33,12 +28,10 @@
 // the sweep. Expand Search -- going outside what Homatch already holds -- is the PAYG
 // action, and it is not here.
 //
-// AND IF THE MODEL IS UNAVAILABLE, IT SAYS SO.
+// AND IF NOTHING COULD BE READ, IT SAYS SO.
 //
-// No silent keyword fallback dressed as a reading, and no spinner that never resolves.
-// `interpreted: false` comes back with the customer's text intact, and the interface
-// puts them in the plan editor with empty fields. A planner that pretends to have
-// understood is worse than one that admits it has not.
+// `interpreted: false` comes back with the customer's text intact when the reader found
+// nothing searchable, and the interface puts them in the plan editor with empty fields.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { recordIntent } from '../_shared/intent.ts';
@@ -50,7 +43,8 @@ import {
   planToIntentProfile,
 } from '../../../src/research-core/discovery/search-plan.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
-import { deferCost, recordUsageCost, tokenUsage } from '../_shared/providerCost.ts';
+import { readConstraints } from '../../../src/research-core/intent/constraints.ts';
+import { installNoModelGuard } from '../_shared/noModelGuard.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -62,48 +56,7 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
   headers: { ...CORS, 'Content-Type': 'application/json' },
 });
 
-/**
- * The instruction given to the model.
- *
- * It describes a SHAPE and nothing else. No rule about matching, no scoring, no
- * thresholds, no query construction -- because every one of those lives in code that
- * is tested, and a prompt is not a place to keep a rule you rely on.
- *
- * The strengths are explained rather than listed, because the distinction between
- * "must" and "would prefer" is the one judgement the reading genuinely has to make and
- * getting it wrong changes what the customer is shown.
- */
-const SYSTEM_PROMPT = `You read a person's description of the property they are looking for and return STRICT JSON. You do not search, score, rank or advise. You only structure what they said.
-
-Return exactly this shape, omitting any field they did not mention:
-{
-  "goal": "BUY" | "RENT" | "SHORT_STAY" | "INVEST" | "COMMERCIAL" | "LAND",
-  "countryCode": two-letter code,
-  "city": string,
-  "cityStrength": "REQUIRED" | "PREFERRED" | "FLEXIBLE",
-  "districts": string[],
-  "districtsStrength": "REQUIRED" | "PREFERRED" | "FLEXIBLE",
-  "propertyTypes": ("APARTMENT"|"HOUSE"|"LAND"|"COMMERCIAL"|"OFFICE"|"HOTEL"|"OTHER")[],
-  "propertyTypesStrength": "REQUIRED" | "PREFERRED" | "FLEXIBLE",
-  "budgetMin": number, "budgetMax": number, "currency": "USD"|"GEL"|"EUR",
-  "budgetStrength": "REQUIRED" | "PREFERRED" | "FLEXIBLE",
-  "bedroomsMin": number, "bedroomsMax": number,
-  "bedroomsStrength": "REQUIRED" | "PREFERRED" | "FLEXIBLE",
-  "areaMin": number, "areaMax": number,
-  "areaStrength": "REQUIRED" | "PREFERRED" | "FLEXIBLE",
-  "languages": ("en"|"ka"|"ru"|"tr"|"ar"|"he")[],
-  "originalLanguage": "en"|"ka"|"ru"|"tr"|"ar"|"he"
-}
-
-STRENGTH is the most important judgement you make:
-- REQUIRED: they said it must be so. "only in Vake", "no more than 150k", "must have 2 bedrooms".
-- PREFERRED: they would rather have it. "ideally", "I'd prefer", "hopefully", "around".
-- FLEXIBLE: they explicitly do not mind. "any district is fine", "whatever floor".
-Omit the strength when they gave no indication; do not guess REQUIRED for emphasis that is not there.
-
-A PLACE IS A NAME. Put one city in "city" and separate districts in the "districts" array. Never put a list, a comma, a conjunction or a wildcard in a single name field.
-
-Do not invent a budget, a city or a room count they did not mention. An omitted field is a correct answer and is far better than a plausible guess: the person will be shown this and asked to correct it, and a number they never said is the hardest kind of mistake for them to notice.`;
+installNoModelGuard('find-property-plan');
 
 interface Interpretation {
   draft: PlanDraft;
@@ -112,77 +65,16 @@ interface Interpretation {
   note: string | null;
 }
 
-/** Ask the model for a draft. Never throws; failure is a reported state. */
-async function interpret(
-  text: string,
-  apiKey: string | undefined,
-  cost?: { db: ReturnType<typeof createClient>; correlationId: string },
-): Promise<Interpretation> {
-  if (!apiKey) {
-    return {
-      draft: { originalText: text },
-      interpreted: false,
-      model: null,
-      note: 'no_model_configured',
-    };
-  }
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        /* Zero, because the same sentence should produce the same plan twice. A
-           planner whose reading of one description varies between two attempts is a
-           planner nobody can correct. */
-        temperature: 0,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: text },
-        ],
-      }),
-    });
-    if (!response.ok) {
-      return { draft: { originalText: text }, interpreted: false, model: null, note: 'model_unavailable' };
-    }
-    const body = await response.json();
-    /* Provider cost (Finance V2.1): the usage OpenAI reported, written after the response. */
-    if (cost) {
-      deferCost(recordUsageCost(cost.db as any, {
-        provider: 'OPENAI',
-        operation: 'FIND_PROPERTY_PLAN',
-        service: 'find_property_search',
-        model: 'gpt-4o-mini',
-        correlationId: cost.correlationId,
-        idempotencyKey: `FIND_PROPERTY_PLAN:${cost.correlationId}:${body?.id ?? crypto.randomUUID()}`,
-        tokens: tokenUsage(body),
-      }));
-    }
-    const content = body?.choices?.[0]?.message?.content ?? '{}';
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      return { draft: { originalText: text }, interpreted: false, model: null, note: 'model_returned_unparseable_json' };
-    }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { draft: { originalText: text }, interpreted: false, model: null, note: 'model_returned_non_object' };
-    }
-    /*
-     * originalText is set HERE, after the spread, so it is the customer's text and not
-     * whatever the model chose to echo back into that field. The one field in the draft
-     * that is not the model's to fill.
-     */
-    return {
-      draft: { ...(parsed as Record<string, unknown>), originalText: text },
-      interpreted: true,
-      model: 'gpt-4o-mini',
-      note: null,
-    };
-  } catch {
-    return { draft: { originalText: text }, interpreted: false, model: null, note: 'model_unreachable' };
-  }
+/** Read a draft from the sentence, deterministically. Pure; never throws. */
+function interpret(text: string): Interpretation {
+  const { scripts: _scripts, found, roomsMin: _roomsMin, roomsMax: _roomsMax, ...draft } = readConstraints(text);
+  return {
+    /* originalText is the customer's own words, never a re-rendering. */
+    draft: { ...draft, originalText: text },
+    interpreted: found > 0,
+    model: 'rules',
+    note: found > 0 ? null : 'nothing_read',
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -222,7 +114,7 @@ Deno.serve(async (req: Request) => {
       const text = String(body.text ?? '').trim().slice(0, 4000);
       if (!text) return json({ error: 'describe what you are looking for' }, 400);
 
-      const interpretation = await interpret(text, Deno.env.get('OPENAI_API_KEY'), { db, correlationId: userId });
+      const interpretation = interpret(text);
       const { plan, rejected, rejections } = normalisePlan(interpretation.draft);
 
       return json({

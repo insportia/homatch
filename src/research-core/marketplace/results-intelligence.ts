@@ -1,18 +1,21 @@
-// HOMATCH MARKETPLACE SEARCH — OpenAI Results Intelligence (call 2).
+// HOMATCH MARKETPLACE SEARCH — Results Intelligence, deterministic.
 //
-// After the deterministic pipeline, the strongest canonical properties (never
-// the raw listings, never more than RESULTS_INTELLIGENCE_LIMIT) go to OpenAI
-// with their FACTS and the codes those facts support. The model's job is
-// judgement over supplied evidence: which reasons matter most to THIS person,
-// which tradeoffs are worth saying, and whether an upgrade's extra money buys
-// something meaningful.
+// After the pipeline, every property that answers the request gets its reasons
+// ordered by what THIS person asked for, and up to two tradeoffs worth saying.
+// It used to be an OpenAI call (call 2) over the strongest twelve; the owner's
+// rule since 2026-10-29 is zero model calls on the search path, so the same
+// judgement is made in code from the same evidence:
 //
-// It cannot add a fact. Its output is codes chosen from each property's own
-// allowed list; anything else is discarded by `acceptIntelligence()`. It can
-// only VETO an upgrade, never create one. When the model is unavailable the
-// deterministic reasons stand on their own and nothing is lost.
-
-import type { ResultProperty, ReasonCode } from './pipeline.ts';
+//   reasons    the property's own reason codes, the ones answering a stated
+//              criterion first (district, bedrooms, floor, elevator, building
+//              age, renovation, parking), then value, owner, freshness
+//   tradeoffs  the property's own tradeoff codes, a price above similar homes
+//              first, then gaps on a criterion the person stated, then the rest
+//   upgrades   never vetoed: an upgrade stays in its group and the customer
+//              judges whether its advantages are worth the money
+//
+// It cannot add a fact: every code comes from the property's own allowed list.
+import type { ReasonCode, ResultProperty } from './pipeline.ts';
 import type { MarketplaceSearchRequest } from './worker-contract.ts';
 
 export const RESULTS_INTELLIGENCE_VERSION = 'results-intelligence-1';
@@ -67,50 +70,6 @@ export function buildFactSheets(properties: readonly ResultProperty[]): FactShee
     }));
 }
 
-export const RESULTS_INTELLIGENCE_JSON_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['properties'],
-  properties: {
-    properties: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['key', 'reasons', 'tradeoffs', 'upgradeWorthIt'],
-        properties: {
-          key: { type: 'string' },
-          reasons: { type: 'array', items: { type: 'string' } },
-          tradeoffs: { type: 'array', items: { type: 'string' } },
-          upgradeWorthIt: { type: ['boolean', 'null'] },
-        },
-      },
-    },
-  },
-} as const;
-
-export const RESULTS_INTELLIGENCE_INSTRUCTIONS = [
-  'You help one person compare real-estate options. You receive the person\'s confirmed criteria and, per property, facts plus the ONLY reason and tradeoff codes those facts support.',
-  'For each property return up to 3 reasons and up to 2 tradeoffs, chosen ONLY from that property\'s allowedReasons / allowedTradeoffs, ordered by what matters most to this person.',
-  'For a property with an upgrade block, set upgradeWorthIt=false if the advantages do not justify the extra price for this person, true otherwise; null for properties without an upgrade block.',
-  'Never invent a code, a fact or a property key.',
-].join('\n');
-
-export function buildIntelligenceInput(request: MarketplaceSearchRequest, sheets: readonly FactSheet[]) {
-  return {
-    criteria: {
-      transactionType: request.transactionType, propertyType: request.propertyType, city: request.city,
-      districts: request.districts, priceMinUsd: request.priceMinUsd, priceMaxUsd: request.priceMaxUsd,
-      areaMinSqm: request.areaMinSqm, areaMaxSqm: request.areaMaxSqm, rooms: request.rooms, bedrooms: request.bedrooms,
-      buildingStatuses: request.buildingStatuses, renovation: request.renovationPreferences,
-      floorRange: request.floorRange ?? null, floorPreferences: request.floorPreferences ?? [],
-      preferredBuildingStatuses: request.preferredBuildingStatuses ?? [], preferredRenovations: request.preferredRenovations ?? [],
-      mustHave: request.mustHave, niceToHave: request.niceToHave,
-    },
-    properties: sheets,
-  };
-}
-
 export interface AcceptedIntelligence {
   key: string;
   reasons: ReasonCode[];
@@ -118,7 +77,8 @@ export interface AcceptedIntelligence {
   upgradeWorthIt: boolean | null;
 }
 
-/** Keep only what each property's own evidence allows. Unknown keys and codes are dropped. */
+/** Keep only what each property's own evidence allows. Unknown keys and codes are dropped
+ *  (the validation every reading passes, whoever produced it). */
 export function acceptIntelligence(raw: unknown, sheets: readonly FactSheet[]): { accepted: AcceptedIntelligence[]; discarded: number } {
   const byKey = new Map(sheets.map((s) => [s.key, s]));
   const out: AcceptedIntelligence[] = [];
@@ -171,4 +131,54 @@ export function applyIntelligence(properties: readonly ResultProperty[], accepte
   /* Ranks inside UPGRADE are re-numbered after a veto. */
   let n = 0;
   return out.map((p) => (p.group === 'UPGRADE' ? { ...p, rank: ++n } : p));
+}
+
+/** Reason codes in the order they answer what the person stated; value and trust after. */
+function reasonPriority(request: MarketplaceSearchRequest): ReasonCode[] {
+  const asked: ReasonCode[] = [];
+  const wants = (a: string) => request.mustHave?.includes(a) || request.niceToHave?.includes(a);
+  if (request.districts?.length) asked.push('DISTRICT_MATCH');
+  if (request.bedrooms) asked.push('BEDROOM_MATCH');
+  if (request.floorRange || request.floorPreferences?.length) asked.push('FLOOR_MATCH');
+  if (wants('ELEVATOR')) asked.push('ELEVATOR_CONFIRMED');
+  if (request.preferredBuildingStatuses?.includes('NEW_BUILD') || (request.buildingStatuses?.includes('NEW_BUILD') && request.buildingStatuses.length < 3)) asked.push('NEW_BUILD');
+  if (request.preferredRenovations?.includes('RENOVATED') || request.renovationPreferences?.includes('RENOVATED')) asked.push('RENOVATED');
+  if (request.parking === true || wants('PARKING')) asked.push('HAS_PARKING');
+  const rest: ReasonCode[] = ['GOOD_VALUE_VS_SIMILAR', 'LOWEST_ACROSS_SOURCES', 'OWNER_LIKELY', 'VERIFIED_RECENTLY', 'DISTRICT_MATCH', 'BEDROOM_MATCH',
+    'FLOOR_MATCH', 'ELEVATOR_CONFIRMED', 'NEW_BUILD', 'RENOVATED', 'HAS_PARKING'];
+  return [...new Set([...asked, ...rest])];
+}
+
+/** Tradeoff codes in the order that matters to this person: price first, then gaps on stated criteria. */
+function tradeoffPriority(request: MarketplaceSearchRequest): TradeoffCode[] {
+  const stated: TradeoffCode[] = [];
+  if (request.floorRange || request.floorPreferences?.length) stated.push('FLOOR_NOT_STATED');
+  if (request.areaMinSqm != null || request.areaMaxSqm != null) stated.push('AREA_NOT_STATED');
+  if (request.districts?.length) stated.push('DISTRICT_NOT_STATED');
+  if (request.buildingStatuses?.length && request.buildingStatuses.length < 3) stated.push('BUILDING_STATUS_NOT_STATED');
+  return [...new Set<TradeoffCode>(['PRICE_ABOVE_SIMILAR', ...stated, 'PRICE_DIFFERS_ACROSS_SOURCES', 'NOT_RECENTLY_VERIFIED', 'SELLER_UNKNOWN'])];
+}
+
+/**
+ * The deterministic reading of a result set: one AcceptedIntelligence per property that
+ * answers the request (OTHER is browsable, never summarised). Codes come only from each
+ * property's own facts; upgrades are never vetoed (upgradeWorthIt stays null).
+ */
+export function deterministicIntelligence(properties: readonly ResultProperty[], request: MarketplaceSearchRequest): AcceptedIntelligence[] {
+  const reasonOrder = reasonPriority(request);
+  const tradeoffOrder = tradeoffPriority(request);
+  const statedGaps = tradeoffOrder.slice(1, -3);
+  const rank = <T extends string>(order: readonly T[], code: T) => { const i = order.indexOf(code); return i < 0 ? order.length : i; };
+  return properties.filter((p) => p.group !== 'OTHER').map((p) => {
+    const own = p.reasons.map((r) => r.code);
+    /* A missing fact is a tradeoff only for a criterion the person stated. */
+    const gaps: TradeoffCode[] = ['FLOOR_NOT_STATED', 'AREA_NOT_STATED', 'DISTRICT_NOT_STATED', 'BUILDING_STATUS_NOT_STATED'];
+    const tradeoffs = tradeoffsOf(p).filter((t) => !gaps.includes(t) || statedGaps.includes(t));
+    return {
+      key: p.key,
+      reasons: [...own].sort((a, b) => rank(reasonOrder, a) - rank(reasonOrder, b)).slice(0, 3),
+      tradeoffs: tradeoffs.sort((a, b) => rank(tradeoffOrder, a) - rank(tradeoffOrder, b)).slice(0, 2),
+      upgradeWorthIt: null,
+    };
+  });
 }

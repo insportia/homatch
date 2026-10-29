@@ -40,6 +40,12 @@ export interface EnrichmentContext {
   adsCost?: AdsCostRecord | null;
   /** Admin verify_developer_ads setting (country, term limit). */
   adsPolicy?: unknown;
+  /**
+   * Developer Advertising is hidden from customers (verify_developer_ads.visible
+   * not true): nothing is rebuilt from the cost record and any stored view
+   * leaves the read, for older reports too.
+   */
+  adsHidden?: boolean;
   /** Internal memo: the job's TAS picture, built at most once per enrichment. */
   _tas?: TasIntelligence | null;
 }
@@ -104,7 +110,13 @@ function withRecoveredSections<T extends Record<string, any>>(payload: T, result
       /* no section rather than a wrong one */
     }
   }
-  if (!out.developerAds && !obj(resultJson)._developerAds && ctx.adsCost) {
+  if (ctx.adsHidden) {
+    delete out.developerAds;
+    if (out.report && typeof out.report === 'object' && 'advertisingAssessment' in out.report) {
+      const { advertisingAssessment: _hidden, ...report } = out.report as Record<string, unknown>;
+      out.report = report;
+    }
+  } else if (!out.developerAds && !obj(resultJson)._developerAds && ctx.adsCost) {
     try {
       const ads = adsViewFromCostRecord(resultJson, ctx.adsCost, ctx.adsPolicy);
       if (ads) out.developerAds = ads;

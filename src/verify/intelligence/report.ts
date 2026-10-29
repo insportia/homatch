@@ -486,7 +486,10 @@ function customerProse(c: Partial<BuyerIntelligenceReport>): string {
 export function salvageReport(
   pkg: EvidencePackage,
   candidate: Partial<BuyerIntelligenceReport> | null,
+  /** V3 (2026-10-29): also clean every short field, recover highlight cards, trim the provenance tic. */
+  opts: { thorough?: boolean } = {},
 ): { report: Partial<BuyerIntelligenceReport> | null; pruned: string[] } {
+  const thorough = opts.thorough === true;
   if (!candidate) return { report: null, pruned: [] };
   const pruned: string[] = [];
   const known = new Set(packageItems(pkg).map((i) => i.id));
@@ -545,7 +548,7 @@ export function salvageReport(
     });
   }
   if (c.currentStatus) {
-    const items = (c.currentStatus.items ?? []).map((i) => grounded(i, 'currentStatus')).filter((i) => {
+    const items = (c.currentStatus.items ?? []).map((i) => grounded(thorough ? { ...i, label: clean(i.label, 'current status'), value: clean(i.value, 'current status') } : i, 'currentStatus')).filter((i) => {
       if (i.cites.length) return true;
       pruned.push('uncited current-status item removed');
       return false;
@@ -562,10 +565,61 @@ export function salvageReport(
       }),
     };
   }
-  if (c.visualCaptions) c.visualCaptions = c.visualCaptions.map((v) => grounded(v, 'visualCaptions'));
-  if (c.advertisingAssessment) c.advertisingAssessment = grounded(c.advertisingAssessment, 'advertisingAssessment');
+  if (c.visualCaptions) c.visualCaptions = c.visualCaptions.map((v) => grounded(thorough ? { ...v, caption: clean(v.caption, 'visual caption'), explanation: clean(v.explanation, 'visual caption') } : v, 'visualCaptions'));
+  if (c.advertisingAssessment && !thorough) c.advertisingAssessment = grounded(c.advertisingAssessment, 'advertisingAssessment');
+  else if (c.advertisingAssessment) {
+    c.advertisingAssessment = grounded({
+      ...c.advertisingAssessment,
+      statement: clean(c.advertisingAssessment.statement, 'advertising'),
+      points: (c.advertisingAssessment.points ?? []).map((x) => clean(x, 'advertising')).filter(Boolean),
+    }, 'advertisingAssessment');
+  }
   if (typeof c.finalView === 'string') c.finalView = clean(c.finalView, 'final view');
+  if (!thorough) return { report: c, pruned };
+  if (c.contractUpload && typeof c.contractUpload.text === 'string') c.contractUpload = { ...c.contractUpload, text: clean(c.contractUpload.text, 'contract upload') };
+  /* A summary with a statement but no highlight cards (2026-10-29): the cards
+     come from the cited key findings instead of discarding the whole report. */
+  if (c.summary?.statement && !(c.summary.highlights ?? []).length) {
+    const fromFindings = (c.keyFindings ?? []).filter((f) => f.cites.length).slice(0, 4).map((f) => ({
+      dimension: 'PROJECT_QUALITY' as Dimension,
+      sentiment: f.sentiment,
+      headline: headlineFromDetail(f.finding),
+      detail: f.finding,
+      cites: f.cites,
+    })).filter((h) => h.headline);
+    if (fromFindings.length) {
+      c.summary = { ...c.summary, highlights: fromFindings };
+      pruned.push('summary highlights recovered from cited key findings');
+    }
+  }
+  trimProvenanceTic(c, pruned);
   return { report: c, pruned };
+}
+
+/**
+ * THE PROVENANCE TIC, TRIMMED INSTEAD OF REJECTED (2026-10-29).
+ *
+ * Past PROVENANCE_MENTION_LIMIT uses of one attribution phrase, validateReport
+ * rejected the WHOLE model report, and because the finding is style-only no
+ * repair or escalation followed: the customer got the template. The later
+ * sentences carrying the phrase are removed from the long prose (section
+ * bodies and story chapters) instead; the short fields are left as written.
+ */
+function trimProvenanceTic(c: Partial<BuyerIntelligenceReport>, pruned: string[]): void {
+  for (const phrase of OVERUSED_PROVENANCE) {
+    if (customerProse(c).split(phrase).length - 1 <= PROVENANCE_MENTION_LIMIT) continue;
+    let seen = 0;
+    const keep = (text: string): string => text.split(/(?<=[.!?])\s+/).filter((sentence) => {
+      if (!sentence.includes(phrase)) return true;
+      seen += sentence.split(phrase).length - 1;
+      return seen <= PROVENANCE_MENTION_LIMIT;
+    }).join(' ').trim();
+    const shortUses = customerProse({ ...c, sections: [], propertyStory: undefined }).split(phrase).length - 1;
+    seen = shortUses;
+    if (c.sections) c.sections = c.sections.map((sec) => ({ ...sec, body: keep(sec.body) })).filter((sec) => sec.body.trim());
+    if (c.propertyStory) c.propertyStory = { ...c.propertyStory, chapters: c.propertyStory.chapters.map((ch) => ({ ...ch, body: keep(ch.body) })).filter((ch) => ch.body.trim()) };
+    pruned.push(`provenance phrase "${phrase}" trimmed to ${PROVENANCE_MENTION_LIMIT}`);
+  }
 }
 
 export function validateReport(
@@ -895,12 +949,31 @@ export function stripFalseScarcity(
   };
 }
 
+/**
+ * WHO WRITES WHAT (owner, 2026-10-29). `fieldOwnership: 'CODE'` is what
+ * verify-synthesis sends now: the model writes the prose (summary, findings,
+ * sections, story, assessment, final view) and code owns everything it can
+ * compute exactly: the current official status, the visual captions and
+ * explanations (deterministicTas), the section metrics (codeSectionMetrics,
+ * passed in as `metrics`) and the advertising assessment (passed in as
+ * `advertising`, null when hidden). Whatever the model may still send for
+ * those fields is ignored. Unset: the earlier behaviour (model first, code
+ * as fallback), kept for stored fixtures and older callers.
+ */
+export interface FinalizeOptions {
+  fieldOwnership?: 'MODEL_FIRST' | 'CODE';
+  metrics?: Record<string, SectionMetric[]>;
+  advertising?: AdvertisingAssessment | null;
+}
+
 export function finalizeReport(
   pkg: EvidencePackage,
   raw: string | null | undefined,
-  bundle?: IntelligenceBundle | null
+  bundle?: IntelligenceBundle | null,
+  opts: FinalizeOptions = {},
 ): BuyerIntelligenceReport {
-  const salvaged = salvageReport(pkg, parseReport(raw));
+  const codeOwned = opts.fieldOwnership === 'CODE';
+  const salvaged = salvageReport(pkg, parseReport(raw), { thorough: opts.fieldOwnership === 'CODE' });
   const parsed = salvaged.report;
   if (salvaged.pruned.length) console.warn('buyer intelligence pruned', JSON.stringify(salvaged.pruned.slice(0, 20)));
   const check = validateReport(pkg, parsed);
@@ -931,14 +1004,19 @@ export function finalizeReport(
 
   // Whatever the model left out, the record still tells — plainly.
   const fallback = deterministicTas(pkg);
-  const currentStatus = withholdUnprovenStatement(pkg, parsed.currentStatus ?? fallback.currentStatus);
+  const currentStatus = withholdUnprovenStatement(pkg, codeOwned ? fallback.currentStatus : parsed.currentStatus ?? fallback.currentStatus);
   const propertyStory = story?.chapters.length ? story : fallback.propertyStory;
-  const visualCaptions = captions.length ? captions : fallback.visualCaptions;
+  const visualCaptions = !codeOwned && captions.length ? captions : fallback.visualCaptions;
   // Every visible visual gets an explanation: the model's, else the record's plain one.
-  const explainedIds = new Set(explained.map((e) => e.id));
-  const visualExplanations = [...explained, ...(fallback.visualExplanations ?? []).filter((e) => !explainedIds.has(e.id))];
+  const ownExplained = codeOwned ? [] : explained;
+  const explainedIds = new Set(ownExplained.map((e) => e.id));
+  const visualExplanations = [...ownExplained, ...(fallback.visualExplanations ?? []).filter((e) => !explainedIds.has(e.id))];
   // Only when the advertising stage actually produced evidence, and never beyond what it can show.
-  const advertisingAssessment = pkg?.developerAds ? guardAdvertising(parsed.advertisingAssessment) : undefined;
+  const advertisingAssessment = codeOwned
+    ? guardAdvertising(opts.advertising ?? undefined)
+    : pkg?.developerAds ? guardAdvertising(parsed.advertisingAssessment) : undefined;
+  // CODE: the metrics are the bundle's numbers, never the model's.
+  const sections = (parsed.sections ?? []).map((sec) => (codeOwned ? { ...sec, metrics: opts.metrics?.[sec.key] ?? [] } : sec));
 
   /*
    * The deterministic valuation overrides the prose (2026-10-11, job 8ba97da9):
@@ -954,7 +1032,7 @@ export function finalizeReport(
     ...(visualExplanations.length ? { visualExplanations } : {}),
     summary: parsed.summary ?? { label: 'BALANCED', statement: '', highlights: [] },
     keyFindings: parsed.keyFindings ?? [],
-    sections: parsed.sections ?? [],
+    sections,
     attentionPoints: parsed.attentionPoints ?? [],
     nextSteps: parsed.nextSteps ?? [],
     finalView: parsed.finalView ?? '',

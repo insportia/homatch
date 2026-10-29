@@ -86,6 +86,8 @@ export interface EvidenceItem {
   source?: string;
   url?: string;
   date?: string;
+  /** Reused from an earlier check of this property: `date` is when it was observed, not today. */
+  observedEarlier?: boolean;
   entity?: string;
   documentRef?: string;
   /** True when more than one independent source carries it. */
@@ -230,7 +232,12 @@ export const TAS_EVENT_KA: Record<string, string> = {
  * are cited dates, never decisions, and the result must not depend on the
  * day a report happens to be rebuilt.
  */
-export function buildEvidencePackage(report: unknown, opts: { now?: string | null } = {}): EvidencePackage {
+/**
+ * `developerAds: false` (verify_developer_ads not visible to customers):
+ * the advertising stage contributes no evidence and no view, so neither the
+ * prompt nor the report can carry it, whatever an older job stored.
+ */
+export function buildEvidencePackage(report: unknown, opts: { now?: string | null; developerAds?: boolean } = {}): EvidencePackage {
   const r = obj(report);
   const nowIso = opts.now && Number.isFinite(Date.parse(opts.now)) ? new Date(Date.parse(opts.now)).toISOString() : new Date().toISOString();
   const items: EvidenceItem[] = [];
@@ -283,6 +290,10 @@ export function buildEvidencePackage(report: unknown, opts: { now?: string | nul
   }
 
   const pr = obj(r.publicResearch);
+  /* Public research reused from an earlier check (V2 evidenceReuse.ts) keeps
+     the day it was observed: every item it yields is dated with it. */
+  const prObserved = typeof pr.observedAt === 'string' && Number.isFinite(Date.parse(pr.observedAt)) ? pr.observedAt.slice(0, 10) : null;
+  const addPr = (i: Omit<EvidenceItem, 'id'>): void => add(prObserved ? { ...i, date: i.date ?? prObserved, observedEarlier: true } : i);
   const unit = obj(r.exactUnit);
   const parent = obj(r.identifiedParent);
   const company = obj(r.companyProfile);
@@ -315,7 +326,7 @@ export function buildEvidencePackage(report: unknown, opts: { now?: string | nul
     // publicResearch.facts are the research layer's own synthesised
     // statements about the subject. They are the single richest block in the
     // report and were previously read by nothing at all.
-    add({
+    addPr({
       tier: 1, category: 'PROPERTY', claim: clean(f),
       provenance: 'DERIVED', certainty: 'CORROBORATED', corroborated: true,
     });
@@ -383,13 +394,13 @@ export function buildEvidencePackage(report: unknown, opts: { now?: string | nul
   // read without them looks like a defect, and read with them looks like
   // ordinary project finance that still needs a release mechanism.
   for (const p of arr<unknown>(pr.partners)) {
-    add({
+    addPr({
       tier: 2, category: 'FINANCING', claim: clean(p),
       provenance: 'DEVELOPER_STATEMENT', certainty: 'CLAIMED', entity: subject.developer,
     });
   }
   if (nonEmpty(pr.financingBank)) {
-    add({
+    addPr({
       tier: 2, category: 'FINANCING',
       claim: `პროექტის დაფინანსების პარტნიორად საჯაროდ მითითებულია ${clean(pr.financingBank)}.`,
       provenance: 'DEVELOPER_STATEMENT', certainty: 'CLAIMED',
@@ -409,24 +420,24 @@ export function buildEvidencePackage(report: unknown, opts: { now?: string | nul
   for (const [key, category] of DEVELOPER_CLAIMS) {
     const v = nonEmpty(pr[key]);
     if (v) {
-      add({
+      addPr({
         tier: 2, category, claim: v,
         provenance: 'DEVELOPER_STATEMENT', certainty: 'CLAIMED', entity: subject.developer,
       });
     }
   }
   for (const a of arr<unknown>(pr.amenities)) {
-    add({ tier: 2, category: 'PROJECT', claim: clean(a), provenance: 'DEVELOPER_STATEMENT', certainty: 'CLAIMED' });
+    addPr({ tier: 2, category: 'PROJECT', claim: clean(a), provenance: 'DEVELOPER_STATEMENT', certainty: 'CLAIMED' });
   }
   for (const s of arr<unknown>(pr.suppliers)) {
-    add({ tier: 2, category: 'PROJECT', claim: clean(s), provenance: 'PARTNER_PUBLICATION', certainty: 'REPORTED' });
+    addPr({ tier: 2, category: 'PROJECT', claim: clean(s), provenance: 'PARTNER_PUBLICATION', certainty: 'REPORTED' });
   }
   for (const q of arr<unknown>(pr.qualitySignals)) {
-    add({ tier: 2, category: 'PROJECT', claim: clean(q), provenance: 'PARTNER_PUBLICATION', certainty: 'REPORTED' });
+    addPr({ tier: 2, category: 'PROJECT', claim: clean(q), provenance: 'PARTNER_PUBLICATION', certainty: 'REPORTED' });
   }
   for (const key of ['directorsRepresentatives', 'foundersOwnersParticipants', 'previousProjects']) {
     for (const v of arr<unknown>(pr[key])) {
-      add({ tier: 2, category: 'DEVELOPER', claim: clean(v), provenance: 'DERIVED', certainty: 'REPORTED' });
+      addPr({ tier: 2, category: 'DEVELOPER', claim: clean(v), provenance: 'DERIVED', certainty: 'REPORTED' });
     }
   }
   /*
@@ -555,16 +566,16 @@ export function buildEvidencePackage(report: unknown, opts: { now?: string | nul
   /* ---- TIER 4: media and social ---- */
 
   for (const v of arr<unknown>(pr.mediaCoverage)) {
-    add({ tier: 4, category: 'MEDIA', claim: clean(v), provenance: 'MEDIA_REPORT', certainty: 'REPORTED' });
+    addPr({ tier: 4, category: 'MEDIA', claim: clean(v), provenance: 'MEDIA_REPORT', certainty: 'REPORTED' });
   }
   for (const key of ['socialPublicFootprint', 'legalPublicFootprint']) {
     for (const v of arr<unknown>(pr[key])) {
-      add({ tier: 4, category: 'SOCIAL', claim: clean(v), provenance: 'SOCIAL_SIGNAL', certainty: 'UNCONFIRMED' });
+      addPr({ tier: 4, category: 'SOCIAL', claim: clean(v), provenance: 'SOCIAL_SIGNAL', certainty: 'UNCONFIRMED' });
     }
   }
   for (const key of ['disputes', 'complaints']) {
     for (const v of arr<unknown>(pr[key])) {
-      add({ tier: 4, category: 'MEDIA', claim: clean(v), provenance: 'MEDIA_REPORT', certainty: 'UNCONFIRMED' });
+      addPr({ tier: 4, category: 'MEDIA', claim: clean(v), provenance: 'MEDIA_REPORT', certainty: 'UNCONFIRMED' });
     }
   }
   for (const e of arr<Record<string, unknown>>(r.publicEvidence)) {
@@ -647,7 +658,7 @@ export function buildEvidencePackage(report: unknown, opts: { now?: string | nul
 
   /* ---- developer advertising: a marketing signal, never official evidence ---- */
 
-  const ads = obj(r.developerAds);
+  const ads = opts.developerAds === false ? {} : obj(r.developerAds);
   const adsView = Array.isArray(ads.advertisers) && typeof ads.outcome === 'string' ? (ads as unknown as import('../developerAds.ts').DeveloperAdsView) : null;
   if (adsView && (adsView.outcome === 'COMPLETE' || adsView.outcome === 'CACHED')) {
     const names = adsView.advertisers.map((a) => a.pageName).filter(Boolean).join(', ');

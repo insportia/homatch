@@ -45,7 +45,7 @@ test('an uncited item is removed; the rest of the model report survives the gate
 test('wiring: finalize salvages first; no raw findings; stored reports are filtered on render', () => {
   const root = join(import.meta.dirname, '..', '..', '..');
   const rep = readFileSync(join(root, 'src/verify/intelligence/report.ts'), 'utf8');
-  assert.match(rep, /const salvaged = salvageReport\(pkg, parseReport\(raw\)\)/);
+  assert.match(rep, /const salvaged = salvageReport\(pkg, parseReport\(raw\), \{ thorough: opts\.fieldOwnership === 'CODE' \}\)/);
   assert.match(rep, /const keyFindings: KeyFinding\[\] = \[\];/);
   assert.match(rep, /if \(isDateList\(lines\.join\(' '\)\)\) continue;/);
   const vr = readFileSync(join(root, 'src/components/verify/VerifyReport.tsx'), 'utf8');

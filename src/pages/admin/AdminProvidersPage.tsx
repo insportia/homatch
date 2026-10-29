@@ -16,6 +16,8 @@ import { CommunicationsRoutingPanel } from '@/components/admin/CommunicationsRou
 import { VerifyOfficialSourcesPanel } from '@/components/admin/VerifyOfficialSourcesPanel';
 import { VerifyEngineCard } from '@/components/admin/VerifyEngineCard';
 import { VerifyV2ResearchCard } from '@/components/admin/VerifyV2ResearchCard';
+import { VerifyV3ResearchCard } from '@/components/admin/VerifyV3ResearchCard';
+import { VerifyEngineStatsCard } from '@/components/admin/VerifyEngineStatsCard';
 
 const STATUS_CONFIG = {
   NOT_CONFIGURED:        { labelKey: 'admin_providers_not_configured', color: 'bg-muted text-muted-foreground',              icon: MinusCircle },
@@ -447,6 +449,8 @@ export default function AdminProvidersPage() {
           screen (§105). */}
       <VerifyEngineCard />
       <VerifyV2ResearchCard />
+      <VerifyV3ResearchCard />
+      <VerifyEngineStatsCard />
       <VerifyOfficialSourcesPanel />
       <CommunicationsRoutingPanel />
     </div>

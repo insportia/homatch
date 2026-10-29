@@ -517,3 +517,32 @@ export function adsPromptDigest(v: DeveloperAdsView | null | undefined): string 
   ];
   return lines.join('\n');
 }
+
+// ───────────────────────── V3: the assessment, written by code ─────────────────────────
+
+/**
+ * Verify V3 does not ask the model for `advertisingAssessment`: when an ads
+ * view is customer-visible, code states what the Ad Library showed, cites the
+ * Ad Library evidence items, and says nothing it cannot back (no claim about
+ * sales, finances, legality or construction). No COMPLETE/CACHED view, or no
+ * citable item, means no assessment at all (V3 has the stage off by default).
+ */
+export function deterministicAdvertisingAssessment(
+  view: DeveloperAdsView | null | undefined,
+  items: ReadonlyArray<{ id: string; source?: string | null }> = [],
+): { statement: string; points: string[]; cites: string[] } | null {
+  if (!view || (view.outcome !== 'COMPLETE' && view.outcome !== 'CACHED')) return null;
+  const cites = items.filter((i) => i.source === 'Meta Ad Library').map((i) => i.id).slice(0, 6);
+  if (!cites.length) return null;
+  const date = view.verifiedAt ? view.verifiedAt.slice(0, 10) : null;
+  const when = date ? ` (${date})` : '';
+  const statement = view.activeCount || view.historicalCount
+    ? `Meta-ს სარეკლამო ბიბლიოთეკაში${when} დეველოპერის ან პროექტის გვერდებიდან ჩანს ${view.activeCount} აქტიური და ${view.historicalCount} ადრინდელი რეკლამა. რეკლამა მარკეტინგული სიგნალია და არ ადასტურებს გაყიდვებს, ფინანსურ მდგომარეობას ან მშენებლობის ეტაპს.`
+    : `Meta-ს სარეკლამო ბიბლიოთეკაში${when} დეველოპერის ან პროექტის სახელით რეკლამა ვერ მოიძებნა. ეს არ ნიშნავს, რომ დეველოპერი არ არის აქტიური.`;
+  const points: string[] = [];
+  const names = view.advertisers.map((a) => a.pageName).filter((n): n is string => Boolean(n)).slice(0, 3);
+  if (names.length) points.push(`რეკლამის გვერდები: ${names.join(', ')}.`);
+  if (view.projectsAdvertised.length) points.push(`რეკლამებში ნახსენები პროექტები: ${view.projectsAdvertised.slice(0, 3).join(', ')}.`);
+  if (view.platforms.length) points.push(`პლატფორმები: ${view.platforms.slice(0, 4).join(', ')}.`);
+  return { statement, points, cites };
+}

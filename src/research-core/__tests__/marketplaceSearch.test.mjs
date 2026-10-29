@@ -21,7 +21,7 @@ import { budgetBand, districtFit, hardFilter } from '../marketplace/ranking.ts';
 import { MAX_UPGRADE_RECOMMENDATIONS, isMeaningful, selectUpgrades, whatYouGain } from '../marketplace/upgrade.ts';
 import { pageResults, processSearch, publicView } from '../marketplace/pipeline.ts';
 import {
-  RESULTS_INTELLIGENCE_LIMIT, acceptIntelligence, applyIntelligence, buildFactSheets,
+  RESULTS_INTELLIGENCE_LIMIT, acceptIntelligence, applyIntelligence, buildFactSheets, deterministicIntelligence,
 } from '../marketplace/results-intelligence.ts';
 import { deriveSearchStatus, progressOf, stagesOf, timedOut } from '../marketplace/lifecycle.ts';
 import { compareProperties } from '../marketplace/comparison.ts';
@@ -555,6 +555,27 @@ test('results intelligence: bounded input, evidence-only codes, unknown keys and
   assert.equal(applied.find((p) => p.key === best.key).reasons[0].code, 'VERIFIED_RECENTLY');
   assert.ok(!applied.some((p) => p.key === upgradeKey), 'the model may veto an upgrade');
   assert.equal(applied.length, out.properties.length - 1, 'it can never add a property');
+});
+
+test('results intelligence in code (zero AI): stated criteria first, own codes only, no upgrade veto, deterministic', () => {
+  const out = run();
+  const request = { ...F.FIXTURE_REQUEST, districts: ['Vake'], bedrooms: { min: 2, max: 2 }, floorRange: null, floorPreferences: [], mustHave: ['PARKING'], niceToHave: [] };
+  const accepted = deterministicIntelligence(out.properties, request);
+  assert.deepEqual(accepted, deterministicIntelligence(out.properties, request), 'the same input gives the same reading');
+  assert.equal(accepted.length, out.properties.filter((p) => p.group !== 'OTHER').length);
+  for (const a of accepted) {
+    const p = out.properties.find((x) => x.key === a.key);
+    assert.ok(a.reasons.every((c) => p.reasons.some((r) => r.code === c)), 'only the property\'s own reasons');
+    assert.ok(a.reasons.length <= 3 && a.tradeoffs.length <= 2);
+    assert.equal(a.upgradeWorthIt, null, 'code never vetoes an upgrade');
+    assert.ok(!a.tradeoffs.includes('FLOOR_NOT_STATED'), 'a floor gap is no tradeoff when no floor was asked for');
+    const order = ['DISTRICT_MATCH', 'BEDROOM_MATCH', 'HAS_PARKING'];
+    const stated = a.reasons.filter((c) => order.includes(c));
+    assert.deepEqual(a.reasons.slice(0, stated.length), stated, `stated criteria lead: ${a.reasons}`);
+  }
+  const applied = applyIntelligence(out.properties, accepted);
+  assert.equal(applied.length, out.properties.length, 'no property is dropped');
+  assert.deepEqual(applied.filter((p) => p.group === 'UPGRADE').map((p) => p.key), out.properties.filter((p) => p.group === 'UPGRADE').map((p) => p.key));
 });
 
 /* ───────────────────────── Lifecycle and progressive results ───────────────────────── */

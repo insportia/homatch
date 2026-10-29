@@ -25440,6 +25440,14 @@ const en = {
   admin_sub_bog: 'Bank of Georgia',
   admin_sub_caps: 'Recurring {{recurring}}, refunds {{refunds}}, status lookup {{lookup}}',
   admin_sub_counts: 'Active {{active}}, payment due {{pastDue}}, ended {{expired}}, trials used {{trials}}',
+
+  /* ── FIND PROPERTY QUERY ENGINE (clarification chips) ── */
+  mps_clarify_title: 'Just to be sure',
+  mps_clarify_transaction: 'Do you want to buy or to rent?',
+  mps_clarify_property_type: 'Which kind of property should we search for?',
+  mps_clarify_currency: 'Which currency is that price in?',
+  mps_clarify_place: 'Which place did you mean?',
+  mps_clarify_city: 'Which city should we search in?',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -50794,6 +50802,14 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_sub_bog: 'საქართველოს ბანკი',
   admin_sub_caps: 'განმეორებითი {{recurring}}, დაბრუნება {{refunds}}, სტატუსის შემოწმება {{lookup}}',
   admin_sub_counts: 'აქტიური {{active}}, გადასახდელი {{pastDue}}, დასრულებული {{expired}}, გამოყენებული ცდები {{trials}}',
+
+  /* ── FIND PROPERTY QUERY ENGINE (clarification chips) ── */
+  mps_clarify_title: 'მცირე დაზუსტება',
+  mps_clarify_transaction: 'ყიდვა გინდათ თუ ქირაობა?',
+  mps_clarify_property_type: 'როგორ ქონებას ვეძებთ?',
+  mps_clarify_currency: 'ეს ფასი რომელ ვალუტაშია?',
+  mps_clarify_place: 'რომელ ადგილს გულისხმობთ?',
+  mps_clarify_city: 'რომელ ქალაქში ვეძებოთ?',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -76139,6 +76155,14 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_sub_bog: 'Банк Грузии',
   admin_sub_caps: 'Автоплатёж {{recurring}}, возвраты {{refunds}}, проверка статуса {{lookup}}',
   admin_sub_counts: 'Активных {{active}}, к оплате {{pastDue}}, завершённых {{expired}}, пробных использовано {{trials}}',
+
+  /* ── FIND PROPERTY QUERY ENGINE (clarification chips) ── */
+  mps_clarify_title: 'Чтобы не ошибиться',
+  mps_clarify_transaction: 'Вы хотите купить или снять?',
+  mps_clarify_property_type: 'Какую недвижимость искать?',
+  mps_clarify_currency: 'В какой валюте эта цена?',
+  mps_clarify_place: 'Какое место вы имели в виду?',
+  mps_clarify_city: 'В каком городе искать?',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -101482,6 +101506,14 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_sub_bog: 'Bank of Georgia (Gürcistan Bankası)',
   admin_sub_caps: 'Yinelenen {{recurring}}, iade {{refunds}}, durum sorgusu {{lookup}}',
   admin_sub_counts: 'Etkin {{active}}, ödeme bekleyen {{pastDue}}, sona eren {{expired}}, kullanılan deneme {{trials}}',
+
+  /* ── FIND PROPERTY QUERY ENGINE (clarification chips) ── */
+  mps_clarify_title: 'Emin olmak için',
+  mps_clarify_transaction: 'Satın almak mı, kiralamak mı istiyorsunuz?',
+  mps_clarify_property_type: 'Hangi tür mülkü arayalım?',
+  mps_clarify_currency: 'Bu fiyat hangi para biriminde?',
+  mps_clarify_place: 'Hangi yeri kastettiniz?',
+  mps_clarify_city: 'Hangi şehirde arayalım?',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -126825,6 +126857,14 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_sub_bog: 'بنك جورجيا',
   admin_sub_caps: 'متكرر {{recurring}}، استرداد {{refunds}}، استعلام الحالة {{lookup}}',
   admin_sub_counts: 'نشطة {{active}}، مستحقة الدفع {{pastDue}}، منتهية {{expired}}، تجارب مستخدمة {{trials}}',
+
+  /* ── FIND PROPERTY QUERY ENGINE (clarification chips) ── */
+  mps_clarify_title: 'للتأكد فقط',
+  mps_clarify_transaction: 'هل تريد الشراء أم الإيجار؟',
+  mps_clarify_property_type: 'ما نوع العقار الذي نبحث عنه؟',
+  mps_clarify_currency: 'بأي عملة هذا السعر؟',
+  mps_clarify_place: 'أي مكان تقصد؟',
+  mps_clarify_city: 'في أي مدينة نبحث؟',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -152168,6 +152208,14 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_sub_bog: 'בנק גאורגיה',
   admin_sub_caps: 'חיוב חוזר {{recurring}}, החזרים {{refunds}}, בדיקת סטטוס {{lookup}}',
   admin_sub_counts: 'פעילים {{active}}, ממתינים לתשלום {{pastDue}}, הסתיימו {{expired}}, ניסיונות שנוצלו {{trials}}',
+
+  /* ── FIND PROPERTY QUERY ENGINE (clarification chips) ── */
+  mps_clarify_title: 'רק כדי לוודא',
+  mps_clarify_transaction: 'אתם רוצים לקנות או לשכור?',
+  mps_clarify_property_type: 'איזה סוג נכס לחפש?',
+  mps_clarify_currency: 'באיזה מטבע המחיר הזה?',
+  mps_clarify_place: 'לאיזה מקום התכוונתם?',
+  mps_clarify_city: 'באיזו עיר לחפש?',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

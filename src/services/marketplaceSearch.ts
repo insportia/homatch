@@ -10,6 +10,7 @@ import type { BrowsePage, ResultFilters } from '@/research-core/marketplace/brow
 import type { ComparisonRow } from '@/research-core/marketplace/comparison';
 import type { SearchStage, SearchStatus } from '@/research-core/marketplace/lifecycle';
 import type { ResultGroup, ResultProperty } from '@/research-core/marketplace/pipeline';
+import type { Clarification } from '@/research-core/marketplace/queryEngine';
 import type { Readiness } from '@/research-core/marketplace/readiness';
 
 export type { BrowsePage, ResultFilters } from '@/research-core/marketplace/browse-results';
@@ -81,8 +82,9 @@ export async function getCapabilities(): Promise<MarketplaceCapabilities> {
   }
 }
 
+/** The deterministic query engine's reading (no model): the brief, and chips for anything ambiguous. */
 export const understand = (text: string) =>
-  call<{ understood: boolean; brief: SearchIntelligenceBrief; readiness: Readiness; costRef?: string }>({ action: 'understand', text });
+  call<{ understood: boolean; brief: SearchIntelligenceBrief; readiness: Readiness; clarifications?: Clarification[]; costRef?: string }>({ action: 'understand', text });
 
 /** Whether this search also started a live portal read, and if not, why and until when. */
 export interface LiveRefresh {

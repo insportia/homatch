@@ -216,7 +216,9 @@ export async function adaptiveRound(db: any, matchingJobId: string): Promise<{ q
     return { queued: 0, stop: step.reason, pass: null };
   }
 
-  /* The model proposes; nothing it says is used before validateActions. */
+  /* Code first (owner, 2026-10-29): the pass runs the deterministic ladder (fallbackActions)
+     unless admin_settings.find_buyers_ai_planning is true (missing/unreadable = OFF). With it on
+     the model may propose; nothing it says is used before validateActions. */
   let actions: ProposedAction[] = [];
   let assessment: string | null = null;
   let source: 'MODEL' | 'FALLBACK' = 'MODEL';
@@ -226,7 +228,7 @@ export async function adaptiveRound(db: any, matchingJobId: string): Promise<{ q
   const book = parsePriceBook(settings.priceBook);
   const modelInput = { ...evidenceForModel(evidence, step.pass, gates), allowedActors: Object.keys(gates) };
   const ceiling = aiCallCeilingMicros(book, 600 + Math.ceil(JSON.stringify(modelInput).length / 3), 1200);
-  if (executionHeadroomMicros(evidence.budgetMicros, evidence.spentMicros) >= ceiling) {
+  if (settings.aiPlanning === true && executionHeadroomMicros(evidence.budgetMicros, evidence.spentMicros) >= ceiling) {
     const res = await openAiJson<{ assessment: string; actions: ProposedAction[] }>(book, ADAPTIVE_SYSTEM_PROMPT,
       modelInput, ADAPTIVE_ACTION_SCHEMA as any, { maxTokens: 1200 });
     await recordAiCost(db, { key: `ai:adaptive:${matchingJobId}:${evidence.round + 1}`, matchingJobId, kind: 'AI', operation: 'ADAPTIVE_PLAN', result: res,

@@ -18,6 +18,7 @@
 // per search is enforced, so a double click never reserves twice.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { installNoModelGuard } from '../_shared/noModelGuard.ts';
 import { beginExecution, releaseExecution } from '../_shared/billing.ts';
 import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
 import { OPEN_RUN_STATES, runEvent, updateRun } from '../_shared/discoveryRun.ts';
@@ -52,6 +53,10 @@ const CORS = {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { ...CORS, 'Content-Type': 'application/json' },
 });
+
+/* Zero AI on the Find Property path (owner, 2026-10-29): the paid Deep Search reaches the Find Buyers
+   campaign module only through shared imports; any model request it could make is refused here. */
+installNoModelGuard('find-property-run');
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });

@@ -14,12 +14,12 @@ test('pricing: gpt-4o-mini in the price book at the published rates; Find Proper
   assert.match(read('supabase/functions/_shared/providerCost.ts'), /if \(error \|\| data === null \|\| data === undefined \|\| data === ''\) return null;/);
 });
 
-test('correlation: results AI carries the search id; the brief call carries brief:<uuid> handed back at start', () => {
+test('correlation: no model call is made any more (zero AI, 2026-10-29); brief refs a client still holds keep linking to the search', () => {
   const ms = read('supabase/functions/_shared/marketplaceSearch.ts');
-  assert.match(ms, /correlation_id: correlationId, model: r\.model, input_tokens: r\.inputTokens, output_tokens: r\.outputTokens/);
-  assert.match(ms, /recordAiUsage\(db, 'RESULTS_INTELLIGENCE', r, searchId\)/);
+  assert.doesNotMatch(ms, /recordAiUsage|cost_events/, 'Results Intelligence is code: nothing to cost');
   const edge = read('supabase/functions/marketplace-search/index.ts');
-  assert.match(edge, /await recordAiUsage\(db, 'SEARCH_INTELLIGENCE', r, `brief:\$\{costRef\}`\)/);
+  assert.doesNotMatch(edge, /recordAiUsage|costRef = crypto\.randomUUID\(\)/, 'understand is the deterministic engine: no cost, no new ref');
+  /* Historic brief:<uuid> refs (from before the change) are still accepted and linked once. */
   assert.match(edge, /brief_cost_refs: briefRefs/);
   for (const path of ['if (prior) { await linkBriefCosts(prior);', 'if (twin) { await linkBriefCosts(twin);', 'if (recent) { await linkBriefCosts(recent);']) assert.ok(edge.includes(path), path);
   assert.match(read('src/components/findProperty/MarketplaceSearchExperience.tsx'), /startSearch\(brief, idempotency\.current, briefRefs\.current\)/);

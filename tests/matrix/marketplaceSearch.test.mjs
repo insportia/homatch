@@ -262,22 +262,19 @@ test('source-level: new paths are owned by the DISCOVERY component', () => {
   assert.equal(relative(root, join(root, MIG)).replaceAll('\\', '/'), MIG);
 });
 
-test('understand: atomic per-user quota checked BEFORE any model call; 429 with Retry-After; fails closed', () => {
+test('understand: the deterministic query engine, no model, no paid-call quota; the quota RPC stays for history', () => {
   const ms = code(MS);
   const u = ms.indexOf("if (action === 'understand')");
-  const quota = ms.indexOf('consumeUnderstandQuota(db, userId)', u);
-  const model = ms.indexOf('openaiStructured(', u);
-  assert.ok(u > 0 && quota > u && model > quota, 'the quota is consumed before OpenAI is called');
-  assert.match(ms, /429, \{ 'Retry-After': String\(quota\.retryAfterSeconds\) \}/);
-  assert.match(ms, /code: 'RATE_LIMIT_EXCEEDED'/, 'the same contract investment-consultant uses');
+  const engine = ms.indexOf('understandSearchText(text, { converter })', u);
+  assert.ok(u > 0 && engine > u, 'understand reads with the engine');
+  assert.doesNotMatch(ms, /openaiStructured|consumeUnderstandQuota|RATE_LIMIT_EXCEEDED/, 'nothing paid to protect, so nothing to throttle');
+  assert.match(ms, /clarifications: reading\.clarifications/, 'ambiguity comes back as chips');
   const sh = code(SH);
-  assert.match(sh, /rpc\('consume_marketplace_rate_limit'/);
-  assert.match(sh, /window: 'UNAVAILABLE'/, 'an unreadable quota refuses the call');
+  assert.doesNotMatch(sh, /openaiStructured|api\.openai\.com|consume_marketplace_rate_limit/);
   assert.doesNotMatch(sh, /from ['"][^'"]*\/comm\//, 'no Communications import');
+  /* The migration that created the RPC is history and stays untouched. */
   const sql = read(MIG);
   assert.match(sql, /pg_advisory_xact_lock\(hashtext\('marketplace_rate_limit:'/);
-  assert.match(sql, /insert into public\.rate_limit_events \(user_id, operation\)/);
-  assert.match(sql, /revoke all on function public\.consume_marketplace_rate_limit\(uuid, text, integer, integer, integer, integer\) from public, anon, authenticated/);
 });
 
 // MyHome provider protection is a bounded cooldown state machine stored on the

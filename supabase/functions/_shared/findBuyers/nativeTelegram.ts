@@ -51,6 +51,6 @@ export async function assessNativeTelegram(db: any, matchingJobId: string, setti
     db, campaign: campaign as CampaignRow, stage: 'TELEGRAM_CHANNEL', runId: `native-tg:${matchingJobId}`, runLanguage: null,
     datasetId: null, providerRunId: null, book: parsePriceBook(settings.priceBook), gate: settings.commentGate,
     lowDownPaymentRatio: settings.lowDownPaymentRatio, parent: null, sourceId: null, sourceYield: null, now,
-    reusing: true, verbatimIds: true, aiHeadroomPerItemMicros: settings.aiHeadroomPerItemMicros,
+    reusing: true, verbatimIds: true, aiAmbiguous: settings.aiAmbiguous, aiHeadroomPerItemMicros: settings.aiHeadroomPerItemMicros,
   }, items);
 }

@@ -26,17 +26,18 @@ import { buildWhy, type WhyMatched } from '../../../../src/research-core/findBuy
 import { cityMentioned, mentionsPlace } from '../../../../src/research-core/findBuyers/places.ts';
 import { judgeFreshness, MAX_SIGNAL_AGE_DAYS } from '../../../../src/research-core/findBuyers/freshness.ts';
 import { dateProvenance, emptyDispositions, freshnessBucket, hardGate, publicIntent, type DispositionCounts } from '../../../../src/research-core/findBuyers/demandTaxonomy.ts';
-import { classifyDemand, classifyComment, boundModelReading, withAuthorEvidence, ADVERTISER_ROLES, DEMAND_MODEL_SCHEMA, DEMAND_SYSTEM_PROMPT, type DemandReading, type DemandRole } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
+import { classifyDemand, classifyComment, boundModelReading, withAuthorEvidence, ADVERTISER_ROLES, type DemandReading, type DemandRole } from '../../../../src/research-core/findBuyers/demandClassifier.ts';
 import { classifyBuyerIntent } from '../../../../src/research-core/findBuyers/buyerIntent.ts';
 import { decideCommentSampling } from '../../../../src/research-core/findBuyers/commentSampling.ts';
 import { qualify, legacyIntentClass, QUALIFICATION_VERSION, type Qualification } from '../../../../src/research-core/findBuyers/qualify.ts';
 import { duplicateKey } from '../../../../src/research-core/findBuyers/requalify.ts';
 import { sourceRelevance } from '../../../../src/research-core/findBuyers/sourceRelevance.ts';
-import { openAiJson, recordAiCost, type PriceBook } from './openai.ts';
+import type { PriceBook } from './openai.ts';
 import { classifyCandidates } from './aiClassify.ts';
 import { campaignAiGate } from './campaign.ts';
-import { aiCallCeilingMicros, DEFAULT_AI_HEADROOM_PER_ITEM_MICROS, type AiSpendGate } from '../../../../src/research-core/findBuyers/executionBudget.ts';
-import { AI_CLASSIFIER_VERSION, AI_MAX_ITEMS_PER_RUN, aiCandidateKey, applyAiVerdict, parseAiVerdict } from '../../../../src/research-core/findBuyers/aiClassifier.ts';
+import { DEFAULT_AI_HEADROOM_PER_ITEM_MICROS, type AiSpendGate } from '../../../../src/research-core/findBuyers/executionBudget.ts';
+import { AI_CLASSIFIER_VERSION, aiCandidateKey, applyAiVerdict, parseAiVerdict } from '../../../../src/research-core/findBuyers/aiClassifier.ts';
+import { explicitlyAmbiguous, FIND_BUYERS_AI_MAX_ITEMS_PER_RUN, selectForModel } from '../../../../src/research-core/findBuyers/aiPolicy.ts';
 
 export interface CampaignRow {
   matching_job_id: string;
@@ -130,8 +131,9 @@ export interface PipelineCtx {
   /** The items ARE stored rows of another collector (native Telegram): their external ids are
    *  used verbatim (no m23: prefix) and, with `reusing`, nothing is upserted or re-written. */
   verbatimIds?: boolean;
-  /** AI-first classification (v11); false only when admin_settings.find_buyers_ai_first is false. */
-  aiFirst?: boolean;
+  /** The model may classify candidates the rules mark ambiguous (admin_settings.find_buyers_ai_ambiguous,
+   *  default OFF, capped per run — aiPolicy.ts). Absent = OFF: rules only. */
+  aiAmbiguous?: boolean;
   /** The search phrases of a keyword / post-search run (provenance on each lead). */
   searchQueries?: string[] | null;
   /** OpenAI spend gate shared by this run's calls (executionBudget.ts); built from the campaign's spend when absent. */
@@ -455,17 +457,21 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
       reading, qualification: null, dupKeys: duplicateKey({ text: item.text, author: item.author.id ?? item.author.url ?? item.author.name, url: item.url }) });
   }
 
-  /* AI-FIRST (v11, owner 2026-10-18): every unique candidate is classified by the model against
-     the Property DNA before qualification — the model decides who is speaking and what they
-     want (aiClassifier.ts). Same words in the same context are classified once (per run and,
-     through raw_signals.intent_json.aiCache, across campaigns of the same property). A
-     candidate without a verdict (call failed, over the per-run bound) is UNVERIFIED: never a
-     confident rule-based buyer. Kill switch: admin_settings.find_buyers_ai_first = false. */
-  if (ctx.aiFirst !== false) {
+  /* DETERMINISTIC FIRST (owner, 2026-10-29). The rule reading above (demandClassifier.ts,
+     author evidence, a stored resolution for the same words) is the decision. A model is asked
+     ONLY when admin_settings.find_buyers_ai_ambiguous is true (missing/unreadable = OFF), ONLY
+     for candidates the rules mark explicitly ambiguous (needsModel on real-estate text), and
+     for at most FIND_BUYERS_AI_MAX_ITEMS_PER_RUN distinct texts per run (aiPolicy.ts). Same
+     words in the same context are classified once (per run and, through
+     raw_signals.intent_json.aiCache, across campaigns of the same property). An ambiguous
+     candidate the model did not resolve (switch off, over the cap, call failed, budget refused)
+     keeps its rule reading: UNCLEAR is never promoted to a buyer. The retired
+     find_buyers_ai_first (every candidate to the model) is no longer read. */
+  const ambiguous = assessed.filter((a) => explicitlyAmbiguous(a.reading, a.item.text));
+  if (ctx.aiAmbiguous === true && ambiguous.length) {
     const keyOf = (a: Assessed) => aiCandidateKey(a.item.text, a.ctx.kind, a.parent?.role ?? null, campaign.dna.dnaKey ?? '');
     const byKey = new Map<string, Assessed[]>();
-    for (const a of assessed) {
-      if (a.item.text.trim().length < 2) continue;
+    for (const a of ambiguous) {
       const k = keyOf(a);
       byKey.set(k, [...(byKey.get(k) ?? []), a]);
     }
@@ -474,7 +480,9 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
       const cached = knownMap.get(extId(group[0].item))?.intent_json?.aiCache?.[k];
       if (cached?.role) resolved.set(k, cached);
     }
-    const pending = [...byKey.keys()].filter((k) => !resolved.has(k)).slice(0, AI_MAX_ITEMS_PER_RUN);
+    const pending = selectForModel([...byKey.keys()].filter((k) => !resolved.has(k)), {
+      enabled: true, ambiguous: () => true, cap: FIND_BUYERS_AI_MAX_ITEMS_PER_RUN, maxCap: FIND_BUYERS_AI_MAX_ITEMS_PER_RUN,
+    });
     if (pending.length) {
       /* Paid from the campaign's execution budget: a batch it cannot afford is not sent. */
       const aiGate = ctx.aiGate ?? await campaignAiGate(db, campaign.matching_job_id ?? null, ctx.aiHeadroomPerItemMicros ?? DEFAULT_AI_HEADROOM_PER_ITEM_MICROS, ctx.runId);
@@ -482,7 +490,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
         gate: aiGate,
         book: ctx.book, dna: campaign.dna, matchingJobId: campaign.matching_job_id,
         keyPrefix: `ai:classify:${ctx.runId}:${ctx.stage}:${ctx.parent?.externalId ?? '-'}`, operation: 'AI_CLASSIFY',
-        metadata: { stage: ctx.stage, version: AI_CLASSIFIER_VERSION },
+        metadata: { stage: ctx.stage, version: AI_CLASSIFIER_VERSION, scope: 'AMBIGUOUS_ONLY' },
       }, pending.map((k) => {
         const a = byKey.get(k)![0];
         return { id: k, kind: a.ctx.kind, text: a.item.text, parentExcerpt: a.parent?.excerpt ?? null, author: a.item.author.name ?? null };
@@ -493,45 +501,14 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     }
     for (const [k, group] of byKey) {
       const v = resolved.get(k) ? parseAiVerdict(resolved.get(k)) : null;
+      if (!v) continue; /* unresolved: the rule reading stands */
       for (const a of group) {
-        a.reading = applyAiVerdict(a.reading, v ? { ...v, model: resolved.get(k).model } as any : null, a.item.text);
+        a.reading = applyAiVerdict(a.reading, { ...v, model: resolved.get(k).model } as any, a.item.text);
         a.aiKey = k;
         /* The author still decides it: a business-named author or one advertising in this read stays an intermediary. */
         const aKey = authorKey(a.item);
         a.reading = withAuthorEvidence(a.reading, { name: a.item.author.name, alsoAdvertises: aKey != null && advertisers.has(aKey) });
       }
-    }
-    /* No text to judge: a rule seeker is unverified, a rule rejection stays one. */
-    for (const a of assessed) if (!a.aiKey) a.reading = applyAiVerdict(a.reading, null);
-  } else {
-    /* Kill switch off: the previous behaviour — the model only for ambiguous text. */
-    const ambiguous = assessed.filter((a) => a.reading.needsModel && a.reading.realEstate && a.item.text.length >= 3).slice(0, 90);
-    const intentGate = ctx.aiGate ?? await campaignAiGate(db, campaign.matching_job_id ?? null, ctx.aiHeadroomPerItemMicros ?? DEFAULT_AI_HEADROOM_PER_ITEM_MICROS, ctx.runId);
-    for (let i = 0; i < ambiguous.length; i += 30) {
-      const batch = ambiguous.slice(i, i + 30);
-      /* Same execution budget: a batch it cannot afford keeps its rule reading (no model call). */
-      if (!intentGate.admit(aiCallCeilingMicros(ctx.book, 600 + batch.length * 180, 120 + batch.length * 60))) {
-        out.aiBudgetRefused = (out.aiBudgetRefused ?? 0) + batch.length;
-        for (const a of batch) a.reading = boundModelReading(a.reading, null);
-        continue;
-      }
-      const res = await openAiJson<{ items: Array<{ id: string; role: string; transaction: string }> }>(ctx.book, DEMAND_SYSTEM_PROMPT, {
-        items: batch.map((a, k) => ({
-          id: String(k), kind: a.ctx.kind, text: clip(a.item.text, 500),
-          parent_excerpt: a.parent?.excerpt ?? null, parent_similarity: a.ctx.parentSimilarity,
-        })),
-      }, DEMAND_MODEL_SCHEMA, { maxTokens: 120 + batch.length * 60 });
-      out.aiCalls++;
-      intentGate.spend(res.costMicros);
-      await recordAiCost(db, {
-        key: `ai:intent:${ctx.runId}:${ctx.stage}:${ctx.parent?.externalId ?? '-'}:${i}`, matchingJobId: campaign.matching_job_id, kind: 'AI', operation: 'INTENT',
-        result: res, metadata: { items: batch.length, stage: ctx.stage },
-      }).catch(() => undefined);
-      const byId = new Map((res.data?.items ?? []).map((x) => [String(x.id), x]));
-      batch.forEach((a, k) => {
-        const m = byId.get(String(k));
-        a.reading = boundModelReading(a.reading, m ? { role: m.role, transaction: m.transaction } : null);
-      });
     }
   }
 

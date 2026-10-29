@@ -101,7 +101,22 @@ test('an uncached search plans and queues memo23 Actors with production-shaped b
   assert.ok(!log.upserts.some((u) => u.table === 'find_buyers_query_cache'), 'a plan without the model is never cached');
 });
 
-test('a plan the model answered is cached', async () => {
+test('code first: with the planning switch OFF (default) no model is asked, even with a key', async () => {
+  const env = globalThis.Deno.env.get; const net = globalThis.fetch;
+  let calls = 0;
+  globalThis.Deno.env.get = (k) => (k === 'OPENAI_API_KEY' ? 'test-key' : undefined);
+  globalThis.fetch = async () => { calls++; throw new Error('the model must not be asked'); };
+  try {
+    const { db, log } = prodLikeDb({ actors: [PRICED('FB_GROUP_SEARCH')] });
+    const out = await startSocialCampaign(db, INPUT, SETTINGS);
+    assert.equal(out.reason, null);
+    assert.ok(out.queued > 0, 'the deterministic plan queues jobs');
+    assert.equal(calls, 0, 'no QUERY_PLAN call');
+    assert.ok(!log.upserts.some((u) => u.table === 'find_buyers_query_cache'));
+  } finally { globalThis.Deno.env.get = env; globalThis.fetch = net; }
+});
+
+test('a plan the model answered is cached (planning switch ON)', async () => {
   const env = globalThis.Deno.env.get; const net = globalThis.fetch;
   globalThis.Deno.env.get = (k) => (k === 'OPENAI_API_KEY' ? 'test-key' : undefined);
   globalThis.fetch = async () => new Response(JSON.stringify({
@@ -110,7 +125,7 @@ test('a plan the model answered is cached', async () => {
   }), { status: 200 });
   try {
     const { db, log } = prodLikeDb({ actors: [PRICED('FB_GROUP_SEARCH')] });
-    const out = await startSocialCampaign(db, INPUT, SETTINGS);
+    const out = await startSocialCampaign(db, INPUT, { ...SETTINGS, aiPlanning: true });
     assert.equal(out.reason, null);
     assert.ok(log.upserts.some((u) => u.table === 'find_buyers_query_cache'), 'the query cache write is actually sent');
   } finally { globalThis.Deno.env.get = env; globalThis.fetch = net; }

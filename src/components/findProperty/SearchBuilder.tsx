@@ -1,14 +1,15 @@
 import { ArrowRight, Check, Loader2, Pencil, Sparkles } from 'lucide-react';
 import React, { useEffect, useId, useMemo, useState } from 'react';
-import {
-  type BriefEdit, type SearchIntelligenceBrief, applyEdit,
+import {applyEdit,
+  type BriefEdit, type SearchIntelligenceBrief, 
 } from '@/research-core/marketplace/brief';
-import { type Readiness, type RequirementKey, evaluateReadiness } from '@/research-core/marketplace/readiness';
+import type { Clarification } from '@/research-core/marketplace/queryEngine';
+import { evaluateReadiness, type Readiness, type RequirementKey } from '@/research-core/marketplace/readiness';
 import type {
   BuildingChoice, MarketplacePropertyType, MarketplaceTransaction, RenovationChoice,
 } from '@/research-core/marketplace/taxonomy';
-import { type T, criteriaChips, rangeText, requirementLabel } from './format';
 import { AdvancedPropertyPreferences } from './AdvancedPropertyPreferences';
+import { criteriaChips, rangeText, requirementLabel, type T } from './format';
 
 const TRANSACTIONS: MarketplaceTransaction[] = ['BUY', 'MONTHLY_RENT', 'DAILY_RENT'];
 const TYPES: MarketplacePropertyType[] = ['APARTMENT', 'HOUSE', 'PENTHOUSE', 'LAND', 'COMMERCIAL', 'OFFICE'];
@@ -127,6 +128,35 @@ export function UnderstoodPanel({ t, brief, readiness, onEdit, editing }: {
           ))}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+/* ────────────────────────── What the reading could not decide ────────────────────────── */
+
+/** One question per ambiguity, answered with one tap. The chip's edits are applied exactly as a manual edit. */
+export function ClarificationPanel({ t, lang, clarifications, onPick }: {
+  t: T; lang: string; clarifications: Clarification[]; onPick: (c: Clarification, edits: BriefEdit[]) => void;
+}) {
+  if (!clarifications.length) return null;
+  return (
+    <section aria-label={t('mps_clarify_title')} data-mps-clarifications="" className="space-y-3 rounded-2xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold)/0.05)] p-4 sm:p-5">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">{t('mps_clarify_title')}</p>
+      {clarifications.map((c) => (
+        <div key={c.id} role="group" aria-labelledby={`mps-clarify-${c.id}`} className="space-y-2">
+          <p id={`mps-clarify-${c.id}`} className="text-[15px] font-medium leading-relaxed text-foreground">{t(c.questionKey)}</p>
+          <ul className="flex flex-wrap gap-2">
+            {c.options.map((o) => (
+              <li key={o.id} className="min-w-0 max-w-full">
+                <button type="button" data-mps-clarify-option={o.id} onClick={() => onPick(c, o.edits)}
+                  className={`${optionClass(false)} max-w-full`}>
+                  <span dir="auto" className="truncate">{o.labelKey ? t(o.labelKey, o.labelVars) : o.labels?.[lang] ?? o.text ?? o.id}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </section>
   );
 }
@@ -354,13 +384,15 @@ export function ConfirmCard({ t, brief, onStart, onChange, onAddCondition, start
 
 /* ────────────────────────── The builder ────────────────────────── */
 
-export function SearchBuilder({ t, brief, onBrief, onStart, starting, onReset, startLabel }: {
-  t: T; brief: SearchIntelligenceBrief; onBrief: (b: SearchIntelligenceBrief) => void; onStart: () => void; starting: boolean; onReset: () => void; startLabel?: string;
+export function SearchBuilder({ t, lang = 'ka', clarifications = [], onClarified, brief, onBrief, onStart, starting, onReset, startLabel }: {
+  t: T; lang?: string; clarifications?: Clarification[]; onClarified?: (id: Clarification['id']) => void;
+  brief: SearchIntelligenceBrief; onBrief: (b: SearchIntelligenceBrief) => void; onStart: () => void; starting: boolean; onReset: () => void; startLabel?: string;
 }) {
   const readiness = useMemo(() => evaluateReadiness(brief), [brief]);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [reviewing, setReviewing] = useState(false);
-  const question: Editing | null = editing ?? readiness.nextQuestion;
+  /* An open clarification is the next question: its chips answer it in one tap. */
+  const question: Editing | null = editing ?? (clarifications.length ? null : readiness.nextQuestion);
   useEffect(() => { if (readiness.state !== 'READY') setReviewing(false); }, [readiness.state]);
   // Several edits from one action apply in order to ONE brief: two separate
   // onBrief calls would each start from the same stale brief, and the second
@@ -374,6 +406,7 @@ export function SearchBuilder({ t, brief, onBrief, onStart, starting, onReset, s
           <p dir="auto" className="min-w-0 flex-1 rounded-2xl rounded-ss-md border border-[hsl(var(--gold-border))] bg-card px-4 py-3 text-[15px] leading-relaxed text-foreground shadow-sm">{brief.originalText}</p>
         </div>
       ) : null}
+      <ClarificationPanel t={t} lang={lang} clarifications={clarifications} onPick={(c, edits) => { edit(edits); onClarified?.(c.id); }} />
       <UnderstoodPanel t={t} brief={brief} readiness={readiness} editing={editing} onEdit={(k) => { setEditing(k); setReviewing(false); }} />
       <AdvancedPropertyPreferences brief={brief} onAdvanced={(value) => edit({ field: 'advanced', value: { ...value, floorRange: value.floorRange ?? null } })} onOlderBuildings={(acceptable) => edit({ field: 'buildingStatuses', value: acceptable ? ['ANY'] : ['NEW_BUILD', 'UNDER_CONSTRUCTION'] })} t={t} />
       {showConfirm ? (

@@ -39,6 +39,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { notify } from '../_shared/notify.ts';
 import { dispatchJobNotifications } from '../_shared/jobNotify.ts';
+import { retryDueDeliveries } from '../_shared/notifyEmail.ts';
 /*
  * FOR EXPATS reminders are computed by the same functions the plan screen
  * uses, imported rather than reimplemented. A second copy of "which
@@ -856,8 +857,15 @@ serve(async (req) => {
        drains it (_shared/jobNotify.ts), and never throws. */
     const jobNotices = await dispatchJobNotifications(sb, 25);
 
+    /* 8. DELIVER AGAIN. Notification emails whose provider call failed transiently
+       (RETRYING, due) or whose sender died mid-send (stale QUEUED) are tried once
+       more with exponential backoff and the same idempotency key
+       (_shared/notifyEmail.ts). After the tell step, so this tick's new emails
+       have had their own first attempt. Never throws. */
+    const emailRetries = await retryDueDeliveries(sb, { limit: 10 });
+
     return json({
-      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, emailMaintenance, expatReminders, studioSchedules, reservations, subscriptions, jobNotices,
+      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, emailMaintenance, expatReminders, studioSchedules, reservations, subscriptions, jobNotices, emailRetries,
     });
   } catch (e) {
     console.error('[jobs-worker] tick failed', e instanceof Error ? e.message : String(e));

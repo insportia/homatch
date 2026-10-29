@@ -43,6 +43,8 @@ import {
 } from '../_shared/comm/generated/inboundEmail.ts';
 import { detectsOptOut, detectsHumanRequest } from '../_shared/comm/generated/handoff.ts';
 import { handleStudioUnsubscribe, isStudioUnsubscribe } from '../_shared/emailStudioUnsubscribe.ts';
+import { handleNotificationUnsubscribe, isNotificationUnsubscribe } from '../_shared/notificationUnsubscribe.ts';
+import { applyProviderEvent } from '../_shared/notifyEmail.ts';
 import { isAssetRequest, serveAsset } from '../_shared/emailMarketing/assetFiles.ts';
 import { getReceivedEmail, mapDomainStatus, resolveResendKey, routeTokenFrom, senderAuthentication } from '../_shared/resend/client.ts';
 import { loadEmailSettings, resolveReplyRoute } from '../_shared/emailMarketing/core.ts';
@@ -82,6 +84,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (isAssetRequest(reqUrl)) return await serveAsset(req, reqUrl, serviceClient());
   if ((req.method === 'GET' || req.method === 'POST') && isStudioUnsubscribe(reqUrl)) {
     return await handleStudioUnsubscribe(reqUrl, serviceClient());
+  }
+  /*
+   * TRANSACTIONAL NOTIFICATION ONE-CLICK UNSUBSCRIBE (?nu=<user>&c=<category>&t=<hmac>).
+   * Optional notification mail only; authenticated by OUR HMAC over the account and the
+   * category (_shared/notificationUnsubscribe.ts). Same reasoning as the studio link above.
+   */
+  if ((req.method === 'GET' || req.method === 'POST') && isNotificationUnsubscribe(reqUrl)) {
+    return await handleNotificationUnsubscribe(reqUrl, serviceClient(), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
   }
 
   if (req.method !== 'POST') {
@@ -263,6 +273,27 @@ async function handleDeliveryEvent(
   if (!shouldProcess) {
     logEvent('email-webhook', 'duplicate_dropped', { eventId });
     return;
+  }
+
+  /*
+   * A TRANSACTIONAL NOTIFICATION EMAIL FIRST. notification_deliveries holds the Resend id
+   * of every notification email (sent with the transactional key). When the id is one of
+   * those, the status moves forward (delivered, bounced, complained, failed) and a
+   * complaint or permanent bounce suppresses the person's optional mail
+   * (_shared/notifyEmail.ts providerEventEffect). Nothing else is involved.
+   */
+  if (typeof data.email_id === 'string') {
+    const bounceType = typeof (data.bounce as { type?: unknown } | undefined)?.type === 'string'
+      ? String((data.bounce as { type: string }).type) : null;
+    const matched = await applyProviderEvent(sb, data.email_id, eventType, bounceType).catch((e) => {
+      logEvent('email-webhook', 'notification_event_failed', { type: eventType, error: redact((e as Error)?.message) });
+      return false;
+    });
+    if (matched) {
+      logEvent('email-webhook', 'notification_event_applied', { type: eventType });
+      await sb.rpc('comm_finish_webhook_event', { p_provider: 'RESEND', p_event_key: eventId, p_error: null });
+      return;
+    }
   }
 
   /* email.failed / email.suppressed: the provider did not (and will not) deliver it. */

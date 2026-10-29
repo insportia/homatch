@@ -10,6 +10,7 @@ import { AlertTriangle, ExternalLink, RefreshCw } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { NotificationDeliveryLog } from '@/components/admin/NotificationDeliveryLog';
 import { centsToUsd, costPerConversationUsd, costPerModelTurnUsd, creditsToUsd, formatCredits, formatUsd, marginState, toNumber } from '@/admin/money';
 import { isHttpsUrl, ruleMoves } from '@/admin/mortgageBankProducts';
 import { Confirm, Empty, ErrorNote, Field, inputClass, PageHeader } from '@/components/admin/control/AdminKit';
@@ -357,7 +358,9 @@ function NotificationsSection({ days }: { days: number }) {
   if (error) return <ErrorNote message={error} />;
   if (!data) return null;
   const email = data.byChannel?.EMAIL ?? {};
-  const sent = Number(email.SENT ?? 0); const failed = Number(email.FAILED ?? 0);
+  /* DELIVERED rows were SENT first; BOUNCED and COMPLAINED were sent and then refused. */
+  const sent = Number(email.SENT ?? 0) + Number(email.DELIVERED ?? 0);
+  const failed = Number(email.FAILED ?? 0) + Number(email.BOUNCED ?? 0) + Number(email.COMPLAINED ?? 0);
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -368,6 +371,7 @@ function NotificationsSection({ days }: { days: number }) {
       </div>
       <Table head={[t('admin_hs_col_reason'), t('admin_hs_col_count')]} rows={(data.topFailureReasons ?? []).map((r: Json) => [<code key="r" dir="ltr">{r.reason}</code>, num(r.count)])} />
       <p className="text-xs text-muted-foreground">{t('admin_hs_nt_note')} <Link className="underline" to="/admin/notifications">{t('admin_hs_nt_link')}</Link></p>
+      <NotificationDeliveryLog days={days} />
     </div>
   );
 }

@@ -179,8 +179,25 @@ export function notificationText(
   if (notif.type === 'CREDITS_TOPPED_UP') {
     return { title: t('notif_payment_ok_title'), body: t('notif_payment_ok_body') };
   }
+  /* Plan neutral: a subscription charge or a historic top-up (saas-notify copy). */
   if (notif.type === 'PAYMENT_FAILED') {
-    return { title: t('notif_payment_failed_title'), body: t('notif_payment_failed_body') };
+    return { title: t('ntf_payment_failed_title'), body: t('ntf_payment_failed_body') };
+  }
+  /* Subscription state and the first free use: the same copy the email carries. */
+  if (notif.type === 'SUBSCRIPTION_ACTIVATED') {
+    return { title: t('ntf_subscription_activated_title'), body: t('ntf_subscription_activated_body') };
+  }
+  if (notif.type === 'SUBSCRIPTION_RENEWED') {
+    return { title: t('ntf_subscription_renewed_title'), body: t('ntf_subscription_renewed_body') };
+  }
+  if (notif.type === 'SUBSCRIPTION_ENDED') {
+    return { title: t('ntf_subscription_ended_title'), body: t('ntf_subscription_ended_body') };
+  }
+  if (notif.type === 'SUBSCRIPTION_PAYMENT_DUE') {
+    return { title: t('ntf_subscription_payment_due_title'), body: t('ntf_subscription_payment_due_body') };
+  }
+  if (notif.type === 'TRIAL_USED') {
+    return { title: t('ntf_trial_used_title'), body: t('ntf_trial_used_body') };
   }
   /* A scanned or unsupported document: an expected outcome with something to do, not a failure. */
   if (kind === 'DOCUMENT_UNREADABLE') {
@@ -189,6 +206,10 @@ export function notificationText(
       title: t('doc_status_failed'),
       body: t(reason === 'doc_error_requires_ocr' ? 'doc_error_requires_ocr' : 'doc_error_unsupported'),
     };
+  }
+  /* A Verify job that could not finish gets the Verify wording (jobNotify writes product_type). */
+  if (notif.type === 'SERVICE_FAILED' && metaString(notif, 'product_type') === 'VERIFY') {
+    return { title: t('ntf_verify_failed_title'), body: t('ntf_verify_failed_body') };
   }
   if (notif.type === 'SERVICE_FAILED') {
     return { title: t('notif_service_failed_title'), body: t('notif_service_failed_body') };

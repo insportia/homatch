@@ -181,9 +181,14 @@ export function readiness(key: ServiceKey, f: Facts): Readiness {
       break;
     }
     case 'email_campaigns': {
+      // Historic key: SMS campaigns only since 2026-10-29 (email is `email_marketing`).
       missing = table(f, 'outreach_campaigns');
-      if (!isTrue(f.settings.outreach_email_sending_enabled)) notes.push('EMAIL_SENDING_SETTING_OFF');
       if (!isTrue(f.settings.outreach_sms_sending_enabled)) notes.push('SMS_SENDING_SETTING_OFF');
+      break;
+    }
+    case 'email_marketing': {
+      missing = [...table(f, 'outreach_campaigns'), ...table(f, 'email_studio_campaigns')];
+      if (!isTrue(f.settings.outreach_email_sending_enabled)) notes.push('EMAIL_SENDING_SETTING_OFF');
       if (!isTrue(f.settings.email_studio_sending_enabled)) notes.push('EMAIL_STUDIO_SENDING_SETTING_OFF');
       if (!f.secrets.RESEND_API_KEY) notes.push('EMAIL_PROVIDER_KEY_NOT_SET');
       break;

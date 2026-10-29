@@ -18,6 +18,7 @@ import { Check, Copy, ExternalLink, Loader2, Mail, MessageSquare, RefreshCw, Sen
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useServiceVisible } from '@/lib/serviceControls';
 import { cn } from '@/lib/utils';
 import {
   crmUpdate, generateLeadDraft, LeadDraftError, type LeadDraftRequest,
@@ -52,6 +53,11 @@ export function LeadOutreachComposer({
 }) {
   const phone = permittedPhone(contact);
   const { t } = useLanguage();
+  /* EMAIL drafts are Email Studio's (service email_marketing, hidden 2026-10-29): while it is off
+     the channel is not offered and the server refuses it too. The lead's address is copied
+     from the contact card instead. */
+  const emailMarketing = useServiceVisible('email_marketing');
+  const channels = emailMarketing ? CHANNELS : CHANNELS.filter((c) => c !== 'EMAIL');
   const startLang = (LANGS as readonly string[]).includes(String(memberLanguage)) ? String(memberLanguage) : 'ka';
   const [channel, setChannel] = useState<LeadDraftRequest['channel']>('HOMATCH_CHAT');
   const [tone, setTone] = useState<LeadDraftRequest['tone']>('PROFESSIONAL');
@@ -121,7 +127,7 @@ export function LeadOutreachComposer({
     <SectionCard title={t('lo_title')} icon={Sparkles} labelledBy="lo-h">
       <p className="text-xs leading-relaxed text-[hsl(218_28%_34%)]">{t('lo_intro')}</p>
       <div className="mt-3 grid gap-2 sm:grid-cols-2" data-testid="lo-controls">
-        {select('lo-channel', t('lo_channel'), channel, (v) => setChannel(v as LeadDraftRequest['channel']), CHANNELS.map((c) => [c, t(`lo_channel_${c}`)]))}
+        {select('lo-channel', t('lo_channel'), channel, (v) => setChannel(v as LeadDraftRequest['channel']), channels.map((c) => [c, t(`lo_channel_${c}`)]))}
         {select('lo-purpose', t('lo_purpose'), purpose, (v) => setPurpose(v as LeadDraftRequest['purpose']), PURPOSES.map((p) => [p, t(`lo_purpose_${p}`)]))}
         {select('lo-tone', t('lo_tone'), tone, (v) => setTone(v as LeadDraftRequest['tone']), TONES.map((x) => [x, t(`lo_tone_${x}`)]))}
         {select('lo-lang', t('lo_language'), language, setLanguage, LANGS.map((l) => [l, LANG_NAME[l]]))}
@@ -163,7 +169,7 @@ export function LeadOutreachComposer({
                 <MessageSquare className="h-4 w-4" aria-hidden="true" />{t('lo_copy_open_chat')}
               </button>
             ) : null}
-            {channel === 'EMAIL' ? (
+            {channel === 'EMAIL' && emailMarketing ? (
               <button type="button" className={cn(SECONDARY_BUTTON, 'h-11')} onClick={onOpenEmailStudio}>
                 <Mail className="h-4 w-4" aria-hidden="true" />{t('lo_plan_email')}
               </button>

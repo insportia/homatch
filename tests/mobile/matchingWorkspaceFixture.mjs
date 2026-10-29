@@ -122,7 +122,9 @@ const PRICES = { STANDARD: 3, EXACT: 5, PREMIUM: 10, MORTGAGE: 3, MORTGAGE_MATCH
 
 export const SWITCHES_ON = { maintenance: false, internal: true, curated: true, unlockedLibrary: true };
 
-export async function boot(t, { port, width = 1440, height = 900, lang = 'en', switches = {}, curatedCount = 640, preUnlocked = 5, admin = false, internal = null } = {}) {
+/* emailMarketing: the Service Control Center's `email_marketing` row (fail closed, hidden by the
+   owner 2026-10-29). Off by default, as in production; the campaign hand-off tests turn it on. */
+export async function boot(t, { port, width = 1440, height = 900, lang = 'en', switches = {}, curatedCount = 640, preUnlocked = 5, admin = false, internal = null, emailMarketing = false } = {}) {
   const BASE = `http://127.0.0.1:${port}`;
   const { chromium } = resolvePlaywright();
   const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(port), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
@@ -281,6 +283,9 @@ export async function boot(t, { port, width = 1440, height = 900, lang = 'en', s
       const res = { success: true, unlocked, alreadyUnlocked: [], skipped: [], chargedCredits: charged, balanceAfter: state.balance, duplicate: false };
       state.unlockResults.set(b.idempotencyKey, res);
       return r.fulfill(json(res));
+    }
+    if (url.includes('/rpc/service_controls_public')) {
+      return r.fulfill(json(emailMarketing ? [{ service_key: 'email_marketing', frontend_enabled: true, backend_enabled: true }] : []));
     }
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));
     return r.fulfill(json({}));

@@ -8,8 +8,9 @@
 //   * select a page, then everything matching the filters — the quote and the unlock send
 //     allMatching + filters (never a list of the database); the quote names the leads already
 //     unlocked (not charged again); the unlock is sent once, with expectedCredits and one
-//     idempotency key; purchased leads leave Available and appear in Unlocked; the CTA opens
-//     /outreach/email?new=1&list=…; nothing is sent;
+//     idempotency key; purchased leads leave Available and appear in Unlocked; with Email
+//     Marketing ON the CTA opens /outreach/email?new=1&list=…; with it hidden (the default since
+//     2026-10-29) there is no campaign CTA and every unlocked email has a Copy button; nothing is sent;
 //   * Internal: the server's 3 / 5 / 10 prices, one per person; quote → one unlock;
 //   * every switch combination; maintenance shows the owner's Georgian copy verbatim with the
 //     CTA to /find-property; switches re-read on focus;
@@ -165,7 +166,7 @@ test('select a page, then all matching: the quote sends allMatching + filters (n
 });
 
 test('a purchase leaves Available, appears in Unlocked, and the CTA opens the campaign screen on the list (nothing sent)', opts, async (t) => {
-  const { page, state, BASE } = await boot(t, { port: PORT });
+  const { page, state, BASE } = await boot(t, { port: PORT, emailMarketing: true });
   await openWorkspace(page, BASE, '?product=external&country=DE');
   await waitRows(page);
   const before = await page.locator('[data-testid="mw-row"]').count();
@@ -203,7 +204,7 @@ test('a purchase leaves Available, appears in Unlocked, and the CTA opens the ca
 });
 
 test('the Unlocked library: select, Create Email Campaign → save to list → campaign screen; never a charge', opts, async (t) => {
-  const { page, state, BASE } = await boot(t, { port: PORT });
+  const { page, state, BASE } = await boot(t, { port: PORT, emailMarketing: true });
   await openWorkspace(page, BASE, '?view=unlocked&product=external');
   await waitRows(page, 5);
   await page.locator('[data-testid="mw-select-page"]').check();
@@ -217,8 +218,44 @@ test('the Unlocked library: select, Create Email Campaign → save to list → c
   assert.equal(state.quoteCalls.length, 0, 'no quote in the library');
 });
 
-test('HOMATCH Internal: prices 10 / 5 / 3 from the server, one per person; quote → one unlock (ilu:) → list → campaign', opts, async (t) => {
+test('Email Marketing hidden (default): no campaign after an unlock or in the library; Copy email instead; nothing saved or sent', opts, async (t) => {
   const { page, state, BASE } = await boot(t, { port: PORT, width: 390, height: 844 });
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+  await openWorkspace(page, BASE, '?product=external&country=DE');
+  await waitRows(page);
+  await page.locator('[data-testid="mw-row-check"]').nth(0).check();
+  await page.waitForFunction(() => /1 new · 1 credit/.test(document.querySelector('[data-testid="mw-quote"]')?.textContent ?? ''));
+  await page.locator('[data-testid="mw-unlock"]').click();
+  await page.locator('[data-testid="mw-confirm"]').click();
+  await page.locator('[data-testid="mw-success"]').waitFor({ timeout: 15000 });
+  assert.equal(await page.locator('[data-testid="mw-create-campaign"]').count(), 0, 'no campaign CTA after an unlock');
+  await page.locator('[data-testid="mw-success-copy-hint"]').waitFor();
+
+  await page.locator('[data-testid="mw-view-unlocked"]').click();
+  await page.waitForFunction(() => /view=unlocked/.test(location.search));
+  await waitRows(page);
+  assert.equal(await page.locator('[data-testid="mw-library-campaign"]').count(), 0, 'no campaign CTA in the library');
+  await page.locator('[data-testid="mw-library-copy-hint"]').waitFor();
+  const copy = page.locator('[data-testid="mw-copy-email"]').first();
+  await copy.waitFor();
+  const shown = (await page.locator('[data-testid="mw-contact-email"]').first().textContent()).trim();
+  assert.match(shown, /@/, 'the server-returned address is shown');
+  assert.ok((await copy.getAttribute('aria-label')).includes(shown), 'the button names the address it copies');
+  await copy.click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="mw-copy-email"]')?.getAttribute('data-state') !== 'idle');
+  const outcome = await copy.getAttribute('data-state');
+  assert.ok(['copied', 'failed'].includes(outcome), outcome);
+  if (outcome === 'copied') {
+    assert.match(await copy.textContent(), /Email copied/);
+    const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => null));
+    if (clip !== null) assert.equal(clip, shown, 'exactly the shown address is copied');
+  }
+  await noOverflow(page, 'unlocked 390 with copy buttons');
+  assert.equal(state.saveCalls.length, 0, 'no list is created for a campaign');
+});
+
+test('HOMATCH Internal: prices 10 / 5 / 3 from the server, one per person; quote → one unlock (ilu:) → list → campaign', opts, async (t) => {
+  const { page, state, BASE } = await boot(t, { port: PORT, width: 390, height: 844, emailMarketing: true });
   await openWorkspace(page, BASE, '?product=internal');
   await waitRows(page, 3);
   const prices = await page.locator('[data-testid="mw-row-price"]').allTextContents();

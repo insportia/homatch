@@ -92,7 +92,7 @@ export function ActionLauncherSection() {
     navigate(signedIn ? signedInPath : publicEntry);
 
   /* Every tile paused: no heading over an empty grid; the next section moves up. */
-  const TILE_SERVICES: ServiceKey[] = ['find_property', 'verify', 'contracts', 'find_buyers', 'mortgage', 'email_campaigns', 'investment', 'for_expats'];
+  const TILE_SERVICES: ServiceKey[] = ['find_property', 'verify', 'contracts', 'find_buyers', 'mortgage', 'email_marketing', 'investment', 'for_expats'];
   const anyTile = callsVisible || TILE_SERVICES.some(show);
 
   const openVerify = () => {
@@ -233,7 +233,7 @@ export function ActionLauncherSection() {
           />
         )}
 
-        {show('email_campaigns') && (
+        {show('email_marketing') && (
           <Tile
             glyph="email"
             field="tile_email"

@@ -93,7 +93,7 @@ function FooterBody() {
         { key: 'link_investment', path: '/investment', service: 'investment' as ServiceKey },
         { key: 'link_ai', path: session ? '/ai' : '/auth/signup', service: 'ai_assistant' as ServiceKey },
         { key: 'link_calls', path: session ? '/outreach/calls' : '/auth/signup', service: 'ai_call_center' as ServiceKey },
-        { key: 'link_email', path: session ? '/outreach/email' : '/auth/signup', service: 'email_campaigns' as ServiceKey },
+        { key: 'link_email', path: session ? '/outreach/email' : '/auth/signup', service: 'email_marketing' as ServiceKey },
       ].filter(offered),
     },
     {

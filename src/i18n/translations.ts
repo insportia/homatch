@@ -20036,7 +20036,7 @@ const en = {
   svc_name_investment: 'Investment Intelligence',
   svc_name_for_expats: 'For Expats',
   svc_name_meta_ads: 'Meta Ads',
-  svc_name_email_campaigns: 'Email & SMS campaigns',
+  svc_name_email_campaigns: 'SMS campaigns',
   svc_name_ai_assistant: 'HOMATCH AI assistant',
   svc_name_brokers_directory: 'Brokers directory',
   svc_name_broker_desk: 'Broker Desk',
@@ -20050,7 +20050,7 @@ const en = {
   svc_desc_investment: 'Investment analysis, market sweeps and the investment consultant.',
   svc_desc_for_expats: 'Guides and plans for buying and settling in Georgia from abroad.',
   svc_desc_meta_ads: 'Creating and launching Meta ad campaigns. Live campaigns keep syncing; its own Meta Ads switches still apply.',
-  svc_desc_email_campaigns: 'Email and SMS campaigns and Email Studio. Sending also needs its own sending switches.',
+  svc_desc_email_campaigns: 'SMS campaigns. Sending also needs its own SMS sending switch. Email campaigns and Email Studio are Email Marketing.',
   svc_desc_ai_assistant: 'The HOMATCH AI assistant, its ask boxes and suggestions. Admin tools that use it keep working.',
   svc_desc_brokers_directory: 'Brokers directory sales: new paid listings and renewals. While paused, nothing is sold or charged, and listings already paid stay public until their paid date.',
   svc_desc_broker_desk: 'The broker and agency workspace. Its paid actions follow Find Buyers and the directory.',
@@ -25286,6 +25286,15 @@ const en = {
 
   /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
   legal_company_id_code: 'Identification code',
+
+  /* ── EMAIL MARKETING HIDDEN, COPY EMAIL ── */
+  svc_name_email_marketing: 'Email Marketing',
+  svc_desc_email_marketing: 'Email campaigns, Email Studio, email plans, sending domains and the email inbox. While off it is hidden and nothing is sent or charged; campaigns, schedules and contacts are kept. Transactional email is not affected.',
+  lead_copy_email: 'Copy email',
+  lead_email_copied: 'Email copied',
+  lead_copy_email_aria: 'Copy the email address {{email}}',
+  lead_copy_email_failed: 'Could not copy. Select the address and copy it by hand.',
+  mw_copy_hint: 'Open a contact to see their email, copy it and write to them from your own mailbox.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -45236,7 +45245,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   svc_name_investment: 'საინვესტიციო ანალიზი',
   svc_name_for_expats: 'ემიგრანტებისთვის',
   svc_name_meta_ads: 'Meta რეკლამა',
-  svc_name_email_campaigns: 'ელფოსტისა და SMS კამპანიები',
+  svc_name_email_campaigns: 'SMS კამპანიები',
   svc_name_ai_assistant: 'HOMATCH AI ასისტენტი',
   svc_name_brokers_directory: 'ბროკერების კატალოგი',
   svc_name_broker_desk: 'ბროკერის სამუშაო სივრცე',
@@ -45250,7 +45259,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   svc_desc_investment: 'საინვესტიციო ანალიზი, ბაზრის მიმოხილვა და საინვესტიციო კონსულტანტი.',
   svc_desc_for_expats: 'გზამკვლევები და გეგმები საზღვარგარეთიდან საქართველოში ყიდვისა და დასახლებისთვის.',
   svc_desc_meta_ads: 'Meta-ს სარეკლამო კამპანიების შექმნა და გაშვება. აქტიური კამპანიები სინქრონიზაციას აგრძელებს; მისი საკუთარი Meta Ads გადამრთველებიც მოქმედებს.',
-  svc_desc_email_campaigns: 'ელფოსტისა და SMS კამპანიები და Email Studio. გაგზავნას მისი საკუთარი გაგზავნის გადამრთველებიც სჭირდება.',
+  svc_desc_email_campaigns: 'SMS კამპანიები. გაგზავნას საკუთარი SMS გაგზავნის გადამრთველიც სჭირდება. ელფოსტის კამპანიები და Email Studio ელფოსტის მარკეტინგს ეკუთვნის.',
   svc_desc_ai_assistant: 'HOMATCH AI ასისტენტი, მისი კითხვის ველები და შემოთავაზებები. ადმინისტრატორის ინსტრუმენტები, რომლებიც მას იყენებს, მუშაობას აგრძელებს.',
   svc_desc_brokers_directory: 'ბროკერების კატალოგის გაყიდვები: ახალი ფასიანი განთავსებები და განახლებები. შეჩერებისას არაფერი იყიდება და არაფერი ჩამოიჭრება, ხოლო უკვე გადახდილი განთავსებები საჯაროდ რჩება გადახდილ თარიღამდე.',
   svc_desc_broker_desk: 'ბროკერისა და სააგენტოს სამუშაო სივრცე. მისი ფასიანი მოქმედებები მყიდველების ძიებასა და კატალოგს მიჰყვება.',
@@ -50486,6 +50495,15 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
   legal_company_id_code: 'საიდენტიფიკაციო კოდი',
+
+  /* ── EMAIL MARKETING HIDDEN, COPY EMAIL ── */
+  svc_name_email_marketing: 'ელფოსტის მარკეტინგი',
+  svc_desc_email_marketing: 'ელფოსტის კამპანიები, Email Studio, ელფოსტის პაკეტები, გამგზავნი დომენები და ელფოსტის შემოსულები. გამორთვისას დამალულია, არაფერი იგზავნება და თანხაც არ ჩამოიჭრება. კამპანიები, განრიგები და კონტაქტები ინახება. სისტემურ წერილებზე ეს გავლენას არ ახდენს.',
+  lead_copy_email: 'ელფოსტის კოპირება',
+  lead_email_copied: 'ელფოსტა დაკოპირდა',
+  lead_copy_email_aria: 'ელფოსტის მისამართის კოპირება: {{email}}',
+  lead_copy_email_failed: 'კოპირება ვერ მოხერხდა. მონიშნეთ მისამართი და ხელით დააკოპირეთ.',
+  mw_copy_hint: 'გახსენით კონტაქტი, დააკოპირეთ მისი ელფოსტა და მისწერეთ საკუთარი ელფოსტიდან.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -70427,7 +70445,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   svc_name_investment: 'Инвестиционная аналитика',
   svc_name_for_expats: 'Для экспатов',
   svc_name_meta_ads: 'Реклама Meta',
-  svc_name_email_campaigns: 'Email- и SMS-кампании',
+  svc_name_email_campaigns: 'SMS-кампании',
   svc_name_ai_assistant: 'ИИ-ассистент HOMATCH',
   svc_name_brokers_directory: 'Каталог брокеров',
   svc_name_broker_desk: 'Кабинет брокера',
@@ -70441,7 +70459,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   svc_desc_investment: 'Инвестиционный анализ, обзор рынка и инвестиционный консультант.',
   svc_desc_for_expats: 'Гиды и планы для покупки жилья и переезда в Грузию из-за рубежа.',
   svc_desc_meta_ads: 'Создание и запуск рекламных кампаний Meta. Активные кампании продолжают синхронизироваться; собственные переключатели Meta Ads по-прежнему действуют.',
-  svc_desc_email_campaigns: 'Email- и SMS-кампании и Email Studio. Для отправки нужны и собственные переключатели отправки.',
+  svc_desc_email_campaigns: 'SMS-кампании. Для отправки нужен и собственный переключатель отправки SMS. Email-кампании и Email Studio относятся к Email-маркетингу.',
   svc_desc_ai_assistant: 'ИИ-ассистент HOMATCH, его поля вопросов и подсказки. Инструменты администратора, которые его используют, продолжают работать.',
   svc_desc_brokers_directory: 'Продажи каталога брокеров: новые платные размещения и продления. На время паузы ничего не продаётся и не списывается, а уже оплаченные размещения остаются публичными до оплаченной даты.',
   svc_desc_broker_desk: 'Кабинет брокера и агентства. Его платные действия подчиняются поиску покупателей и каталогу.',
@@ -75677,6 +75695,15 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
   legal_company_id_code: 'Идентификационный код',
+
+  /* ── EMAIL MARKETING HIDDEN, COPY EMAIL ── */
+  svc_name_email_marketing: 'Email-маркетинг',
+  svc_desc_email_marketing: 'Email-кампании, Email Studio, тарифы email, домены отправки и почтовый ящик. Пока выключено, раздел скрыт, ничего не отправляется и не списывается; кампании, расписания и контакты сохраняются. Служебные письма не затрагиваются.',
+  lead_copy_email: 'Скопировать email',
+  lead_email_copied: 'Email скопирован',
+  lead_copy_email_aria: 'Скопировать адрес {{email}}',
+  lead_copy_email_failed: 'Не удалось скопировать. Выделите адрес и скопируйте его вручную.',
+  mw_copy_hint: 'Откройте контакт, скопируйте его email и напишите со своей почты.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -95616,7 +95643,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   svc_name_investment: 'Yatırım Analizi',
   svc_name_for_expats: 'Yabancılar İçin',
   svc_name_meta_ads: 'Meta Reklamları',
-  svc_name_email_campaigns: 'E-posta ve SMS kampanyaları',
+  svc_name_email_campaigns: 'SMS kampanyaları',
   svc_name_ai_assistant: 'HOMATCH AI asistanı',
   svc_name_brokers_directory: 'Emlakçı rehberi',
   svc_name_broker_desk: 'Emlakçı Masası',
@@ -95630,7 +95657,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   svc_desc_investment: 'Yatırım analizi, piyasa taramaları ve yatırım danışmanı.',
   svc_desc_for_expats: 'Yurt dışından Gürcistan\'da mülk alma ve yerleşme rehberleri ve planları.',
   svc_desc_meta_ads: 'Meta reklam kampanyaları oluşturma ve başlatma. Canlı kampanyalar senkronize olmaya devam eder; kendi Meta Ads anahtarları da geçerlidir.',
-  svc_desc_email_campaigns: 'E-posta ve SMS kampanyaları ile Email Studio. Gönderim için kendi gönderim anahtarları da gerekir.',
+  svc_desc_email_campaigns: 'SMS kampanyaları. Gönderim için kendi SMS gönderim anahtarı da gerekir. E-posta kampanyaları ve Email Studio, E-posta Pazarlaması altındadır.',
   svc_desc_ai_assistant: 'HOMATCH AI asistanı, soru kutuları ve önerileri. Onu kullanan yönetici araçları çalışmaya devam eder.',
   svc_desc_brokers_directory: 'Emlakçı rehberi satışları: yeni ücretli kayıtlar ve yenilemeler. Duraklatıldığında hiçbir şey satılmaz veya ücretlendirilmez; ödemesi yapılmış kayıtlar ödenen tarihe kadar herkese açık kalır.',
   svc_desc_broker_desk: 'Emlakçı ve ajans çalışma alanı. Ücretli işlemleri Alıcı Bul ve rehbere bağlıdır.',
@@ -100866,6 +100893,15 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
   legal_company_id_code: 'Kimlik kodu',
+
+  /* ── EMAIL MARKETING HIDDEN, COPY EMAIL ── */
+  svc_name_email_marketing: 'E-posta Pazarlaması',
+  svc_desc_email_marketing: 'E-posta kampanyaları, Email Studio, e-posta paketleri, gönderim alan adları ve e-posta gelen kutusu. Kapalıyken gizlidir, hiçbir şey gönderilmez ve ücret alınmaz; kampanyalar, zamanlamalar ve kişiler saklanır. İşlemsel e-postalar etkilenmez.',
+  lead_copy_email: 'E-postayı kopyala',
+  lead_email_copied: 'E-posta kopyalandı',
+  lead_copy_email_aria: '{{email}} e-posta adresini kopyala',
+  lead_copy_email_failed: 'Kopyalanamadı. Adresi seçip elle kopyalayın.',
+  mw_copy_hint: 'Bir kişiyi açın, e-postasını kopyalayın ve kendi e-posta hesabınızdan yazın.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -120805,7 +120841,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   svc_name_investment: 'تحليل الاستثمار',
   svc_name_for_expats: 'للمغتربين',
   svc_name_meta_ads: 'إعلانات Meta',
-  svc_name_email_campaigns: 'حملات البريد الإلكتروني والرسائل القصيرة',
+  svc_name_email_campaigns: 'حملات الرسائل القصيرة',
   svc_name_ai_assistant: 'مساعد HOMATCH الذكي',
   svc_name_brokers_directory: 'دليل الوسطاء',
   svc_name_broker_desk: 'مكتب الوسيط',
@@ -120819,7 +120855,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   svc_desc_investment: 'تحليل الاستثمار ومسح السوق ومستشار الاستثمار.',
   svc_desc_for_expats: 'أدلة وخطط للشراء والاستقرار في جورجيا من الخارج.',
   svc_desc_meta_ads: 'إنشاء حملات إعلانات Meta وإطلاقها. تواصل الحملات الجارية المزامنة؛ وتبقى مفاتيح Meta Ads الخاصة بها سارية.',
-  svc_desc_email_campaigns: 'حملات البريد الإلكتروني والرسائل القصيرة وEmail Studio. يحتاج الإرسال أيضًا إلى مفاتيح الإرسال الخاصة به.',
+  svc_desc_email_campaigns: 'حملات الرسائل القصيرة. يحتاج الإرسال أيضًا إلى مفتاح إرسال الرسائل القصيرة الخاص به. حملات البريد الإلكتروني وEmail Studio تتبع التسويق عبر البريد الإلكتروني.',
   svc_desc_ai_assistant: 'مساعد HOMATCH الذكي وخانات الأسئلة والاقتراحات. تستمر أدوات المسؤول التي تستخدمه في العمل.',
   svc_desc_brokers_directory: 'مبيعات دليل الوسطاء: الإدراجات المدفوعة الجديدة والتجديدات. أثناء الإيقاف لا يُباع شيء ولا يُخصم شيء، وتبقى الإدراجات المدفوعة مسبقًا ظاهرة للعامة حتى تاريخها المدفوع.',
   svc_desc_broker_desk: 'مساحة عمل الوسطاء والوكالات. تتبع إجراءاتها المدفوعة خدمة البحث عن مشترين والدليل.',
@@ -126055,6 +126091,15 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
   legal_company_id_code: 'رمز التعريف',
+
+  /* ── EMAIL MARKETING HIDDEN, COPY EMAIL ── */
+  svc_name_email_marketing: 'التسويق عبر البريد الإلكتروني',
+  svc_desc_email_marketing: 'حملات البريد الإلكتروني وEmail Studio وباقات البريد ونطاقات الإرسال وصندوق الوارد. عند الإيقاف يكون مخفيًا ولا يُرسل شيء ولا تُخصم أي رسوم، وتُحفظ الحملات والجداول وجهات الاتصال. لا يتأثر البريد الخدمي.',
+  lead_copy_email: 'نسخ البريد الإلكتروني',
+  lead_email_copied: 'تم نسخ البريد الإلكتروني',
+  lead_copy_email_aria: 'نسخ عنوان البريد الإلكتروني {{email}}',
+  lead_copy_email_failed: 'تعذّر النسخ. حدّد العنوان وانسخه يدويًا.',
+  mw_copy_hint: 'افتح جهة الاتصال وانسخ بريدها الإلكتروني واكتب لها من بريدك الخاص.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -145994,7 +146039,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   svc_name_investment: 'ניתוח השקעות',
   svc_name_for_expats: 'לתושבי חוץ',
   svc_name_meta_ads: 'מודעות Meta',
-  svc_name_email_campaigns: 'קמפיינים בדוא"ל וב-SMS',
+  svc_name_email_campaigns: 'קמפיינים ב-SMS',
   svc_name_ai_assistant: 'עוזר ה-AI של HOMATCH',
   svc_name_brokers_directory: 'מדריך מתווכים',
   svc_name_broker_desk: 'שולחן המתווך',
@@ -146008,7 +146053,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   svc_desc_investment: 'ניתוח השקעות, סריקות שוק ויועץ ההשקעות.',
   svc_desc_for_expats: 'מדריכים ותוכניות לרכישה ולהשתקעות בגאורגיה מחו"ל.',
   svc_desc_meta_ads: 'יצירה והשקה של קמפיינים ב-Meta. קמפיינים פעילים ממשיכים להסתנכרן; מתגי Meta Ads שלו עדיין חלים.',
-  svc_desc_email_campaigns: 'קמפיינים בדוא"ל וב-SMS ו-Email Studio. השליחה דורשת גם את מתגי השליחה שלה.',
+  svc_desc_email_campaigns: 'קמפיינים ב-SMS. השליחה דורשת גם את מתג שליחת ה-SMS שלה. קמפיינים בדוא"ל ו-Email Studio שייכים לשיווק בדוא"ל.',
   svc_desc_ai_assistant: 'עוזר ה-AI של HOMATCH, תיבות השאלה וההצעות שלו. כלי הניהול שמשתמשים בו ממשיכים לעבוד.',
   svc_desc_brokers_directory: 'מכירות מדריך המתווכים: רישומים חדשים בתשלום וחידושים. בזמן ההשהיה דבר אינו נמכר או מחויב, ורישומים ששולמו נשארים ציבוריים עד התאריך ששולם.',
   svc_desc_broker_desk: 'סביבת העבודה של מתווכים וסוכנויות. הפעולות בתשלום שלה כפופות לחיפוש הקונים ולמדריך.',
@@ -151244,6 +151289,15 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
   legal_company_id_code: 'קוד זיהוי',
+
+  /* ── EMAIL MARKETING HIDDEN, COPY EMAIL ── */
+  svc_name_email_marketing: 'שיווק בדוא"ל',
+  svc_desc_email_marketing: 'קמפיינים בדוא"ל, Email Studio, חבילות דוא"ל, דומיינים לשליחה ותיבת הדואר. כשהשירות כבוי הוא מוסתר, שום דבר לא נשלח ולא מחויב, והקמפיינים, התזמונים ואנשי הקשר נשמרים. דוא"ל מערכת אינו מושפע.',
+  lead_copy_email: 'העתקת הדוא"ל',
+  lead_email_copied: 'הדוא"ל הועתק',
+  lead_copy_email_aria: 'העתקת כתובת הדוא"ל {{email}}',
+  lead_copy_email_failed: 'ההעתקה נכשלה. סמנו את הכתובת והעתיקו אותה ידנית.',
+  mw_copy_hint: 'פתחו איש קשר, העתיקו את הדוא"ל שלו וכתבו לו מתיבת הדואר שלכם.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

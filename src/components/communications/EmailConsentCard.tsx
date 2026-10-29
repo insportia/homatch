@@ -20,6 +20,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { usePathAvailable } from '@/lib/serviceControls';
 import { EmailMarketingError, type LawfulBasis, setContactEmailConsent } from '@/services/emailMarketing';
 import type { CommContact } from '@/types/communications';
 
@@ -37,6 +38,8 @@ const ERROR_KEYS = {
 export function EmailConsentCard({ contact, onChanged }: { contact: CommContact; onChanged: () => void }) {
   const { t, lang } = useLanguage();
   const navigate = useNavigate();
+  /* The email inbox is Email Marketing's (hidden by default): no link while it is paused. */
+  const pathAvailable = usePathAvailable();
   const [open, setOpen] = useState(false);
   const [basis, setBasis] = useState<LawfulBasis>('CONSENT');
   const [attested, setAttested] = useState(false);
@@ -106,7 +109,7 @@ export function EmailConsentCard({ contact, onChanged }: { contact: CommContact;
             {t('emc_withdraw')}
           </Button>
         )}
-        {contact.email ? (
+        {contact.email && pathAvailable('/inbox/email') ? (
           <Button size="sm" variant="ghost" onClick={() => navigate('/inbox/email')}>
             <MessageSquare className="me-1.5 h-3.5 w-3.5" aria-hidden="true" />{t('emc_open_inbox')}
           </Button>

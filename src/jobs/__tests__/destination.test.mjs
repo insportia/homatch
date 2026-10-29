@@ -327,7 +327,8 @@ test('a contract analysis is one click while running and when finished', () => {
 
 test('JobCenter navigates through the resolver and nothing else', () => {
   const src = fs.readFileSync(path.resolve(here, '../../components/jobs/JobCenter.tsx'), 'utf8');
-  assert.match(src, /resolveJobDestination\(job\)/);
+  /* The resolver also hears which addresses a paused service owns (2026-10-29). */
+  assert.match(src, /resolveJobDestination\(job, pathAvailable\)/);
   // Comments explain the old behaviour; only executable code is checked.
   const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.equal(
@@ -435,4 +436,23 @@ test('a finished verification always offers a next step, and never fails silentl
     /continueCase/.test(code), false,
     'the Verification Case button belonged to a surface the customer no longer sees'
   );
+});
+
+/* ------------------------------------------------------------------ *
+ * A paused service is never offered (Email Marketing hidden,          *
+ * owner 2026-10-29): the activity list instead, or nothing.           *
+ * ------------------------------------------------------------------ */
+
+test('a destination in a paused service falls back to the activity list, never to the paused page', () => {
+  const emailOff = (p) => !p.startsWith('/outreach/email');
+  const done = resolveJobDestination(job({ productType: 'EMAIL_CAMPAIGN', subjectType: null, subjectId: null, state: 'COMPLETED' }), emailOff);
+  assert.deepEqual(done, { to: '/activity', labelKey: 'job_open_activity', kind: 'GENERIC' });
+  const stored = resolveJobDestination(job({ productType: 'EMAIL_CAMPAIGN', resultRef: '/outreach/email', state: 'COMPLETED' }), emailOff);
+  assert.equal(stored.to, '/activity', 'a stored ref into the paused service is not followed');
+  const running = resolveJobDestination(job({ productType: 'EMAIL_CAMPAIGN', subjectType: null, subjectId: null, state: 'RUNNING' }), emailOff);
+  assert.equal(running, null, 'a running task in a paused service offers no button');
+  const on = resolveJobDestination(job({ productType: 'EMAIL_CAMPAIGN', subjectType: null, subjectId: null, state: 'COMPLETED' }), () => true);
+  assert.equal(on.to, '/outreach/email', 'switched back on, the product page returns');
+  const verify = resolveJobDestination(job({ resultRef: '/verify?job=job-1' }), emailOff);
+  assert.equal(verify.to, '/verify?job=job-1', 'other products are unaffected');
 });

@@ -11,9 +11,11 @@ import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, CircleDashed, CircleSlash, Compass, Loader2, Lock, Mail, MessageSquare, Phone, ShieldAlert } from 'lucide-react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useServiceVisible } from '@/lib/serviceControls';
 import { cn } from '@/lib/utils';
 import { getLeadContact, openLeadConversation, UnlockError, type LeadContact, type LeadItem } from '@/services/homatchLeads';
 import { budgetLabel, buildLeadSummary, DIMENSION_ORDER, featureParts, leadCategory, leadPriceKey, locationLabel, matchReasons, propertyTypeLabel, requirementParts } from '@/leads/leadSummary';
+import { CopyEmailButton } from './CopyEmailButton';
 import { BTN_PRIMARY, BTN_SECONDARY, EYEBROW } from './kit';
 import { BandBadge, CategoryPill, ContactOptions, formatCreditsLabel, SearcherPill, useLeadFormatters } from './LeadCard';
 import { MortgagePill, MortgageSignals, PriceReasons } from './MortgageSignals';
@@ -29,6 +31,8 @@ export function LeadDetailsDrawer({
 }) {
   const { t, lang, isRTL } = useLanguage();
   const { money, date } = useLeadFormatters();
+  /* Email Marketing is hidden unless the owner turns it on (fail closed): no campaign entry here. */
+  const emailMarketing = useServiceVisible('email_marketing');
   const navigate = useNavigate();
   const [contact, setContact] = useState<LeadContact | null>(null);
   const [loadingContact, setLoadingContact] = useState(false);
@@ -201,9 +205,12 @@ export function LeadDetailsDrawer({
                     </a>
                   ) : null}
                   {contact.email ? (
-                    <a href={`mailto:${contact.email}`} className={cn(BTN_SECONDARY, 'w-full justify-start [overflow-wrap:anywhere]')} dir="ltr">
-                      <Mail className="h-4 w-4" aria-hidden="true" />{contact.email}
-                    </a>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start" data-testid="hl-contact-email">
+                      <a href={`mailto:${contact.email}`} className={cn(BTN_SECONDARY, 'min-w-0 flex-1 justify-start [overflow-wrap:anywhere]')} dir="ltr">
+                        <Mail className="h-4 w-4 shrink-0" aria-hidden="true" />{contact.email}
+                      </a>
+                      <CopyEmailButton email={contact.email} testId="hl-copy-email" />
+                    </div>
                   ) : null}
                   {!contact.phone && !contact.email ? (
                     <p className="text-sm text-[hsl(224_14%_30%)]">{t('hl_contact_message_only')}</p>
@@ -213,9 +220,11 @@ export function LeadDetailsDrawer({
                     {t('hl_cta_open_conversation')}
                   </button>
                   <div className="flex flex-col gap-2 sm:flex-row">
-                    <button type="button" className={cn(BTN_SECONDARY, 'sm:flex-1')} onClick={() => navigate(`/email-studio?property=${propertyId}&leads=${lead.matchId}`)}>
-                      <Mail className="h-4 w-4" aria-hidden="true" />{t('hl_cta_create_email')}
-                    </button>
+                    {emailMarketing ? (
+                      <button type="button" className={cn(BTN_SECONDARY, 'sm:flex-1')} onClick={() => navigate(`/email-studio?property=${propertyId}&leads=${lead.matchId}`)} data-testid="hl-create-email">
+                        <Mail className="h-4 w-4" aria-hidden="true" />{t('hl_cta_create_email')}
+                      </button>
+                    ) : null}
                     {lead.crmEntryId ? (
                       <button type="button" className={cn(BTN_SECONDARY, 'sm:flex-1')} onClick={() => navigate(`/leads?entry=${lead.crmEntryId}`)}>
                         {t('hl_cta_view_crm')}

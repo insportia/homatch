@@ -194,6 +194,8 @@ export function UnlockSuccess({
           <h2 className="font-display text-base font-semibold text-[hsl(218_45%_14%)]">{t('mw_success_title', { n: formatCount(count, lang) })}</h2>
           <p className="mt-0.5 text-sm text-[hsl(224_14%_30%)]">{credits > 0 ? t('mw_success_charged', { credits: formatCredits(credits, lang) }) : t('mw_success_free')}</p>
           <p className="mt-1 text-xs text-muted-foreground">{t('mw_success_no_send')}</p>
+          {/* No campaign offered (Email Marketing hidden, or nothing to put in one): the next step is copying. */}
+          {!onCreateCampaign ? <p className="mt-1 text-xs text-[hsl(224_14%_30%)]" data-testid="mw-success-copy-hint">{t('mw_copy_hint')}</p> : null}
         </div>
       </div>
       <div className="mt-3 flex flex-col gap-2 sm:flex-row">

@@ -32,6 +32,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, CheckCircle2, XCircle, Ban, ExternalLink, AlertTriangle } from 'lucide-react';
 import { cancelSecondsRemaining, isTerminal } from '@/jobs/jobState';
 import { resolveJobDestination } from '@/jobs/destination';
+import { usePathAvailable } from '@/lib/serviceControls';
 import { phaseFor } from '@/verify/progress';
 import type { BackgroundJob } from '@/services/backgroundJobs';
 import { toast } from 'sonner';
@@ -180,7 +181,8 @@ const JobRow: React.FC<{ job: BackgroundJob; onClose: () => void }> = ({ job, on
    * there is an honest one to offer — is now decided by a single pure
    * resolver shared with every other product. See jobs/destination.ts.
    */
-  const destination = resolveJobDestination(job);
+  const pathAvailable = usePathAvailable();
+  const destination = resolveJobDestination(job, pathAvailable);
 
   const openDestination = () => {
     if (!destination) return;

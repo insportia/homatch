@@ -22,6 +22,7 @@ import { AlertTriangle, CheckCircle2, FileText, Loader2, ShieldCheck, Users } fr
 import { toast } from 'sonner';
 import { isTerminal } from '@/jobs/jobState';
 import { resolveJobDestination } from '@/jobs/destination';
+import { usePathAvailable } from '@/lib/serviceControls';
 import { claimAnnouncement, jobAnnouncementKeys } from '@/lib/notifications/announced';
 import { pushPermission, subscribeToPush } from '@/lib/push';
 import { ToastCard } from '@/components/notifications/ToastCard';
@@ -137,6 +138,7 @@ export const JobIndicator: React.FC = () => {
    * resultRef, so this and the job centre land on the same screen.
    */
   const announced = useRef<Set<string>>(new Set());
+  const pathAvailable = usePathAvailable();
 
   /*
    * THE CARD (owner, 2026-10-25: "no nice popup when a job finishes").
@@ -150,7 +152,7 @@ export const JobIndicator: React.FC = () => {
    */
   const showCompletion = (job: BackgroundJob) => {
     const failed = job.state === 'FAILED';
-    const destination = resolveJobDestination(job);
+    const destination = resolveJobDestination(job, pathAvailable);
     const withOffer = !failed && offerPush();
     toast.custom((id) => (
       <ToastCard

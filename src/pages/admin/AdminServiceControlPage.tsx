@@ -61,6 +61,7 @@ const DESCRIPTION_KEYS: Record<ServiceCard['key'], TranslationKey> = {
   for_expats: 'svc_desc_for_expats',
   meta_ads: 'svc_desc_meta_ads',
   email_campaigns: 'svc_desc_email_campaigns',
+  email_marketing: 'svc_desc_email_marketing',
   ai_assistant: 'svc_desc_ai_assistant',
   brokers_directory: 'svc_desc_brokers_directory',
   broker_desk: 'svc_desc_broker_desk',

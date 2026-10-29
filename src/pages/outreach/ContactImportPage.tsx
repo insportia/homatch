@@ -31,6 +31,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { countryOptions, countryLabel } from '@/lib/comm/countries';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useServiceVisible } from '@/lib/serviceControls';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/db/supabase';
 import { toast } from 'sonner';
@@ -67,6 +68,8 @@ export default function ContactImportPage() {
   const [params] = useSearchParams();
   const returnTo = /^\/outreach\/email\/[\w/?=&%-]*$/.test(params.get('return') ?? '') ? params.get('return') : null;
   const isEmail = product === 'email';
+  /* Email Marketing hidden (fail closed): an import never leads into a new email campaign. */
+  const emailShown = useServiceVisible('email_marketing');
   const backTo = returnTo ?? (isEmail ? '/outreach/email/contacts' : '/outreach/contact-lists');
   const [doneListId, setDoneListId] = useState<string | null>(null);
 
@@ -498,8 +501,8 @@ export default function ContactImportPage() {
               ) : null}
               {isEmail ? (
                 <div className="flex flex-wrap gap-2">
-                  {returnTo ? <Button size="sm" onClick={() => navigate(returnTo)}>{t('ems_back_to_campaign')}</Button> : (
-                    <Button size="sm" onClick={() => navigate(`/outreach/email/campaigns/new?step=design${doneListId ? `&list=${doneListId}` : ''}`)}>{t('ems_new_campaign')}</Button>
+                  {!emailShown ? null : returnTo ? <Button size="sm" onClick={() => navigate(returnTo)}>{t('ems_back_to_campaign')}</Button> : (
+                    <Button size="sm" onClick={() => navigate(`/outreach/email/campaigns/new?step=design${doneListId ? `&list=${doneListId}` : ''}`)} data-testid="import-new-email-campaign">{t('ems_new_campaign')}</Button>
                   )}
                   <Button size="sm" variant="outline" onClick={() => navigate(`/outreach/email/contacts${doneListId ? `?list=${doneListId}` : ''}`)}>{t('ems_leads_view_imported')}</Button>
                 </div>

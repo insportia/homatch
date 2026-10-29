@@ -26,6 +26,7 @@ import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
 import { paidTelegramChannels, parseTelegramPreference, type TelegramCommunity, type TelegramPreference } from '../../../../src/research-core/findBuyers/telegramPreference.ts';
 import { providerDisabledByAdmin } from '../providerSwitch.ts';
 import { AiSpendGate, DEFAULT_AI_HEADROOM_PER_ITEM_MICROS, executionHeadroomMicros } from '../../../../src/research-core/findBuyers/executionBudget.ts';
+import { AI_SWITCHES, aiSwitchOn } from '../../../../src/research-core/findBuyers/aiPolicy.ts';
 import { phase1State, phase1TimeoutMinutes, phase2Category, phaseOfStage, planDiscoveryBudget, probeEstimateMicros, type Phase1State } from '../../../../src/research-core/findBuyers/campaignPhases.ts';
 
 export interface FindBuyersSettings {
@@ -44,8 +45,10 @@ export interface FindBuyersSettings {
   lowDownPaymentRatio: number;
   /** FB_KEYWORD_SEARCH: phrases per run, search window in days. */
   fbKeyword: { batchSize: number; days: number };
-  /** AI-first lead classification (v11); only an explicit false turns it off. */
-  aiFirst: boolean;
+  /** The model may classify candidates the rules mark ambiguous (find_buyers_ai_ambiguous). Default OFF. */
+  aiAmbiguous: boolean;
+  /** The model may add QUERY_PLAN phrasings and propose adaptive-round actions (find_buyers_ai_planning). Default OFF. */
+  aiPlanning: boolean;
   /** OpenAI classification headroom held per item an Actor run may return (find_buyers_ai_headroom_micros_per_item). */
   aiHeadroomPerItemMicros: number;
 }
@@ -54,7 +57,7 @@ const SETTING_KEYS = [
   'find_buyers_social_enabled', 'find_buyers_min_usd', 'find_buyers_provider_share_bps',
   'find_buyers_pricing_max_age_days', 'find_buyers_comment_gate', 'find_buyers_sampling', 'find_buyers_openai_price_book',
   'provider_disabled_list', 'find_buyers_telegram_preference', 'find_buyers_financing',
-  'find_buyers_fb_keyword_search', 'find_buyers_ai_first', 'find_buyers_ai_headroom_micros_per_item',
+  'find_buyers_fb_keyword_search', AI_SWITCHES.FIND_BUYERS_AMBIGUOUS, AI_SWITCHES.FIND_BUYERS_PLANNING, 'find_buyers_ai_headroom_micros_per_item',
 ];
 
 /** FB_KEYWORD_SEARCH knobs (Admin): phrases per run and how far back posts are read (≤ the 30-day rule). */
@@ -92,7 +95,10 @@ export async function loadFindBuyersSettings(db: any): Promise<FindBuyersSetting
     priceBook: m.get('find_buyers_openai_price_book') ?? null,
     lowDownPaymentRatio: lowDownPaymentRatio(m.get('find_buyers_financing') ?? null),
     fbKeyword: fbKeywordSettings(m.get('find_buyers_fb_keyword_search')),
-    aiFirst: m.get('find_buyers_ai_first') !== false,
+    /* Code first (owner, 2026-10-29): only a stored true turns a model switch on; a missing or
+       unreadable row is OFF. The retired find_buyers_ai_first (default ON) is not read. */
+    aiAmbiguous: aiSwitchOn(m.get(AI_SWITCHES.FIND_BUYERS_AMBIGUOUS)),
+    aiPlanning: aiSwitchOn(m.get(AI_SWITCHES.FIND_BUYERS_PLANNING)),
     aiHeadroomPerItemMicros: Math.max(0, Math.min(10_000, num(m.get('find_buyers_ai_headroom_micros_per_item'), DEFAULT_AI_HEADROOM_PER_ITEM_MICROS))),
   };
 }
@@ -185,7 +191,14 @@ const MODEL_QUERY_SCHEMA = {
 } as const;
 
 /** Cached per DNA key: the same flat is never planned (or paid for) twice. */
-async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, priceBookRaw: unknown, strategy: BuyerStrategy | null = null): Promise<QueryPlan> {
+/**
+ * The query plan is built in code (queryPlanner.buildQueryPlan: six languages, the property's
+ * own place, kind, size and price, the strategy's personas). A model may only ADD phrasings, and
+ * only when admin_settings.find_buyers_ai_planning is true (default OFF). Phrasings a model
+ * proposed earlier for the same DNA are reused from the cache at no cost, through the same
+ * on-side validation.
+ */
+export async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, priceBookRaw: unknown, strategy: BuyerStrategy | null = null, aiPlanning = false): Promise<QueryPlan> {
   const base = buildQueryPlan(dna, SEARCH_LANGUAGES, strategy);
   /* A model phrasing is kept only when it reads as explicit demand of the
      campaign's own side (a generic "looking for a flat" pulls rentals/jobs). */
@@ -199,6 +212,8 @@ async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, pri
   const { data: cached } = await db.from('find_buyers_query_cache')
     .select('queries').eq('dna_key', dna.dnaKey).eq('plan_version', QUERY_PLAN_VERSION).maybeSingle();
   if (cached?.queries) return mergeModelQueries(base, onSide(cached.queries as any[]));
+  /* Deterministic by default: no model phrasing unless the planning switch is on. */
+  if (aiPlanning !== true) return base;
   const book = parsePriceBook(priceBookRaw);
   /* The whole property as a seeker would weigh it: what it is, where, for how much
      and with what — plus the buyer/tenant profiles the strategy expects. The model
@@ -436,7 +451,7 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
   const segment = await marketSegment(db, input.propertyId);
   const strategy0 = buildBuyerStrategy({ dna, segment, providerBudgetMicros: econ.providerBudgetMicros, targetLanguages: input.targetLanguages ?? null });
   const strategy: BuyerStrategy = { ...strategy0, queries: prioritizeQueries(strategy0.queries, await queryStats(db)) };
-  const plan = await planQueries(db, dna, input.matchingJobId, settings.priceBook, strategy);
+  const plan = await planQueries(db, dna, input.matchingJobId, settings.priceBook, strategy, settings.aiPlanning);
   await db.from('find_buyers_campaigns').update({ query_plan: plan, strategy }).eq('matching_job_id', input.matchingJobId);
   const sources = await knownSources(db, dna.city);
   /* Several known communities of one kind are read in one run (batching.ts): fewer start

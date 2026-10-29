@@ -21,9 +21,9 @@
 // The model may resolve an UNCLEAR reading but cannot overturn a rule that
 // found job/service/offer evidence (see boundModelReading).
 
-import { isParkingText, statedSubtypes, type PropertySubtype } from './propertyFamily.ts';
 import type { AiVerdict } from './aiClassifier.ts';
 import { CITY_NAMES, cityMentioned, placesMentioned } from './places.ts';
+import { isParkingText, type PropertySubtype, statedSubtypes } from './propertyFamily.ts';
 
 export type DemandRole =
   | 'BUY_SEEKER' | 'RENT_SEEKER' | 'SALE_OFFER' | 'RENT_OFFER'
@@ -131,8 +131,8 @@ const SERVICE = L([
   `${B}(tadilat|mobilya|nakliyat|temizlik|avukat|noter)`, 'ترميم', 'أثاث', 'نقل عفش', 'تنظيف', 'محامي', 'שיפוץ', 'רהיטים', 'הובלות', 'ניקיון', 'עורך דין',
 ]);
 const AGENT = L([
-  `${B}(i am an? (agent|realtor|broker)|i'm an? (agent|realtor|broker)|real estate agent|our agency|for my client|my client|on behalf of (a|my) client)`,
-  'риелтор', 'риэлтор', 'агентство недвижим', 'агент по недвижим', 'мой клиент', 'для клиента', 'моего клиента',
+  `${B}(i am an? (agent|realtor|broker)|i'm an? (agent|realtor|broker)|real estate agent|our agency|for my client|my client|on behalf of (a|my) client|i have an? (client|customer)s? (who|that|looking)|a client of mine)`,
+  'риелтор', 'риэлтор', 'агентство недвижим', 'агент по недвижим', 'мой клиент', 'для клиента', 'моего клиента', 'у меня (есть )?клиент',
   'აგენტი ვარ', 'სააგენტო', 'მყავს კლიენტი', 'ჩემი კლიენტ', 'კლიენტისთვის',
   `${B}(emlakçı|emlak ofisi|müşterim için)`, 'وسيط عقاري', 'مكتب عقار', 'لعميلي', 'מתווך', 'משרד תיווך', 'ללקוח שלי',
 ]);

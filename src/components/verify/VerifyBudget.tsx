@@ -53,7 +53,8 @@ export interface LaunchQuote {
    * the plans prompt (SUBSCRIPTION_REQUIRED / ALLOWANCE_EXHAUSTED).
    */
   entitlement?: {
-    funding: 'TRIAL' | 'PLAN' | 'LEGACY_CREDITS' | 'NONE';
+    /* OWNER / GRANT (20261208110000): owner or admin access grant, included like TRIAL / PLAN. */
+    funding: 'OWNER' | 'GRANT' | 'TRIAL' | 'PLAN' | 'LEGACY_CREDITS' | 'NONE';
     unlimited?: boolean;
     remaining?: number;
     limit?: number;
@@ -168,7 +169,8 @@ export function VerifyLaunchDialog({
   const value = quote ? convertUsdCents(quote.usdCents, shown, quote.currencies, lang) : null;
   const available = quote?.availableCredits ?? null;
   const funding = quote?.entitlement?.funding ?? null;
-  const included = funding === 'TRIAL' || funding === 'PLAN';
+  const included = funding === 'OWNER' || funding === 'GRANT' || funding === 'TRIAL' || funding === 'PLAN';
+  const unlimitedAccess = funding === 'OWNER' || (funding === 'GRANT' && quote?.entitlement?.unlimited === true);
   const refused = funding === 'NONE';
   const missing = !included && !refused && quote && available != null ? Math.max(0, Math.round((quote.maxCredits - available) * 100) / 100) : 0;
   const pick = (c: string) => {
@@ -193,7 +195,9 @@ export function VerifyLaunchDialog({
           {quote && included ? (
             <div className="rounded-xl bg-[#0C1119] p-5 text-white shadow-card" role="status">
               <p className="font-display text-2xl font-semibold leading-tight text-[hsl(38_92%_62%)]">
-                {funding === 'TRIAL' ? t('sub_badge_first_free')
+                {unlimitedAccess ? t('acc_unlimited')
+                  : funding === 'GRANT' ? t('acc_grant_remaining', { remaining: String(quote.entitlement?.remaining ?? '') })
+                  : funding === 'TRIAL' ? t('sub_badge_first_free')
                   : quote.entitlement?.unlimited ? t('sub_badge_included_unlimited')
                   : t('sub_badge_included', { remaining: String(quote.entitlement?.remaining ?? '') })}
               </p>

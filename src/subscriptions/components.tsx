@@ -1,9 +1,10 @@
-import { Check, Gift, Sparkles } from 'lucide-react';
+import { Check, Gift, Infinity as InfinityIcon, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { featureAccessText, isUnlimitedSource } from './access';
 import type { EntitlementStatus, FeatureCode, PlanCode, PublicPlan } from './service';
-import { formatGel } from './service';
+import { formatGel, hasUnlimitedAccess } from './service';
 import { featureOf, useEntitlementStatus } from './useEntitlementStatus';
 
 /** The plan's features, in the owner's words, from the server's entitlement rows. */
@@ -64,13 +65,9 @@ export function EntitlementBadge({ feature, className = '' }: { feature: Extract
   const { status } = useEntitlementStatus();
   const f = featureOf(status, feature);
   if (!status || !f) return null;
-  let text: string | null = null;
-  let Icon = Sparkles;
-  if (f.trialAvailable) { text = t('sub_badge_first_free'); Icon = Gift; }
-  else if (f.included && f.unlimited) text = t('sub_badge_included_unlimited');
-  else if (f.included && (f.remaining ?? 0) > 0) text = t('sub_badge_included', { remaining: String(f.remaining) });
-  else if (status.hasLegacyBalance) text = t('sub_badge_legacy');
+  const text = featureAccessText(status, f, t);
   if (!text) return null;
+  const Icon = isUnlimitedSource(f) ? InfinityIcon : f.trialAvailable && f.source !== 'GRANT' ? Gift : Sparkles;
   return (
     <span className={`inline-flex max-w-full items-center gap-1.5 rounded-full bg-gold-soft px-2.5 py-1 text-xs font-semibold text-gold-ink ${className}`}>
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -97,5 +94,20 @@ export function planLabel(t: (k: string) => string, code: PlanCode | 'FREE' | nu
 }
 
 export function hasAnyIncluded(status: EntitlementStatus | null): boolean {
-  return !!status?.subscription?.hasAccess;
+  return !!status?.subscription?.hasAccess || hasUnlimitedAccess(status) || (status?.access?.grants.length ?? 0) > 0;
+}
+
+export { featureAccessText, isUnlimitedSource } from './access';
+
+/** "Unlimited access" pill for owner / Unlimited-grant accounts; renders nothing for anyone else. */
+export function UnlimitedAccessBadge({ status, className = '', tone = 'light' }: { status: EntitlementStatus | null; className?: string; tone?: 'light' | 'dark' }) {
+  const { t } = useLanguage();
+  if (!hasUnlimitedAccess(status)) return null;
+  const colors = tone === 'dark' ? 'border border-[hsl(38_92%_54%)]/50 text-[hsl(38_92%_62%)]' : 'bg-gold-soft text-gold-ink';
+  return (
+    <span className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${colors} ${className}`} data-testid="unlimited-access">
+      <InfinityIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span className="min-w-0 truncate">{t('acc_unlimited')}</span>
+    </span>
+  );
 }

@@ -93,6 +93,40 @@ Operator: შპს „ულტრა ქონექშენ“, identificati
   order, notices, source facts), `tests/sql/saas/realdb.mjs` (real PostgreSQL 17: trials, concurrency,
   lifecycle, replay, sandbox guard, Verify / unlock wiring, admin audit).
 
+## Owner Unlimited and admin access grants (owner requirement 2026-10-30)
+
+Migrations `20261208110000_owner_access_grants_core.sql`, `20261208110100_owner_access_grants_admin.sql`.
+
+- **One resolver** `saas_access_resolve(user, feature)`; `saas_usage_begin`, `saas_usage_preview`,
+  `saas_user_has_feature` (internal lead unlock), `saas_entitlement_status` /
+  `entitlement_status_for_me`, `verify_billing_open`, `contract_analysis_entitlement_for_me` and
+  `_shared/entitlements.ts` all read it. Precedence: **OWNER → GRANT → TRIAL → PLAN →
+  LEGACY_CREDITS → NONE** (trial before plan is the live order, kept). OWNER / GRANT uses are
+  `saas_usage` rows with `funding` OWNER / GRANT (`grant_id`), committed / released like any other,
+  and never touch a trial, a plan allowance or the wallet.
+- **Owner** = the protected singleton `platform_owner` (seeded by user id, never by email; triggers
+  refuse update / delete / truncate unless a reviewed migration sets `homatch.owner_transfer = 'on'`).
+  Covers features with `saas_features.internal_included` (all but PREMIUM_DISCOVERY). Other admins
+  are ordinary customers for entitlements.
+- **Grants** (`saas_access_grants` + `saas_access_grant_allowances`): UNLIMITED (every included
+  feature), PLAN (a snapshot of the plan's allowances, MONTHLY from the grant start; never a
+  `saas_subscriptions` row, never shown as paid), CUSTOM (per feature: unlimited or a limit, TOTAL or
+  MONTHLY). `expires_at` NULL = permanent. Overlap: an unlimited row wins (permanent first, then the
+  latest expiry); otherwise the limited row with capacity whose grant expires first; all exhausted:
+  fall through, refusal ALLOWANCE_EXHAUSTED. Reset moves `counted_since`.
+- **Admin** (`/admin/access`, Money → "მომხმარებლების წვდომები"): `admin_access_users / _user /
+  _grant / _grant_update / _grant_revoke ('REVOKE' confirmation) / _allowance_reset`. Admin only,
+  reason required, `saas_access_events` + `admin_audit_log` SAAS_ACCESS_*; FORBIDDEN_SELF,
+  OWNER_PROTECTED, and only the owner may change another admin's access.
+- **HOMI**: `homatch-ai` answers a billed surface unbilled for OWNER / GRANT (`includedAccess`); the
+  Find Property property-analysis turn stays paid. **Not included** (pass-through, unchanged): Find
+  Property / Find Buyers campaign budgets, `atomic_match_unlock` external match unlocks, Meta Ads,
+  Design Studio renders / walkthroughs, AI calls.
+- **UI**: `access.unlimited` (owner or an Unlimited grant) hides every credit balance, top-up and
+  plans prompt and shows "შეუზღუდავი წვდომა" (`src/subscriptions/access.ts`). Tests:
+  `tests/sql/saas/accessGrants.realdb.mjs`, `tests/matrix/accessGrants.test.mjs`,
+  `tests/mobile/adminUserAccess.test.mjs`.
+
 The sections below describe the PAYG model as it was. They stay true for legacy credit holders and
 for the pass-through products; where they say "PAYG only" or "no plan gating", this section wins.
 

@@ -1,6 +1,8 @@
 // Homatch — canonical logged-in Account / Profile page.
 // NOTE: this is intentionally separate from DeveloperProfilePage (/developer/:id),
 // which represents a real-estate developer *entity*, not the signed-in user.
+import { hasUnlimitedAccess } from '@/subscriptions/service';
+import { useEntitlementStatus } from '@/subscriptions/useEntitlementStatus';
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layouts/AppLayout';
@@ -60,6 +62,8 @@ function initialsOf(name: string | null | undefined, email: string | undefined):
 function ProfileContent() {
   const { homatchUser, supaUser, session, loading: authLoading, refreshUser, sendPasswordReset, updatePassword, signOut } = useAuth();
   const { t } = useLanguage();
+  const entitlementStatus = useEntitlementStatus().status;
+  const unlimitedAccess = hasUnlimitedAccess(entitlementStatus);
   const navigate = useNavigate();
 
   const [tab, setTab] = useState('overview');
@@ -343,6 +347,14 @@ function ProfileContent() {
         <TabsContent value="billing" className="mt-4 space-y-4">
           <Card className="rounded-[0.9rem] border-gold/30 bg-gold/[0.06] shadow-card">
             <CardContent className="p-5 flex items-center justify-between">
+              {/* Owner / Unlimited grant (entitlement_status_for_me): no balance, no billing button. */}
+              {unlimitedAccess ? (
+                <div>
+                  <p className="text-lg font-semibold text-foreground">{t('acc_unlimited')}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{t('acc_owner_notice')}</p>
+                </div>
+              ) : (
+              <>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">{t('credits_balance')}</p>
                 {billingLoading ? (
@@ -354,6 +366,8 @@ function ProfileContent() {
               <Button size="sm" onClick={() => navigate('/credits')} className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90">
                 <Zap className="h-3.5 w-3.5" /> {t('profile_manage_billing')}
               </Button>
+              </>
+              )}
             </CardContent>
           </Card>
 

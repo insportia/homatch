@@ -42,6 +42,7 @@ import { CONTRACT_TYPES, type ContractTypeId } from '@/components/contracts/cont
 import { ALLOWED_MIME } from '@/services/dealRoomDocuments';
 import { getContractPrice, listContracts, startContractAnalysis, type ContractSummary } from '@/services/contracts';
 import { rememberPendingPath } from '@/services/returnTo';
+import { featureAccessText } from '@/subscriptions/components';
 
 /** How many of a customer's contracts the entry page shows before "see all". */
 export const RECENT_LIMIT = 6;
@@ -96,9 +97,8 @@ export default function ContractsPage() {
   const priceLabel = !homatchUser || !ent.status
     ? null
     : included
-      ? (contract?.trialAvailable ? t('sub_badge_first_free')
-        : contract?.unlimited ? t('sub_badge_included_unlimited')
-        : t('sub_badge_included', { remaining: String(contract?.remaining ?? '') }))
+      /* Owner / admin grant first (20261208110000), then trial, then plan: the server's order. */
+      ? (contract ? featureAccessText(ent.status, contract, t) : null)
       : ent.status.hasLegacyBalance && price
         ? t('ux_ct_price_paid', {
             credits: price.credits.toLocaleString(lang, { maximumFractionDigits: 2 }),

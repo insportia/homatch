@@ -39,6 +39,7 @@ export const SUITE_CATALOGUE = {
   'mobile:admin-mortgage': { title: 'Mobile — admin mortgage rules and bank products', files: ['tests/mobile/adminMortgageBankProducts.test.mjs'] },
   'mobile:discovery': { title: 'Mobile — admin Discovery', files: ['tests/mobile/adminDiscovery.test.mjs', 'tests/mobile/findPropertyAttribution.test.mjs', 'tests/mobile/findPropertyMarketplace.test.mjs', 'tests/mobile/findBuyersResults.test.mjs', 'tests/mobile/internalMatches.test.mjs', 'tests/mobile/findBuyersReport.test.mjs', 'tests/mobile/findBuyersUx.test.mjs', 'tests/mobile/findBuyersNavigation.test.mjs', 'tests/mobile/homatchLeads.test.mjs', 'tests/mobile/ownerDemoLead.test.mjs', 'tests/mobile/matchExpansion.test.mjs', 'tests/mobile/findPropertyCosts.test.mjs', 'tests/mobile/matchingWorkspace.test.mjs'] },
   'mobile:broker': { title: 'Mobile — broker lifecycle', files: ['tests/mobile/brokerLifecycle.test.mjs'] },
+  'mobile:access': { title: 'Mobile — admin user access and owner Unlimited', files: ['tests/mobile/adminUserAccess.test.mjs'] },
   'mobile:tasks': { title: 'Mobile — tasks and contracts', files: ['tests/mobile/tasksAndContracts.test.mjs', 'tests/mobile/leadEmailCampaigns.test.mjs'] },
   developer: { title: 'Developer acceptance', script: 'test:developer', files: ['tests/browser/developerAcceptance.test.mjs'] },
   onboarding: { title: 'Developer onboarding', script: 'test:onboarding', files: ['tests/browser/developerOnboarding.test.mjs'] },
@@ -117,8 +118,10 @@ export const COMPONENTS = {
       /^src\/subscriptions\//, /^src\/pages\/(MySubscriptionPage|SubscriptionConfirmPage|SubscriptionSandboxPayPage)\.tsx$/,
       /^supabase\/functions\/_shared\/(entitlements|saasNotify)\.ts$/, /^supabase\/functions\/_shared\/saasPayments\//,
       /^tests\/matrix\/saasSubscriptions\.test\.mjs$/, /^tests\/sql\/saas\//, /^scripts\/saas-subs-i18n-/,
+      // Owner Unlimited and admin access grants (2026-10-30): admin page, matrix test, copy.
+      /^src\/pages\/admin\/AdminAccessPage\.tsx$/, /^tests\/matrix\/accessGrants\.test\.mjs$/, /^tests\/mobile\/adminUserAccess\.test\.mjs$/, /^scripts\/stab-access-i18n-/,
       fn('billing', 'credits-topup', 'payment-webhook', 'payment-method-setup', 'atomic-unlock', 'unlock-external-contact', 'research-purchase', 'spend-cap-check', 'saas-checkout', 'saas-payments-webhook')],
-    suites: ['mobile:routes', 'mobile:shell'],
+    suites: ['mobile:routes', 'mobile:shell', 'mobile:access'],
     proofs: ['money: reserve → settle → release on a real row; no unknown COGS silently zero'],
   },
   STORAGE: {

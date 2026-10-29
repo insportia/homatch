@@ -9,7 +9,8 @@ create table auth.users (id uuid primary key, email_confirmed_at timestamptz, ph
 create or replace function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true), '')::uuid $$;
 create or replace function auth.role() returns text language sql stable as $$ select coalesce(nullif(current_setting('test.role', true), ''), 'service_role') $$;
 create type notification_type as enum ('LOW_CREDITS');
-create table public.users (id uuid primary key default gen_random_uuid(), auth_id uuid, email text, is_admin boolean default false, suspended_at timestamptz);
+create table public.users (id uuid primary key default gen_random_uuid(), auth_id uuid, email text, is_admin boolean default false, suspended_at timestamptz,
+  full_name text, username text, account_type text default 'PERSONAL', created_at timestamptz not null default now());
 create table public.credit_accounts (user_id uuid primary key, balance numeric default 0, reserved numeric default 0);
 create table public.admin_settings (key text primary key, value jsonb);
 create table public.admin_audit_log (id uuid primary key default gen_random_uuid(), admin_id uuid not null, target_id uuid, action text not null,

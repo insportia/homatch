@@ -45,7 +45,7 @@ import {
 import { ensureReplies, fallbackReplies, HOMI_ALWAYS_REPLIES_INSTRUCTION } from '../../../src/lib/homi/replyFallback.ts';
 import { hasMeta, parseMessageMeta, type HomiMessageMeta } from '../../../src/lib/homi/messageMeta.ts';
 import {
-  abuseLimitsFrom, abuseVerdict, internalDataForPrompt, isReasoningModel, planInternalSections, repeatedRun,
+  ABUSE_SETTING_KEYS, abuseLimitsFrom, abuseVerdict, HOMI_SLOW_DOWN, internalDataForPrompt, isReasoningModel, planInternalSections, repeatedRun,
   TIER_BUDGET, webBudget, type InternalSection,
 } from '../../../src/lib/homi/contextPlan.ts';
 import {
@@ -62,12 +62,14 @@ const CORS = {
 };
 const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 /* The light tier for short conversational turns (cost round, 2026-10-29).
- * The default is the cheapest OpenAI chat model priced in provider_price_book
- * (gpt-4o-mini: $0.15 in / $0.60 out per 1M, no reasoning tokens), so a light
- * turn is cheap even before the prompt cache helps. HOMI_LIGHT_MODEL overrides
- * it (set it to gpt-5.6-luna to put both tiers on one model). A model id that
- * is not in the price book shows as UNPRICED in Admin, never as $0. */
-const LIGHT_MODEL = Deno.env.get('HOMI_LIGHT_MODEL') || Deno.env.get('OPENAI_FAST_MODEL') || 'gpt-4o-mini';
+ * Same model as the full tier by default (gpt-5.6-luna): Georgian quality
+ * matters more than the small saving a cheaper chat model would give (owner).
+ * What makes a light turn light is everything else: low reasoning effort, no
+ * web unless the turn policy opens it, and the small context budget
+ * (contextPlan.ts). HOMI_LIGHT_MODEL overrides it; a chat model set there gets
+ * no reasoning field (isReasoningModel) and never runs a web turn. A model id
+ * that is not in provider_price_book shows as UNPRICED in Admin, never as $0. */
+const LIGHT_MODEL = Deno.env.get('HOMI_LIGHT_MODEL') || Deno.env.get('OPENAI_FAST_MODEL') || 'gpt-5.6-luna';
 /* Every HOMI turn, deterministic ones included, is one row of this operation.
    ABUSE SAFEGUARD, NOT A QUOTA: HOMI chat is unlimited in every plan. */
 const BURST_OPERATION = 'homi_turn';
@@ -117,14 +119,7 @@ function sourcesOf(p: any): any[] {
 
 /* The only refusal HOMI chat has: a gentle "slow down", never a count, a
    plan, a reset time or an upgrade. A person typing never sees it. */
-const BURST_MESSAGES: Record<Locale, string> = {
-  en: "That's a lot of messages very quickly. Give me a minute and try again.",
-  ka: 'ძალიან ბევრი შეტყობინება ძალიან სწრაფად. ერთი წუთით მოიცადე და თავიდან სცადე.',
-  ru: 'Слишком много сообщений за короткое время. Подожди минуту и попробуй снова.',
-  tr: 'Çok kısa sürede çok fazla mesaj. Bir dakika bekleyip tekrar dene.',
-  ar: 'رسائل كثيرة جدًا في وقت قصير. انتظر دقيقة ثم حاول مجددًا.',
-  he: 'יותר מדי הודעות בזמן קצר. חכה דקה ונסה שוב.',
-};
+const BURST_MESSAGES: Readonly<Record<Locale, string>> = HOMI_SLOW_DOWN;
 
 // ── Intent-to-lead extraction instruction, appended to the system prompt ──
 // COMPACT ON PURPOSE (cost round, 2026-10-29): output tokens are the dearest
@@ -441,7 +436,7 @@ serve(async (req) => {
     };
     const [minute, hour, day, perMinute, perHour, perDay] = await Promise.all([
       count(60_000), count(3_600_000), count(86_400_000),
-      setting('homi_abuse_burst_per_minute', 20), setting('homi_abuse_hourly_ceiling', 300), setting('homi_abuse_daily_ceiling', 2000),
+      setting(ABUSE_SETTING_KEYS.perMinute, 20), setting(ABUSE_SETTING_KEYS.perHour, 300), setting(ABUSE_SETTING_KEYS.perDay, 2000),
     ]);
     const limits = abuseLimitsFrom({ perMinute, perHour, perDay });
     const repeat = repeatedRun(allMsgs.filter((m: any) => m.role === 'user').map((m: any) => m.content));

@@ -122,6 +122,26 @@ export function isReasoningModel(model: string): boolean {
 
 export interface AbuseLimits { perMinute: number; perHour: number; perDay: number; repeatRun: number }
 
+/**
+ * The only refusal unlimited HOMI has (chat, and the investment consultant): a
+ * gentle "slow down", never a count, a plan, a reset time or an upgrade.
+ */
+export const HOMI_SLOW_DOWN: Readonly<Record<'ka' | 'en' | 'ru' | 'tr' | 'ar' | 'he', string>> = Object.freeze({
+  en: "That's a lot of messages very quickly. Give me a minute and try again.",
+  ka: 'ძალიან ბევრი შეტყობინება ძალიან სწრაფად. ერთი წუთით მოიცადე და თავიდან სცადე.',
+  ru: 'Слишком много сообщений за короткое время. Подожди минуту и попробуй снова.',
+  tr: 'Çok kısa sürede çok fazla mesaj. Bir dakika bekleyip tekrar dene.',
+  ar: 'رسائل كثيرة جدًا في وقت قصير. انتظر دقيقة ثم حاول مجددًا.',
+  he: 'יותר מדי הודעות בזמן קצר. חכה דקה ונסה שוב.',
+});
+
+/** The admin_settings keys of the safeguard, shared by every unlimited HOMI surface. */
+export const ABUSE_SETTING_KEYS = Object.freeze({
+  perMinute: 'homi_abuse_burst_per_minute',
+  perHour: 'homi_abuse_hourly_ceiling',
+  perDay: 'homi_abuse_daily_ceiling',
+});
+
 /** Owner defaults; each is an admin_settings value (homi_abuse_*). Far above a person typing. */
 export const DEFAULT_ABUSE_LIMITS: AbuseLimits = Object.freeze({ perMinute: 20, perHour: 300, perDay: 2000, repeatRun: 6 });
 

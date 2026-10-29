@@ -9,7 +9,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { routeHomiTurn } from '../router.ts';
 import { decideTurnPolicy } from '../webPolicy.ts';
 import {
-  abuseLimitsFrom, abuseVerdict, DEFAULT_ABUSE_LIMITS, internalDataForPrompt, isReasoningModel, planInternalSections,
+  ABUSE_SETTING_KEYS, abuseLimitsFrom, abuseVerdict, DEFAULT_ABUSE_LIMITS, HOMI_SLOW_DOWN, internalDataForPrompt, isReasoningModel, planInternalSections,
   repeatedRun, SECTION_BUDGET, TIER_BUDGET, webBudget,
 } from '../contextPlan.ts';
 
@@ -131,11 +131,14 @@ test('the lead block asks the model to omit empty keys, and keeps chips, cards a
 
 /* ── Models and web ──────────────────────────────────────────────────── */
 
-test('the light model defaults to a cheaper model that the price book prices', () => {
+test('the light tier defaults to gpt-5.6-luna (Georgian quality), priced, and overridable', () => {
   const m = edge.match(/const LIGHT_MODEL = [^\n]*\|\| '([^']+)';/);
   assert.ok(m, 'LIGHT_MODEL has a code default');
   const lightDefault = m[1];
-  assert.notEqual(lightDefault, edge.match(/const MODEL = [^\n]*\|\| '([^']+)';/)[1], 'the light tier is a different model');
+  // Owner (2026-10-29): Georgian quality over the small saving. Light means low
+  // effort, no web unless the policy opens it, and a small context; not a weaker model.
+  assert.equal(lightDefault, 'gpt-5.6-luna');
+  assert.match(edge, /\{ reasoning: \{ effort: 'low' \} \}/, 'light turns run at low effort');
   assert.match(edge, /Deno\.env\.get\('HOMI_LIGHT_MODEL'\)/, 'overridable by env');
   const priced = readdirSync(new URL('supabase/migrations/', root))
     .some((f) => f.endsWith('.sql') && new RegExp(`'OPENAI'[^\\n]*'${lightDefault}'[^\\n]*'(INPUT|OUTPUT)_TOKEN'|'${lightDefault}'[^\\n]*'OUTPUT_TOKEN'`).test(read(`supabase/migrations/${f}`)));
@@ -180,7 +183,10 @@ test('no plan quota and no quota copy reach a HOMI user', () => {
   const refusal = edge.match(/return json\(\{ error: BURST_MESSAGES\[lang\] \?\? BURST_MESSAGES\.en, code: 'RATE_LIMIT_EXCEEDED'([^}]*)\}/);
   assert.ok(refusal, 'the slow-down refusal exists');
   assert.equal(refusal[1].trim(), '', 'no limit number goes back');
-  for (const k of ['homi_abuse_burst_per_minute', 'homi_abuse_hourly_ceiling', 'homi_abuse_daily_ceiling']) assert.ok(edge.includes(`'${k}'`), k);
+  assert.match(edge, /setting\(ABUSE_SETTING_KEYS\.perMinute, 20\), setting\(ABUSE_SETTING_KEYS\.perHour, 300\), setting\(ABUSE_SETTING_KEYS\.perDay, 2000\)/);
+  assert.deepEqual({ ...ABUSE_SETTING_KEYS }, { perMinute: 'homi_abuse_burst_per_minute', perHour: 'homi_abuse_hourly_ceiling', perDay: 'homi_abuse_daily_ceiling' });
+  assert.match(edge, /const BURST_MESSAGES: Readonly<Record<Locale, string>> = HOMI_SLOW_DOWN;/);
+  for (const v of Object.values(HOMI_SLOW_DOWN)) assert.doesNotMatch(v, /\d|limit|plan|UTC/i, 'the slow-down copy carries no count or plan');
   const sql = read('supabase/migrations/20261207130000_homi_unlimited_cost_round.sql');
   for (const k of ['homi_abuse_burst_per_minute', 'homi_abuse_hourly_ceiling', 'homi_abuse_daily_ceiling', 'homi_voice_per_minute']) {
     assert.ok(sql.includes(`'${k}'`), `${k} is an admin setting`);
@@ -217,4 +223,15 @@ test('HOMI never starts paid third-party work: only OpenAI is called, and chips 
   assert.doesNotMatch(stripComments(actions), /supabase\.functions|fetch\(|beginExecution/);
   // The only charge path is the paid property analysis and the agent builder, never a HOMI chat turn.
   assert.match(edge, /const BILLED_SURFACES = new Set\(\['agent-builder'\]\)/);
+});
+
+test('the investment consultant is unlimited HOMI too: the same abuse-only safeguard, no plan cap', () => {
+  const inv = stripComments(read('supabase/functions/investment-consultant/index.ts'));
+  assert.doesNotMatch(inv, /ai_fair_use_daily|DEFAULT_DAILY_LIMIT|dailyLimit|resetAt|billing_entitlements/, 'a per-plan quota is back');
+  assert.match(inv, /abuseVerdict\(/);
+  assert.match(inv, /setting\(ABUSE_SETTING_KEYS\.perMinute, 20\), setting\(ABUSE_SETTING_KEYS\.perHour, 300\), setting\(ABUSE_SETTING_KEYS\.perDay, 2000\)/);
+  assert.match(inv, /repeatedRun\(\[\.\.\.priorUserTurns, message\]\)/);
+  const refusal = inv.match(/return json\(\{ error: HOMI_SLOW_DOWN\[lang\], code: 'RATE_LIMIT_EXCEEDED'([^}]*)\}/);
+  assert.ok(refusal, 'the gentle slow-down is the only refusal');
+  assert.equal(refusal[1].trim(), '', 'no limit number or reset time goes back');
 });

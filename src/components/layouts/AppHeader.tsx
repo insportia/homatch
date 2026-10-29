@@ -55,7 +55,8 @@ const navItems = [
   // NAVIGATION" mandate (2026-09-06) — the CRM/case-attachment flow is no
   // longer part of the customer product. Backend schema/route left dormant
   // (see routes.tsx and services/transactionCases.ts) rather than deleted.
-  { key: 'nav_credits',       path: '/credits',        icon: Coins },
+  // Subscriptions (2026-10-29): the wallet page is read-only history now; the plan is what people manage.
+  { key: 'sub_go_subscription', path: '/account/subscription', icon: Coins },
 ];
 
 export function AppHeader() {

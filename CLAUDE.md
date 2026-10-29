@@ -35,13 +35,20 @@ An index is never proof of production state.
 
 ## Non-negotiable rules
 
-- **Billing is per service** (owner, 2026-10-22). 10 credits = $1. Each service
-  has its own model; PAYG unless the owner sets another. Email Marketing is the
-  one plan service: Free 50 lifetime, Pro $50/mo 50k, Scale $220/mo 100k,
-  overage $2.20/1k only with explicit consent, wallet-paid, opt-in renewal
-  (`email_marketing_37_63_vat_v1`). Never gate other services by plan; the
-  dormant billing-v2 plan machinery stays unwired.
-  Reserve → settle → release; unknown COGS never silently zero.
+- **Subscriptions** (owner, 2026-10-29; supersedes PAYG-only / per-service PAYG).
+  Monthly GEL plans, VAT incl.: STANDARD 9.90, VIP 29, UNLIMITED 99 (rows in
+  `saas_plans` / `saas_plan_entitlements`, admin-edited through audited RPCs,
+  never constants). Verify 5/15/unlimited, Contract Analysis 10/30/unlimited;
+  every plan: unlimited HOMI, internal search/matching, free internal unlock.
+  First successful use of each gated feature is a free trial (once per account).
+  Order: trial → plan allowance → legacy credit balance → SUBSCRIPTION_REQUIRED.
+  Success-only: reserve → commit on delivery → release on failure. New credits
+  are not sold; existing balances stay spendable; history never rewritten.
+  Pass-through costs (ads budgets, paid external discovery, GPU) stay separate.
+  Access only from a VERIFIED bank event (`saas_payment_event_apply`); SANDBOX
+  never grants in production. Email Marketing keeps its own plans. The dormant
+  billing-v2 tables (user_subscriptions, product_plan_entitlements) stay unwired.
+  Unknown COGS never silently zero. Details: `docs/claude/BILLING.md`.
   Customer prices are final and VAT-inclusive (18%): extract VAT, never add it.
   Paid discovery (Find Buyers/Tenants and Find Property paid campaigns started
   since Finance V2, `paid_discovery_37_63_vat_v2`): VAT first, then HOMATCH 37% /

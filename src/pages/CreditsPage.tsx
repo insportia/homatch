@@ -226,38 +226,22 @@ function CreditsContent() {
     <AppLayout>
       <div className="max-w-2xl mx-auto space-y-6">
         {/* The navy structural header, gold CTA inside it. */}
+        {/* SUBSCRIPTIONS (owner decision 2026-10-29): new credits are no longer sold (credits-topup
+            answers CREDIT_SALES_CLOSED). This page stays as the read-only history of the wallet:
+            the balance an account still holds remains spendable, nothing is deleted. */}
         <PageHero
           compact
           title={t('credits_title')}
-          subtitle={t('credits_topup_desc', { min: (minCents / 100).toFixed(2).replace(/\.00$/, ''), credits: String(ent.creditsPerUsd || 10) })}
+          subtitle={t('sub_legacy_note')}
           actions={(
             <Button
-              onClick={() => setShowTopUp(true)}
+              onClick={() => navigate('/pricing')}
               className="h-11 shrink-0 border-0 bg-[hsl(38_92%_54%)] px-5 font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)]"
             >
-              <Zap className="h-4 w-4 mr-1.5" />
-              {t('credits_topup_btn')}
+              {t('sub_see_plans')}
             </Button>
           )}
         />
-
-        {/*
-          The result of a card setup takes precedence over the offer: somebody
-          who has just come back from the provider is asking "did that work?",
-          not "would you like to add a card?".
-        */}
-        {activation ? (
-          <CardActivationResult
-            failed={activation.failed}
-            granted={activation.granted}
-            credits={activation.credits}
-            cardBrand={activation.cardBrand}
-            cardLast4={activation.cardLast4}
-          />
-        ) : (
-          /* Renders nothing once the bonus is claimed, or if it never applied. */
-          <CardActivationCard />
-        )}
 
         {/* Balance card */}
         <Card className="border-[hsl(var(--gold-border))] bg-card shadow-card">

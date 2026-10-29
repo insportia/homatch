@@ -292,6 +292,10 @@ export const ADMIN_GROUPS: AdminGroup[] = [
         keywords: ['payment', 'invoice', 'stripe', 'charge', 'refund'],
       },
       {
+        path: '/admin/plans', labelKey: 'admin_nav_plans', icon: Settings2,
+        keywords: ['plans', 'subscription', 'entitlement', 'allowance', 'trial', 'vip', 'unlimited', 'bank', 'bog', 'tbc'],
+      },
+      {
         path: '/admin/pricing', labelKey: 'admin_nav_pricing', icon: Settings2,
         keywords: ['pricing', 'price', 'plan', 'tariff', 'simulator', 'catalogue'],
       },

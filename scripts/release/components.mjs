@@ -110,7 +110,12 @@ export const COMPONENTS = {
   },
   BILLING: {
     security: true,
-    paths: [/^src\/(components\/billing|pages\/CreditsPage|services\/(billing|credits))/i, fn('billing', 'credits-topup', 'payment-webhook', 'payment-method-setup', 'atomic-unlock', 'unlock-external-contact', 'research-purchase', 'spend-cap-check', 'saas-checkout', 'saas-payments-webhook')],
+    paths: [/^src\/(components\/billing|pages\/CreditsPage|services\/(billing|credits))/i,
+      // Subscriptions (2026-10-29): client, customer pages, admin page, shared edge code, tests.
+      /^src\/subscriptions\//, /^src\/pages\/(MySubscriptionPage|SubscriptionConfirmPage|SubscriptionSandboxPayPage)\.tsx$/,
+      /^supabase\/functions\/_shared\/(entitlements|saasNotify)\.ts$/, /^supabase\/functions\/_shared\/saasPayments\//,
+      /^tests\/matrix\/saasSubscriptions\.test\.mjs$/, /^tests\/sql\/saas\//, /^scripts\/saas-subs-i18n-/,
+      fn('billing', 'credits-topup', 'payment-webhook', 'payment-method-setup', 'atomic-unlock', 'unlock-external-contact', 'research-purchase', 'spend-cap-check', 'saas-checkout', 'saas-payments-webhook')],
     suites: ['mobile:routes', 'mobile:shell'],
     proofs: ['money: reserve → settle → release on a real row; no unknown COGS silently zero'],
   },
@@ -264,6 +269,8 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(contract_revisions|contract_document_delete$|contract_fixed_price$)/, 'VERIFY'],
   // homatch_refuse_spend_while_viewed: the BEFORE INSERT guard on credit_ledger / usage_reservations.
   [/^public\.(billing|credit|payment|wallet|cost_events|ledger|unlock|homatch_refuse_spend_while_viewed$)/, 'BILLING'],
+  // Subscriptions (20261207100000 / 100100): plans, usage ledger, trials, checkout, lifecycle, admin RPCs.
+  [/^public\.(saas_|admin_saas_|entitlement_status_for_me$|contract_analysis_entitlement_for_me$)/, 'BILLING'],
   // Finance V2: tax profiles, commercial policies, the service registry and its admin ledger views/RPCs.
   [/^public\.(finance_tax_profiles$|finance_commercial_policies$|finance_services$|finance_vat_bps_at$|finance_split_gross$|finance_cost_status$|finance_credits_to_usd$|finance_v2_)/, 'BILLING'],
   [/^public\.(discovery|supply_|demand_|match|search_profile|active_search|social_discovery|source_)/, 'DISCOVERY'],

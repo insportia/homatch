@@ -26,13 +26,13 @@
  * concluded something different, which is itself worth knowing.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FileSignature, ArrowRight, ShieldCheck, GitCompare, FileCheck2, ListChecks, Gift, Coins } from 'lucide-react';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useEntitlements } from '@/hooks/useEntitlements';
+import { featureOf, useEntitlementStatus } from '@/subscriptions/useEntitlementStatus';
 import { DropZone } from '@/components/documents/DropZone';
 import { ContractList } from '@/components/contracts/ContractList';
 import { DocumentReader } from '@/components/contracts/DocumentReader';
@@ -49,7 +49,7 @@ export const RECENT_LIMIT = 6;
 export default function ContractsPage() {
   const { t, lang } = useLanguage();
   const { homatchUser } = useAuth();
-  const ent = useEntitlements();
+  const ent = useEntitlementStatus();
   const navigate = useNavigate();
   const location = useLocation();
   const pulls = useReaderPulls();
@@ -87,16 +87,24 @@ export default function ContractsPage() {
     return () => { alive = false; };
   }, [homatchUser]);
 
-  /* What the next analysis costs this customer, said before they start. */
-  const included = !!homatchUser && !ent.loading && ent.includedRemaining('CONTRACT_INTELLIGENCE') > 0;
-  const priceLabel = included
-    ? t('ux_ct_price_free')
-    : price
-      ? t('ux_ct_price_paid', {
-          credits: price.credits.toLocaleString(lang, { maximumFractionDigits: 2 }),
-          usd: price.usd.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }),
-        })
-      : null;
+  /* What the next analysis costs this customer, said before they start (server truth:
+   * entitlement_status_for_me). Subscriptions (2026-10-29): the first analysis is free, then the
+   * plan's allowance; the old "1 free per month" is gone. The fixed credit price is shown only to
+   * an account that still holds a legacy balance; everyone else is pointed at the plans. */
+  const contract = featureOf(ent.status, 'CONTRACT_ANALYSIS');
+  const included = !!homatchUser && !!contract && (contract.trialAvailable || (contract.included && (contract.unlimited || (contract.remaining ?? 0) > 0)));
+  const priceLabel = !homatchUser || !ent.status
+    ? null
+    : included
+      ? (contract?.trialAvailable ? t('sub_badge_first_free')
+        : contract?.unlimited ? t('sub_badge_included_unlimited')
+        : t('sub_badge_included', { remaining: String(contract?.remaining ?? '') }))
+      : ent.status.hasLegacyBalance && price
+        ? t('ux_ct_price_paid', {
+            credits: price.credits.toLocaleString(lang, { maximumFractionDigits: 2 }),
+            usd: price.usd.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }),
+          })
+        : t('sub_prompt_subscribe');
 
   const onFile = useCallback(
     async (file: File) => {
@@ -196,7 +204,7 @@ export default function ContractsPage() {
               ) : null}
             </div>
             {priceLabel ? (
-              <p className="-mt-2 text-sm leading-relaxed text-ink-soft">{included ? t('ux_ct_price_free_hint') : t('ux_ct_price_paid_hint')}</p>
+              <p className="-mt-2 text-sm leading-relaxed text-ink-soft">{included ? t('ux_ct_price_free_hint') : ent.status?.hasLegacyBalance ? t('ux_ct_price_paid_hint') : <Link className="font-medium underline" to="/pricing">{t('sub_see_plans')}</Link>}</p>
             ) : null}
 
             {/* Optional, and visibly optional: the default is already chosen. */}

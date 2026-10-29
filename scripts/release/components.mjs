@@ -153,7 +153,14 @@ export const COMPONENTS = {
   PWA_PUSH: {
     paths: [/^public\/(sw|service-worker|manifest)[^/]*$/, /^src\/serviceWorker\//, /^src\/lib\/(pwa|push)\.ts$/, /^src\/lib\/notifications\//, /^src\/(components\/notifications|pages\/NotificationsPage)/, fn('push-send', 'active-search-notify'),
       // Finished-job notifications (UX round 2026-10-25): the push copy generator and the copy.
-      /^scripts\/sw-push-copy\.mjs$/, /^scripts\/ux-navnotify-i18n-(data|apply)\.mjs$/],
+      /^scripts\/sw-push-copy\.mjs$/, /^scripts\/ux-navnotify-i18n-(data|apply)\.mjs$/,
+      // Reliable transactional notifications (saas-notify, 2026-10-29): the email leg, its retry
+      // sweeper, the generated six-language copy, the one-click unsubscribe, the admin log, and
+      // the client hook that keeps users.preferred_language current.
+      /^supabase\/functions\/_shared\/(notify|notifyEmail|transactionalEmail|notificationCopy|notificationCopy\.generated|notificationUnsubscribe|jobNotify)\.ts$/,
+      /^supabase\/functions\/_shared\/__tests__\/(notificationDelivery|notifyEmail|transactionalEmail|jobNotify)\.test\.mjs$/,
+      /^scripts\/saas-notify-(i18n-data|i18n-apply|copy)\.mjs$/,
+      /^src\/hooks\/usePersistPreferredLanguage\.ts$/, /^src\/components\/admin\/NotificationDeliveryLog\.tsx$/],
     suites: ['push', 'a11y', 'mobile:shell'],
     proofs: ['push: push-send PROVEN_EXACT; a real subscription receives a test notification'],
   },

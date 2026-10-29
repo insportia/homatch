@@ -1,12 +1,18 @@
 // RESEND — the one HTTP client every email path uses.
 //
 // KEYS. Marketing and CRM traffic use the dedicated Email Marketing key; the
-// legacy RESEND_API_KEY stays the transactional/notification key. The dedicated
+// legacy RESEND_API_KEY is the transactional/notification key ONLY. The dedicated
 // key's env NAME is not hard-coded: admin_settings.email_marketing_resend_key_env
 // may name it (a name, never a value), else the conventional names below are
-// tried, else the legacy key is used and the result says so (keyFallback=true) so
-// an operator can see marketing is not on its own key yet. Supabase Auth SMTP is
-// configured in the dashboard and never touched from here.
+// tried. There is NO fallback from marketing to the transactional key (saas-notify,
+// 2026-10-29): marketing traffic on the transactional key would put payment and
+// account notices at the mercy of campaign complaints and rate limits. Without a
+// dedicated key a marketing call gets key=null (NO_RESEND_KEY) and the result still
+// carries keyFallback=false so Admin shows which key is in use. Production has
+// RESEND_MARKETING_API_KEY set (email_provider_usage_snapshots, 2026-10-29).
+// Transactional mail never calls this with 'marketing' (_shared/notifyEmail.ts reads
+// RESEND_API_KEY directly). Supabase Auth SMTP is configured in the dashboard and
+// never touched from here.
 //
 // RELIABILITY. POSTs that create something carry an Idempotency-Key (Resend keeps
 // it 24 h), 429/5xx are retried with backoff honouring Retry-After, 4xx are not.
@@ -46,8 +52,10 @@ export function resolveResendKey(purpose: ResendPurpose, configuredEnvName?: str
       if (v) return { key: v, envName: name, keyFallback: false };
     }
   }
-  const legacy = Deno.env.get('RESEND_API_KEY') ?? null;
-  return { key: legacy, envName: legacy ? 'RESEND_API_KEY' : null, keyFallback: purpose === 'marketing' };
+  /* Marketing never falls back to the transactional key (see the header). */
+  if (purpose === 'marketing') return { key: null, envName: null, keyFallback: false };
+  const transactional = Deno.env.get('RESEND_API_KEY') ?? null;
+  return { key: transactional, envName: transactional ? 'RESEND_API_KEY' : null, keyFallback: false };
 }
 
 export interface ResendResult<T = Record<string, unknown>> {

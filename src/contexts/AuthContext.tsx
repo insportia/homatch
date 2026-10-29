@@ -7,6 +7,7 @@ import { claimAnonymousWork } from '@/services/anonymousSession';
 import type { Session, User as SupaUser } from '@supabase/supabase-js';
 import type { User } from '@/types/types';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { usePersistPreferredLanguage } from '@/hooks/usePersistPreferredLanguage';
 
 interface AuthContextValue {
   session: Session | null;
@@ -44,7 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * signed-out state back into "still hydrating".
    */
   const [persistedAtStartup] = useState(() => hasPersistedSession());
-  const { applyProfileLanguage } = useLanguage();
+  const { applyProfileLanguage, lang } = useLanguage();
 
   const fetchHomatchUser = useCallback(async (authId: string) => {
     const { data } = await supabase
@@ -57,6 +58,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // device, and only ever applies once per session (see LanguageContext).
     if (data?.preferred_language) applyProfileLanguage(data.preferred_language);
   }, [applyProfileLanguage]);
+
+  /* The account's language follows the interface, so email and notifications do too. */
+  usePersistPreferredLanguage(homatchUser?.id, homatchUser?.preferred_language, lang);
 
   const refreshUser = useCallback(async () => {
     if (supaUser) await fetchHomatchUser(supaUser.id);

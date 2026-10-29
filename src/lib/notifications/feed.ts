@@ -171,7 +171,7 @@ export function categoryOf(row: FeedRow): NotificationCategory {
   if (type === 'PROPERTY_ACTION_REQUIRED' || type.startsWith('IMPORT_')
     || type.startsWith('MATCHING_')) return 'PROPERTY';
 
-  if (type === 'LOW_CREDITS' || type.startsWith('CREDITS_') || type.startsWith('SUBSCRIPTION_') || type === 'PAYMENT_FAILED'
+  if (type === 'LOW_CREDITS' || type.startsWith('CREDITS_') || type.startsWith('SUBSCRIPTION_') || type === 'PAYMENT_FAILED' || type === 'TRIAL_USED'
     || type === 'RESEARCH_PRODUCT_PURCHASED' || type === 'INCLUDED_USAGE_EXHAUSTED') return 'BILLING';
 
   if (type === 'VERIFY_COMPLETE' || type === 'DOCUMENT_ANALYZED' || type === 'SERVICE_FAILED' || type === 'RETENTION_EXPIRING' || type.startsWith('EXPAT_')

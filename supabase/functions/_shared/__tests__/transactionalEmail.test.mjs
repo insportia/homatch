@@ -91,15 +91,19 @@ test('the same notification is never emailed twice', async () => {
   assert.equal(db.deliveries.length, 1);
 });
 
-test('PAYG only: no payment email mentions a plan, a subscription or a renewal, in any language', () => {
-  const banned = /plan|subscri|renew|გეგმ|გამოწერ|план|подписк|продл|yenilen|abonelik|خطت|اشتراك|تتجدد|תוכנית|מנוי|תתחדש/i;
+/*
+ * The premise changed (owner, 2026-10-29): credits are no longer sold and a failed payment
+ * is usually a subscription charge. So a failed payment email no longer talks about a
+ * top-up or Credits, and it must not promise anything about a plan either: it only says the
+ * payment did not go through and changed nothing.
+ */
+test('a failed payment email is plan neutral: no Credits, no top-up, no plan promise, in any language', () => {
+  const banned = /credit|top-up|კრედიტ|ბალანსის შევსება|кредит|пополнени|kredi|bakiye|رصيد|أرصدة|קרדיט|טעינ|renew|გეგმა განახლ|продл|yenilen|تتجدد|תתחדש/i;
   for (const lang of ['ka', 'en', 'ru', 'tr', 'ar', 'he']) {
-    for (const ev of ['PAYMENT_OK', 'PAYMENT_FAILED']) {
-      const e = buildTransactionalEmail(ev, lang, '/credits');
-      assert.ok(!banned.test(e.text), `${ev} ${lang}: ${e.text}`);
-    }
+    const e = buildTransactionalEmail('PAYMENT_FAILED', lang, '/billing');
+    assert.ok(!banned.test(e.text), `PAYMENT_FAILED ${lang}: ${e.text}`);
   }
-  assert.ok(buildTransactionalEmail('PAYMENT_FAILED', 'en', '/credits').text.includes('No Credits were added'));
+  assert.ok(buildTransactionalEmail('PAYMENT_FAILED', 'en', '/billing').text.includes('changed nothing on your account'));
 });
 
 test('a notice emitted with email: false never reaches the email leg', async () => {

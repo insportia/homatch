@@ -24,6 +24,8 @@ alter type notification_type add value if not exists 'SUBSCRIPTION_ACTIVATED';
 alter type notification_type add value if not exists 'SUBSCRIPTION_RENEWED';
 alter type notification_type add value if not exists 'SUBSCRIPTION_ENDED';
 alter type notification_type add value if not exists 'TRIAL_USED';
+-- A period ending within 3 days with no recurring charge: the person pays next month by link.
+alter type notification_type add value if not exists 'SUBSCRIPTION_PAYMENT_DUE';
 
 -- ── 2. delivery reliability ────────────────────────────────────────────
 alter table public.notification_deliveries

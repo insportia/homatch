@@ -21,7 +21,7 @@
 
 import { renderNotificationEmail, sendNotificationEmail, type EmailContent } from './notifyEmail.ts';
 import {
-  categoryOfEvent, emailDecision, emailEventFor, eventCopy, frameCopy, isEssential, isRtl, pickLang,
+  categoryOfEvent, deepLinkFor, emailDecision, emailEventFor, eventCopy, frameCopy, isEssential, isRtl, pickLang,
   unsubscribeMessage, type EmailCategory, type EmailEvent, type EmailPrefs,
 } from './notificationCopy.ts';
 import { signUnsubscribeToken } from './suppression.ts';
@@ -98,7 +98,7 @@ export async function maybeEmailNotification(sb: Sb, input: {
     if (decision !== 'SEND') return decision;
     const category = categoryOfEvent(event);
     const unsub = category ? await unsubscribeUrl(input.userId, category).catch(() => null) : null;
-    const content = buildTransactionalEmail(event, user?.preferred_language, input.deepLink, unsub);
+    const content = buildTransactionalEmail(event, user?.preferred_language, deepLinkFor(input.type, input.deepLink), unsub);
     const r = await sendNotificationEmail(sb, {
       userId: input.userId, notificationId: input.notificationId, source: 'transactional', eventKey: event, content,
       essential: isEssential(event), category,

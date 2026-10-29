@@ -23,11 +23,11 @@ export const LANGS: readonly Lang[] = NOTIFICATION_COPY_LANGS;
 export type EmailEvent =
   | 'VERIFY_DONE' | 'VERIFY_FAILED' | 'CONTRACT_DONE' | 'SEARCH_DONE'
   | 'PAYMENT_OK' | 'PAYMENT_FAILED' | 'SERVICE_FAILED'
-  | 'SUBSCRIPTION_ACTIVATED' | 'SUBSCRIPTION_RENEWED' | 'SUBSCRIPTION_ENDED' | 'TRIAL_USED';
+  | 'SUBSCRIPTION_ACTIVATED' | 'SUBSCRIPTION_RENEWED' | 'SUBSCRIPTION_ENDED' | 'SUBSCRIPTION_PAYMENT_DUE' | 'TRIAL_USED';
 
 export const EMAIL_EVENTS: readonly EmailEvent[] = [
   'VERIFY_DONE', 'VERIFY_FAILED', 'CONTRACT_DONE', 'SEARCH_DONE', 'PAYMENT_OK', 'PAYMENT_FAILED', 'SERVICE_FAILED',
-  'SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_RENEWED', 'SUBSCRIPTION_ENDED', 'TRIAL_USED',
+  'SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_RENEWED', 'SUBSCRIPTION_ENDED', 'SUBSCRIPTION_PAYMENT_DUE', 'TRIAL_USED',
 ];
 
 /** The optional-mail switches a person can turn off (one-click unsubscribe works per category). */
@@ -36,8 +36,19 @@ export const EMAIL_CATEGORIES: readonly EmailCategory[] = ['ai_results', 'billin
 
 /** Money and account state: always sent, never suppressed by a switch, no unsubscribe link. */
 export const ESSENTIAL_EVENTS: ReadonlySet<EmailEvent> = new Set<EmailEvent>([
-  'PAYMENT_FAILED', 'SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_RENEWED', 'SUBSCRIPTION_ENDED',
+  'PAYMENT_FAILED', 'SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_RENEWED', 'SUBSCRIPTION_ENDED', 'SUBSCRIPTION_PAYMENT_DUE',
 ]);
+
+/** Where account and billing events always open: the subscription page, whatever the producer passed. */
+export const SUBSCRIPTION_PAGE = '/account/subscription';
+const SUBSCRIPTION_PAGE_TYPES = new Set([
+  'SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_RENEWED', 'SUBSCRIPTION_ENDED', 'SUBSCRIPTION_PAYMENT_DUE', 'PAYMENT_FAILED', 'TRIAL_USED',
+]);
+
+/** The deep link a notification of this type must carry; the producer's own link otherwise. */
+export function deepLinkFor(type: string, producerLink: string | null | undefined): string | null {
+  return SUBSCRIPTION_PAGE_TYPES.has(type) ? SUBSCRIPTION_PAGE : (producerLink ?? null);
+}
 
 export function isEssential(event: EmailEvent): boolean {
   return ESSENTIAL_EVENTS.has(event);
@@ -80,6 +91,7 @@ export function emailEventFor(type: string, kind?: string | null, productType?: 
     case 'SUBSCRIPTION_ACTIVATED': return 'SUBSCRIPTION_ACTIVATED';
     case 'SUBSCRIPTION_RENEWED': return 'SUBSCRIPTION_RENEWED';
     case 'SUBSCRIPTION_ENDED': return 'SUBSCRIPTION_ENDED';
+    case 'SUBSCRIPTION_PAYMENT_DUE': return 'SUBSCRIPTION_PAYMENT_DUE';
     case 'TRIAL_USED': return 'TRIAL_USED';
     default: return null;
   }
@@ -104,7 +116,7 @@ const STEM: Record<EmailEvent, string> = {
   VERIFY_DONE: 'verify_done', VERIFY_FAILED: 'verify_failed', CONTRACT_DONE: 'contract_done', SEARCH_DONE: 'search_done',
   PAYMENT_OK: 'payment_ok', PAYMENT_FAILED: 'payment_failed', SERVICE_FAILED: 'service_failed',
   SUBSCRIPTION_ACTIVATED: 'subscription_activated', SUBSCRIPTION_RENEWED: 'subscription_renewed',
-  SUBSCRIPTION_ENDED: 'subscription_ended', TRIAL_USED: 'trial_used',
+  SUBSCRIPTION_ENDED: 'subscription_ended', SUBSCRIPTION_PAYMENT_DUE: 'subscription_payment_due', TRIAL_USED: 'trial_used',
 };
 
 export interface EventCopy { title: string; body: string; cta: string; next: string }

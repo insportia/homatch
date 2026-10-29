@@ -13,7 +13,7 @@ import {
   providerEventEffect, resendIdempotencyKey, retryDueDeliveries, sendNotificationEmail,
 } from '../notifyEmail.ts';
 import {
-  EMAIL_EVENTS, LANGS, categoryOfEvent, emailDecision, emailEventFor, eventCopy, frameCopy, isEssential, storedCopyFor,
+  EMAIL_EVENTS, LANGS, SUBSCRIPTION_PAGE, categoryOfEvent, deepLinkFor, emailDecision, emailEventFor, eventCopy, frameCopy, isEssential, storedCopyFor,
 } from '../notificationCopy.ts';
 import { NOTIFICATION_COPY } from '../notificationCopy.generated.ts';
 import { buildTransactionalEmail, maybeEmailNotification, unsubscribeUrl } from '../transactionalEmail.ts';
@@ -226,7 +226,7 @@ test('a webhook event updates the delivery by provider message id and suppresses
 /* ── preferences ───────────────────────────────────────────────────── */
 
 test('essential mail is always sent; optional mail honours the switch, its category and a suppression', () => {
-  for (const ev of ['PAYMENT_FAILED', 'SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_RENEWED', 'SUBSCRIPTION_ENDED']) {
+  for (const ev of ['PAYMENT_FAILED', 'SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_RENEWED', 'SUBSCRIPTION_ENDED', 'SUBSCRIPTION_PAYMENT_DUE']) {
     assert.ok(isEssential(ev), ev);
     assert.equal(categoryOfEvent(ev), null);
     assert.equal(emailDecision(ev, { email_enabled: false, email_suppressed_at: 'x', email_categories: { billing: false } }), 'SEND', ev);
@@ -240,7 +240,7 @@ test('essential mail is always sent; optional mail honours the switch, its categ
 });
 
 test('the event map: the subscription TYPE names the subscriptions workstream emits, Verify failure, unreadable documents stay in-app', () => {
-  for (const t of ['SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_RENEWED', 'SUBSCRIPTION_ENDED', 'TRIAL_USED', 'PAYMENT_FAILED']) assert.equal(emailEventFor(t), t);
+  for (const t of ['SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_RENEWED', 'SUBSCRIPTION_ENDED', 'SUBSCRIPTION_PAYMENT_DUE', 'TRIAL_USED', 'PAYMENT_FAILED']) assert.equal(emailEventFor(t), t);
   assert.equal(emailEventFor('SERVICE_FAILED', null, 'VERIFY'), 'VERIFY_FAILED');
   assert.equal(emailEventFor('SERVICE_FAILED', 'SERVICE_FAILED', 'FIND_CLIENTS'), 'SERVICE_FAILED');
   assert.equal(emailEventFor('SERVICE_FAILED', 'DOCUMENT_UNREADABLE'), null);
@@ -348,5 +348,32 @@ test('the migration is additive: new statuses, retry columns, suppression, audit
   assert.match(sql, /for update skip locked/);
   assert.match(sql, /insert into public\.admin_audit_log[\s\S]*notification_delivery\.retry/);
   assert.match(sql, /add value if not exists 'TRIAL_USED'/);
+  assert.match(sql, /add value if not exists 'SUBSCRIPTION_PAYMENT_DUE'/);
   assert.ok(!/\bdrop (table|column)\b/i.test(sql));
+});
+
+test('SUBSCRIPTION_PAYMENT_DUE is essential billing mail: always sent, no unsubscribe, opens the subscription page', () => {
+  assert.ok(isEssential('SUBSCRIPTION_PAYMENT_DUE'));
+  assert.equal(categoryOfEvent('SUBSCRIPTION_PAYMENT_DUE'), null);
+  assert.equal(emailDecision('SUBSCRIPTION_PAYMENT_DUE', { email_enabled: false, email_suppressed_at: 'x' }), 'SEND');
+  const ka = buildTransactionalEmail('SUBSCRIPTION_PAYMENT_DUE', null, '/account/subscription', 'https://unsub.example/x');
+  assert.equal(ka.subject, 'შენი HOMATCH-ის გეგმისთვის გადახდაა საჭირო');
+  assert.ok(ka.html.includes('https://homatch.live/account/subscription'));
+  assert.ok(!ka.html.includes('unsub.example'), 'essential mail never carries an unsubscribe link');
+  const push = fs.readFileSync(path.join(ROOT, 'supabase', 'functions', 'push-send', 'index.ts'), 'utf8');
+  assert.match(push, /eventType\.startsWith\('SUBSCRIPTION_'\)[\s\S]{0,300}return 'billing'/, 'push files every SUBSCRIPTION_* type under billing');
+});
+
+test('subscription, payment and trial events always link to /account/subscription; others keep their own link', async () => {
+  for (const t of ['SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_RENEWED', 'SUBSCRIPTION_ENDED', 'SUBSCRIPTION_PAYMENT_DUE', 'PAYMENT_FAILED', 'TRIAL_USED']) {
+    assert.equal(deepLinkFor(t, '/credits'), SUBSCRIPTION_PAGE, t);
+  }
+  assert.equal(deepLinkFor('VERIFY_COMPLETE', '/verify?job=1'), '/verify?job=1');
+  withEnv({});
+  const { notify } = await import('../notify.ts');
+  const emitted = [];
+  const sb = { rpc: async (fn, args) => { emitted.push(args); return { data: 'n-1', error: null }; }, functions: { invoke: async () => ({}) } };
+  await notify(sb, { userId: USER, type: 'SUBSCRIPTION_PAYMENT_DUE', title: 'x', deepLink: '/billing', email: false });
+  assert.equal(emitted[0].p_deep_link, '/account/subscription');
+  assert.equal(emitted[0].p_type, 'SUBSCRIPTION_PAYMENT_DUE');
 });

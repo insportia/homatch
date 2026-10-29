@@ -120,6 +120,7 @@ export type NotificationType =
   | 'SUBSCRIPTION_ACTIVATED'
   | 'SUBSCRIPTION_RENEWED'
   | 'SUBSCRIPTION_ENDED'
+  | 'SUBSCRIPTION_PAYMENT_DUE'
   | 'TRIAL_USED';
 export type ConditionType = 'NEW' | 'GOOD' | 'NEEDS_RENOVATION' | 'UNDER_CONSTRUCTION';
 export type BuildingType = 'PANEL' | 'BRICK' | 'MONOLITH' | 'WOOD' | 'OTHER';

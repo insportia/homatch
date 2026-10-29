@@ -25339,6 +25339,12 @@ const en = {
   admin_ntf_retry_done: 'Queued for the next worker tick.',
   admin_ntf_retry_failed: 'Could not queue a retry: {{reason}}',
   admin_ntf_empty: 'No email deliveries in this period.',
+
+  /* ── TRANSACTIONAL NOTIFICATIONS (saas-notify) ── */
+  ntf_subscription_payment_due_title: 'Your HOMATCH plan needs a payment',
+  ntf_subscription_payment_due_body: 'Your current period ends within 3 days. Your plan does not renew automatically, so pay for the next month to keep it active.',
+  ntf_subscription_payment_due_cta: 'Pay for next month',
+  ntf_subscription_payment_due_next: 'Open your subscription page and complete the payment before the period ends.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -50592,6 +50598,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_ntf_retry_done: 'ჩაემატა worker-ის შემდეგ ციკლში.',
   admin_ntf_retry_failed: 'ხელახლა გაგზავნა ვერ დაიგეგმა: {{reason}}',
   admin_ntf_empty: 'ამ პერიოდში წერილები არ გაგზავნილა.',
+
+  /* ── TRANSACTIONAL NOTIFICATIONS (saas-notify) ── */
+  ntf_subscription_payment_due_title: 'შენი HOMATCH-ის გეგმისთვის გადახდაა საჭირო',
+  ntf_subscription_payment_due_body: 'მიმდინარე პერიოდი 3 დღეში მთავრდება. გეგმა ავტომატურად არ განახლდება, ამიტომ აქტიური რომ დარჩეს, შემდეგი თვე გადაიხადე.',
+  ntf_subscription_payment_due_cta: 'შემდეგი თვის გადახდა',
+  ntf_subscription_payment_due_next: 'გახსენი გამოწერის გვერდი და გადახდა პერიოდის დასრულებამდე შეასრულე.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -75836,6 +75848,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_ntf_retry_done: 'Поставлено в очередь на следующий такт.',
   admin_ntf_retry_failed: 'Не удалось поставить повтор: {{reason}}',
   admin_ntf_empty: 'За этот период писем не было.',
+
+  /* ── TRANSACTIONAL NOTIFICATIONS (saas-notify) ── */
+  ntf_subscription_payment_due_title: 'Тариф HOMATCH нужно оплатить',
+  ntf_subscription_payment_due_body: 'Текущий период заканчивается в течение 3 дней. Тариф не продлевается автоматически, поэтому оплати следующий месяц, чтобы он остался активным.',
+  ntf_subscription_payment_due_cta: 'Оплатить следующий месяц',
+  ntf_subscription_payment_due_next: 'Открой страницу подписки и заверши оплату до конца периода.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -101078,6 +101096,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_ntf_retry_done: 'Bir sonraki worker turu için sıraya alındı.',
   admin_ntf_retry_failed: 'Yeniden deneme sıraya alınamadı: {{reason}}',
   admin_ntf_empty: 'Bu dönemde e-posta teslimi yok.',
+
+  /* ── TRANSACTIONAL NOTIFICATIONS (saas-notify) ── */
+  ntf_subscription_payment_due_title: 'HOMATCH planın için ödeme gerekiyor',
+  ntf_subscription_payment_due_body: 'Mevcut dönemin 3 gün içinde bitiyor. Planın otomatik yenilenmiyor, aktif kalması için gelecek ayı öde.',
+  ntf_subscription_payment_due_cta: 'Gelecek ayı öde',
+  ntf_subscription_payment_due_next: 'Abonelik sayfanı aç ve ödemeyi dönem bitmeden tamamla.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -126320,6 +126344,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_ntf_retry_done: 'أُضيفت إلى الدورة التالية للعامل.',
   admin_ntf_retry_failed: 'تعذر جدولة إعادة المحاولة: {{reason}}',
   admin_ntf_empty: 'لا توجد رسائل في هذه الفترة.',
+
+  /* ── TRANSACTIONAL NOTIFICATIONS (saas-notify) ── */
+  ntf_subscription_payment_due_title: 'خطتك في HOMATCH تحتاج إلى دفعة',
+  ntf_subscription_payment_due_body: 'تنتهي فترتك الحالية خلال 3 أيام. لا تتجدد خطتك تلقائيًا، لذا ادفع للشهر القادم لتبقى مفعّلة.',
+  ntf_subscription_payment_due_cta: 'ادفع للشهر القادم',
+  ntf_subscription_payment_due_next: 'افتح صفحة اشتراكك وأكمل الدفع قبل انتهاء الفترة.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -151562,6 +151592,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_ntf_retry_done: 'נוסף לסבב הבא של ה־worker.',
   admin_ntf_retry_failed: 'לא ניתן היה לתזמן ניסיון חוזר: {{reason}}',
   admin_ntf_empty: 'אין הודעות בתקופה הזו.',
+
+  /* ── TRANSACTIONAL NOTIFICATIONS (saas-notify) ── */
+  ntf_subscription_payment_due_title: 'התוכנית שלך ב־HOMATCH דורשת תשלום',
+  ntf_subscription_payment_due_body: 'התקופה הנוכחית מסתיימת בתוך 3 ימים. התוכנית לא מתחדשת אוטומטית, לכן שלם על החודש הבא כדי שתישאר פעילה.',
+  ntf_subscription_payment_due_cta: 'לתשלום על החודש הבא',
+  ntf_subscription_payment_due_next: 'פתח את דף המינוי והשלם את התשלום לפני סוף התקופה.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -193,6 +193,9 @@ export function notificationText(
   if (notif.type === 'SUBSCRIPTION_ENDED') {
     return { title: t('ntf_subscription_ended_title'), body: t('ntf_subscription_ended_body') };
   }
+  if (notif.type === 'SUBSCRIPTION_PAYMENT_DUE') {
+    return { title: t('ntf_subscription_payment_due_title'), body: t('ntf_subscription_payment_due_body') };
+  }
   if (notif.type === 'TRIAL_USED') {
     return { title: t('ntf_trial_used_title'), body: t('ntf_trial_used_body') };
   }

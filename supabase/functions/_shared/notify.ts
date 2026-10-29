@@ -37,7 +37,7 @@
 
 import { maybeEmailNotification } from './transactionalEmail.ts';
 import { runAfterResponse } from './notifyEmail.ts';
-import { pickLang, storedCopyFor } from './notificationCopy.ts';
+import { deepLinkFor, pickLang, storedCopyFor } from './notificationCopy.ts';
 
 interface Client {
   rpc(fn: string, args: Record<string, unknown>): Promise<{ data: unknown; error: unknown }>;
@@ -149,13 +149,15 @@ export interface NotifyInput {
 export async function notify(sb: Client, input: NotifyInput): Promise<string | null> {
   try {
     const text = await localizedText(sb, input);
+    /* Subscription, payment and trial events always open the subscription page. */
+    const deepLink = deepLinkFor(input.type, input.deepLink);
     const { data, error } = await sb.rpc('notify_emit', {
       p_user_id: input.userId,
       p_type: input.type,
       p_title: text.title,
       p_body: text.body,
       p_priority: input.priority ?? 'NORMAL',
-      p_deep_link: input.deepLink ?? null,
+      p_deep_link: deepLink,
       p_entity_type: input.entityType ?? null,
       p_entity_id: input.entityId ?? null,
       p_dedupe_key: input.dedupeKey ?? null,
@@ -223,7 +225,7 @@ export async function notify(sb: Client, input: NotifyInput): Promise<string | n
       const recipient = await resolvedRecipient(sb, data, input.userId);
       const kind = typeof input.metadata?.kind === 'string' ? input.metadata.kind : null;
       const productType = typeof input.metadata?.product_type === 'string' ? input.metadata.product_type : null;
-      const emailLeg = maybeEmailNotification(sb, { notificationId: data, userId: recipient, type: input.type, kind, productType, deepLink: input.deepLink ?? null });
+      const emailLeg = maybeEmailNotification(sb, { notificationId: data, userId: recipient, type: input.type, kind, productType, deepLink });
       if (!runAfterResponse(emailLeg)) await emailLeg;
     }
 

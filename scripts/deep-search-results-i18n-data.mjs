@@ -15,14 +15,7 @@ export const DEEP_SEARCH_RESULTS_STRINGS = {
     'התוצאות האלה שוחזרו מהפוסטים ששמרנו אחרי שהקמפיין הסתיים. ייתכן שחלק מהפוסטים עודכנו מאז, ולכן הפרטים עשויים להיות שונים ממה שהקמפיין מצא בתחילה.',
   ],
   /* Paid Deep Search paused (owner, 2026-10-18): the workspace subtitle without the paid hint. */
-  fpx_header_sub_free: [
-    'Tell us what home you want, in your own words. We search for free.',
-    'მოგვწერეთ, როგორ ბინას ეძებთ, თქვენი სიტყვებით. ჩვენ უფასოდ მოვძებნით.',
-    'Напишите своими словами, какое жильё ищете. Мы поищем бесплатно.',
-    'Nasıl bir ev istediğinizi kendi sözlerinizle yazın. Ücretsiz ararız.',
-    'اكتب بكلماتك ما المنزل الذي تريده. نبحث لك مجانًا.',
-    'כתבו במילים שלכם איזה בית אתם מחפשים. אנחנו נחפש בחינם.',
-  ],
+  fpx_header_sub_free: ['Search apartments, houses and commercial spaces by the location and terms you want.', 'მოძებნეთ ბინები, სახლები და კომერციული ფართები თქვენთვის სასურველი მდებარეობისა და პირობების მიხედვით.', 'Ищите квартиры, дома и коммерческие помещения по нужному району и условиям.', 'Daire, ev ve ticari alanları istediğiniz konum ve koşullara göre arayın.', 'ابحث عن الشقق والمنازل والمساحات التجارية حسب الموقع والشروط التي تريدها.', 'חפשו דירות, בתים ושטחים מסחריים לפי המיקום והתנאים שאתם רוצים.'],
   /* Criteria */
   fpc_criteria_title: ['What we are searching for', 'რას ვეძებთ', 'Что мы ищем', 'Ne arıyoruz', 'ما الذي نبحث عنه', 'מה אנחנו מחפשים'],
   fpc_criteria_edit: ['Change criteria', 'კრიტერიუმების შეცვლა', 'Изменить критерии', 'Kriterleri değiştir', 'تغيير المعايير', 'שינוי הקריטריונים'],

@@ -19819,7 +19819,7 @@ const en = {
 
   /* ── FIND PROPERTY — WORKSPACE (HEADER, TABS, FREE / DEEP SEARCH, SOURCES, HISTORY, SAVED, ACTIVITY) ── */
   fpx_eyebrow: 'HOMATCH',
-  fpx_header_sub: 'Tell us what home you want, in your own words. We search for free, and if you like, we can look even wider.',
+  fpx_header_sub: 'Search apartments, houses and commercial spaces by the location and terms you want. If you like, we can also search wider.',
   fpx_modes_label: 'Ways to search',
   fpx_free_title: 'Free Search',
   fpx_free_price: 'Free',
@@ -20493,7 +20493,7 @@ const en = {
   mps_reused_recent: 'You ran this exact search a few minutes ago — here are its results.',
 
   /* ── DEEP SEARCH RESULTS ── */
-  fpx_header_sub_free: 'Tell us what home you want, in your own words. We search for free.',
+  fpx_header_sub_free: 'Search apartments, houses and commercial spaces by the location and terms you want.',
   fpc_criteria_title: 'What we are searching for',
   fpc_criteria_edit: 'Change criteria',
   fpc_criteria_strict: 'Every requirement is mandatory. A property that clearly fails one is never shown as a match; when a post does not say something, we mark it as unverified instead of guessing.',
@@ -45298,7 +45298,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY — WORKSPACE (HEADER, TABS, FREE / DEEP SEARCH, SOURCES, HISTORY, SAVED, ACTIVITY) ── */
   fpx_eyebrow: 'HOMATCH',
-  fpx_header_sub: 'მოგვწერეთ, როგორ ბინას ეძებთ, თქვენი სიტყვებით. ჩვენ უფასოდ მოვძებნით, სურვილის შემთხვევაში კი უფრო ფართოდაც.',
+  fpx_header_sub: 'მოძებნეთ ბინები, სახლები და კომერციული ფართები თქვენთვის სასურველი მდებარეობისა და პირობების მიხედვით. სურვილის შემთხვევაში უფრო ფართოდაც მოვძებნით.',
   fpx_modes_label: 'ძიების გზები',
   fpx_free_title: 'უფასო ძიება',
   fpx_free_price: 'უფასო',
@@ -45972,7 +45972,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mps_reused_recent: 'ზუსტად ეს ძიება რამდენიმე წუთის წინ ჩაატარეთ, აი მისი შედეგები.',
 
   /* ── DEEP SEARCH RESULTS ── */
-  fpx_header_sub_free: 'მოგვწერეთ, როგორ ბინას ეძებთ, თქვენი სიტყვებით. ჩვენ უფასოდ მოვძებნით.',
+  fpx_header_sub_free: 'მოძებნეთ ბინები, სახლები და კომერციული ფართები თქვენთვის სასურველი მდებარეობისა და პირობების მიხედვით.',
   fpc_criteria_title: 'რას ვეძებთ',
   fpc_criteria_edit: 'კრიტერიუმების შეცვლა',
   fpc_criteria_strict: 'ყველა მოთხოვნა სავალდებულოა. ობიექტი, რომელიც რომელიმე მოთხოვნას აშკარად არ აკმაყოფილებს, დამთხვევად არასდროს ჩაითვლება; თუ განცხადებაში რამე არ წერია, ვნიშნავთ როგორც გადაუმოწმებელს და არ ვიგონებთ.',
@@ -70768,7 +70768,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY — WORKSPACE (HEADER, TABS, FREE / DEEP SEARCH, SOURCES, HISTORY, SAVED, ACTIVITY) ── */
   fpx_eyebrow: 'HOMATCH',
-  fpx_header_sub: 'Напишите своими словами, какое жильё ищете. Мы поищем бесплатно, а если хотите, ещё шире.',
+  fpx_header_sub: 'Ищите квартиры, дома и коммерческие помещения по нужному району и условиям. При желании поищем и шире.',
   fpx_modes_label: 'Как искать',
   fpx_free_title: 'Бесплатный поиск',
   fpx_free_price: 'Бесплатно',
@@ -71442,7 +71442,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mps_reused_recent: 'Вы выполняли точно такой же поиск несколько минут назад — вот его результаты.',
 
   /* ── DEEP SEARCH RESULTS ── */
-  fpx_header_sub_free: 'Напишите своими словами, какое жильё ищете. Мы поищем бесплатно.',
+  fpx_header_sub_free: 'Ищите квартиры, дома и коммерческие помещения по нужному району и условиям.',
   fpc_criteria_title: 'Что мы ищем',
   fpc_criteria_edit: 'Изменить критерии',
   fpc_criteria_strict: 'Все требования обязательны. Объект, который явно не подходит хотя бы по одному, никогда не показывается как совпадение; если в посте чего-то нет, мы отмечаем это как непроверенное, а не угадываем.',
@@ -96236,7 +96236,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY — WORKSPACE (HEADER, TABS, FREE / DEEP SEARCH, SOURCES, HISTORY, SAVED, ACTIVITY) ── */
   fpx_eyebrow: 'HOMATCH',
-  fpx_header_sub: 'Nasıl bir ev istediğinizi kendi sözlerinizle yazın. Ücretsiz ararız, isterseniz daha geniş de bakarız.',
+  fpx_header_sub: 'Daire, ev ve ticari alanları istediğiniz konum ve koşullara göre arayın. İsterseniz daha geniş de arayabiliriz.',
   fpx_modes_label: 'Arama yolları',
   fpx_free_title: 'Ücretsiz arama',
   fpx_free_price: 'Ücretsiz',
@@ -96910,7 +96910,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mps_reused_recent: 'Bu aramanın aynısını birkaç dakika önce yaptınız — sonuçları burada.',
 
   /* ── DEEP SEARCH RESULTS ── */
-  fpx_header_sub_free: 'Nasıl bir ev istediğinizi kendi sözlerinizle yazın. Ücretsiz ararız.',
+  fpx_header_sub_free: 'Daire, ev ve ticari alanları istediğiniz konum ve koşullara göre arayın.',
   fpc_criteria_title: 'Ne arıyoruz',
   fpc_criteria_edit: 'Kriterleri değiştir',
   fpc_criteria_strict: 'Her şart zorunludur. Birini açıkça karşılamayan bir mülk asla eşleşme olarak gösterilmez; ilanda bir bilgi yoksa tahmin etmek yerine doğrulanmamış olarak işaretleriz.',
@@ -121704,7 +121704,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY — WORKSPACE (HEADER, TABS, FREE / DEEP SEARCH, SOURCES, HISTORY, SAVED, ACTIVITY) ── */
   fpx_eyebrow: 'HOMATCH',
-  fpx_header_sub: 'اكتب بكلماتك ما المنزل الذي تريده. نبحث لك مجانًا، وإن أردت نبحث على نطاق أوسع.',
+  fpx_header_sub: 'ابحث عن الشقق والمنازل والمساحات التجارية حسب الموقع والشروط التي تريدها. وإن شئت نبحث على نطاق أوسع.',
   fpx_modes_label: 'طرق البحث',
   fpx_free_title: 'بحث مجاني',
   fpx_free_price: 'مجاني',
@@ -122378,7 +122378,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mps_reused_recent: 'أجريت هذا البحث نفسه قبل دقائق — إليك نتائجه.',
 
   /* ── DEEP SEARCH RESULTS ── */
-  fpx_header_sub_free: 'اكتب بكلماتك ما المنزل الذي تريده. نبحث لك مجانًا.',
+  fpx_header_sub_free: 'ابحث عن الشقق والمنازل والمساحات التجارية حسب الموقع والشروط التي تريدها.',
   fpc_criteria_title: 'ما الذي نبحث عنه',
   fpc_criteria_edit: 'تغيير المعايير',
   fpc_criteria_strict: 'كل شرط إلزامي. العقار الذي لا يستوفي أحد الشروط بوضوح لا يُعرض أبدًا كتطابق؛ وإذا لم يذكر المنشور معلومة ما، نضع عليها علامة «غير متحقق منها» بدل التخمين.',
@@ -147172,7 +147172,7 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY — WORKSPACE (HEADER, TABS, FREE / DEEP SEARCH, SOURCES, HISTORY, SAVED, ACTIVITY) ── */
   fpx_eyebrow: 'HOMATCH',
-  fpx_header_sub: 'כתבו במילים שלכם איזה בית אתם מחפשים. אנחנו נחפש בחינם, ואם תרצו גם רחב יותר.',
+  fpx_header_sub: 'חפשו דירות, בתים ושטחים מסחריים לפי המיקום והתנאים שאתם רוצים. אם תרצו, נחפש גם רחב יותר.',
   fpx_modes_label: 'דרכי חיפוש',
   fpx_free_title: 'חיפוש חינם',
   fpx_free_price: 'חינם',
@@ -147846,7 +147846,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   mps_reused_recent: 'הרצתם בדיוק את החיפוש הזה לפני כמה דקות — הנה התוצאות שלו.',
 
   /* ── DEEP SEARCH RESULTS ── */
-  fpx_header_sub_free: 'כתבו במילים שלכם איזה בית אתם מחפשים. אנחנו נחפש בחינם.',
+  fpx_header_sub_free: 'חפשו דירות, בתים ושטחים מסחריים לפי המיקום והתנאים שאתם רוצים.',
   fpc_criteria_title: 'מה אנחנו מחפשים',
   fpc_criteria_edit: 'שינוי הקריטריונים',
   fpc_criteria_strict: 'כל דרישה היא חובה. נכס שבבירור אינו עומד באחת מהן לעולם לא יוצג כהתאמה; כשפוסט אינו מציין משהו, נסמן זאת כלא מאומת במקום לנחש.',

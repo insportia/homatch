@@ -78,6 +78,8 @@ export const COMPONENTS = {
     paths: [
       /^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|package-lock\.json|\.npmrc|\.nvmrc|\.node-version|deno\.lock|\.gitattributes)$/,
       /^(vite\.config\.[cm]?[jt]s|tsconfig[^/]*\.json|biome\.jsonc?|tailwind\.config\.[cm]?[jt]s|postcss\.config\.[cm]?[jt]s|index\.html|share\.html|\.env\.harness|components\.json|sgconfig\.yml|vercel\.json)$/,
+      // Vercel functions served next to the SPA (api/geo.ts).
+      /^api\/[^/]+\.ts$/,
       /^\.rules\//,
       // Any workflow a component does not own (<component>-*.yml are owned).
       /^\.github\/(?!workflows\/(design-studio|meta-ads)-[^/]+\.ya?ml$)/,

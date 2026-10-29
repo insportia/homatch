@@ -398,8 +398,19 @@ test('the entry bundle is measured, and its size is a stated fact', () => {
    * chunks). Entry 2,105,445 → 1,986,168 bytes (gzip 603,303 → 569,236,
    * brotli 484,062 → 458,540); every non-English bundle a visitor waits for
    * before first render lost its admin strings too (ka 2.20MB → 2.04MB).
+   *
+   * RAISED TO 4.5MB, 2026-10-29, on the owner's decision that Georgian is the
+   * default language: Georgian ships in the entry beside English
+   * (src/i18n/bundles.ts), so the default visitor renders with no second
+   * request and no preload wait. Measured, not guessed: production's entry
+   * was 2,021,657 bytes (index-CQQou6KJ.js, 2026-10-29); the Georgian base
+   * bundle as the plugin emits it is 2,181,632 bytes (gzip 396,624, brotli
+   * 279,791), so the entry becomes ~4.2MB. A Georgian visitor downloads the
+   * same bytes as before, one round trip fewer; an English, Russian, Turkish,
+   * Arabic or Hebrew visitor pays ~280KB brotli more. The ceiling keeps ~0.3MB
+   * of headroom so it still fails the change that makes it materially worse.
    */
-  const CEILING = 2 * 1024 * 1024;
+  const CEILING = 4.5 * 1024 * 1024;
   assert.ok(bytes < CEILING,
     `the entry chunk is ${(bytes / 1024 / 1024).toFixed(2)}MB, past the ${CEILING / 1024 / 1024}MB ceiling`);
 
@@ -410,4 +421,7 @@ test('the entry bundle is measured, and its size is a stated fact', () => {
   assert.ok(!code.includes('admin_nav_service_control'), 'an admin-only string is back in the entry chunk');
   assert.ok(code.includes('admin_imp_banner_exit'), 'the impersonation banner\'s strings must stay in the entry');
   assert.ok(readdirSync(dir).some((f) => /^admin-en-.*\.js$/.test(f)), 'no admin-en chunk was emitted');
+  /* Georgian is in the entry, and only in the entry. */
+  assert.ok(code.includes('lang_suggest_dismiss') && /[ა-ჿ]{4}/.test(code), 'Georgian is not in the entry chunk');
+  assert.ok(!readdirSync(dir).some((f) => /^ka-.*\.js$/.test(f)), 'a separate Georgian base chunk is still emitted');
 });

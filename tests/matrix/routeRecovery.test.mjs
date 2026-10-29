@@ -66,6 +66,10 @@ test('route 1: the SPA rewrite does not answer for build output', () => {
   for (const path of ['/assets/index-JKgg8yk_.js', '/assets/PricingPage-Ab12Cd34.js']) {
     assert.ok(!re.test(path), `${path} must NOT be rewritten to index.html`);
   }
+  /* The Vercel functions under api/ (api/geo.ts: the coarse country behind the
+     language suggestion) answer for themselves, never with the app shell. */
+  assert.ok(!re.test('/api/geo'), '/api/geo must NOT be rewritten to index.html');
+  assert.ok(re.test('/apiary'), 'only the api/ directory is excluded, not every path that starts with "api"');
 });
 
 test('route 2: a missing chunk is recognised however the browser words it', () => {

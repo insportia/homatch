@@ -99,10 +99,11 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 }
 
 /*
- * Each language but English is its own chunk. Render once the visitor's own
- * language has arrived (bounded: a failed or slow chunk renders in English),
- * so nobody sees an English flash before Georgian, Russian, Turkish, Arabic
- * or Hebrew. English visitors wait for nothing.
+ * English and Georgian (the default) ship in the entry; every other language
+ * is its own chunk. Render once the visitor's own language has arrived
+ * (bounded: a failed or slow chunk renders in English), so nobody sees an
+ * English flash before Russian, Turkish, Arabic or Hebrew. English and
+ * Georgian visitors wait for nothing.
  */
 void preloadLanguage().then(() => {
   createRoot(document.getElementById("root")!).render(

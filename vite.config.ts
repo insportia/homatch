@@ -137,7 +137,9 @@ function shareViewerRewrite(): Plugin {
  * imports it: it imports virtual:homatch-i18n/<lang>, which this plugin
  * answers by evaluating translations.ts once and emitting that one language's
  * object — English whole (the fallback, in the entry), every other language
- * as only its own strings, in a chunk of its own.
+ * as only its own strings. Georgian, the default language, is imported
+ * statically by bundles.ts and so ships in the entry too; ru, tr, ar and he
+ * are chunks of their own.
  *
  * Emitted as JSON.parse of a string: a large object literal parses measurably
  * slower than the same data as JSON, and nothing here needs to be code.

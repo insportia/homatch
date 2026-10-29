@@ -1,9 +1,11 @@
 // ONE LANGUAGE PER VISITOR, AND NEVER A FLASH OF THE WRONG ONE.
 //
 // Every visitor used to download all six languages in the entry chunk to read
-// one. Each language but English is now its own chunk (vite.config.ts,
-// i18nLanguageChunks; src/i18n/bundles.ts). That trade has two ways to go
-// wrong, and this gate is written against both, in a real browser:
+// one. English (the key fallback) and Georgian (the default language, owner
+// 2026-10-29) ship in the entry; ru, tr, ar and he are each their own chunk
+// (vite.config.ts, i18nLanguageChunks; src/i18n/bundles.ts). That trade has
+// two ways to go wrong, and this gate is written against both, in a real
+// browser:
 //
 //   1. a visitor downloads languages they did not ask for (the whole point
 //      lost), or
@@ -22,7 +24,7 @@ const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
 const PORT = 4351;
 const BASE = `http://127.0.0.1:${PORT}`;
-const OTHER = ['ka', 'ru', 'tr', 'ar', 'he'];
+const OTHER = ['ru', 'tr', 'ar', 'he'];
 const SCRIPT = { ka: /[\u10D0-\u10FF]/, ru: /[\u0400-\u04FF]/, ar: /[\u0600-\u06FF]/, he: /[\u05D0-\u05EA]/ };
 
 function findChrome() {
@@ -75,8 +77,8 @@ async function boot(t) {
   return browser;
 }
 
-async function openAs(browser, lang) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+async function openAs(browser, lang, { locale = 'en-US' } = {}) {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale });
   await ctx.addInitScript(([l]) => {
     if (l) window.localStorage.setItem('homatch_lang', l);
     /* The first text the visitor could see: recorded the moment #root has any. */
@@ -104,15 +106,29 @@ test('a visitor downloads their own language only, and the first render is alrea
   if (skipReason) assert.fail(`language chunk gate could not run: ${skipReason}`);
   const browser = await boot(t);
 
-  // English: nothing but the entry.
-  {
-    const { fetched, ctx } = await openAs(browser, 'en');
-    assert.deepEqual([...fetched], [], `an English visitor fetched language chunks: ${[...fetched]}`);
+  // English and Georgian: nothing but the entry, and Georgian words first.
+  for (const lang of ['en', 'ka']) {
+    const { page, fetched, ctx } = await openAs(browser, lang);
+    assert.deepEqual([...fetched], [], `a "${lang}" visitor fetched language chunks: ${[...fetched]}`);
+    if (lang === 'ka') {
+      assert.match(await page.evaluate(() => window.__firstText), SCRIPT.ka, 'the first render for "ka" was not Georgian');
+      assert.equal(await page.evaluate(() => document.documentElement.lang), 'ka');
+    }
     await ctx.close();
   }
 
-  // Each script-distinct language: exactly its own chunk, and its words first.
-  for (const lang of ['ka', 'ru', 'ar', 'he']) {
+  // A visitor with no choice and a browser language we do not support reads
+  // Georgian, the default, straight from the entry.
+  {
+    const { page, fetched, ctx } = await openAs(browser, null, { locale: 'de-DE' });
+    assert.deepEqual([...fetched], [], `a default visitor fetched language chunks: ${[...fetched]}`);
+    assert.match(await page.evaluate(() => window.__firstText), SCRIPT.ka, 'the default visitor did not read Georgian');
+    assert.equal(await page.evaluate(() => document.documentElement.lang), 'ka');
+    await ctx.close();
+  }
+
+  // Each other script-distinct language: exactly its own chunk, and its words first.
+  for (const lang of ['ru', 'ar', 'he']) {
     const { page, fetched, ctx } = await openAs(browser, lang);
     assert.deepEqual([...fetched], [lang], `a "${lang}" visitor fetched ${[...fetched].join(',') || 'nothing'}`);
     const first = await page.evaluate(() => window.__firstText);
@@ -129,24 +145,26 @@ test('a language switch loads the language, then shows it whole', opts, async (t
   const { page, fetched, ctx } = await openAs(browser, 'en');
   assert.equal(fetched.size, 0);
 
-  /* Watch for the one wrong state: the document already says Georgian while
-     the page still reads English. */
+  /* Watch for the one wrong state: the document already says Russian while
+     the page still reads English. (Georgian ships in the entry, so the switch
+     that has to load something is to a chunked language.) */
   await page.evaluate(() => {
     window.__mixed = false;
     new MutationObserver(() => {
-      if (document.documentElement.lang !== 'ka') return;
+      if (document.documentElement.lang !== 'ru') return;
       const text = document.getElementById('root')?.innerText ?? '';
-      if (!/[\u10D0-\u10FF]/.test(text)) window.__mixed = true;
+      if (!/[\u0400-\u04FF]/.test(text)) window.__mixed = true;
     }).observe(document.documentElement, { attributes: true, childList: true, subtree: true, characterData: true });
   });
 
   await page.getByRole('button', { name: /^en$/i }).first().click();
-  await page.getByRole('menuitem', { name: /ქართული/ }).click();
-  await page.waitForFunction(() => document.documentElement.lang === 'ka', null, { timeout: 15000 });
-  await page.waitForFunction(() => /[\u10D0-\u10FF]/.test(document.getElementById('root')?.innerText ?? ''), null, { timeout: 15000 });
+  await page.getByRole('menuitem', { name: /Русский/ }).click();
+  await page.waitForFunction(() => document.documentElement.lang === 'ru', null, { timeout: 15000 });
+  await page.waitForFunction(() => /[\u0400-\u04FF]/.test(document.getElementById('root')?.innerText ?? ''), null, { timeout: 15000 });
 
-  assert.deepEqual([...fetched], ['ka'], 'the switch fetched Georgian and nothing else');
-  assert.equal(await page.evaluate(() => window.__mixed), false, 'the page said Georgian while still reading English');
-  assert.equal(await page.evaluate(() => window.localStorage.getItem('homatch_lang')), 'ka');
+  assert.deepEqual([...fetched], ['ru'], 'the switch fetched Russian and nothing else');
+  assert.equal(await page.evaluate(() => window.__mixed), false, 'the page said Russian while still reading English');
+  assert.equal(await page.evaluate(() => window.localStorage.getItem('homatch_lang')), 'ru');
+  assert.equal(await page.evaluate(() => window.localStorage.getItem('homatch_lang_source')), 'explicit', 'a pick is recorded as explicit');
   await ctx.close();
 });

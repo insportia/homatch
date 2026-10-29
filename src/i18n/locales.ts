@@ -6,7 +6,7 @@
  * import of appContent.ts from there put all six languages back into the
  * entry chunk. appContent.ts re-exports these for the editor and its tests.
  */
-export const LOCALES = ['en', 'ka', 'ru', 'tr', 'ar', 'he'] as const;
+export const LOCALES = ['ka', 'en', 'ru', 'tr', 'ar', 'he'] as const;
 export type ContentLocale = (typeof LOCALES)[number];
 
 /** key -> locale -> the admin's replacement. */

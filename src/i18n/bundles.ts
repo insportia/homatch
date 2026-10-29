@@ -4,9 +4,11 @@
  * translations.ts stays the single source every tool and test reads. What a
  * visitor downloads is cut from it at build time (vite.config.ts,
  * i18nLanguageChunks): English ships in the entry — it is the fallback for
- * every key, so it has to be there before anything renders — and each other
+ * every key, so it has to be there before anything renders — and so does
+ * Georgian, the default language (owner, 2026-10-29: Georgian first), so the
+ * default visitor renders at once with no second request. Each other
  * language is its own chunk holding only that language's strings, fetched
- * when a visitor needs it. Before this, every visitor downloaded all six
+ * when a visitor needs it. Before the split, every visitor downloaded all six
  * languages to read one.
  *
  * A language that is not loaded yet reads as English (the same fallback a
@@ -16,18 +18,25 @@
  */
 import type { SupportedLanguage } from '@/types/types';
 import en from 'virtual:homatch-i18n/en';
+import ka from 'virtual:homatch-i18n/ka';
 
 export type Bundle = Record<string, string>;
 
 /** Canonical keys and the fallback for every one of them. */
 export const english: Bundle = en;
 
-const loaded: Partial<Record<SupportedLanguage, Bundle>> = { en };
+const loaded: Partial<Record<SupportedLanguage, Bundle>> = { en, ka };
 const inFlight = new Map<SupportedLanguage, Promise<Bundle>>();
+/*
+ * The languages this tab actually reads (English, the fallback, plus every
+ * language t() or a load has asked for). Georgian is always LOADED, but an
+ * English reader does not USE it, so the admin, studio and feature halves are
+ * fetched for the languages in use, never for every language that is here.
+ */
+const used = new Set<SupportedLanguage>(['en']);
 
 /* Literal specifiers, so the bundler can see each chunk. */
-const loaders: Record<Exclude<SupportedLanguage, 'en'>, () => Promise<{ default: Bundle }>> = {
-  ka: () => import('virtual:homatch-i18n/ka'),
+const loaders: Record<Exclude<SupportedLanguage, 'en' | 'ka'>, () => Promise<{ default: Bundle }>> = {
   ru: () => import('virtual:homatch-i18n/ru'),
   tr: () => import('virtual:homatch-i18n/tr'),
   ar: () => import('virtual:homatch-i18n/ar'),
@@ -36,6 +45,7 @@ const loaders: Record<Exclude<SupportedLanguage, 'en'>, () => Promise<{ default:
 
 /** The bundle for a language if it has arrived; undefined means "read English". */
 export function bundleFor(lang: SupportedLanguage): Bundle | undefined {
+  used.add(lang);
   /* In the admin console a language is only "here" with its admin half, so a
      switch waits for both (LanguageContext loads before it applies). */
   if (adminWanted && lang !== 'en' && !adminLoaded[lang]) return undefined;
@@ -98,7 +108,7 @@ function loadAdminHalf(lang: SupportedLanguage): Promise<void> {
  */
 export function loadAdminStrings(): Promise<void> {
   adminWanted = true;
-  const langs = new Set<SupportedLanguage>(['en', ...(Object.keys(loaded) as SupportedLanguage[]), ...inFlight.keys()]);
+  const langs = new Set<SupportedLanguage>(['en', ...used, ...inFlight.keys()]);
   return Promise.all([...langs].map(loadAdminHalf)).then(() => undefined);
 }
 
@@ -149,16 +159,17 @@ function loadStudioHalf(lang: SupportedLanguage): Promise<void> {
 /** Email Studio's strings for every language this tab has; resolves when merged. */
 export function loadStudioStrings(): Promise<void> {
   studioWanted = true;
-  const langs = new Set<SupportedLanguage>(['en', ...(Object.keys(loaded) as SupportedLanguage[]), ...inFlight.keys()]);
+  const langs = new Set<SupportedLanguage>(['en', ...used, ...inFlight.keys()]);
   return Promise.all([...langs].map(loadStudioHalf)).then(() => undefined);
 }
 
 function loadBase(lang: SupportedLanguage): Promise<Bundle> {
+  used.add(lang);
   const have = loaded[lang];
   if (have) return Promise.resolve(have);
   const pending = inFlight.get(lang);
   if (pending) return pending;
-  const load = loaders[lang as Exclude<SupportedLanguage, 'en'>];
+  const load = loaders[lang as Exclude<SupportedLanguage, 'en' | 'ka'>];
   if (!load) return Promise.resolve(english);
   const p = load()
     .then((m) => { loaded[lang] = m.default; mergeAdmin(lang); return m.default; })
@@ -199,6 +210,6 @@ function loadFeatureHalf(lang: SupportedLanguage): Promise<void> {
 /** The feature strings for every language this tab has; resolves when merged. */
 export function loadFeatureStrings(): Promise<void> {
   featureWanted = true;
-  const langs = new Set<SupportedLanguage>(['en', ...(Object.keys(loaded) as SupportedLanguage[]), ...inFlight.keys()]);
+  const langs = new Set<SupportedLanguage>(['en', ...used, ...inFlight.keys()]);
   return Promise.all([...langs].map(loadFeatureHalf)).then(() => undefined);
 }

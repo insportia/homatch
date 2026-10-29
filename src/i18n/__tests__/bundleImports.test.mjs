@@ -1,4 +1,4 @@
-// The entry chunk carries English only; each other language is its own chunk
+// The entry chunk carries English and Georgian only; each other language is its own chunk
 // (vite.config.ts, i18nLanguageChunks). One value import of translations.ts —
 // or of appContent.ts, which imports it — from code the entry reaches puts
 // all six languages back. Types are free; values are not.
@@ -43,7 +43,11 @@ test('the runtime reads languages through the bundle registry, and renders after
   const ctx = readFileSync(join(SRC, 'contexts/LanguageContext.tsx'), 'utf8');
   assert.match(ctx, /from '@\/i18n\/bundles'/);
   const bundles = readFileSync(join(SRC, 'i18n/bundles.ts'), 'utf8');
-  for (const l of ['ka', 'ru', 'tr', 'ar', 'he']) {
+  /* Georgian, the default language, ships in the entry with English (owner,
+     2026-10-29); every other language is its own chunk. */
+  assert.match(bundles, /^import ka from 'virtual:homatch-i18n\/ka';$/m, 'Georgian is in the entry');
+  assert.doesNotMatch(bundles, /ka: \(\) => import\('virtual:homatch-i18n\/ka'\)/, 'Georgian is not also a lazy chunk');
+  for (const l of ['ru', 'tr', 'ar', 'he']) {
     assert.match(bundles, new RegExp(`${l}: \\(\\) => import\\('virtual:homatch-i18n/${l}'\\)`), `${l} is its own chunk`);
   }
   assert.match(bundles, /^import en from 'virtual:homatch-i18n\/en';$/m, 'English is in the entry');

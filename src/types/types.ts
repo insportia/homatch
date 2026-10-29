@@ -953,9 +953,10 @@ export interface MatchabilityFactor {
 
 export type SupportedLanguage = 'en' | 'ka' | 'ru' | 'tr' | 'ar' | 'he';
 export const RTL_LANGUAGES: SupportedLanguage[] = ['ar', 'he'];
+/** Selector order: Georgian first (the default), then English and Russian (owner, 2026-10-29). */
 export const SUPPORTED_LANGUAGES: { code: SupportedLanguage; label: string; nativeLabel: string }[] = [
-  { code: 'en', label: 'English', nativeLabel: 'English' },
   { code: 'ka', label: 'Georgian', nativeLabel: 'ქართული' },
+  { code: 'en', label: 'English', nativeLabel: 'English' },
   { code: 'ru', label: 'Russian', nativeLabel: 'Русский' },
   { code: 'tr', label: 'Turkish', nativeLabel: 'Türkçe' },
   { code: 'ar', label: 'Arabic', nativeLabel: 'العربية' },

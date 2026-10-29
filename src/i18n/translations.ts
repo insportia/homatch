@@ -25263,6 +25263,26 @@ const en = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'Listings HOMATCH shows from other websites may include the seller contact that was published on the source listing. This is the advertiser\'s public listing contact, not data from HOMATCH accounts or from any lead database.',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  lang_suggest_message: 'Would you like to use HOMATCH in English?',
+  lang_suggest_switch: 'Switch to English',
+  lang_suggest_dismiss: 'No, thanks',
+  legal_entity_llc: 'Limited Liability Company',
+  terms_sub_title: 'Subscription plans and fees',
+  terms_sub_plans: 'HOMATCH is offered on monthly subscription plans: STANDARD, VIP and UNLIMITED. Prices are in Georgian lari (GEL) and are final prices, including any applicable VAT. The current price of each plan and what it includes in a billing period, such as the number of Verify reports and contract analyses, are shown on the pricing page and before you confirm a purchase. A plan fee is the fee for digital services and is not a commission calculated from the value of a real-estate transaction.',
+  terms_sub_trial: 'Every new account can use each paid feature, such as a Verify report or a contract analysis, once free of charge and without a payment card. The free use is counted only when the result is delivered successfully, and only once per account for each feature.',
+  terms_sub_included: 'Every plan includes HOMI chat (text and voice), searching properties on HOMATCH, matching with buyers and tenants on HOMATCH and opening the contact details of those matches, without a separate charge. Reasonable technical limits apply to protect the service, for example a maximum length of a voice message and limits on the number of requests.',
+  terms_sub_third_party: 'Costs of third parties are not included in any plan: advertising budgets (for example Meta Ads), paid searches of external sources and GPU rendering. They are shown separately and charged only after you confirm them.',
+  terms_sub_credits: 'HOMATCH no longer sells credits. Credits bought earlier are kept, do not expire and can be used for the services that accept them until they are spent.',
+  terms_sub_cancel: 'A plan runs one month at a time. You can cancel it at any time; the cancellation takes effect at the end of the billing period you have already paid for, and the plan stays available until then.',
+  terms_sub_provider: 'Payments are processed by Georgian bank payment providers. Which provider processes your payment, the payment methods accepted, when the amount is charged and whether a plan renews automatically depend on that provider and are shown before you pay.',
+  terms_sub_refund: 'Refunds are made in accordance with applicable Georgian law and the rules of the payment provider that processed the payment. These Terms do not limit the rights guaranteed to you by law.',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  legal_archived_notice: 'You are reading an archived edition (version {{version}}), which applied until {{until}}. It is kept unchanged for those who accepted it.',
+  legal_view_current: 'Read the current version',
+  legal_previous_versions: 'Previous versions:',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -50440,6 +50460,26 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'სხვა ვებსაიტებიდან HOMATCH-ში ნაჩვენებ განცხადებებს შეიძლება ახლდეს წყარო განცხადებაში გამოქვეყნებული გამყიდველის კონტაქტი. ეს არის განმცხადებლის საჯარო საკონტაქტო ინფორმაცია და არა HOMATCH-ის ანგარიშების ან რომელიმე ლიდების ბაზის მონაცემი.',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  lang_suggest_message: 'გსურთ HOMATCH-ით ქართულად სარგებლობა?',
+  lang_suggest_switch: 'ქართულზე გადართვა',
+  lang_suggest_dismiss: 'არა, გმადლობთ',
+  legal_entity_llc: 'შეზღუდული პასუხისმგებლობის საზოგადოება',
+  terms_sub_title: 'გამოწერის პაკეტები და საფასური',
+  terms_sub_plans: 'HOMATCH ხელმისაწვდომია ყოველთვიური გამოწერის პაკეტებით: STANDARD, VIP და UNLIMITED. ფასები მითითებულია ლარში და საბოლოოა, მათ შორის მოიცავს დღგ-ს, თუ ის გამოიყენება. თითოეული პაკეტის მიმდინარე ფასი და ის, რასაც პაკეტი ერთი საანგარიშო პერიოდის განმავლობაში მოიცავს, მაგალითად Verify ანგარიშებისა და ხელშეკრულების ანალიზების რაოდენობა, ნაჩვენებია ფასების გვერდზე და შეძენის დადასტურებამდე. პაკეტის საფასური არის ციფრული მომსახურების საფასური და არ წარმოადგენს უძრავი ქონების გარიგების ღირებულებიდან გამოთვლილ საკომისიოს.',
+  terms_sub_trial: 'ყოველ ახალ ანგარიშს შეუძლია თითოეული ფასიანი ფუნქციით, მაგალითად Verify ანგარიშით ან ხელშეკრულების ანალიზით, ერთხელ უფასოდ ისარგებლოს, საბანკო ბარათის მითითების გარეშე. უფასო გამოყენება ჩაითვლება მხოლოდ მაშინ, როცა შედეგი წარმატებით მოგეწოდებათ, და მხოლოდ ერთხელ თითოეულ ფუნქციაზე ერთ ანგარიშზე.',
+  terms_sub_included: 'ყველა პაკეტი მოიცავს HOMI ჩატს (ტექსტური და ხმოვანი), HOMATCH-ზე ქონების ძიებას, HOMATCH-ზე მყიდველებთან და მოიჯარეებთან დამთხვევას და ამ დამთხვევების საკონტაქტო მონაცემების გახსნას, ცალკე საფასურის გარეშე. მომსახურების დასაცავად მოქმედებს გონივრული ტექნიკური შეზღუდვები, მაგალითად ხმოვანი შეტყობინების მაქსიმალური ხანგრძლივობა და მოთხოვნების რაოდენობის ლიმიტი.',
+  terms_sub_third_party: 'არცერთ პაკეტში არ შედის მესამე მხარის ხარჯები: სარეკლამო ბიუჯეტი (მაგალითად Meta Ads), გარე წყაროებში ფასიანი ძიება და GPU რენდერინგი. ისინი ცალკე ჩანს და ჩამოგეჭრებათ მხოლოდ თქვენი დადასტურების შემდეგ.',
+  terms_sub_credits: 'HOMATCH აღარ ყიდის კრედიტებს. ადრე შეძენილი კრედიტები ინახება, მათ ვადა არ გასდის და შეგიძლიათ გამოიყენოთ იმ მომსახურებისთვის, რომლებიც კრედიტებს იღებს, სანამ არ ამოიწურება.',
+  terms_sub_cancel: 'პაკეტი მოქმედებს ერთი თვით. მისი გაუქმება ნებისმიერ დროს შეგიძლიათ; გაუქმება ძალაში შედის უკვე გადახდილი საანგარიშო პერიოდის ბოლოს და მანამდე პაკეტი ხელმისაწვდომი რჩება.',
+  terms_sub_provider: 'გადახდებს ამუშავებენ საქართველოს საბანკო გადახდის პროვაიდერები. რომელი პროვაიდერი დაამუშავებს თქვენს გადახდას, გადახდის რომელი საშუალებებია მისაღები, როდის ჩამოგეჭრებათ თანხა და განახლდება თუ არა პაკეტი ავტომატურად, დამოკიდებულია ამ პროვაიდერზე და გეჩვენებათ გადახდამდე.',
+  terms_sub_refund: 'თანხის დაბრუნება ხორციელდება საქართველოს მოქმედი კანონმდებლობისა და გადახდის დამმუშავებელი პროვაიდერის წესების მიხედვით. წინამდებარე პირობები არ ზღუდავს თქვენს კანონით გარანტირებულ უფლებებს.',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  legal_archived_notice: 'თქვენ კითხულობთ დაარქივებულ ვერსიას ({{version}}), რომელიც მოქმედებდა {{until}}-მდე. ის უცვლელად ინახება მათთვის, ვინც ის დაადასტურა.',
+  legal_view_current: 'მიმდინარე ვერსიის ნახვა',
+  legal_previous_versions: 'წინა ვერსიები:',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -75608,6 +75648,26 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'Объявления с других сайтов, которые показывает HOMATCH, могут содержать контакт продавца, опубликованный в исходном объявлении. Это публичный контакт автора объявления, а не данные учётных записей HOMATCH или какой-либо базы лидов.',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  lang_suggest_message: 'Хотите пользоваться HOMATCH на русском?',
+  lang_suggest_switch: 'Перейти на русский',
+  lang_suggest_dismiss: 'Нет, спасибо',
+  legal_entity_llc: 'Общество с ограниченной ответственностью',
+  terms_sub_title: 'Тарифные планы и оплата',
+  terms_sub_plans: 'HOMATCH предоставляется по ежемесячным тарифным планам: STANDARD, VIP и UNLIMITED. Цены указаны в грузинских лари (GEL) и являются окончательными, включая применимый НДС, если он начисляется. Текущая цена каждого плана и то, что он включает за расчётный период, например количество отчётов Verify и анализов договоров, указаны на странице цен и перед подтверждением покупки. Плата за план является платой за цифровые услуги и не является комиссией, рассчитанной от стоимости сделки с недвижимостью.',
+  terms_sub_trial: 'Каждый новый аккаунт может один раз бесплатно воспользоваться каждой платной функцией, например отчётом Verify или анализом договора, без банковской карты. Бесплатное использование засчитывается только при успешной выдаче результата и только один раз на аккаунт для каждой функции.',
+  terms_sub_included: 'Каждый план включает чат HOMI (текстом и голосом), поиск недвижимости на HOMATCH, подбор покупателей и арендаторов на HOMATCH и открытие контактов найденных совпадений без отдельной платы. Для защиты сервиса действуют разумные технические ограничения, например максимальная длина голосового сообщения и лимиты на количество запросов.',
+  terms_sub_third_party: 'Расходы третьих сторон не входят ни в один план: рекламные бюджеты (например Meta Ads), платный поиск во внешних источниках и рендеринг на GPU. Они показываются отдельно и списываются только после вашего подтверждения.',
+  terms_sub_credits: 'HOMATCH больше не продаёт кредиты. Ранее купленные кредиты сохраняются, не сгорают и могут использоваться для услуг, которые их принимают, пока не будут израсходованы.',
+  terms_sub_cancel: 'План действует по одному месяцу. Вы можете отменить его в любой момент; отмена вступает в силу в конце уже оплаченного расчётного периода, и до этого момента план остаётся доступным.',
+  terms_sub_provider: 'Платежи обрабатывают грузинские банковские платёжные провайдеры. Какой провайдер обработает ваш платёж, какие способы оплаты принимаются, когда списываются средства и продлевается ли план автоматически, зависит от этого провайдера и показывается до оплаты.',
+  terms_sub_refund: 'Возврат средств осуществляется в соответствии с действующим законодательством Грузии и правилами платёжного провайдера, обработавшего платёж. Настоящие условия не ограничивают права, гарантированные вам законом.',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  legal_archived_notice: 'Вы читаете архивную редакцию (версия {{version}}), которая действовала до {{until}}. Она сохранена без изменений для тех, кто её принял.',
+  legal_view_current: 'Открыть действующую редакцию',
+  legal_previous_versions: 'Предыдущие редакции:',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -100774,6 +100834,26 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'HOMATCH\'in diğer web sitelerinden gösterdiği ilanlar, kaynak ilanda yayınlanmış satıcı iletişim bilgisini içerebilir. Bu, ilan sahibinin kamuya açık ilan iletişim bilgisidir; HOMATCH hesaplarından veya herhangi bir potansiyel müşteri veritabanından alınan veri değildir.',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  lang_suggest_message: 'HOMATCH\'i Türkçe kullanmak ister misiniz?',
+  lang_suggest_switch: 'Türkçeye geç',
+  lang_suggest_dismiss: 'Hayır, teşekkürler',
+  legal_entity_llc: 'Limited Şirket',
+  terms_sub_title: 'Abonelik planları ve ücretler',
+  terms_sub_plans: 'HOMATCH aylık abonelik planlarıyla sunulur: STANDARD, VIP ve UNLIMITED. Fiyatlar Gürcü larisi (GEL) cinsindendir ve varsa geçerli KDV dahil nihai fiyatlardır. Her planın güncel fiyatı ve bir fatura döneminde neleri kapsadığı, örneğin Verify raporu ve sözleşme analizi sayısı, fiyatlandırma sayfasında ve satın almayı onaylamadan önce gösterilir. Plan ücreti dijital hizmetlerin bedelidir ve gayrimenkul işleminin değeri üzerinden hesaplanan bir komisyon değildir.',
+  terms_sub_trial: 'Her yeni hesap, Verify raporu veya sözleşme analizi gibi her ücretli özelliği bir kez ücretsiz ve banka kartı olmadan kullanabilir. Ücretsiz kullanım yalnızca sonuç başarıyla teslim edildiğinde ve her özellik için hesap başına yalnızca bir kez sayılır.',
+  terms_sub_included: 'Her plan; HOMI sohbetini (yazılı ve sesli), HOMATCH üzerinde mülk aramayı, HOMATCH üzerinde alıcı ve kiracılarla eşleştirmeyi ve bu eşleşmelerin iletişim bilgilerini açmayı ayrıca ücret alınmadan kapsar. Hizmeti korumak için makul teknik sınırlar uygulanır; örneğin sesli mesajın azami uzunluğu ve istek sayısı sınırları.',
+  terms_sub_third_party: 'Üçüncü taraf maliyetleri hiçbir plana dahil değildir: reklam bütçeleri (örneğin Meta Ads), dış kaynaklarda ücretli arama ve GPU ile işleme. Bunlar ayrıca gösterilir ve yalnızca onayınızdan sonra ücretlendirilir.',
+  terms_sub_credits: 'HOMATCH artık kredi satmamaktadır. Daha önce satın alınan krediler korunur, süreleri dolmaz ve tükenene kadar onları kabul eden hizmetlerde kullanılabilir.',
+  terms_sub_cancel: 'Bir plan birer aylık dönemlerle geçerlidir. Planı istediğiniz zaman iptal edebilirsiniz; iptal, ödemesi yapılmış fatura döneminin sonunda yürürlüğe girer ve plan o zamana kadar kullanılabilir kalır.',
+  terms_sub_provider: 'Ödemeler Gürcistan\'daki banka ödeme sağlayıcıları tarafından işlenir. Ödemenizi hangi sağlayıcının işleyeceği, hangi ödeme yöntemlerinin kabul edildiği, tutarın ne zaman tahsil edileceği ve planın otomatik olarak yenilenip yenilenmeyeceği bu sağlayıcıya bağlıdır ve ödemeden önce gösterilir.',
+  terms_sub_refund: 'İadeler, Gürcistan\'ın yürürlükteki mevzuatına ve ödemeyi işleyen ödeme sağlayıcısının kurallarına göre yapılır. Bu Şartlar, kanunla güvence altına alınmış haklarınızı sınırlamaz.',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  legal_archived_notice: 'Arşivlenmiş bir sürümü okuyorsunuz (sürüm {{version}}); bu sürüm {{until}} tarihine kadar geçerliydi. Kabul edenler için değiştirilmeden saklanmaktadır.',
+  legal_view_current: 'Güncel sürümü okuyun',
+  legal_previous_versions: 'Önceki sürümler:',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -125940,6 +126020,26 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'قد تتضمن الإعلانات التي تعرضها HOMATCH من مواقع أخرى بيانات اتصال البائع المنشورة في الإعلان الأصلي. وهذه هي بيانات الاتصال العامة للمعلِن، وليست بيانات من حسابات HOMATCH أو من أي قاعدة بيانات للعملاء المحتملين.',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  lang_suggest_message: 'هل تودّ استخدام HOMATCH باللغة العربية؟',
+  lang_suggest_switch: 'التبديل إلى العربية',
+  lang_suggest_dismiss: 'لا، شكرًا',
+  legal_entity_llc: 'شركة ذات مسؤولية محدودة',
+  terms_sub_title: 'خطط الاشتراك والرسوم',
+  terms_sub_plans: 'تُقدَّم HOMATCH عبر خطط اشتراك شهرية: STANDARD وVIP وUNLIMITED. الأسعار باللاري الجورجي (GEL) وهي أسعار نهائية تشمل ضريبة القيمة المضافة المطبقة إن وُجدت. يُعرض السعر الحالي لكل خطة وما تشمله خلال فترة الفوترة، مثل عدد تقارير Verify وتحليلات العقود، في صفحة الأسعار وقبل تأكيد الشراء. رسوم الخطة مقابلٌ لخدمات رقمية وليست عمولة محسوبة من قيمة الصفقة العقارية.',
+  terms_sub_trial: 'يمكن لكل حساب جديد استخدام كل ميزة مدفوعة، مثل تقرير Verify أو تحليل عقد، مرة واحدة مجانًا ودون بطاقة دفع. ولا يُحتسب الاستخدام المجاني إلا عند تسليم النتيجة بنجاح، ومرة واحدة فقط لكل حساب ولكل ميزة.',
+  terms_sub_included: 'تشمل كل خطة محادثة HOMI (نصًا وصوتًا)، والبحث عن العقارات على HOMATCH، والمطابقة مع المشترين والمستأجرين على HOMATCH، وفتح بيانات الاتصال لهذه المطابقات، دون رسوم منفصلة. وتُطبَّق حدود تقنية معقولة لحماية الخدمة، مثل الحد الأقصى لطول الرسالة الصوتية وحدود عدد الطلبات.',
+  terms_sub_third_party: 'لا تشمل أي خطة تكاليف الأطراف الثالثة: ميزانيات الإعلانات (مثل Meta Ads)، والبحث المدفوع في المصادر الخارجية، والمعالجة الرسومية عبر GPU. وتُعرض هذه التكاليف بشكل منفصل ولا تُحتسب إلا بعد تأكيدك.',
+  terms_sub_credits: 'لم تعد HOMATCH تبيع الأرصدة. تبقى الأرصدة المشتراة سابقًا محفوظة ولا تنتهي صلاحيتها، ويمكن استخدامها للخدمات التي تقبلها حتى نفادها.',
+  terms_sub_cancel: 'تسري الخطة لمدة شهر في كل مرة. يمكنك إلغاؤها في أي وقت، ويسري الإلغاء في نهاية فترة الفوترة المدفوعة، وتبقى الخطة متاحة حتى ذلك الحين.',
+  terms_sub_provider: 'تتولى معالجة المدفوعات جهاتُ دفع مصرفية في جورجيا. ويعتمد تحديد الجهة التي تعالج دفعتك، ووسائل الدفع المقبولة، وموعد الخصم، وما إذا كانت الخطة تتجدد تلقائيًا، على هذه الجهة، ويُعرض ذلك قبل الدفع.',
+  terms_sub_refund: 'يتم رد المبالغ وفقًا للتشريعات الجورجية السارية وقواعد جهة الدفع التي عالجت الدفعة. ولا تحدّ هذه الشروط من الحقوق التي يكفلها لك القانون.',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  legal_archived_notice: 'أنت تقرأ نسخة مؤرشفة (الإصدار {{version}})، وكانت سارية حتى {{until}}. وهي محفوظة دون تغيير لمن وافق عليها.',
+  legal_view_current: 'اقرأ النسخة الحالية',
+  legal_previous_versions: 'الإصدارات السابقة:',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -151106,6 +151206,26 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'מודעות מאתרים אחרים ש-HOMATCH מציגה עשויות לכלול את פרטי הקשר של המוכר שפורסמו במודעת המקור. אלה פרטי הקשר הציבוריים של המפרסם, ולא נתונים מחשבונות HOMATCH או ממאגר לידים כלשהו.',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  lang_suggest_message: 'רוצה להשתמש ב-HOMATCH בעברית?',
+  lang_suggest_switch: 'מעבר לעברית',
+  lang_suggest_dismiss: 'לא, תודה',
+  legal_entity_llc: 'חברה בערבון מוגבל',
+  terms_sub_title: 'תוכניות מנוי ותשלומים',
+  terms_sub_plans: 'HOMATCH מוצעת בתוכניות מנוי חודשיות: STANDARD, VIP ו-UNLIMITED. המחירים נקובים בלארי גאורגי (GEL) והם מחירים סופיים הכוללים מע״מ החל, אם חל. המחיר הנוכחי של כל תוכנית ומה שהיא כוללת בתקופת חיוב, כמו מספר דוחות Verify וניתוחי חוזים, מוצגים בעמוד המחירים ולפני אישור הרכישה. דמי התוכנית הם תשלום עבור שירותים דיגיטליים ואינם עמלה המחושבת משווי עסקת הנדל״ן.',
+  terms_sub_trial: 'כל חשבון חדש יכול להשתמש בכל תכונה בתשלום, כמו דוח Verify או ניתוח חוזה, פעם אחת בחינם וללא כרטיס אשראי. השימוש החינמי נספר רק כשהתוצאה נמסרה בהצלחה, ורק פעם אחת לכל חשבון ולכל תכונה.',
+  terms_sub_included: 'כל תוכנית כוללת צ׳אט HOMI (טקסט וקול), חיפוש נכסים ב-HOMATCH, התאמה לקונים ולשוכרים ב-HOMATCH ופתיחת פרטי הקשר של ההתאמות האלה, ללא תשלום נפרד. כדי להגן על השירות חלות מגבלות טכניות סבירות, כמו אורך מרבי של הודעה קולית ומגבלות על מספר הבקשות.',
+  terms_sub_third_party: 'עלויות של צדדים שלישיים אינן כלולות באף תוכנית: תקציבי פרסום (למשל Meta Ads), חיפוש בתשלום במקורות חיצוניים ועיבוד גרפי ב-GPU. הן מוצגות בנפרד ומחויבות רק לאחר אישורך.',
+  terms_sub_credits: 'HOMATCH אינה מוכרת עוד קרדיטים. קרדיטים שנרכשו בעבר נשמרים, אינם פגים וניתן להשתמש בהם בשירותים שמקבלים אותם עד שינוצלו.',
+  terms_sub_cancel: 'תוכנית תקפה לחודש אחד בכל פעם. אפשר לבטל אותה בכל עת; הביטול נכנס לתוקף בסוף תקופת החיוב שכבר שולמה, והתוכנית נשארת זמינה עד אז.',
+  terms_sub_provider: 'התשלומים מעובדים על ידי ספקי תשלום בנקאיים בגאורגיה. איזה ספק יעבד את התשלום שלך, אילו אמצעי תשלום מתקבלים, מתי מתבצע החיוב והאם התוכנית מתחדשת אוטומטית תלויים בספק זה ומוצגים לפני התשלום.',
+  terms_sub_refund: 'החזרים מתבצעים בהתאם לדין הגאורגי החל ולכללי ספק התשלום שעיבד את התשלום. תנאים אלה אינם מגבילים את הזכויות המוקנות לך על פי דין.',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  legal_archived_notice: 'אתה קורא גרסה בארכיון (גרסה {{version}}), שהייתה בתוקף עד {{until}}. היא נשמרת ללא שינוי עבור מי שאישר אותה.',
+  legal_view_current: 'לקריאת הגרסה הנוכחית',
+  legal_previous_versions: 'גרסאות קודמות:',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -22,6 +22,7 @@
 // found job/service/offer evidence (see boundModelReading).
 
 import type { AiVerdict } from './aiClassifier.ts';
+import { latinGeorgianToScript } from './latinGeorgian.ts';
 import { CITY_NAMES, cityMentioned, placesMentioned } from './places.ts';
 import { isParkingText, type PropertySubtype, statedSubtypes } from './propertyFamily.ts';
 
@@ -322,7 +323,7 @@ const RENT = L([
 const SALE_OFFER = L([
   `${B}(for sale|on sale|selling|sale price|sold by owner|apartment for sale|house for sale)`,
   'прода[её]тся', 'продаю', 'продам', 'в продаже', 'на продажу',
-  'იყიდება', 'ვყიდი', 'გაიყიდება', 'იყიდება ბინა',
+  'იყიდება', 'ვყიდი', 'გაიყიდება', 'იყიდება ბინა', 'გაყიდვაზე მაქვს', 'გასაყიდი მაქვს', 'გასაყიდად მაქვს',
   `${B}(satılık|satıyorum|satılıktır)`, 'للبيع', 'أبيع', 'ابيع', 'למכירה', 'מוכר', 'מוכרת',
 ]);
 const RENT_OFFER = L([
@@ -506,8 +507,9 @@ export interface ClassifyOptions {
 
 export function classifyDemand(text: string | null | undefined, opts: ClassifyOptions = {}): DemandReading {
   const raw = String(text ?? '').replace(/ /g, ' ');
-  const s = raw.normalize('NFKC');
-  const evidence: string[] = [];
+  /* Georgian typed in Latin letters ("viyidi bina vakeshi") is read as Georgian by the same rules. */
+  const s = latinGeorgianToScript(raw.normalize('NFKC'));
+  const evidence: string[] = s !== raw.normalize('NFKC') ? ['latin_georgian'] : [];
   const empty = (role: DemandRole, why: string, confidence = 0.9): DemandReading => ({
     role, transaction: null, realEstate: false, residential: false, propertyType: null, intermediary: false,
     budget: null, downPayment: null, cities: [], districts: [], streets: [], excludedPlaces: [], locationFlexible: false, rooms: null, bedrooms: null, areaSqm: null,

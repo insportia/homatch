@@ -181,7 +181,11 @@ test('anonymous visitors are never billed', () => {
 
 test('fair use survived as a rate ceiling rather than a free allowance', () => {
   const fn = read(CHAT_FN);
-  assert.ok(fn.includes('ai_fair_use_daily') || fn.includes('RATE_LIMIT_OPERATION'));
+  // Premise changed (owner, 2026-10-29): HOMI chat is unlimited in every plan,
+  // so the per-plan daily cap is gone. What survives is the abuse safeguard,
+  // which never reads the plan and never shows a count.
+  assert.ok(fn.includes('abuseVerdict(') && fn.includes("BURST_OPERATION = 'homi_turn'"), 'the abuse safeguard was removed');
+  assert.ok(!fn.includes('ai_fair_use_daily') && !fn.includes('RATE_LIMIT_MESSAGES'), 'a per-plan quota came back');
   // The comment that said chat is free and never deducts a credit is
   // now false, and a false comment beside live billing code is worse
   // than no comment.

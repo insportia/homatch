@@ -24493,10 +24493,10 @@ const en = {
   voice_cancel: 'Cancel recording',
   voice_send: 'Send voice message',
   voice_transcribing: 'Turning your voice into text…',
-  voice_no_speech: 'I could not hear any words. Try again a little closer to the microphone. Nothing was charged.',
+  voice_no_speech: 'I could not hear any words. Try again a little closer to the microphone.',
   voice_too_short: 'That was very short. Hold the microphone a little longer, or tap it once and speak.',
-  voice_too_long: 'A voice message can be up to 2 minutes. Please record a shorter one.',
-  voice_failed: 'The voice message did not go through. Try again, nothing was charged.',
+  voice_too_long: 'This voice message could not be sent. Please try again.',
+  voice_failed: 'The voice message did not go through. Please try again.',
   voice_retry: 'Try again',
   voice_play: 'Play voice message',
   voice_pause: 'Pause',
@@ -25263,6 +25263,12 @@ const en = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'Listings HOMATCH shows from other websites may include the seller contact that was published on the source listing. This is the advertiser\'s public listing contact, not data from HOMATCH accounts or from any lead database.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_slow_down: 'That was a lot of voice messages very quickly. Take a short break and try again.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_keep_talking: 'Keep talking, I am writing it all down.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -49670,10 +49676,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   voice_cancel: 'ჩაწერის გაუქმება',
   voice_send: 'ხმოვანის გაგზავნა',
   voice_transcribing: 'შენს ხმას ტექსტად ვაქცევ…',
-  voice_no_speech: 'სიტყვები ვერ გავიგე. სცადე თავიდან, მიკროფონთან ცოტა ახლოს. არაფერი ჩამოგეჭრა.',
+  voice_no_speech: 'სიტყვები ვერ გავიგე. სცადე თავიდან, მიკროფონთან ცოტა ახლოს.',
   voice_too_short: 'ძალიან მოკლე იყო. მიკროფონს ცოტა დიდხანს დააჭირე, ან ერთხელ დააჭირე და ილაპარაკე.',
-  voice_too_long: 'ხმოვანი შეტყობინება 2 წუთამდე შეიძლება. ჩაწერე უფრო მოკლე.',
-  voice_failed: 'ხმოვანი შეტყობინება ვერ გაიგზავნა. სცადე თავიდან, არაფერი ჩამოგეჭრა.',
+  voice_too_long: 'ეს ხმოვანი შეტყობინება ვერ გაიგზავნა. სცადე თავიდან.',
+  voice_failed: 'ხმოვანი შეტყობინება ვერ გაიგზავნა. სცადე თავიდან.',
   voice_retry: 'თავიდან ცდა',
   voice_play: 'ხმოვანის მოსმენა',
   voice_pause: 'პაუზა',
@@ -50440,6 +50446,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'სხვა ვებსაიტებიდან HOMATCH-ში ნაჩვენებ განცხადებებს შეიძლება ახლდეს წყარო განცხადებაში გამოქვეყნებული გამყიდველის კონტაქტი. ეს არის განმცხადებლის საჯარო საკონტაქტო ინფორმაცია და არა HOMATCH-ის ანგარიშების ან რომელიმე ლიდების ბაზის მონაცემი.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_slow_down: 'ძალიან ბევრი ხმოვანი შეტყობინება ძალიან სწრაფად. ცოტა შეისვენე და თავიდან სცადე.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_keep_talking: 'გააგრძელე, ყველაფერს ვიწერ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -74838,10 +74850,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   voice_cancel: 'Отменить запись',
   voice_send: 'Отправить голосовое',
   voice_transcribing: 'Превращаю ваш голос в текст…',
-  voice_no_speech: 'Я не расслышал слов. Попробуйте ещё раз, чуть ближе к микрофону. Ничего не списано.',
+  voice_no_speech: 'Я не расслышал слов. Попробуйте ещё раз, чуть ближе к микрофону.',
   voice_too_short: 'Слишком коротко. Удерживайте микрофон чуть дольше или нажмите один раз и говорите.',
-  voice_too_long: 'Голосовое сообщение может длиться до 2 минут. Запишите покороче.',
-  voice_failed: 'Голосовое сообщение не отправилось. Попробуйте ещё раз, ничего не списано.',
+  voice_too_long: 'Это голосовое сообщение не удалось отправить. Попробуйте ещё раз.',
+  voice_failed: 'Голосовое сообщение не отправилось. Попробуйте ещё раз.',
   voice_retry: 'Ещё раз',
   voice_play: 'Прослушать',
   voice_pause: 'Пауза',
@@ -75608,6 +75620,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'Объявления с других сайтов, которые показывает HOMATCH, могут содержать контакт продавца, опубликованный в исходном объявлении. Это публичный контакт автора объявления, а не данные учётных записей HOMATCH или какой-либо базы лидов.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_slow_down: 'Слишком много голосовых сообщений подряд. Сделайте небольшую паузу и попробуйте снова.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_keep_talking: 'Продолжайте, я всё записываю.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -100004,10 +100022,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   voice_cancel: 'Kaydı iptal et',
   voice_send: 'Sesli mesajı gönder',
   voice_transcribing: 'Sesinizi yazıya çeviriyorum…',
-  voice_no_speech: 'Hiç kelime duyamadım. Mikrofona biraz daha yakın tekrar deneyin. Ücret alınmadı.',
+  voice_no_speech: 'Hiç kelime duyamadım. Mikrofona biraz daha yakın tekrar deneyin.',
   voice_too_short: 'Çok kısaydı. Mikrofonu biraz daha uzun basılı tutun ya da bir kez dokunup konuşun.',
-  voice_too_long: 'Sesli mesaj en fazla 2 dakika olabilir. Daha kısa bir tane kaydedin.',
-  voice_failed: 'Sesli mesaj gönderilemedi. Tekrar deneyin, ücret alınmadı.',
+  voice_too_long: 'Bu sesli mesaj gönderilemedi. Lütfen tekrar deneyin.',
+  voice_failed: 'Sesli mesaj gönderilemedi. Lütfen tekrar deneyin.',
   voice_retry: 'Tekrar dene',
   voice_play: 'Dinle',
   voice_pause: 'Duraklat',
@@ -100774,6 +100792,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'HOMATCH\'in diğer web sitelerinden gösterdiği ilanlar, kaynak ilanda yayınlanmış satıcı iletişim bilgisini içerebilir. Bu, ilan sahibinin kamuya açık ilan iletişim bilgisidir; HOMATCH hesaplarından veya herhangi bir potansiyel müşteri veritabanından alınan veri değildir.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_slow_down: 'Çok kısa sürede çok fazla sesli mesaj. Kısa bir ara verip tekrar deneyin.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_keep_talking: 'Devam edin, her şeyi yazıyorum.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -125170,10 +125194,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   voice_cancel: 'إلغاء التسجيل',
   voice_send: 'إرسال الرسالة الصوتية',
   voice_transcribing: 'أحوّل صوتك إلى نص…',
-  voice_no_speech: 'لم أسمع أي كلمات. حاول مجددًا وأنت أقرب قليلًا من الميكروفون. لم يُخصم شيء.',
+  voice_no_speech: 'لم أسمع أي كلمات. حاول مجددًا وأنت أقرب قليلًا من الميكروفون.',
   voice_too_short: 'كان قصيرًا جدًا. اضغط على الميكروفون لفترة أطول قليلًا، أو اضغط مرة واحدة وتحدّث.',
-  voice_too_long: 'يمكن أن تصل الرسالة الصوتية إلى دقيقتين. سجّل رسالة أقصر من فضلك.',
-  voice_failed: 'لم تُرسل الرسالة الصوتية. حاول مجددًا، لم يُخصم شيء.',
+  voice_too_long: 'تعذّر إرسال هذه الرسالة الصوتية. حاول مجددًا من فضلك.',
+  voice_failed: 'لم تُرسل الرسالة الصوتية. حاول مجددًا من فضلك.',
   voice_retry: 'أعد المحاولة',
   voice_play: 'تشغيل الرسالة',
   voice_pause: 'إيقاف مؤقت',
@@ -125940,6 +125964,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'قد تتضمن الإعلانات التي تعرضها HOMATCH من مواقع أخرى بيانات اتصال البائع المنشورة في الإعلان الأصلي. وهذه هي بيانات الاتصال العامة للمعلِن، وليست بيانات من حسابات HOMATCH أو من أي قاعدة بيانات للعملاء المحتملين.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_slow_down: 'رسائل صوتية كثيرة جدًا في وقت قصير. خذ استراحة قصيرة ثم حاول مجددًا.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_keep_talking: 'تابع الكلام، أنا أكتب كل شيء.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -150336,10 +150366,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   voice_cancel: 'ביטול ההקלטה',
   voice_send: 'שליחת ההודעה הקולית',
   voice_transcribing: 'הופך את הקול שלכם לטקסט…',
-  voice_no_speech: 'לא שמעתי מילים. נסו שוב קרוב יותר למיקרופון. לא חויבתם.',
+  voice_no_speech: 'לא שמעתי מילים. נסו שוב קרוב יותר למיקרופון.',
   voice_too_short: 'זה היה קצר מאוד. החזיקו את המיקרופון קצת יותר, או הקישו פעם אחת ודברו.',
-  voice_too_long: 'הודעה קולית יכולה להיות עד 2 דקות. הקליטו הודעה קצרה יותר.',
-  voice_failed: 'ההודעה הקולית לא נשלחה. נסו שוב, לא חויבתם.',
+  voice_too_long: 'לא הצלחנו לשלוח את ההודעה הקולית. נסו שוב.',
+  voice_failed: 'ההודעה הקולית לא נשלחה. נסו שוב.',
   voice_retry: 'לנסות שוב',
   voice_play: 'השמעת ההודעה',
   voice_pause: 'השהיה',
@@ -151106,6 +151136,12 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── LEGAL LISTING CONTACT (2026-10-25) ── */
   privacy_portal_listing: 'מודעות מאתרים אחרים ש-HOMATCH מציגה עשויות לכלול את פרטי הקשר של המוכר שפורסמו במודעת המקור. אלה פרטי הקשר הציבוריים של המפרסם, ולא נתונים מחשבונות HOMATCH או ממאגר לידים כלשהו.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_slow_down: 'יותר מדי הודעות קוליות בזמן קצר. קחו הפסקה קצרה ונסו שוב.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_keep_talking: 'תמשיכו לדבר, אני רושם הכול.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

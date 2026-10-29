@@ -78,40 +78,50 @@ test('Verify is offered when it would help, and described as what it is', () => 
 
 /* ── the customer's own research ─────────────────────────────────────── */
 
+/* Premise moved (HOMI cost round + privacy P0, 2026-10-29): the retrieval now
+   lives in supabase/functions/homatch-ai/ownContext.ts (one audited place, the
+   caller's own rows only) and the per-section budgets in
+   src/lib/homi/contextPlan.ts. The guarantees below are unchanged. */
+const own = () =>
+  readFileSync(join(ROOT, 'supabase', 'functions', 'homatch-ai', 'ownContext.ts'), 'utf8').replace(/\r\n/g, '\n');
+const plan = () =>
+  readFileSync(join(ROOT, 'src', 'lib', 'homi', 'contextPlan.ts'), 'utf8').replace(/\r\n/g, '\n');
+
 test('the assistant is given the reports this person already paid for', () => {
-  const src = ai();
-  assert.match(src, /internal\.verifications = /, 'the assistant still cannot see a finished report');
-  assert.match(src, /THE CUSTOMER'S OWN VERIFY REPORTS are in HOMATCH INTERNAL DATA/);
-  assert.match(src, /never make them re-describe their own research to you/);
+  assert.match(own(), /out\.verifications = /, 'the assistant still cannot see a finished report');
+  assert.match(ai(), /internal = await loadOwnContext\(sb, uid, sections,/);
+  assert.match(ai(), /THE CUSTOMER'S OWN VERIFY REPORTS are in HOMATCH INTERNAL DATA/);
+  assert.match(ai(), /never make them re-describe their own research to you/);
 });
 
 test('only the customer-facing report is handed over, never the raw research', () => {
   // result_json holds raw official-source evidence, OCR and personal
   // identification numbers. The customer boundary strips them for good
   // reason, and passing through a chat prompt does not make them strippable.
-  const src = ai();
-  const i = src.indexOf("const { data: v } = await sb");
-  const query = src.slice(i, src.indexOf('internal.verifications', i));
-  assert.ok(query.includes('synthesis_json'), 'the synthesised report is not read');
+  const src = own();
+  const i = src.indexOf("const { data: v, error } = await sb");
+  const query = src.slice(i, src.indexOf('out.verifications', i));
+  assert.ok(i > 0 && query.includes('synthesis_json'), 'the synthesised report is not read');
   assert.ok(!query.includes('result_json'), 'the raw research is loaded into a chat prompt');
   assert.ok(!query.includes('evidence_bundle'), 'the raw evidence is loaded into a chat prompt');
 });
 
 test('a report is only ever this account\'s own', () => {
-  const src = ai();
-  const i = src.indexOf("const { data: v } = await sb");
+  const src = own();
+  const i = src.indexOf("const { data: v, error } = await sb");
   const query = src.slice(i, i + 500);
-  assert.match(query, /\.eq\('user_id', uid\)/, 'reports are not scoped to the person asking');
+  assert.match(query, /\.eq\('user_id', callerId\)/, 'reports are not scoped to the person asking');
   assert.match(query, /\.is\('deleted_at', null\)/, 'a deleted report comes back in chat');
   assert.match(query, /\.eq\('status', 'COMPLETE'\)/, 'an unfinished run is presented as a report');
+  assert.match(src, /filter\(\(j: any\) => own\(j, callerId\)\)/, 'rows are re-checked against the caller in code');
 });
 
 test('an anonymous caller gets no reports, because there is no account to scope to', () => {
   const src = ai();
-  const i = src.indexOf('const internal: any =');
+  const i = src.indexOf('let internal: OwnContext =');
   const block = src.slice(i, i + 300);
   assert.match(block, /verifications: \[\]/, 'the default is not empty');
-  assert.match(block, /^\s*if \(uid\) \{/m, 'the lookup is not gated on an account');
+  assert.match(block, /if \(uid && sections\.size\) \{/, 'the lookup is not gated on an account');
 });
 
 /* ── the prompt stays well-formed ────────────────────────────────────── */
@@ -120,13 +130,14 @@ test('each kind of internal data has its own allowance', () => {
   // It was one slice() across the whole object: a long property list could
   // push everything after it past the cut, and the cut landed mid-structure,
   // handing the model a truncated fragment of JSON to interpret.
-  const src = ai();
-  assert.match(src, /const internalDataForPrompt = /);
-  assert.ok(!/JSON\.stringify\(internal\)\.slice\(/.test(src), 'the single cut across everything is back');
-  const i = src.indexOf('const internalDataForPrompt');
-  const fn = src.slice(i, src.indexOf('const context = body.context', i));
-  for (const section of ['verifications', 'properties', 'matches', 'intents']) {
-    assert.ok(fn.includes(section), `${section} has no budget of its own`);
+  assert.ok(!/JSON\.stringify\(internal\)\.slice\(/.test(ai()), 'the single cut across everything is back');
+  const src = plan();
+  const i = src.indexOf('export function internalDataForPrompt');
+  const fn = src.slice(i, src.indexOf('/* ── Web', i));
+  assert.match(fn, /SECTION_BUDGET\[tier\]\[key as InternalSection\]/);
+  const budgets = src.slice(src.indexOf('export const SECTION_BUDGET'), src.indexOf('/** Page context'));
+  for (const section of ['verifications', 'properties', 'matches', 'myGeorgia']) {
+    assert.ok(budgets.includes(`${section}:`), `${section} has no budget of its own`);
   }
   assert.match(fn, /kept\.pop\(\); break;/, 'trimming still cuts inside an entry');
 });

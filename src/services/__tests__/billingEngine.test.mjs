@@ -661,8 +661,10 @@ test('AI Chat bills through the gateway, and only ever for an account', () => {
   assert.match(ai, /releaseExecution/, 'a failed response must release its hold');
   assert.ok(!/wallet_reserve|wallet_settle|from\('credit_accounts'\).*update/.test(ai),
     'AI Chat must not reach past the gateway into the wallet');
-  // The rate ceiling is still there.
-  assert.match(ai, /ai_fair_use_daily/);
+  // The rate ceiling is still there, as an abuse safeguard rather than a plan
+  // quota (owner, 2026-10-29: HOMI chat is unlimited in every plan).
+  assert.match(ai, /abuseVerdict\(/);
+  assert.doesNotMatch(ai, /ai_fair_use_daily/);
   // And an anonymous visitor still has no wallet to charge.
   assert.match(ai, /if \(uid && billingEnabled/);
 

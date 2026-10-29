@@ -1,43 +1,42 @@
-// HOMI VOICE MESSAGES — a recorded message in, its text out, paid PAYG.
+// HOMI VOICE MESSAGES — a recorded message in, its text out. Free.
 //
-// Three actions, one function:
+// Owner decision (2026-10-29): voice messages are free and unlimited in every
+// plan. No price, no price consent, no balance check, no reservation. What
+// stays: an account, the HOMI service switch, two minutes per message, the
+// size limits, and a per-user burst rate (voiceLimits.ts).
 //
-//   POST application/json {action:'status'}   price, consent, what the balance
-//                                              can pay for (asked before the
-//                                              microphone opens)
-//   POST application/json {action:'consent'}  the person accepted the price once
+//   POST application/json {action:'status'}   is voice on, and the limits
+//                                              (old clients also read
+//                                              consented/affordableSeconds;
+//                                              both answer "go ahead")
+//   POST application/json {action:'consent'}  kept for old clients: a no-op
 //   POST multipart/form-data                   transcribe: segment0 [, segment1],
 //                                              durationMs, locale, idempotencyKey
 //
-// THE MONEY PATH (docs/claude/BILLING.md: reserve → settle → release)
-//
-//   1. reserve the price of the recorded length plus one step of slack
-//      (beginExecution, product HOMI_VOICE_MESSAGE)
-//   2. send each segment to homatch-official-worker /speech/transcribe
-//      (Google chirp_3; the credential never leaves the worker)
-//   3. settle the FIXED per-minute price (0.3 credits/min, per started 10 s)
-//      of the duration Google billed, with the COGS priced from
-//      provider_price_book (GOOGLE chirp_3 AUDIO_SECOND). A missing rate is
-//      UNPRICED, never $0.
-//   4. anything HOMATCH-side failing, or a message with no words in it,
-//      releases the whole hold: the customer pays only for text they got.
+// COGS IS STILL RECORDED. A free message is not free to HOMATCH: each one
+// writes an unbilled usage row (recordUnbilledUsage, product
+// HOMI_VOICE_MESSAGE) priced from provider_price_book (GOOGLE chirp_3
+// AUDIO_SECOND). A missing rate is UNPRICED, never $0. Failed and wordless
+// messages are recorded too, because Google billed them.
 //
 // Two minutes at most: Google's unary Recognize takes one minute per request,
 // so the browser records a two minute message as two independent segments.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { beginExecution, releaseExecution, settleExecution } from '../_shared/billing.ts';
+import { recordUnbilledUsage } from '../_shared/billing.ts';
 import { estimatedProviderCost } from '../_shared/providerCost.ts';
 import { speechWorkerOrigin } from '../_shared/comm/speechGrant.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 import {
-  affordableSeconds, billableSeconds, chargedSeconds, MAX_SEGMENT_BYTES, MAX_SEGMENT_SECONDS, MAX_SEGMENTS,
-  minimumCredits, priceForSeconds, voicePricingFrom, type VoicePricing,
-} from './voicePricing.ts';
+  MAX_MESSAGE_SECONDS, MAX_SEGMENT_BYTES, MAX_SEGMENT_SECONDS, MAX_SEGMENTS, measuredSeconds,
+  voiceRateExceeded, voiceRateLimitsFrom,
+} from './voiceLimits.ts';
 
+/** The product the COGS rows are recorded under (pricing inactive since 2026-10-29). */
 const PRODUCT = 'HOMI_VOICE_MESSAGE';
 const PROVIDER_MODEL = 'chirp_3';
+const RATE_OPERATION = 'homi_voice_message';
 const WORKER_TIMEOUT_MS = 75_000;
 const LOCALES = new Set(['ka', 'en', 'ru', 'tr', 'ar', 'he']);
 
@@ -51,21 +50,11 @@ const json = (d: unknown, s = 200) =>
 
 type Svc = ReturnType<typeof createClient>;
 
-async function pricingOf(sb: Svc): Promise<{ pricing: VoicePricing; enabled: boolean }> {
-  const { data } = await sb.from('billable_products')
-    .select('config, enabled, pricing_active, kill_switch').eq('code', PRODUCT).maybeSingle();
-  const row = data as { config?: unknown; enabled?: boolean; pricing_active?: boolean; kill_switch?: boolean } | null;
-  return {
-    pricing: voicePricingFrom(row?.config),
-    enabled: !!row && row.enabled !== false && row.pricing_active !== false && row.kill_switch !== true,
-  };
-}
-
-async function balanceOf(sb: Svc, profileId: string): Promise<number | null> {
-  const { data, error } = await sb.rpc('billing_entitlements', { p_user_id: profileId });
-  if (error || !data) return null;
-  const n = Number((data as any)?.wallet?.balance);
-  return Number.isFinite(n) ? n : null;
+/** Voice is on unless the product row is switched off (kill switch or disabled). Pricing state is irrelevant now. */
+async function voiceEnabled(sb: Svc): Promise<boolean> {
+  const { data } = await sb.from('billable_products').select('enabled, kill_switch').eq('code', PRODUCT).maybeSingle();
+  const row = data as { enabled?: boolean; kill_switch?: boolean } | null;
+  return !row || (row.enabled !== false && row.kill_switch !== true);
 }
 
 /** The worker's answer for one segment. */
@@ -108,7 +97,7 @@ serve(async (req) => {
   const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const { data: auth } = await sb.auth.getUser(token);
   const user = auth?.user;
-  // An anonymous visitor has no wallet, so a paid voice message needs an account.
+  // Free, but not anonymous: an account is what the burst rate and the COGS row are counted against.
   if (!user || (user as any).is_anonymous) return json({ error: 'sign in required', code: 'UNAUTHORIZED' }, 401);
 
   const { data: profile } = await sb.from('users').select('id, is_admin').eq('auth_id', user.id).maybeSingle();
@@ -120,37 +109,23 @@ serve(async (req) => {
     return json(serviceDisabledBody('ai_assistant'), 503);
   }
 
-  const { pricing, enabled } = await pricingOf(sb);
+  const enabled = await voiceEnabled(sb);
   const contentType = req.headers.get('content-type') ?? '';
 
-  // ── status / consent ───────────────────────────────────────────────────
+  // ── status / consent (consent kept only so an old client never breaks) ──
   if (contentType.includes('application/json')) {
     const body = await req.json().catch(() => ({})) as { action?: string };
-    if (body.action === 'consent') {
-      const { error } = await sb.from('homi_voice_consents').upsert(
-        { user_id: user.id, accepted_at: new Date().toISOString(), price_credits_per_minute: pricing.creditsPerMinute },
-        { onConflict: 'user_id' },
-      );
-      if (error) return json({ error: 'could not save', code: 'CONSENT_FAILED' }, 500);
-      return json({ ok: true, consented: true });
-    }
+    if (body.action === 'consent') return json({ ok: true, consented: true });
     if (body.action === 'status') {
-      const [{ data: consent }, balance] = await Promise.all([
-        sb.from('homi_voice_consents').select('price_credits_per_minute').eq('user_id', user.id).maybeSingle(),
-        balanceOf(sb, profileId),
-      ]);
-      // A price that rose since they accepted is a new decision for them.
-      const consented = !!consent && Number((consent as any).price_credits_per_minute) >= pricing.creditsPerMinute;
       return json({
         ok: true,
         available: enabled,
-        consented,
-        creditsPerMinute: pricing.creditsPerMinute,
-        incrementSeconds: pricing.incrementSeconds,
-        maxSeconds: pricing.maxSeconds,
-        minimumCredits: minimumCredits(pricing),
-        balance,
-        affordableSeconds: balance == null ? null : affordableSeconds(balance, pricing),
+        free: true,
+        consented: true,
+        creditsPerMinute: 0,
+        maxSeconds: MAX_MESSAGE_SECONDS,
+        balance: null,
+        affordableSeconds: null,
       });
     }
     return json({ error: 'unknown action', code: 'BAD_REQUEST' }, 400);
@@ -160,10 +135,21 @@ serve(async (req) => {
   if (!enabled) return json({ error: 'voice messages are unavailable', code: 'UNAVAILABLE' }, 503);
   if (!contentType.includes('multipart/form-data')) return json({ error: 'expected multipart', code: 'BAD_REQUEST' }, 400);
 
-  const { data: consent } = await sb.from('homi_voice_consents')
-    .select('price_credits_per_minute').eq('user_id', user.id).maybeSingle();
-  if (!consent || Number((consent as any).price_credits_per_minute) < pricing.creditsPerMinute) {
-    return json({ error: 'consent required', code: 'CONSENT_REQUIRED' }, 409);
+  // Per-user burst rate: an abuse safeguard, never a quota the person sees counted.
+  {
+    const now = Date.now();
+    const count = async (ms: number) => {
+      const { count: c } = await sb.from('rate_limit_events').select('id', { count: 'exact', head: true })
+        .eq('user_id', profileId).eq('operation', RATE_OPERATION).gte('created_at', new Date(now - ms).toISOString());
+      return c ?? 0;
+    };
+    const setting = async (key: string, d: number) => (await sb.rpc('billing_setting_num', { p_key: key, p_default: d })).data;
+    const [minute, hour, perMinute, perHour] = await Promise.all([
+      count(60_000), count(3_600_000), setting('homi_voice_per_minute', 6), setting('homi_voice_per_hour', 60),
+    ]);
+    if (voiceRateExceeded({ minute, hour }, voiceRateLimitsFrom({ perMinute, perHour }))) {
+      return json({ error: 'slow down', code: 'RATE_LIMITED' }, 429);
+    }
   }
 
   let form: FormData;
@@ -182,40 +168,16 @@ serve(async (req) => {
   const recordedSeconds = Number(form.get('durationMs')) / 1000;
   if (!Number.isFinite(recordedSeconds) || recordedSeconds <= 0) return json({ error: 'duration required', code: 'BAD_REQUEST' }, 400);
   // A small tolerance for the timer and the encoder disagreeing.
-  if (recordedSeconds > pricing.maxSeconds + 3 || recordedSeconds > segments.length * MAX_SEGMENT_SECONDS + 3) {
+  if (recordedSeconds > MAX_MESSAGE_SECONDS + 3 || recordedSeconds > segments.length * MAX_SEGMENT_SECONDS + 3) {
     return json({ error: 'message too long', code: 'TOO_LONG' }, 413);
   }
 
   const localeRaw = String(form.get('locale') ?? 'ka').slice(0, 2).toLowerCase();
   const locale = LOCALES.has(localeRaw) ? localeRaw : 'ka';
   const clientKey = String(form.get('idempotencyKey') ?? '').replace(/[^a-zA-Z0-9-]/g, '').slice(0, 64);
-  if (clientKey.length < 8) return json({ error: 'idempotency key required', code: 'BAD_REQUEST' }, 400);
 
-  // Reserve what the recorded length costs plus one step: Google's billed
-  // duration can run a fraction past the browser's timer.
-  const needed = priceForSeconds(recordedSeconds, pricing);
-  const ceiling = priceForSeconds(Math.min(pricing.maxSeconds, recordedSeconds + pricing.incrementSeconds), pricing);
-  const grant = await beginExecution(sb as any, {
-    userId: profileId,
-    productCode: PRODUCT,
-    idempotencyKey: `${PRODUCT}:${profileId}:${clientKey}`,
-    // The cost-based quote only sizes the hold (see the migration); two
-    // minutes of it always exceeds the fixed price of a two minute message.
-    expectedUnits: Math.max(1, pricing.maxSeconds / 60),
-    authorizedMaxCredits: ceiling,
-    allowIncluded: false,
-    metadata: { surface: 'homi-voice', locale, recorded_seconds: Math.round(recordedSeconds * 10) / 10 },
-  });
-  if (!grant.ok) {
-    if (grant.reason === 'INSUFFICIENT_CREDITS' || grant.reason === 'BELOW_MIN_VIABLE_BUDGET') {
-      return json({ error: 'insufficient credits', code: 'INSUFFICIENT_CREDITS', neededCredits: needed }, 402);
-    }
-    return json({ error: 'billing unavailable', code: 'BILLING_UNAVAILABLE' }, 503);
-  }
-  if (grant.reservedCredits + 1e-9 < needed) {
-    await releaseExecution(sb as any, grant, 'HOMI_VOICE_BALANCE_SHORT').catch(() => {});
-    return json({ error: 'insufficient credits', code: 'INSUFFICIENT_CREDITS', neededCredits: needed }, 402);
-  }
+  // Counted before the provider is called: a script cannot outrun the burst rate by failing.
+  await sb.from('rate_limit_events').insert({ user_id: profileId, ip_address: null, operation: RATE_OPERATION });
 
   // Segments in order: the text must read in the order it was spoken.
   const started = Date.now();
@@ -245,57 +207,48 @@ serve(async (req) => {
     pricingState: (costUsd != null ? 'ESTIMATED' : googleSeconds > 0 ? 'UNPRICED' : 'ZERO_REAL') as 'ESTIMATED' | 'UNPRICED' | 'ZERO_REAL',
   };
 
+  /** The COGS row: free to the person, never free to HOMATCH. Best-effort; never costs them the text. */
+  const recordCogs = async (outcome: string, extra: Record<string, unknown> = {}) => {
+    if (googleSeconds <= 0) return;
+    try {
+      const { data: ent } = await sb.rpc('billing_entitlements', { p_user_id: profileId });
+      await recordUnbilledUsage(sb as any, {
+        userId: profileId, productCode: PRODUCT, planCode: String((ent as any)?.plan_code ?? 'FREE').toUpperCase(),
+      }, {
+        ...costUsage,
+        metadata: {
+          surface: 'homi-voice', outcome, segments: segments.length, locale, pricing_state: costUsage.pricingState,
+          recorded_seconds: Math.round(recordedSeconds * 10) / 10, idempotency_key: clientKey || null, free: true, ...extra,
+        },
+      });
+    } catch (e) {
+      console.error('[homi-voice] cogs not recorded', e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const failed = results.find((r) => !r.ok);
   if (failed) {
-    // HOMATCH-side failure: the customer pays nothing; any Google spend is still recorded.
-    await releaseExecution(sb as any, grant, `HOMI_VOICE_${failed.reason ?? 'FAILED'}`, {
-      ...costUsage, metadata: { segments: segments.length, failed_reason: failed.reason ?? null, pricing_state: costUsage.pricingState },
-    }).catch((e) => console.error('[homi-voice] release failed', e instanceof Error ? e.message : String(e)));
+    await recordCogs('FAILED', { failed_reason: failed.reason ?? null });
     return json({ error: 'could not transcribe', code: 'TRANSCRIBE_FAILED', reason: failed.reason ?? null }, 502);
   }
 
   const transcript = results.map((r) => String(r.transcript ?? '').trim()).filter(Boolean).join(' ').trim();
   const languageCode = results.find((r) => r.transcript)?.languageCode ?? null;
   const detectedLocale = results.find((r) => r.transcript)?.locale ?? null;
-  const charged = chargedSeconds(results.map((r) => (typeof r.billedSeconds === 'number' ? r.billedSeconds : null)), recordedSeconds, pricing);
+  const measured = measuredSeconds(results.map((r) => (typeof r.billedSeconds === 'number' ? r.billedSeconds : null)), recordedSeconds);
 
   if (!transcript) {
-    // Nothing intelligible: no text to send to HOMI, so nothing is charged.
-    await releaseExecution(sb as any, grant, 'HOMI_VOICE_NO_SPEECH', {
-      ...costUsage, metadata: { segments: segments.length, pricing_state: costUsage.pricingState },
-    }).catch(() => {});
-    return json({ ok: true, transcript: '', noSpeech: true, chargedCredits: 0, durationSeconds: charged.seconds });
+    await recordCogs('NO_SPEECH');
+    return json({ ok: true, transcript: '', noSpeech: true, chargedCredits: 0, durationSeconds: measured.seconds });
   }
 
-  const priceCredits = priceForSeconds(charged.seconds, pricing);
-  let settled: { chargedCredits: number };
-  try {
-    settled = await settleExecution(sb as any, grant, {
-      ...costUsage,
-      priceCredits,
-      metadata: {
-        surface: 'homi-voice',
-        segments: segments.length,
-        charged_seconds: charged.seconds,
-        billable_seconds: billableSeconds(charged.seconds, pricing),
-        duration_source: charged.source,
-        recorded_seconds: Math.round(recordedSeconds * 10) / 10,
-        language: languageCode,
-        credits_per_minute: pricing.creditsPerMinute,
-      },
-    });
-  } catch (e) {
-    console.error('[homi-voice] settle failed', e instanceof Error ? e.message : String(e));
-    await releaseExecution(sb as any, grant, 'HOMI_VOICE_SETTLE_FAILED').catch(() => {});
-    return json({ error: 'billing failed', code: 'BILLING_UNAVAILABLE' }, 503);
-  }
-
+  await recordCogs('SUCCESS', { duration_seconds: measured.seconds, duration_source: measured.source, language: languageCode });
   return json({
     ok: true,
     transcript,
     languageCode,
     locale: detectedLocale,
-    durationSeconds: charged.seconds,
-    chargedCredits: settled.chargedCredits,
+    durationSeconds: measured.seconds,
+    chargedCredits: 0,
   });
 });

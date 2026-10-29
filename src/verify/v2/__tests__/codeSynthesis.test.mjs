@@ -51,7 +51,8 @@ test('no matrix or no subject: nothing is claimed', () => {
 test('research-agent: a V2 job skips the SYNTHESIS call and its budget hold; V1 is unchanged', () => {
   const src = readFileSync(fileURLToPath(new URL('../../../../supabase/functions/research-agent/index.ts', import.meta.url)), 'utf8');
   assert.match(src, /if \(engineOf\(j\.result_json\) === 'V2'\) return await finish\(sb, j, 'SYNTHESIS', null, l, true\);\n\s+if \(await holdForBudget\(sb, j, 'SYNTHESIS'\)\) return;\n\s+return await launch\(sb, k, m, j, 'SYNTHESIS', l\);/);
-  assert.match(src, /const z = code \? \{\} : parse\(extractOpenAIText\(p\)\);/);
+  // A reused stage (evidenceReuse.ts) supplies its stored output; otherwise as before.
+  assert.match(src, /const z = reused \? reused\.output : code \? \{\} : parse\(extractOpenAIText\(p\)\);/);
   // No usage is invented for a call that was never made.
   assert.match(src, /if \(!code\) \{\n\s+prior\._cost = /);
   assert.match(src, /summary: \(v2 \?\? z\)\.executiveSummary \|\| '',/);

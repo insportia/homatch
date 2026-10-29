@@ -25299,6 +25299,32 @@ const en = {
   /* ── HOMI COST ROUND (voice is free) ── */
   voice_slow_down: 'That was a lot of voice messages very quickly. Take a short break and try again.',
   voice_keep_talking: 'Keep talking, I am writing it all down.',
+
+  /* ── VERIFY V3 AND VERSION MANAGEMENT ── */
+  adm_engine_v3: 'V3 (cost optimised)',
+  adm_engine_v3_enabled: 'V3 for new jobs',
+  adm_engine_v3_enable: 'Enable V3',
+  adm_engine_v3_disable: 'Switch V3 off (back to V2)',
+  adm_engine_v3_disabled_note: 'V3 is off. A V3 choice runs V2 for admin checks and V1 for customers. Running checks keep their engine.',
+  adm_v3r_title: 'Verify V3: research and report',
+  adm_v3r_note: 'Applies to V3 jobs only. V2 keeps its own settings above. Research is fixed when a check starts; the report settings apply at each build.',
+  adm_v2r_report_effort: 'Report reasoning',
+  adm_v2r_effort_minimal: 'Minimal',
+  adm_v2r_effort_low: 'Low',
+  adm_v2r_effort_medium: 'Medium',
+  adm_v2r_effort_high: 'High',
+  adm_v2r_report_repair: 'Let Luna repair a faulted report once before Terra',
+  adm_v2r_reuse_days: 'Reuse public research (days)',
+  adm_engine_stats_title: 'Engines compared (last 30 days)',
+  adm_engine_stats_engine: 'Engine',
+  adm_engine_stats_jobs: 'Checks',
+  adm_engine_stats_complete: 'Completed',
+  adm_engine_stats_failed: 'Failed',
+  adm_engine_stats_avg_time: 'Average time',
+  adm_engine_stats_avg_cost: 'Average cost',
+  adm_engine_recent: 'Latest checks by engine',
+  adm_engine_stats_unavailable: 'The comparison is not available right now.',
+  adm_vos_ads_v3_note: 'V3 checks never run this stage and never show advertising. V1 and V2 follow the switch above.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -50512,6 +50538,32 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── HOMI COST ROUND (voice is free) ── */
   voice_slow_down: 'ძალიან ბევრი ხმოვანი შეტყობინება ძალიან სწრაფად. ცოტა შეისვენე და თავიდან სცადე.',
   voice_keep_talking: 'გააგრძელე, ყველაფერს ვიწერ.',
+
+  /* ── VERIFY V3 AND VERSION MANAGEMENT ── */
+  adm_engine_v3: 'V3 (დაზოგვით)',
+  adm_engine_v3_enabled: 'V3 ახალი შემოწმებებისთვის',
+  adm_engine_v3_enable: 'V3-ის ჩართვა',
+  adm_engine_v3_disable: 'V3-ის გამორთვა (V2-ზე დაბრუნება)',
+  adm_engine_v3_disabled_note: 'V3 გამორთულია. V3-ის არჩევისას ადმინის შემოწმება V2-ზე გაეშვება, მომხმარებლისა კი V1-ზე. მიმდინარე შემოწმებები თავის ვერსიას ინარჩუნებს.',
+  adm_v3r_title: 'Verify V3: კვლევა და ანგარიში',
+  adm_v3r_note: 'მხოლოდ V3 შემოწმებებზე ვრცელდება. V2 ზემოთ მოცემულ საკუთარ პარამეტრებს ინარჩუნებს. კვლევის პარამეტრები შემოწმების დაწყებისას ფიქსირდება, ანგარიშისა კი ყოველ აწყობაზე მოქმედებს.',
+  adm_v2r_report_effort: 'ანგარიშის მსჯელობის დონე',
+  adm_v2r_effort_minimal: 'მინიმალური',
+  adm_v2r_effort_low: 'დაბალი',
+  adm_v2r_effort_medium: 'საშუალო',
+  adm_v2r_effort_high: 'მაღალი',
+  adm_v2r_report_repair: 'ხარვეზიანი ანგარიში ჯერ ერთხელ Luna-მ გაასწოროს, Terra-მდე',
+  adm_v2r_reuse_days: 'საჯარო კვლევის ხელახლა გამოყენება (დღე)',
+  adm_engine_stats_title: 'ვერსიების შედარება (ბოლო 30 დღე)',
+  adm_engine_stats_engine: 'ვერსია',
+  adm_engine_stats_jobs: 'შემოწმებები',
+  adm_engine_stats_complete: 'დასრულებული',
+  adm_engine_stats_failed: 'წარუმატებელი',
+  adm_engine_stats_avg_time: 'საშუალო დრო',
+  adm_engine_stats_avg_cost: 'საშუალო ხარჯი',
+  adm_engine_recent: 'ბოლო შემოწმებები ვერსიების მიხედვით',
+  adm_engine_stats_unavailable: 'შედარება ახლა მიუწვდომელია.',
+  adm_vos_ads_v3_note: 'V3 შემოწმებები ამ ეტაპს არ უშვებს და რეკლამას არ აჩვენებს. V1 და V2 ზემოთ მოცემულ გადამრთველს მიჰყვება.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -75716,6 +75768,32 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── HOMI COST ROUND (voice is free) ── */
   voice_slow_down: 'Слишком много голосовых сообщений подряд. Сделайте небольшую паузу и попробуйте снова.',
   voice_keep_talking: 'Продолжайте, я всё записываю.',
+
+  /* ── VERIFY V3 AND VERSION MANAGEMENT ── */
+  adm_engine_v3: 'V3 (экономный)',
+  adm_engine_v3_enabled: 'V3 для новых проверок',
+  adm_engine_v3_enable: 'Включить V3',
+  adm_engine_v3_disable: 'Выключить V3 (вернуть V2)',
+  adm_engine_v3_disabled_note: 'V3 выключен. При выборе V3 проверки админа идут на V2, а клиентов на V1. Идущие проверки сохраняют свою версию.',
+  adm_v3r_title: 'Verify V3: исследование и отчёт',
+  adm_v3r_note: 'Только для проверок V3. V2 сохраняет свои настройки выше. Параметры исследования фиксируются при запуске проверки, параметры отчёта действуют при каждой сборке.',
+  adm_v2r_report_effort: 'Глубина рассуждений отчёта',
+  adm_v2r_effort_minimal: 'Минимальная',
+  adm_v2r_effort_low: 'Низкая',
+  adm_v2r_effort_medium: 'Средняя',
+  adm_v2r_effort_high: 'Высокая',
+  adm_v2r_report_repair: 'Сначала один раз исправить отчёт с ошибками на Luna, потом Terra',
+  adm_v2r_reuse_days: 'Повторно использовать открытое исследование (дней)',
+  adm_engine_stats_title: 'Сравнение версий (последние 30 дней)',
+  adm_engine_stats_engine: 'Версия',
+  adm_engine_stats_jobs: 'Проверки',
+  adm_engine_stats_complete: 'Завершено',
+  adm_engine_stats_failed: 'С ошибкой',
+  adm_engine_stats_avg_time: 'Среднее время',
+  adm_engine_stats_avg_cost: 'Средняя стоимость',
+  adm_engine_recent: 'Последние проверки по версиям',
+  adm_engine_stats_unavailable: 'Сравнение сейчас недоступно.',
+  adm_vos_ads_v3_note: 'Проверки V3 не запускают этот этап и не показывают рекламу. V1 и V2 следуют переключателю выше.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -100918,6 +100996,32 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── HOMI COST ROUND (voice is free) ── */
   voice_slow_down: 'Çok kısa sürede çok fazla sesli mesaj. Kısa bir ara verip tekrar deneyin.',
   voice_keep_talking: 'Devam edin, her şeyi yazıyorum.',
+
+  /* ── VERIFY V3 AND VERSION MANAGEMENT ── */
+  adm_engine_v3: 'V3 (tasarruflu)',
+  adm_engine_v3_enabled: 'Yeni işler için V3',
+  adm_engine_v3_enable: 'V3’ü aç',
+  adm_engine_v3_disable: 'V3’ü kapat (V2’ye dön)',
+  adm_engine_v3_disabled_note: 'V3 kapalı. V3 seçilirse yönetici kontrolleri V2’de, müşterininkiler V1’de çalışır. Süren kontroller kendi sürümünde kalır.',
+  adm_v3r_title: 'Verify V3: araştırma ve rapor',
+  adm_v3r_note: 'Yalnızca V3 işlerine uygulanır. V2 yukarıdaki kendi ayarlarını korur. Araştırma ayarları kontrol başlarken sabitlenir; rapor ayarları her derlemede geçerlidir.',
+  adm_v2r_report_effort: 'Rapor akıl yürütme düzeyi',
+  adm_v2r_effort_minimal: 'En az',
+  adm_v2r_effort_low: 'Düşük',
+  adm_v2r_effort_medium: 'Orta',
+  adm_v2r_effort_high: 'Yüksek',
+  adm_v2r_report_repair: 'Hatalı raporu Terra’dan önce bir kez Luna düzeltsin',
+  adm_v2r_reuse_days: 'Açık araştırmayı yeniden kullan (gün)',
+  adm_engine_stats_title: 'Sürümlerin karşılaştırması (son 30 gün)',
+  adm_engine_stats_engine: 'Sürüm',
+  adm_engine_stats_jobs: 'Kontroller',
+  adm_engine_stats_complete: 'Tamamlanan',
+  adm_engine_stats_failed: 'Başarısız',
+  adm_engine_stats_avg_time: 'Ortalama süre',
+  adm_engine_stats_avg_cost: 'Ortalama maliyet',
+  adm_engine_recent: 'Sürüme göre son kontroller',
+  adm_engine_stats_unavailable: 'Karşılaştırma şu anda kullanılamıyor.',
+  adm_vos_ads_v3_note: 'V3 kontrolleri bu aşamayı çalıştırmaz ve reklam göstermez. V1 ve V2 yukarıdaki anahtarı izler.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -126120,6 +126224,32 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── HOMI COST ROUND (voice is free) ── */
   voice_slow_down: 'رسائل صوتية كثيرة جدًا في وقت قصير. خذ استراحة قصيرة ثم حاول مجددًا.',
   voice_keep_talking: 'تابع الكلام، أنا أكتب كل شيء.',
+
+  /* ── VERIFY V3 AND VERSION MANAGEMENT ── */
+  adm_engine_v3: 'V3 (موفّر للتكلفة)',
+  adm_engine_v3_enabled: 'V3 للمهام الجديدة',
+  adm_engine_v3_enable: 'تفعيل V3',
+  adm_engine_v3_disable: 'إيقاف V3 (العودة إلى V2)',
+  adm_engine_v3_disabled_note: 'V3 متوقف. عند اختيار V3 تعمل فحوص المشرف على V2 وفحوص العملاء على V1. الفحوص الجارية تحتفظ بإصدارها.',
+  adm_v3r_title: 'Verify V3: البحث والتقرير',
+  adm_v3r_note: 'ينطبق على مهام V3 فقط. يحتفظ V2 بإعداداته أعلاه. تُثبَّت إعدادات البحث عند بدء الفحص، وتسري إعدادات التقرير عند كل إنشاء.',
+  adm_v2r_report_effort: 'مستوى تفكير التقرير',
+  adm_v2r_effort_minimal: 'أدنى',
+  adm_v2r_effort_low: 'منخفض',
+  adm_v2r_effort_medium: 'متوسط',
+  adm_v2r_effort_high: 'مرتفع',
+  adm_v2r_report_repair: 'دع Luna تصلح التقرير المعيب مرة واحدة قبل Terra',
+  adm_v2r_reuse_days: 'إعادة استخدام البحث العام (أيام)',
+  adm_engine_stats_title: 'مقارنة الإصدارات (آخر 30 يومًا)',
+  adm_engine_stats_engine: 'الإصدار',
+  adm_engine_stats_jobs: 'الفحوص',
+  adm_engine_stats_complete: 'مكتملة',
+  adm_engine_stats_failed: 'فاشلة',
+  adm_engine_stats_avg_time: 'متوسط الوقت',
+  adm_engine_stats_avg_cost: 'متوسط التكلفة',
+  adm_engine_recent: 'أحدث الفحوص حسب الإصدار',
+  adm_engine_stats_unavailable: 'المقارنة غير متاحة الآن.',
+  adm_vos_ads_v3_note: 'فحوص V3 لا تشغّل هذه المرحلة ولا تعرض الإعلانات. يتبع V1 وV2 المفتاح أعلاه.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -151322,6 +151452,32 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── HOMI COST ROUND (voice is free) ── */
   voice_slow_down: 'יותר מדי הודעות קוליות בזמן קצר. קחו הפסקה קצרה ונסו שוב.',
   voice_keep_talking: 'תמשיכו לדבר, אני רושם הכול.',
+
+  /* ── VERIFY V3 AND VERSION MANAGEMENT ── */
+  adm_engine_v3: 'V3 (חסכוני)',
+  adm_engine_v3_enabled: 'V3 לבדיקות חדשות',
+  adm_engine_v3_enable: 'להפעיל את V3',
+  adm_engine_v3_disable: 'לכבות את V3 (חזרה ל־V2)',
+  adm_engine_v3_disabled_note: 'V3 כבוי. בבחירת V3 בדיקות של מנהל ירוצו על V2 ושל לקוחות על V1. בדיקות שכבר רצות שומרות על הגרסה שלהן.',
+  adm_v3r_title: 'Verify V3: מחקר ודוח',
+  adm_v3r_note: 'חל על בדיקות V3 בלבד. V2 שומר על ההגדרות שלו למעלה. הגדרות המחקר נקבעות בתחילת הבדיקה, והגדרות הדוח חלות בכל בנייה.',
+  adm_v2r_report_effort: 'רמת החשיבה של הדוח',
+  adm_v2r_effort_minimal: 'מינימלית',
+  adm_v2r_effort_low: 'נמוכה',
+  adm_v2r_effort_medium: 'בינונית',
+  adm_v2r_effort_high: 'גבוהה',
+  adm_v2r_report_repair: 'לתת ל־Luna לתקן דוח פגום פעם אחת לפני Terra',
+  adm_v2r_reuse_days: 'שימוש חוזר במחקר הציבורי (ימים)',
+  adm_engine_stats_title: 'השוואת גרסאות (30 הימים האחרונים)',
+  adm_engine_stats_engine: 'גרסה',
+  adm_engine_stats_jobs: 'בדיקות',
+  adm_engine_stats_complete: 'הושלמו',
+  adm_engine_stats_failed: 'נכשלו',
+  adm_engine_stats_avg_time: 'זמן ממוצע',
+  adm_engine_stats_avg_cost: 'עלות ממוצעת',
+  adm_engine_recent: 'הבדיקות האחרונות לפי גרסה',
+  adm_engine_stats_unavailable: 'ההשוואה אינה זמינה כרגע.',
+  adm_vos_ads_v3_note: 'בדיקות V3 לא מריצות את השלב הזה ולא מציגות פרסום. V1 ו־V2 פועלים לפי המתג למעלה.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

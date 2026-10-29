@@ -158,3 +158,16 @@ export function keepStoryOnRebuild<T extends { chapters?: GuardChapter[] }>(
   if (!base?.chapters?.length) return base;
   return { ...base, chapters: guardStoryContinuity(base.chapters, opts.evolution) };
 }
+
+/**
+ * Whether keepStoryOnRebuild will keep the stored story for this build: the
+ * same test, so the report call can skip asking for (and paying for) a story
+ * that would be discarded (owner, 2026-10-29).
+ */
+export function storyKeptOnRebuild(previousSynthesis: unknown, opts: { autoUpgrade: boolean; kind?: unknown }): boolean {
+  if (!opts.autoUpgrade) return false;
+  const prev = obj(previousSynthesis);
+  const prevStory = obj(obj(prev.report).propertyStory);
+  const prevChapters = Array.isArray(prevStory.chapters) ? (prevStory.chapters as GuardChapter[]).filter((c) => c && typeof c.body === 'string' && c.body.trim()) : [];
+  return Number(prev._logicVersion) >= 6 && prevChapters.length >= 3 && storyFitsKind(prevChapters, opts.kind);
+}

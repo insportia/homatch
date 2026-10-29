@@ -1227,6 +1227,87 @@ const LENGTH_GUIDE: Record<ReturnType<typeof evidenceRichness>, string> = {
   SPARSE: 'Evidence is thin. Write a SHORT, honest report. Do NOT pad it and do NOT invent context to fill space.',
 };
 
+/*
+ * THE CODE-OWNED REPORT PROMPT (owner, 2026-10-29).
+ *
+ * The same rules, two differences. (1) Fields code writes exactly are not
+ * asked for: currentStatus, visualCaptions, visualExplanations, metrics and
+ * advertisingAssessment (and propertyStory on a rebuild that keeps the stored
+ * story). Their schema lines and instruction paragraphs leave; a note says
+ * who writes them. (2) Prompt-cache order: everything that varies per job
+ * (length guide, the sections this asset class may use, the class and kind
+ * notes, the rebuild and reuse notes) moves to the END, so the long static
+ * rules of a study are an identical prefix for every job of that study and
+ * for the repair and escalation calls of the same job.
+ */
+const CODE_OWNED_NOTE: string[] = [
+  'FIELDS WRITTEN BY CODE. currentStatus (the latest official position), the captions and explanations of the',
+  'official visuals, every section metric and the advertising assessment are produced by code from the records',
+  'and shown beside your prose. Do NOT return them. Where a rule refers to currentStatus, it means that',
+  'code-written block: refer to it, never repeat it. Your prose carries no figure that is not in the evidence.',
+];
+const SCHEMA_DROPPED_PREFIXES = [
+  '                  "metrics": ',
+  '  "currentStatus": ',
+  '                    "items": [ { "label": "<short>", "value": "<value>", "date"',
+  '  "visualCaptions": ',
+  '  "visualExplanations": ',
+  '                           "buyerMeaning": ',
+  '  "advertisingAssessment": ',
+  'currentStatus.items: ',
+  'metrics: only decision-relevant numbers',
+  'a premium). Two to four per section at most',
+];
+const PARAGRAPHS_DROPPED = ['visualCaptions: for each officialVisuals item', 'visualExplanations: one entry per officialVisuals item', 'advertisingAssessment: ONLY when developerAdvertising'];
+const STORY_SCHEMA_PREFIXES = ['  "propertyStory": ', '                                     "title": "<Georgian heading>", "period"', '                                     "body": "<Georgian narrative>"'];
+
+function codeOwnedSystem(
+  lines: string[],
+  o: { perJob: (string | null | undefined)[]; allowed: readonly string[]; skipStory: boolean; reusedResearch: { stage: string; observedOn: string }[] },
+): string[] {
+  const perJob = new Set(o.perJob.filter((x): x is string => !!x));
+  const out: string[] = [];
+  let dropping = false;
+  for (const line of lines) {
+    if (perJob.has(line)) continue;
+    if (PARAGRAPHS_DROPPED.some((p) => line.startsWith(p))) dropping = true;
+    if (dropping) {
+      if (line === '' || /^There is NO "buyerActions"/.test(line)) dropping = false;
+      else continue;
+    }
+    if (SCHEMA_DROPPED_PREFIXES.some((p) => line.startsWith(p))) continue;
+    if (o.skipStory && STORY_SCHEMA_PREFIXES.some((p) => line.startsWith(p))) continue;
+    if (line.startsWith('  "sections": [ { "key": "<')) {
+      out.push(`  "sections": [ { "key": "<${SECTION_KEYS.join('|')}>", "title": "<Georgian heading>",`);
+      continue;
+    }
+    if (line.startsWith('currentStatus, propertyStory, visualCaptions and visualExplanations: omit entirely')) {
+      if (!o.skipStory) out.push('propertyStory: omit entirely when officialHistory is absent.');
+      continue;
+    }
+    if (line.startsWith('reading. Put every officialVisuals id in the chapter it illustrates')) {
+      out.push('reading. Put every officialVisuals id in the chapter it illustrates (visualIds).');
+      continue;
+    }
+    out.push(line);
+  }
+  // Collapse the blank runs the removals left behind.
+  const tidy = out.filter((l, i) => !(l === '' && out[i - 1] === ''));
+  return [
+    ...tidy,
+    '',
+    ...CODE_OWNED_NOTE,
+    '',
+    '── THIS REPORT ─────────────────────────────────────────────────────',
+    ...o.perJob.filter((x): x is string => !!x).flatMap((x) => [x, '']),
+    `sections.key: only ${o.allowed.join(', ')} apply to this property.`,
+    ...(o.skipStory ? ['propertyStory: do NOT return it. This is a rebuild and the story already written is kept.'] : []),
+    ...(o.reusedResearch.length
+      ? [`reusedResearch: public findings reused from an earlier check of this property, observed on ${o.reusedResearch.map((r) => r.observedOn).join(', ')}. When you rely on one, give that date; never present it as checked today.`]
+      : []),
+  ];
+}
+
 export function buildIntelligencePrompt(
   pkg: EvidencePackage,
   bundle?: IntelligenceBundle,
@@ -1237,6 +1318,18 @@ export function buildIntelligencePrompt(
     propertyKind?: PropertyKindResult | null;
     /** The plot's permitted use and buildability, when read (research-agent landProfile). */
     landProfile?: unknown;
+    /**
+     * 'CODE' (verify-synthesis since 2026-10-29): the fields code produces
+     * (currentStatus, visual captions/explanations, metrics, the advertising
+     * assessment) are not asked for, and the system prompt is ordered for the
+     * provider's prompt cache: the static rules of the study first, every
+     * per-job instruction last. Unset: the earlier prompt, unchanged.
+     */
+    fieldOwnership?: 'MODEL_FIRST' | 'CODE';
+    /** An automatic rebuild keeps the stored story (storyGuard.keepStoryOnRebuild): do not ask for a new one. */
+    skipStory?: boolean;
+    /** Public research reused from an earlier check, with the day it was observed (evidenceReuse.ts). */
+    reusedResearch?: { stage: string; observedOn: string }[];
   },
 ): { system: string; user: string } {
   const richness = evidenceRichness(pkg);
@@ -1251,7 +1344,8 @@ export function buildIntelligencePrompt(
   const latestUnit = bundle?.register?.latest ?? null;
   const kindNote = kindPromptBlock(extras?.propertyKind ?? null, latestUnit);
 
-  const system = [
+  const codeOwned = extras?.fieldOwnership === 'CODE';
+  const systemLines = [
     ...analystRulesFor(study),
     '',
     LENGTH_GUIDE[richness],
@@ -1342,7 +1436,16 @@ export function buildIntelligencePrompt(
     '',
     'cites must contain only ids from the evidence you were given.',
     'The overall label follows the WHOLE picture, never a single finding.',
-  ].join('\n');
+  ];
+  const system = (codeOwned
+    ? codeOwnedSystem(systemLines, {
+        perJob: [LENGTH_GUIDE[richness], classNote, kindNote],
+        allowed,
+        skipStory: extras?.skipStory === true,
+        reusedResearch: extras?.reusedResearch ?? [],
+      })
+    : systemLines
+  ).join('\n');
 
   const user = JSON.stringify(
     {
@@ -1359,6 +1462,8 @@ export function buildIntelligencePrompt(
         certainty: i.certainty,
         ...(i.source ? { source: i.source } : {}),
         ...(i.date ? { date: i.date } : {}),
+        // Reused from an earlier check: `date` is when it was observed.
+        ...(i.observedEarlier ? { observedEarlier: true } : {}),
         ...(i.entity ? { entity: i.entity } : {}),
         ...(i.documentRef ? { document: i.documentRef } : {}),
         ...(i.corroborated ? { corroborated: true } : {}),
@@ -1382,7 +1487,9 @@ export function buildIntelligencePrompt(
        * Ids in [brackets] are the evidence ids to cite.
        */
       // Developer Advertising Intelligence: a compact deterministic digest, never raw ad dumps.
-      developerAdvertising: pkg.developerAds ? adsPromptDigest(pkg.developerAds) : undefined,
+      developerAdvertising: pkg.developerAds && !codeOwned ? adsPromptDigest(pkg.developerAds) : undefined,
+      // Public findings reused from an earlier check of this property: rely on them with their date.
+      reusedResearch: extras?.reusedResearch?.length ? extras.reusedResearch : undefined,
       officialHistory: pkg.tas?.available
         ? tasDigest(pkg.tas, (id) => pkg.tasCite?.[id] ?? null).text
         : undefined,

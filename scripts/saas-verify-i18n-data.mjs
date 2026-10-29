@@ -1,0 +1,29 @@
+/* Verify V3 and version management (2026-10-29): Admin copy for the V3 engine, its research and
+ * report settings, the engine comparison and the Developer Advertising note — [en, ka, ru, tr, ar, he].
+ * V1, V2, V3, Luna and Terra are names and stay as they are in every language. Plain, no dashes. */
+export const SAAS_VERIFY_STRINGS = {
+  adm_engine_v3: ['V3 (cost optimised)', 'V3 (დაზოგვით)', 'V3 (экономный)', 'V3 (tasarruflu)', 'V3 (موفّر للتكلفة)', 'V3 (חסכוני)'],
+  adm_engine_v3_enabled: ['V3 for new jobs', 'V3 ახალი შემოწმებებისთვის', 'V3 для новых проверок', 'Yeni işler için V3', 'V3 للمهام الجديدة', 'V3 לבדיקות חדשות'],
+  adm_engine_v3_enable: ['Enable V3', 'V3-ის ჩართვა', 'Включить V3', 'V3’ü aç', 'تفعيل V3', 'להפעיל את V3'],
+  adm_engine_v3_disable: ['Switch V3 off (back to V2)', 'V3-ის გამორთვა (V2-ზე დაბრუნება)', 'Выключить V3 (вернуть V2)', 'V3’ü kapat (V2’ye dön)', 'إيقاف V3 (العودة إلى V2)', 'לכבות את V3 (חזרה ל־V2)'],
+  adm_engine_v3_disabled_note: ['V3 is off. A V3 choice runs V2 for admin checks and V1 for customers. Running checks keep their engine.', 'V3 გამორთულია. V3-ის არჩევისას ადმინის შემოწმება V2-ზე გაეშვება, მომხმარებლისა კი V1-ზე. მიმდინარე შემოწმებები თავის ვერსიას ინარჩუნებს.', 'V3 выключен. При выборе V3 проверки админа идут на V2, а клиентов на V1. Идущие проверки сохраняют свою версию.', 'V3 kapalı. V3 seçilirse yönetici kontrolleri V2’de, müşterininkiler V1’de çalışır. Süren kontroller kendi sürümünde kalır.', 'V3 متوقف. عند اختيار V3 تعمل فحوص المشرف على V2 وفحوص العملاء على V1. الفحوص الجارية تحتفظ بإصدارها.', 'V3 כבוי. בבחירת V3 בדיקות של מנהל ירוצו על V2 ושל לקוחות על V1. בדיקות שכבר רצות שומרות על הגרסה שלהן.'],
+  adm_v3r_title: ['Verify V3: research and report', 'Verify V3: კვლევა და ანგარიში', 'Verify V3: исследование и отчёт', 'Verify V3: araştırma ve rapor', 'Verify V3: البحث والتقرير', 'Verify V3: מחקר ודוח'],
+  adm_v3r_note: ['Applies to V3 jobs only. V2 keeps its own settings above. Research is fixed when a check starts; the report settings apply at each build.', 'მხოლოდ V3 შემოწმებებზე ვრცელდება. V2 ზემოთ მოცემულ საკუთარ პარამეტრებს ინარჩუნებს. კვლევის პარამეტრები შემოწმების დაწყებისას ფიქსირდება, ანგარიშისა კი ყოველ აწყობაზე მოქმედებს.', 'Только для проверок V3. V2 сохраняет свои настройки выше. Параметры исследования фиксируются при запуске проверки, параметры отчёта действуют при каждой сборке.', 'Yalnızca V3 işlerine uygulanır. V2 yukarıdaki kendi ayarlarını korur. Araştırma ayarları kontrol başlarken sabitlenir; rapor ayarları her derlemede geçerlidir.', 'ينطبق على مهام V3 فقط. يحتفظ V2 بإعداداته أعلاه. تُثبَّت إعدادات البحث عند بدء الفحص، وتسري إعدادات التقرير عند كل إنشاء.', 'חל על בדיקות V3 בלבד. V2 שומר על ההגדרות שלו למעלה. הגדרות המחקר נקבעות בתחילת הבדיקה, והגדרות הדוח חלות בכל בנייה.'],
+  adm_v2r_report_effort: ['Report reasoning', 'ანგარიშის მსჯელობის დონე', 'Глубина рассуждений отчёта', 'Rapor akıl yürütme düzeyi', 'مستوى تفكير التقرير', 'רמת החשיבה של הדוח'],
+  adm_v2r_effort_minimal: ['Minimal', 'მინიმალური', 'Минимальная', 'En az', 'أدنى', 'מינימלית'],
+  adm_v2r_effort_low: ['Low', 'დაბალი', 'Низкая', 'Düşük', 'منخفض', 'נמוכה'],
+  adm_v2r_effort_medium: ['Medium', 'საშუალო', 'Средняя', 'Orta', 'متوسط', 'בינונית'],
+  adm_v2r_effort_high: ['High', 'მაღალი', 'Высокая', 'Yüksek', 'مرتفع', 'גבוהה'],
+  adm_v2r_report_repair: ['Let Luna repair a faulted report once before Terra', 'ხარვეზიანი ანგარიში ჯერ ერთხელ Luna-მ გაასწოროს, Terra-მდე', 'Сначала один раз исправить отчёт с ошибками на Luna, потом Terra', 'Hatalı raporu Terra’dan önce bir kez Luna düzeltsin', 'دع Luna تصلح التقرير المعيب مرة واحدة قبل Terra', 'לתת ל־Luna לתקן דוח פגום פעם אחת לפני Terra'],
+  adm_v2r_reuse_days: ['Reuse public research (days)', 'საჯარო კვლევის ხელახლა გამოყენება (დღე)', 'Повторно использовать открытое исследование (дней)', 'Açık araştırmayı yeniden kullan (gün)', 'إعادة استخدام البحث العام (أيام)', 'שימוש חוזר במחקר הציבורי (ימים)'],
+  adm_engine_stats_title: ['Engines compared (last 30 days)', 'ვერსიების შედარება (ბოლო 30 დღე)', 'Сравнение версий (последние 30 дней)', 'Sürümlerin karşılaştırması (son 30 gün)', 'مقارنة الإصدارات (آخر 30 يومًا)', 'השוואת גרסאות (30 הימים האחרונים)'],
+  adm_engine_stats_engine: ['Engine', 'ვერსია', 'Версия', 'Sürüm', 'الإصدار', 'גרסה'],
+  adm_engine_stats_jobs: ['Checks', 'შემოწმებები', 'Проверки', 'Kontroller', 'الفحوص', 'בדיקות'],
+  adm_engine_stats_complete: ['Completed', 'დასრულებული', 'Завершено', 'Tamamlanan', 'مكتملة', 'הושלמו'],
+  adm_engine_stats_failed: ['Failed', 'წარუმატებელი', 'С ошибкой', 'Başarısız', 'فاشلة', 'נכשלו'],
+  adm_engine_stats_avg_time: ['Average time', 'საშუალო დრო', 'Среднее время', 'Ortalama süre', 'متوسط الوقت', 'זמן ממוצע'],
+  adm_engine_stats_avg_cost: ['Average cost', 'საშუალო ხარჯი', 'Средняя стоимость', 'Ortalama maliyet', 'متوسط التكلفة', 'עלות ממוצעת'],
+  adm_engine_recent: ['Latest checks by engine', 'ბოლო შემოწმებები ვერსიების მიხედვით', 'Последние проверки по версиям', 'Sürüme göre son kontroller', 'أحدث الفحوص حسب الإصدار', 'הבדיקות האחרונות לפי גרסה'],
+  adm_engine_stats_unavailable: ['The comparison is not available right now.', 'შედარება ახლა მიუწვდომელია.', 'Сравнение сейчас недоступно.', 'Karşılaştırma şu anda kullanılamıyor.', 'المقارنة غير متاحة الآن.', 'ההשוואה אינה זמינה כרגע.'],
+  adm_vos_ads_v3_note: ['V3 checks never run this stage and never show advertising. V1 and V2 follow the switch above.', 'V3 შემოწმებები ამ ეტაპს არ უშვებს და რეკლამას არ აჩვენებს. V1 და V2 ზემოთ მოცემულ გადამრთველს მიჰყვება.', 'Проверки V3 не запускают этот этап и не показывают рекламу. V1 и V2 следуют переключателю выше.', 'V3 kontrolleri bu aşamayı çalıştırmaz ve reklam göstermez. V1 ve V2 yukarıdaki anahtarı izler.', 'فحوص V3 لا تشغّل هذه المرحلة ولا تعرض الإعلانات. يتبع V1 وV2 المفتاح أعلاه.', 'בדיקות V3 לא מריצות את השלב הזה ולא מציגות פרסום. V1 ו־V2 פועלים לפי המתג למעלה.'],
+};

@@ -25,10 +25,11 @@ import { awaitOpenAIBudget, backoffMs, estimateTokens, limitsFor, retryAfterMs, 
 import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, officialCodeNotFound, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
 import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
 import { isPausable, PAUSABLE_STATUSES, resumeTarget, settlementOutcome, optionalStageFits, publicBilling } from '../../../src/verify/pauseResume.ts';
-import { engineForNewJob, engineOf, parseEngineSetting, VERIFY_ENGINE_SETTING_KEY } from '../../../src/verify/engine.ts';
+import { engineForNewJob, engineOf, isV3, parseEngineSetting, VERIFY_ENGINE_SETTING_KEY, VERIFY_V3_RESEARCH_SETTING_KEY } from '../../../src/verify/engine.ts';
 import { codeSynthesis } from '../../../src/verify/v2/codeSynthesis.ts';
 import { checkCadastralInput } from '../../../src/verify/cadastralInput.ts';
-import { budgetDecision, canonicalModel, escalationModelFor, marketCodeDecision, marketOfficialContext, parseResearchTuning, searchQueriesOf, stageOutputUsable, v2ResearchRequest, VERIFY_V2_RESEARCH_SETTING_KEY, withoutEmpty } from '../../../src/verify/v2/researchRequest.ts';
+import { budgetDecision, canonicalModel, escalationModelFor, marketCodeDecision, marketOfficialContext, parseResearchTuning, reuseFreshnessDays, searchQueriesOf, stageOutputUsable, v2ResearchRequest, VERIFY_V2_RESEARCH_SETTING_KEY, withoutEmpty } from '../../../src/verify/v2/researchRequest.ts';
+import { pickReuse, reusableRecord, reuseQueryPrefix, type ReusableStage, type ReuseCandidate } from '../../../src/verify/v2/evidenceReuse.ts';
 // Developer Advertising Intelligence: the shared memo23 Apify client (the one
 // seam Verify shares; the file itself is unchanged) with Verify's OWN
 // orchestration, setting, budget and cost rows — no Find Buyers campaign,
@@ -1630,7 +1631,7 @@ function searchBudgetFor(j: any, s: Stage): string {
   }
 }
 
-function prompt(s: Stage, j: any, p: any, l: string): string {
+function prompt(s: Stage, j: any, p: any, l: string, opts: { adsEnabled?: boolean } = {}): string {
   const L = LANG[l] || 'English';
   const q = j.query;
   // TAS API_FIRST case text is replaced by its deterministic digest, so the
@@ -1658,7 +1659,8 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
       `ASSET CLASS (v28): from the actual evidence gathered, classify this property's assetClass as one of APARTMENT_IN_PROJECT / PRIVATE_RESALE / PRIVATE_HOUSE / LAND / COMMERCIAL / RENTAL / UNDER_CONSTRUCTION / COMPANY_OWNED / MIXED_OR_UNKNOWN — never assume every property has the same evidence shape (a private resale apartment has no developer/company research to do; a land parcel has no utilities/commissioning; a company-owned unit may). Use MIXED_OR_UNKNOWN rather than guessing when the evidence does not clearly indicate one category. This classification only shapes how deep/which categories of research make sense — it never itself becomes a customer-facing risk statement. ` +
       `Also research the marketed PROJECT/DEVELOPMENT this property likely belongs to (its public name, developer, physical building/complex) as thoroughly as public web evidence allows — this is a separate concept from the bare cadastral/unit identity. ` +
       `For construction/completion, keep THREE separate concepts and never merge them: declaredCompletionTarget (a developer/marketing target date, labeled as declared, never as actual), observedConstructionStatus (what current public evidence — photos, posts, listings — shows about physical progress right now), and commissioningStatus (ONLY "OFFICIALLY_CONFIRMED" with an evidenceUrl when a specific authoritative document/act says the building was put into exploitation — otherwise always "NOT_INDEPENDENTLY_VERIFIED", regardless of how complete the building looks). ` +
-      `BRAND AND SOCIAL PAGES: search the web for the developer's and the project's OFFICIAL Facebook page (and Instagram). Return facebookPage.url exactly as found (https://www.facebook.com/...) and facebookPage.name exactly as the page title appears on Facebook — that name is what its ads run under. brandName is the short consumer brand the project is marketed under (e.g. "Villion"), not the legal entity. Only pages that clearly belong to this developer/project; null otherwise. ` +
+      // Developer Advertising is the only reader of facebookPage: no ask (and no search) while it is off.
+      (opts.adsEnabled === false ? '' : `BRAND AND SOCIAL PAGES: search the web for the developer's and the project's OFFICIAL Facebook page (and Instagram). Return facebookPage.url exactly as found (https://www.facebook.com/...) and facebookPage.name exactly as the page title appears on Facebook — that name is what its ads run under. brandName is the short consumer brand the project is marketed under (e.g. "Villion"), not the legal entity. Only pages that clearly belong to this developer/project; null otherwise. `) +
       `DESIGN TEAM: every professional or firm publicly credited on the project — architect, architectural bureau, structural engineer/constructor, builder/general contractor, landscape designer, interior designer, technical supervision — as designTeam [{role,name}] in the answer language; omit roles nobody is credited for. ` +
       `If you find publicly evidenced information that a specific bank offers mortgage/financing for this exact project or developer (e.g. a bank's own published partner-project list, a developer page naming a partner bank), add it to project.facts as an ordinary evidenced fact (bank name + program if known) — never invent or assume standard bank financing exists just because a project is common practice; omit it entirely if unevidenced. ` +
       `UTILITIES MATRIX: from the listing text, project page, or any document you actually read, report whether electricity/water/gas/sewage/internet connections are explicitly mentioned for this exact unit/property. Each utility's status may be "CONFIRMED_CONNECTED" or "CONFIRMED_NOT_CONNECTED" ONLY when the source explicitly states that; otherwise it MUST be "NOT_MENTIONED" — never infer a utility is connected merely because the building looks complete or other units mention it. If nothing at all discusses utilities, return utilitiesMatrix as null rather than five NOT_MENTIONED entries. ` +
@@ -1924,8 +1926,58 @@ async function wf(path: string, method = 'GET', body?: any): Promise<{ code: num
   return { code: r.status, data: z };
 }
 
+/*
+ * HARD REUSE OF PUBLIC RESEARCH (V3 only; src/verify/v2/evidenceReuse.ts).
+ *
+ * IDENTITY for the exact same cadastral code, and PUBLIC_RESEARCH for any
+ * unit on the same parcel, are taken from a recent COMPLETE job instead of
+ * being bought again, inside the freshness window stamped on the job
+ * (verify_v3_research.reuse.freshnessDays, default 7, 0 = off). Never the
+ * registers: the official stages always run, and owner-level keys are
+ * removed from what is stored for reuse. The reused output keeps the date it
+ * was observed, and the job records what it reused (_reusedStages).
+ * Read-only and best-effort: any failure means the stage simply runs.
+ */
+async function reusableStageFor(sb: any, j: any, stage: ReusableStage): Promise<{ fromJobId: string; observedAt: string; output: Record<string, unknown> } | null> {
+  try {
+    const p = j.result_json || {};
+    if (!isV3(p) || j.mode !== 'cadastral') return null;
+    const days = reuseFreshnessDays(p);
+    const prefix = reuseQueryPrefix(j.query);
+    if (!days || !prefix) return null;
+    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    const { data, error } = await sb
+      .from('research_jobs')
+      .select('id,query,completed_at,reusable:result_json->_reusable')
+      .eq('status', 'COMPLETE')
+      .is('deleted_at', null)
+      .like('query', `${prefix}%`)
+      .neq('id', j.id)
+      .gte('completed_at', since)
+      .order('completed_at', { ascending: false })
+      .limit(8);
+    if (error || !Array.isArray(data)) return null;
+    const candidates: ReuseCandidate[] = data.map((r: any) => ({ id: r.id, query: r.query ?? null, completedAt: r.completed_at ?? null, reusable: r.reusable ?? null }));
+    const pick = pickReuse(stage, j.query, candidates, { now: Date.now(), freshnessDays: days, jobId: j.id });
+    if (pick) console.log(JSON.stringify({ scope: 'verify_reuse', jobId: j.id, stage, fromJobId: pick.fromJobId, observedAt: pick.observedAt }));
+    return pick;
+  } catch (e) {
+    console.warn(`research-agent: reuse lookup for ${j?.id} ${stage} failed (stage runs)`, e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
+/** Stores what this stage found for later jobs (dated), and what it reused. */
+function rememberReusable(prior: any, s: Stage, z: any, reused: { fromJobId: string; observedAt: string } | null): void {
+  const stage: ReusableStage = s === 'IDENTITY' ? 'identity' : 'public_research';
+  const record = reusableRecord(z, reused?.observedAt ?? now());
+  if (record) prior._reusable = { ...(prior._reusable || {}), [stage]: record };
+  if (reused) prior._reusedStages = { ...(prior._reusedStages || {}), [stage]: { fromJobId: reused.fromJobId, observedAt: reused.observedAt, reusedAt: now() } };
+}
+
 async function launch(sb: any, k: string, m: string, j: any, s: Stage, l: string, opts: { modelOverride?: string | null; persist?: boolean } = {}): Promise<any> {
-  const text = prompt(s, j, j.result_json || {}, l);
+  // V3 runs no Developer Advertising, so its identity stage is not asked for the Facebook page. V1/V2: unchanged.
+  const text = prompt(s, j, j.result_json || {}, l, { adsEnabled: isV3(j.result_json) ? false : undefined });
   const tools = s !== 'SYNTHESIS';
   /* V2: the stage's stamped routing, BASE first for the provider's prompt
      cache, the searches this run already made, and the research budget:
@@ -2198,6 +2250,8 @@ async function advanceDeveloperAds(sb: any, j: any): Promise<boolean> {
   const p = j.result_json || (j.result_json = {});
   const st = p._developerAds;
   if (st?.done) return false;
+  // V3 (owner, 2026-10-29): no memo23 run, no policy read, no wait. V1/V2 below, unchanged.
+  if (isV3(p)) return finishDeveloperAds(p, 'DISABLED', { reason: 'ENGINE_V3' });
   try {
     if (!st) {
       const policy = await developerAdsPolicyFor(sb);
@@ -4474,8 +4528,8 @@ async function stageTimesWithTasks(sb: any, jobId: string, stageTimes: any): Pro
 // model omits it; the summary and the assessment lists come from
 // codeSynthesis(). No usage is recorded, so COGS has no row for a call that
 // was never made.
-async function finish(sb: any, j: any, s: Stage, p: any, l: string, code = false): Promise<any> {
-  const z = code ? {} : parse(extractOpenAIText(p));
+async function finish(sb: any, j: any, s: Stage, p: any, l: string, code = false, reused: { fromJobId: string; observedAt: string; output: Record<string, unknown> } | null = null): Promise<any> {
+  const z = reused ? reused.output : code ? {} : parse(extractOpenAIText(p));
   const sources = code ? [] : extractOpenAISources(p);
   const prior = j.result_json || {};
   const ev = await resolveSourceUrls(dedupe([...(j.evidence_bundle || []), ...sources], (x) => x.url));
@@ -4494,6 +4548,9 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string, code = false
   // consecutive spans are the browser, financial-queue and marketplace waits.
   // Measured, so performance work is argued from data. Stripped for customers.
   prior._stageTimes = { ...(prior._stageTimes || {}), [s.toLowerCase()]: { startedAt: code ? now() : j.progress?.startedAt ?? null, finishedAt: now() } };
+
+  // V3: what later jobs may reuse (evidenceReuse.ts), and what this one reused.
+  if ((s === 'IDENTITY' || s === 'PUBLIC_RESEARCH') && isV3(prior)) rememberReusable(prior, s, z, reused);
 
   if (s === 'IDENTITY') {
     prior.identity = z;
@@ -4521,6 +4578,8 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string, code = false
     // pipeline (pickFinancialCandidate, MARKET's prompt, SYNTHESIS) has to
     // guess about.
     prior.publicResearch = normalizePublicResearchStructured(z);
+    // Reused findings say when they were seen (the evidence package dates them).
+    if (reused) prior.publicResearch.observedAt = reused.observedAt;
     // Route through PUBLIC_RESEARCH_CHECK_PENDING so advance() gets a chance
     // to run the mandate's second entity-discovery trigger — "If
     // PublicResearch finds ONE new strongly-supported company ID not already
@@ -4982,6 +5041,9 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string, code = false
     _v2Decisions: prior._v2Decisions ?? null,
     _searchLog: prior._searchLog ?? null,
     _escalations: prior._escalations ?? null,
+    // V3 reuse (evidenceReuse.ts): the outputs later jobs may reuse, and what this job reused. Internal; absent on V1/V2.
+    ...(prior._reusable ? { _reusable: prior._reusable } : {}),
+    ...(prior._reusedStages ? { _reusedStages: prior._reusedStages } : {}),
     _stageTimes: await stageTimesWithTasks(sb, j.id, prior._stageTimes),
     // Internal ledgers and official visual references (finish() replaces
     // result_json wholesale, so they are carried explicitly). Stripped from
@@ -5210,6 +5272,9 @@ async function advanceExclusive(sb: any, k: string, m: string, j: any, l: string
 async function advance(sb: any, k: string, m: string, j: any, l: string): Promise<any> {
   try {
     if (j.status === 'CREATED' && j.stage === 'QUEUED') {
+      // V2: the same unit's identity, observed inside the freshness window, is not bought again.
+      const reusedIdentity = await reusableStageFor(sb, j, 'identity');
+      if (reusedIdentity) return await finish(sb, j, 'IDENTITY', null, l, true, reusedIdentity);
       if (await holdForBudget(sb, j, 'IDENTITY')) return;
       return await launch(sb, k, m, j, 'IDENTITY', l);
     }
@@ -5255,6 +5320,9 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     }
     if (j.stage === 'FINANCIAL_ENTITY_WAITING') return await pollFinancialEntity(sb, j);
     if (j.status === 'CREATED' && j.stage === 'PUBLIC_RESEARCH_READY') {
+      // V2: the same parcel's public research, observed inside the freshness window, is not bought again.
+      const reusedPublic = await reusableStageFor(sb, j, 'public_research');
+      if (reusedPublic) return await finish(sb, j, 'PUBLIC_RESEARCH', null, l, true, reusedPublic);
       if (await holdForBudget(sb, j, 'PUBLIC_RESEARCH')) return;
       return await launch(sb, k, m, j, 'PUBLIC_RESEARCH', l);
     }
@@ -6540,7 +6608,7 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
  */
 function stripInternalInProgress(result: any): any {
   const r: any = { ...result };
-  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_marketEligibility', '_officialVisualsError', '_unattendedVerificationSkips', '_stageTimes', '_engine', '_v2Decisions', '_searchLog', '_escalations', '_developerAds']) delete r[k];
+  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_marketEligibility', '_officialVisualsError', '_unattendedVerificationSkips', '_stageTimes', '_engine', '_v2Decisions', '_searchLog', '_escalations', '_developerAds', '_reusable', '_reusedStages']) delete r[k];
   // Per-stage model names (COGS) are internal economics too.
   delete r._models;
   if (r.browserOfficial && typeof r.browserOfficial === 'object' && Array.isArray(r.browserOfficial.results)) {
@@ -6675,6 +6743,8 @@ function sanitizeForCustomer(job: any): any {
   delete r._v2Decisions;
   delete r._searchLog;
   delete r._escalations;
+  delete r._reusable;
+  delete r._reusedStages;
   delete r._stageTimes;
   delete r._worker;
   delete r._cost;
@@ -8210,14 +8280,17 @@ Deno.serve(async (req) => {
     // An admin's own verification runs on the admin preview engine (V2 live
     // testing); the lookup is made only while a preview is switched on.
     let isAdmin = false;
-    if (user && !anonSession && parseEngineSetting(engineSetting).adminPreview === 'V2') {
+    if (user && !anonSession && parseEngineSetting(engineSetting).adminPreview !== 'V1') {
       const { data: me } = await sb.from('users').select('is_admin').eq('auth_id', user.id).maybeSingle();
       isAdmin = me?.is_admin === true;
     }
     const engine = engineForNewJob(engineSetting, now(), undefined, { isAdmin });
     if (engine.requested) console.log(JSON.stringify({ scope: 'verify_engine', event: 'requested_unavailable', requested: engine.requested, stamped: engine.version }));
     // A V2 job also carries its research routing, read once like the engine.
-    const stamped = engine.version === 'V2' ? { ...engine, research: parseResearchTuning(await adminSettingJson(sb, VERIFY_V2_RESEARCH_SETTING_KEY)) } : engine;
+    const stamped = engine.version === 'V2' ? { ...engine, research: parseResearchTuning(await adminSettingJson(sb, VERIFY_V2_RESEARCH_SETTING_KEY)) }
+      // V3 carries its OWN routing (verify_v3_research), so V2's setting is never touched by it.
+      : engine.version === 'V3' ? { ...engine, research: parseResearchTuning(await adminSettingJson(sb, VERIFY_V3_RESEARCH_SETTING_KEY)) }
+      : engine;
     const row = { ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang, _engine: stamped, ...(reusePlan ? { _reusePlan: reusePlan } : {}) }, progress: { phase: 'queued', percent: 5 }, updated_at: now() };
     let { data: j, error } = await sb.from('research_jobs').insert({ ...row, ...(clientRequestId ? { client_request_id: clientRequestId } : {}) }).select('*').single();
     // Before migration 20261026090000 the column does not exist: start as before.

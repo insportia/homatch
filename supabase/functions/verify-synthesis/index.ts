@@ -66,7 +66,17 @@ import { parseTranslateRequest } from '../../../src/verify/translation/textTrans
 import { translateTexts } from './translate.ts';
 import { costOperationFor, priceVerification, reportConsumption, reportCostRequestId, REPORT_STAGE, type ReportUsage } from '../../../src/verify/cogs.ts';
 import { pricingStateForDerivedCost } from '../_shared/providerCost.ts';
-import { reportQualityFailures, reportRoutingFor } from '../../../src/verify/v2/researchRequest.ts';
+import {
+  appendReportAttempts, nextReportBuild, priorReportAttempts, reportAttemptTag, reportBlockingFailures, reportQualityFailures,
+  reportRepairEnabled, reportRepairFindings, reportRepairPrompt, reportRequestExtras, reportRoutingFor, reportScore, reportTuningFor,
+  type ReportAttempt,
+} from '../../../src/verify/v2/researchRequest.ts';
+import { reusedObservations } from '../../../src/verify/v2/evidenceReuse.ts';
+import { deterministicAdvertisingAssessment } from '../../../src/verify/developerAds.ts';
+import { isV3, VERIFY_V3_RESEARCH_SETTING_KEY } from '../../../src/verify/engine.ts';
+import { codeSectionMetrics } from '../../../src/verify/intelligence/codeMetrics.ts';
+import { storyKeptOnRebuild } from '../../../src/verify/intelligence/storyGuard.ts';
+import { reportStudyFor } from '../../../src/verify/intelligence/prompt.ts';
 import { notify } from '../_shared/notify.ts';
 import { awaitOpenAIBudget, backoffMs, estimateTokens, limitsFor, retryAfterMs, RETRYABLE_STATUSES } from '../../../src/verify/openaiLimit.ts';
 
@@ -178,6 +188,24 @@ async function openaiLimits(db: any): Promise<unknown> {
   return value;
 }
 
+/*
+ * THE LIVE V3 REPORT SETTING (read at most once a minute per isolate).
+ * verify_v3_research.report decides how a V3 job's report is written at
+ * BUILD time (reportRoutingFor: live, then the stamp, then AUTO). V1 and V2
+ * jobs never read it. A failed read means the defaults.
+ */
+let liveV3Memo: { at: number; research: unknown } | null = null;
+async function liveV3Settings(db: any): Promise<{ research: unknown }> {
+  if (liveV3Memo && Date.now() - liveV3Memo.at < 60_000) return liveV3Memo;
+  let research: unknown = null;
+  try {
+    const { data } = await db.from('admin_settings').select('value').eq('key', VERIFY_V3_RESEARCH_SETTING_KEY).maybeSingle();
+    research = data?.value ?? null;
+  } catch { /* defaults */ }
+  liveV3Memo = { at: Date.now(), research };
+  return liveV3Memo;
+}
+
 const json = (d: unknown, s = 200) =>
   new Response(JSON.stringify(d), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
@@ -236,11 +264,20 @@ function textOf(p: any): string {
 // through the secure viewer (research-agent `document_file`); the caller
 // already knows it, nothing new is disclosed.
 async function forCustomer(db: any, payload: Record<string, unknown>, jobId?: string): Promise<Record<string, unknown>> {
-  const { _usage: _droppedUsage, _timing: _droppedTiming, _usageFirstAttempt: _droppedFirst, _reportRouting: _droppedRouting, officialVisuals, ...stripped } = payload as Record<string, any>;
+  const { _usage: _droppedUsage, _timing: _droppedTiming, _usageFirstAttempt: _droppedFirst, _reportRouting: _droppedRouting, _reportAttempts: _droppedAttempts, officialVisuals, ...stripped } = payload as Record<string, any>;
   const rest: Record<string, any> = jobId ? { ...stripped, jobId } : stripped;
   // Personal numbers never reach the browser, whatever an older build stored.
   if (rest.people) rest.people = redactPeopleSupport(rest.people);
   for (const k of ['report', 'evidence', 'evidenceGroups', 'officialHistory', 'officialDocuments', 'people', 'participants', 'projectTeam', 'projectTeamV2', 'identity']) if (rest[k]) rest[k] = scrubPersonalNumbersDeep(rest[k]);
+  // Developer Advertising hidden from customers (verify_developer_ads.visible): older reports too.
+  // V3 reports carry no Developer Advertising (developerAdsHidden, set at build): stripped on every read.
+  if (rest.developerAdsHidden === true) {
+    delete rest.developerAds;
+    if (rest.report && typeof rest.report === 'object' && 'advertisingAssessment' in rest.report) {
+      const { advertisingAssessment: _hiddenAds, ...report } = rest.report;
+      rest.report = report;
+    }
+  }
   // Fresh photographs (freshPhotos.ts): each bucket path becomes a signed URL
   // in the same bucket with the same TTL; an unsignable photo is omitted.
   if (Array.isArray(rest.freshPhotos?.photos) && rest.freshPhotos.photos.length) {
@@ -330,9 +367,11 @@ function researchCoverage(job: any, pkg: any, bundle: any): Record<string, unkno
  * itself ignores it whenever the job kept its own stage result), and the admin
  * policy only to know the searched country. A failed read changes nothing.
  */
-async function enrichmentContext(db: any, job: any): Promise<{ completedAt: string | null; adsCost: any; adsPolicy: unknown }> {
-  const ctx = { completedAt: job?.completed_at ?? null, adsCost: null as any, adsPolicy: null as unknown };
-  if (job?.synthesis_json?.developerAds) return ctx;
+async function enrichmentContext(db: any, job: any): Promise<{ completedAt: string | null; adsCost: any; adsPolicy: unknown; adsHidden: boolean }> {
+  // Only a V3 report is ever marked: V1/V2 reads are exactly as before.
+  const adsHidden = job?.synthesis_json?.developerAdsHidden === true;
+  const ctx = { completedAt: job?.completed_at ?? null, adsCost: null as any, adsPolicy: null as unknown, adsHidden };
+  if (adsHidden || job?.synthesis_json?.developerAds) return ctx;
   try {
     const { data } = await db
       .from('cost_events')
@@ -442,13 +481,13 @@ async function persist(db: any, jobId: string, payload: unknown): Promise<void> 
  * verify_stage_cogs — so this row moves neither a customer charge nor a
  * finance total twice. Bookkeeping: a failure here never touches the report.
  */
-async function recordReportCost(db: any, jobId: string, usage: ReportUsage | null, claimedAt: string | null): Promise<void> {
+async function recordReportCost(db: any, jobId: string, usage: ReportUsage | null, claimedAt: string | null, attempt: string | null = null): Promise<void> {
   try {
     // The model that actually wrote it (a V2 job may route the report to another model).
     const consumption = reportConsumption(usage, usage?.model || MODEL);
     if (!consumption) return;
     const { data: row } = await db.from('research_jobs').select('synthesis_attempts').eq('id', jobId).maybeSingle();
-    const requestId = reportCostRequestId(jobId, row?.synthesis_attempts ?? 0, claimedAt);
+    const requestId = reportCostRequestId(jobId, row?.synthesis_attempts ?? 0, claimedAt) + (attempt ? `:${attempt}` : '');
     const { count } = await db
       .from('cost_events')
       .select('id', { count: 'exact', head: true })
@@ -481,9 +520,10 @@ async function recordReportCost(db: any, jobId: string, usage: ReportUsage | nul
       success: true,
       cache_hit: s.cachedInputTokens > 0,
       job_id: jobId,
+      // Every paid call is its own row (20261207120000: unique per job, operation and attempt).
+      ...(attempt ? { attempt } : {}),
     });
-    // 23505: cost_events_verify_once_per_stage (20260911250000) already holds
-    // this job's VERIFY_REPORT — one row per job and stage, by design.
+    // 23505: this job's VERIFY_REPORT for this attempt is already recorded.
     if (error && error.code !== '23505') console.error(`verify-synthesis: could not record report COGS for ${jobId}: ${error.message ?? error}`);
   } catch (e) {
     console.error('verify-synthesis: report COGS accounting threw', e instanceof Error ? e.message : String(e));
@@ -748,8 +788,15 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   /* The unit's register: this job's own, or — when its Service 176 task
      yielded none — the buyer's own earlier extract for the same exact unit. */
   let rj: any = job.result_json ?? {};
-  // V2 may route the report to a stronger model (VERIFY_V2 research routing, stamped on the job).
-  const reportRouting = reportRoutingFor(rj, MODEL);
+  /* V3 (engine.ts isV3, the job's own stamp): the cost round. Every V3
+     difference below is keyed on this; a V1/V2 job builds exactly as before. */
+  const v3 = isV3(rj);
+  // V3: the LIVE verify_v3_research.report, then the stamp, then AUTO. V1/V2: the stamp only, as before.
+  const live = v3 ? await liveV3Settings(writer) : { research: undefined };
+  const reportTuning = reportTuningFor(rj, live.research);
+  const reportRouting = reportRoutingFor(rj, MODEL, live.research);
+  // V3 runs no Developer Advertising: it reaches neither its prompt nor its report.
+  const adsVisible = !v3;
   // The model that wrote the report kept (the fallback, when the gate sent it there).
   let reportModel = reportRouting.model;
   let registerSource: { jobId: string; asOf: string | null; reused: true; freshExtractAdvised: boolean } | null = null;
@@ -766,7 +813,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   const projection = projectVerify({ jobId: job.id, report: rj });
   // "Now" is the job's own completion: a date the papers cite after it is never a decision.
   await hydrateStoredTasTexts(writer, rj, timing);
-  const pkg = buildEvidencePackage(rj, { now: job.completed_at ?? null });
+  const pkg = buildEvidencePackage(rj, { now: job.completed_at ?? null, developerAds: adsVisible });
   // Identity from OFFICIAL records only (TAS cases, registry documents and evidence) — never listings.
   const identity = resolveIdentity(rj?.exactUnit?.code ?? job.query ?? null, {
     tas: rj?.browserOfficial, documents: rj?.documents, official: rj?.officialEvidence, rights: rj?.rightsAndRestrictions, land: rj?.landProfile,
@@ -806,6 +853,8 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     subjectKind = null;
   }
   bundle.location = withNeighborhood(bundle.location, await neighborhoodP);
+  /* An automatic rebuild that keeps the stored story does not ask for (and pay for) a new one. */
+  const skipStory = v3 && storyKeptOnRebuild(job.synthesis_json, { autoUpgrade: opts.autoUpgrade, kind: subjectKind?.kind ?? null });
 
   /*
    * WHAT THIS VERIFICATION LEARNED ABOUT THE MARKET, KEPT.
@@ -858,11 +907,34 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   let raw: string | null = null;
   // Token usage of THIS call, kept with the report for COGS and Admin.
   // It used to be discarded, leaving the final synthesis unmetered.
-  let usage: { model: string; inputTokens: number | null; outputTokens: number | null; cachedTokens: number | null } | null = null;
+  let usage: { model: string; inputTokens: number | null; outputTokens: number | null; cachedTokens: number | null; reasoningTokens?: number | null } | null = null;
   const apiKey = Deno.env.get('OPENAI_API_KEY');
+  /*
+   * EVERY PAID CALL OF THIS BUILD (owner, 2026-10-29): first attempt, the
+   * cheap repair, the escalation. Appended to the ledger the stored report
+   * already holds (synthesis_json._reportAttempts), so a rebuild adds to the
+   * true cost instead of replacing it; verify_stage_cogs prices the ledger
+   * and each call is its own cost_events row (attempt tag).
+   */
+  const priorAttempts = priorReportAttempts(job.synthesis_json);
+  const build = nextReportBuild(priorAttempts);
+  const calls: ReportAttempt[] = [];
+  const recordCall = (kind: ReportAttempt['kind'], model: string, u: NonNullable<typeof usage>): number => {
+    calls.push({
+      kind, model, build, trigger: String(timing.trigger), at: new Date().toISOString(),
+      inputTokens: u.inputTokens ?? 0, cachedTokens: u.cachedTokens ?? 0, outputTokens: u.outputTokens ?? 0,
+      ...(u.reasoningTokens != null ? { reasoningTokens: u.reasoningTokens } : {}),
+    });
+    return calls.length - 1;
+  };
+  /* Code owns what it can compute exactly (report.ts FinalizeOptions). */
+  const finalizeOpts = v3
+    ? { fieldOwnership: 'CODE' as const, metrics: codeSectionMetrics(bundle), advertising: adsVisible ? deterministicAdvertisingAssessment(pkg.developerAds) : null }
+    : {};
   /* One report call: the model's text and usage, or null on a transport
-     failure. An availability refusal still throws (SILENT_FALLBACK = NO). */
-  let callReport: ((model: string) => Promise<{ raw: string; usage: NonNullable<typeof usage> } | null>) | null = null;
+     failure. An availability refusal still throws (SILENT_FALLBACK = NO).
+     `followUp` continues the same conversation (the repair pass). */
+  let callReport: ((model: string, followUp?: { assistant: string; user: string }) => Promise<{ raw: string; usage: NonNullable<typeof usage> } | null>) | null = null;
   if (apiKey) {
     // The asset class decides which sections this property can even have:
     // a plot of land has no building quality, and a heading with nothing
@@ -874,8 +946,12 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
       registerSource: registerSource ? { asOf: registerSource.asOf, reused: true, freshExtractAdvised: registerSource.freshExtractAdvised } : null,
       propertyKind: subjectKind,
       landProfile: rj?.landProfile ?? null,
+      // V3: code-owned fields, cache-ordered rules, the rebuild and reuse notes. V1/V2: the prompt as before.
+      ...(v3 ? { fieldOwnership: 'CODE' as const, skipStory, reusedResearch: reusedObservations(rj) } : {}),
     });
-    callReport = async (model: string) => {
+    // Reasoning effort, the output ceiling and the prompt-cache key (static rules first, per-job data last).
+    const requestExtras = v3 ? reportRequestExtras(reportTuning, reportStudyFor(subjectKind?.kind ?? null, resolveAssetClass(rj))) : {};
+    callReport = async (model: string, followUp?: { assistant: string; user: string }) => {
       try {
         timing.modelStartedAt ??= new Date().toISOString();
         /*
@@ -890,7 +966,9 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
           input: [
             { role: 'system', content: system },
             { role: 'user', content: user },
+            ...(followUp ? [{ role: 'assistant', content: followUp.assistant }, { role: 'user', content: followUp.user }] : []),
           ],
+          ...requestExtras,
         });
         await awaitOpenAIBudget(writer as any, model, estimateTokens(system, user) + 16000, limitsFor(await openaiLimits(writer), model), 90_000);
         let res: Response | null = null;
@@ -917,6 +995,8 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
         if (res.ok) {
           const body = await res.json();
           const u = body?.usage ?? null;
+          // Cut at max_output_tokens: kept visible (the gate then rejects the partial JSON and the repair runs).
+          if (body?.status === 'incomplete') timing.incompleteOutput = String(body?.incomplete_details?.reason ?? 'incomplete');
           return {
             raw: textOf(body),
             usage: {
@@ -924,6 +1004,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
               inputTokens: typeof u?.input_tokens === 'number' ? u.input_tokens : null,
               outputTokens: typeof u?.output_tokens === 'number' ? u.output_tokens : null,
               cachedTokens: typeof u?.input_tokens_details?.cached_tokens === 'number' ? u.input_tokens_details.cached_tokens : null,
+              reasoningTokens: typeof u?.output_tokens_details?.reasoning_tokens === 'number' ? u.output_tokens_details.reasoning_tokens : null,
             },
           };
         }
@@ -945,38 +1026,73 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     const first = await callReport(reportModel);
     if (first) ({ raw, usage } = first);
   }
+  let keptCall = raw != null && usage ? recordCall('first', reportModel, usage) : -1;
 
   // The bundle travels into finalize so the deterministic facts can veto a
   // model statement that contradicts them — see stripFalseScarcity.
-  let final = finalizeReport(pkg, raw, bundle);
-  /* V2 report policy AUTO: the cheap model's report failed the objective
-     gate, so the strong model gets the same prompt ONCE. The report with
-     fewer objective failures is kept; the other call's usage is recorded as
-     _usageFirstAttempt (verify_stage_cogs: report_first_attempt). */
+  let final = finalizeReport(pkg, raw, bundle, finalizeOpts);
+
+  /* THE CHEAP REPAIR (owner, 2026-10-29). A report the gate faulted goes back
+     to the SAME cheap model once, in the same conversation (rules and
+     evidence read from the prompt cache), with the gate's own findings. The
+     better of the two reports is kept (reportScore); both calls are costed. */
+  let repair: Record<string, unknown> | null = null;
+  const repairFindings = reportRepairFindings(final, !!raw);
+  if (v3 && callReport && raw && repairFindings.length && reportRepairEnabled(reportTuning)) {
+    const parseFailed = final.mode === 'DETERMINISTIC' && final.rejectedBecause.includes('model output was not parseable JSON');
+    const fixed = await callReport(reportModel, { assistant: raw.slice(0, 120_000), user: reportRepairPrompt(repairFindings, parseFailed) }).catch((e) => {
+      console.error('synthesis repair call failed', e instanceof Error ? e.message : String(e));
+      return null;
+    });
+    if (fixed) {
+      const repairCall = recordCall('repair', reportModel, fixed.usage);
+      const finalR = finalizeReport(pkg, fixed.raw, bundle, finalizeOpts);
+      const better = !!fixed.raw && reportScore(finalR, true) < reportScore(final, true);
+      repair = { findings: repairFindings.slice(0, 10), after: reportQualityFailures(finalR, !!fixed.raw).slice(0, 10), kept: better ? 'REPAIR' : 'FIRST' };
+      if (better) {
+        raw = fixed.raw;
+        usage = fixed.usage;
+        final = finalR;
+        keptCall = repairCall;
+      }
+      console.log(JSON.stringify({ scope: 'verify_report_repair', jobId: job.id, ...repair }));
+    }
+  }
+
+  /* V2 report policy AUTO: the cheap model's report (after its repair) is
+     still rejected by the objective gate, so the strong model gets the same
+     prompt ONCE (reportBlockingFailures: style and already-removed sentences
+     never pay for it). The better report is kept; the other call's usage is
+     also kept as _usageFirstAttempt for the older views. */
   let usageFirstAttempt: typeof usage = null;
   let escalation: Record<string, unknown> | null = null;
-  const failures = reportQualityFailures(final, !!raw);
+  // V3: blocking failures only (style and already-removed sentences never pay). V1/V2: as before.
+  const failures = v3 ? reportBlockingFailures(final, !!raw, reportTuning) : reportQualityFailures(final, !!raw);
   if (callReport && reportRouting.fallbackModel && failures.length) {
     const second = await callReport(reportRouting.fallbackModel).catch((e) => {
       console.error('synthesis fallback call failed', e instanceof Error ? e.message : String(e));
       return null;
     });
     if (second) {
-      const final2 = finalizeReport(pkg, second.raw, bundle);
+      const escalationCall = recordCall('escalation', reportRouting.fallbackModel, second.usage);
+      const final2 = finalizeReport(pkg, second.raw, bundle, finalizeOpts);
       const failures2 = reportQualityFailures(final2, !!second.raw);
-      const keepSecond = !!second.raw && failures2.length < failures.length;
+      const keepSecond = v3 ? !!second.raw && reportScore(final2, true) < reportScore(final, !!raw) : !!second.raw && failures2.length < failures.length;
       escalation = { from: reportModel, to: reportRouting.fallbackModel, reasons: failures.slice(0, 10), fallbackFailures: failures2.slice(0, 10), kept: keepSecond ? 'FALLBACK' : 'FIRST' };
       if (keepSecond) {
         usageFirstAttempt = usage;
         ({ raw, usage } = second);
         final = final2;
         reportModel = reportRouting.fallbackModel;
+        keptCall = escalationCall;
       } else {
         usageFirstAttempt = second.usage;
       }
       console.log(JSON.stringify({ scope: 'verify_report_escalation', jobId: job.id, ...escalation }));
     }
   }
+  if (keptCall >= 0) calls[keptCall].kept = true;
+  const reportAttempts = appendReportAttempts(priorAttempts, calls);
   if (final.mode === 'DETERMINISTIC' && final.rejectedBecause.length) {
     // Worth knowing about: a model that keeps failing the gate is a
     // prompt/model problem we want visible in logs, not silently absorbed.
@@ -993,8 +1109,12 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     synthesisModel: reportModel,
     synthesisModelPinned: true,
     /* Why this model wrote it (V2 report policy AUTO/LUNA/TERRA, and the evidence triggers that chose the strong model). */
-    _reportRouting: { ...reportRouting, model: reportModel, escalation },
+    _reportRouting: v3
+      ? { ...reportRouting, model: reportModel, escalation, engine: 'V3', repair, reasoningEffort: (reportRequestExtras(reportTuning, null).reasoning as { effort: string }).effort, storySkipped: skipStory }
+      : { ...reportRouting, model: reportModel, escalation },
     ...(usageFirstAttempt ? { _usageFirstAttempt: usageFirstAttempt } : {}),
+    /* V3: every paid report call of every build (verify_stage_cogs prices this ledger), and no advertising. Internal. */
+    ...(v3 ? { _reportAttempts: reportAttempts, developerAdsHidden: true } : {}),
     report: {
       // v3: summary + keyFindings replace overallView/executiveSummary, and
       // the pre-purchase checklist is gone rather than renamed.
@@ -1057,7 +1177,7 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     identity,
     // Developer advertising (marketing signal): only a completed stage reaches
     // the customer; the view carries no run ids or costs by construction.
-    developerAds: pkg.developerAds && (pkg.developerAds.outcome === 'COMPLETE' || pkg.developerAds.outcome === 'CACHED') ? pkg.developerAds : null,
+    developerAds: adsVisible && pkg.developerAds && (pkg.developerAds.outcome === 'COMPLETE' || pkg.developerAds.outcome === 'CACHED') ? pkg.developerAds : null,
     // Bucket paths (internal) of the customer-visible visuals, with their
     // scope/category; forCustomer() turns them into signed URLs.
     // Each record carries its byte size and quality verdict (visualQuality.ts):
@@ -1103,7 +1223,12 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   Object.assign(payload as Record<string, unknown>, readEnrichmentMarkers());
   await persist(writer, jobId, payload);
   // After the report is saved: bookkeeping can cost us a number, never the report.
-  await recordReportCost(writer, jobId, usage, job.synthesis_at ?? null);
+  if (!v3) await recordReportCost(writer, jobId, usage, job.synthesis_at ?? null);
+  // V3: one cost row per paid call of this build; the first call of the first build keeps the original untagged row.
+  else for (const [i, call] of calls.entries()) {
+    const tag = build === 1 && i === 0 ? null : reportAttemptTag(call, i);
+    await recordReportCost(writer, jobId, { model: call.model, inputTokens: call.inputTokens, outputTokens: call.outputTokens, cachedTokens: call.cachedTokens }, job.synthesis_at ?? null, tag);
+  }
   /* The customer is told when the report exists (prod 1ff4b786: the old
      notification fired at research completion and opened a page still
      writing it). First build only — an upgrade or a forced rebuild is not

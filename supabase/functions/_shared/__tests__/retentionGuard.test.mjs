@@ -95,10 +95,12 @@ test('research-agent: owner/internal regeneration actions are refused for an exp
 });
 
 test('homatch-ai: expired reports never reach the assistant context; failure gives none', () => {
+  // The retrieval moved to ownContext.ts (privacy P0, 2026-10-29); the expiry check is passed in.
   const src = readFileSync(join('supabase', 'functions', 'homatch-ai', 'index.ts'), 'utf8');
-  assert.match(src, /retentionBlockedIds\(sb, 'VERIFY_REPORT'/);
-  assert.match(src, /catch \{\s+liveReports = \[\];/);
-  assert.match(src, /internal\.verifications = liveReports\.map/);
+  assert.match(src, /retentionBlockedIds\(sb, 'VERIFY_REPORT', ids\)/);
+  const own = readFileSync(join('supabase', 'functions', 'homatch-ai', 'ownContext.ts'), 'utf8');
+  assert.match(own, /catch \{\s+live = \[\];/);
+  assert.match(own, /out\.verifications = live\.map/);
 });
 
 test('document analysis: expired document refused; an expired linked report is not read', () => {

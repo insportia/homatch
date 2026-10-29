@@ -4,7 +4,8 @@
  *   1. DETERMINISTIC — a closed intent HOMATCH already has a written answer
  *      for (content.ts). No model, no tokens, no web.
  *   2. MODEL_LIGHT   — a short conversational turn with no sign of needing
- *      current external facts: lower reasoning effort, a one-search budget.
+ *      current external facts: the light model, a small context budget
+ *      (contextPlan.ts), at most one search.
  *   3. MODEL_FULL    — everything else: research-shaped, long, or explicitly
  *      asking for current information.
  *
@@ -16,7 +17,7 @@
  * Pure and runtime-neutral: shared by the edge function, the app and tests.
  */
 
-import { isHomiIntent, type HomiDeterministicIntent } from './content.ts';
+import { type HomiDeterministicIntent, isHomiIntent } from './content.ts';
 
 export type HomiRoute =
   | { kind: 'DETERMINISTIC'; intent: HomiDeterministicIntent; reason: 'CHIP' | 'PATTERN' }
@@ -73,8 +74,18 @@ const MONTHLY = /(monthly payment|how much (will|would) i pay|ყოველთ
 const ROI = /(profitab|roi\b|rental yield|return on investment|მომგებიან|უკუგება|შემოსავლიან|доходност|выгодн|окупаем|karlı|getiri|kira getirisi|مربح|العائد|רווחי|תשואה)/u;
 const FIND_HOME = /^(i want|i need|i'm looking for|im looking for|looking for|find me|show me)? ?(a |an )?(cheaper |cheap |affordable )?(apartment|flat|home|house|property)( please)?$|(უფრო იაფი|იაფი) (ბინა|სახლი)|ბინა მინდა|ბინას ვეძებ|ვეძებ ბინას|ბინის მოძებნა|ищу квартиру|хочу квартиру|квартиру подешевле|daire arıyorum|daha ucuz daire|ucuz ev|أبحث عن شقة|شقة أرخص|מחפש דירה|דירה זולה/u;
 
-/* Signals that current external facts matter → the full tier. */
-const SEARCH_CUE = /(today|current(ly)?|latest|news|202[5-9]|right now|price (in|of)|law|regulation|tax|company|developer|ltd|llc|search the web|google|დღეს|ამჟამად|ახალი ამბ|კანონ|გადასახად|კომპანი|დეველოპერ|შპს|сегодня|сейчас|новост|закон|налог|компани|застройщик|ооо|bugün|güncel|haber|kanun|vergi|şirket|müteahhit|اليوم|حاليا|أخبار|قانون|ضريبة|شركة|مطور|היום|עכשיו|חדשות|חוק|מיסוי|חברה|יזם|https?:)/u;
+/* Signals that the turn needs CURRENT external facts or a background check → the full tier.
+   Deliberately narrow (2026-10-29): "law", "tax", "price of" and a bare year used to send
+   ordinary questions to the full tier. Those stay light now; the web policy
+   (webPolicy.ts) still decides on its own whether the search tool is offered. */
+const SEARCH_CUE = /(today|right now|latest|news|search the web|google (it|this)|check online|\bltd\b|\bllc\b|developer'?s? (track record|reputation|background)|დღეს|ახალი ამბ|სიახლ|შპს|ინტერნეტში|сегодня|новост|в интернете|погугли|(^| )ооо( |$)|bugün|son dakika|haber|internette|اليوم|أخبار|على الإنترنت|היום|חדשות|באינטרנט|https?:|www\.)/u;
+
+/* Research-shaped asks that deserve the full model even when short. */
+const COMPLEX_CUE = /(compare|comparison|analy[sz]e|analysis of|pros and cons|step by step plan|შეადარე|შედარებ|გააანალიზ|ანალიზი გამიკეთე|დადებითი და უარყოფითი|сравни|сравнен|проанализир|плюсы и минусы|karşılaştır|analiz et|artıları ve eksileri|قارن|حلل|الإيجابيات والسلبيات|השווה|תנתח|יתרונות וחסרונות)/u;
+
+/* Questions about HOMATCH's own plans and what HOMI costs: written answers. */
+const PLANS = /(subscription|(homatch|homatch's|your) (plans|pricing|packages)|pricing plans?|free trial|trial period|how much (does|is) homatch|გამოწერ|სააბონენტო|სატარიფო გეგმ|საცდელი (პერიოდ|ვერსი)|homatch\S* (ფას|პაკეტ|გეგმ)|რა ღირს homatch|подписк|тарифн\S* план|тариф\S* homatch|пробн\S* период|сколько стоит homatch|abonelik|deneme süresi|fiyatlandırma|homatch (planları|fiyatları)|اشتراك|الباقات|فترة تجريبية|أسعار homatch|מנוי|תקופת ניסיון|מחירון|המחירים של homatch)/u;
+const HOMI_FREE = /((is|are) (homi|the chat|chatting|voice( messages)?) (free|limited|paid)|how many (messages|questions)|message limit|chat limit|voice messages? (cost|free|price)|ჰომი უფასოა|ჩატი უფასოა|ხმოვანი უფასოა|რამდენი შეტყობინება|რამდენი კითხვა შემიძლია|ლიმიტი აქვს|ლიმიტი ხომ არ|homi бесплатн|чат бесплатн|голосов\S* бесплатн|сколько (сообщений|вопросов)|есть (ли )?лимит|limit var mı|ücretsiz mi|kaç mesaj|هل (homi|الدردشة) مجاني|كم رسالة|هل يوجد حد|האם (homi|הצ'אט) בחינם|כמה הודעות|יש הגבלה)/u;
 
 export interface RouteOptions {
   /** A chip's intent, sent by the client. Trusted only if it is in the closed set. */
@@ -100,7 +111,10 @@ export function routeHomiTurn(text: string, opts: RouteOptions = {}): HomiRoute 
   if (n && w <= 9 && !searchCue) {
     if (MODEL_Q.test(n)) return { kind: 'DETERMINISTIC', intent: 'MODEL_QUESTION', reason: 'PATTERN' };
     if (IDENTITY.test(n)) return { kind: 'DETERMINISTIC', intent: 'IDENTITY', reason: 'PATTERN' };
+    /* What HOMI costs is the same answer on every surface. */
+    if (HOMI_FREE.test(n)) return { kind: 'DETERMINISTIC', intent: 'HOMI_FREE', reason: 'PATTERN' };
     if (!inWorkspace) {
+      if (PLANS.test(n)) return { kind: 'DETERMINISTIC', intent: 'PLANS', reason: 'PATTERN' };
       if (CAPABILITIES.test(n)) return { kind: 'DETERMINISTIC', intent: 'CAPABILITIES', reason: 'PATTERN' };
       /* "How do I contact the seller?" is about somebody else — that one is the model's. */
       if (CONTACT.test(n) && !/(seller|owner|agent|broker|landlord|developer|გამყიდველ|მესაკუთრე|აგენტ|ბროკერ|დეველოპერ|продав|собственник|агент|застройщик|satıcı|ev sahibi|emlakçı|البائع|المالك|الوسيط|מוכר|בעלים|מתווך)/u.test(n)) {
@@ -118,6 +132,6 @@ export function routeHomiTurn(text: string, opts: RouteOptions = {}): HomiRoute 
     }
   }
 
-  const light = !searchCue && n.length <= 160 && w <= 28;
+  const light = !searchCue && !COMPLEX_CUE.test(n) && n.length <= 160 && w <= 28;
   return { kind: 'MODEL', tier: light ? 'LIGHT' : 'FULL', searchCue, intent: null };
 }

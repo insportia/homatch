@@ -24493,10 +24493,10 @@ const en = {
   voice_cancel: 'Cancel recording',
   voice_send: 'Send voice message',
   voice_transcribing: 'Turning your voice into text…',
-  voice_no_speech: 'I could not hear any words. Try again a little closer to the microphone. Nothing was charged.',
+  voice_no_speech: 'I could not hear any words. Try again a little closer to the microphone.',
   voice_too_short: 'That was very short. Hold the microphone a little longer, or tap it once and speak.',
-  voice_too_long: 'A voice message can be up to 2 minutes. Please record a shorter one.',
-  voice_failed: 'The voice message did not go through. Try again, nothing was charged.',
+  voice_too_long: 'This voice message could not be sent. Please try again.',
+  voice_failed: 'The voice message did not go through. Please try again.',
   voice_retry: 'Try again',
   voice_play: 'Play voice message',
   voice_pause: 'Pause',
@@ -25295,6 +25295,10 @@ const en = {
   lead_copy_email_aria: 'Copy the email address {{email}}',
   lead_copy_email_failed: 'Could not copy. Select the address and copy it by hand.',
   mw_copy_hint: 'Open a contact to see their email, copy it and write to them from your own mailbox.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_slow_down: 'That was a lot of voice messages very quickly. Take a short break and try again.',
+  voice_keep_talking: 'Keep talking, I am writing it all down.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -49702,10 +49706,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   voice_cancel: 'ჩაწერის გაუქმება',
   voice_send: 'ხმოვანის გაგზავნა',
   voice_transcribing: 'შენს ხმას ტექსტად ვაქცევ…',
-  voice_no_speech: 'სიტყვები ვერ გავიგე. სცადე თავიდან, მიკროფონთან ცოტა ახლოს. არაფერი ჩამოგეჭრა.',
+  voice_no_speech: 'სიტყვები ვერ გავიგე. სცადე თავიდან, მიკროფონთან ცოტა ახლოს.',
   voice_too_short: 'ძალიან მოკლე იყო. მიკროფონს ცოტა დიდხანს დააჭირე, ან ერთხელ დააჭირე და ილაპარაკე.',
-  voice_too_long: 'ხმოვანი შეტყობინება 2 წუთამდე შეიძლება. ჩაწერე უფრო მოკლე.',
-  voice_failed: 'ხმოვანი შეტყობინება ვერ გაიგზავნა. სცადე თავიდან, არაფერი ჩამოგეჭრა.',
+  voice_too_long: 'ეს ხმოვანი შეტყობინება ვერ გაიგზავნა. სცადე თავიდან.',
+  voice_failed: 'ხმოვანი შეტყობინება ვერ გაიგზავნა. სცადე თავიდან.',
   voice_retry: 'თავიდან ცდა',
   voice_play: 'ხმოვანის მოსმენა',
   voice_pause: 'პაუზა',
@@ -50504,6 +50508,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   lead_copy_email_aria: 'ელფოსტის მისამართის კოპირება: {{email}}',
   lead_copy_email_failed: 'კოპირება ვერ მოხერხდა. მონიშნეთ მისამართი და ხელით დააკოპირეთ.',
   mw_copy_hint: 'გახსენით კონტაქტი, დააკოპირეთ მისი ელფოსტა და მისწერეთ საკუთარი ელფოსტიდან.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_slow_down: 'ძალიან ბევრი ხმოვანი შეტყობინება ძალიან სწრაფად. ცოტა შეისვენე და თავიდან სცადე.',
+  voice_keep_talking: 'გააგრძელე, ყველაფერს ვიწერ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -74902,10 +74910,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   voice_cancel: 'Отменить запись',
   voice_send: 'Отправить голосовое',
   voice_transcribing: 'Превращаю ваш голос в текст…',
-  voice_no_speech: 'Я не расслышал слов. Попробуйте ещё раз, чуть ближе к микрофону. Ничего не списано.',
+  voice_no_speech: 'Я не расслышал слов. Попробуйте ещё раз, чуть ближе к микрофону.',
   voice_too_short: 'Слишком коротко. Удерживайте микрофон чуть дольше или нажмите один раз и говорите.',
-  voice_too_long: 'Голосовое сообщение может длиться до 2 минут. Запишите покороче.',
-  voice_failed: 'Голосовое сообщение не отправилось. Попробуйте ещё раз, ничего не списано.',
+  voice_too_long: 'Это голосовое сообщение не удалось отправить. Попробуйте ещё раз.',
+  voice_failed: 'Голосовое сообщение не отправилось. Попробуйте ещё раз.',
   voice_retry: 'Ещё раз',
   voice_play: 'Прослушать',
   voice_pause: 'Пауза',
@@ -75704,6 +75712,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   lead_copy_email_aria: 'Скопировать адрес {{email}}',
   lead_copy_email_failed: 'Не удалось скопировать. Выделите адрес и скопируйте его вручную.',
   mw_copy_hint: 'Откройте контакт, скопируйте его email и напишите со своей почты.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_slow_down: 'Слишком много голосовых сообщений подряд. Сделайте небольшую паузу и попробуйте снова.',
+  voice_keep_talking: 'Продолжайте, я всё записываю.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -100100,10 +100112,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   voice_cancel: 'Kaydı iptal et',
   voice_send: 'Sesli mesajı gönder',
   voice_transcribing: 'Sesinizi yazıya çeviriyorum…',
-  voice_no_speech: 'Hiç kelime duyamadım. Mikrofona biraz daha yakın tekrar deneyin. Ücret alınmadı.',
+  voice_no_speech: 'Hiç kelime duyamadım. Mikrofona biraz daha yakın tekrar deneyin.',
   voice_too_short: 'Çok kısaydı. Mikrofonu biraz daha uzun basılı tutun ya da bir kez dokunup konuşun.',
-  voice_too_long: 'Sesli mesaj en fazla 2 dakika olabilir. Daha kısa bir tane kaydedin.',
-  voice_failed: 'Sesli mesaj gönderilemedi. Tekrar deneyin, ücret alınmadı.',
+  voice_too_long: 'Bu sesli mesaj gönderilemedi. Lütfen tekrar deneyin.',
+  voice_failed: 'Sesli mesaj gönderilemedi. Lütfen tekrar deneyin.',
   voice_retry: 'Tekrar dene',
   voice_play: 'Dinle',
   voice_pause: 'Duraklat',
@@ -100902,6 +100914,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   lead_copy_email_aria: '{{email}} e-posta adresini kopyala',
   lead_copy_email_failed: 'Kopyalanamadı. Adresi seçip elle kopyalayın.',
   mw_copy_hint: 'Bir kişiyi açın, e-postasını kopyalayın ve kendi e-posta hesabınızdan yazın.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_slow_down: 'Çok kısa sürede çok fazla sesli mesaj. Kısa bir ara verip tekrar deneyin.',
+  voice_keep_talking: 'Devam edin, her şeyi yazıyorum.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -125298,10 +125314,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   voice_cancel: 'إلغاء التسجيل',
   voice_send: 'إرسال الرسالة الصوتية',
   voice_transcribing: 'أحوّل صوتك إلى نص…',
-  voice_no_speech: 'لم أسمع أي كلمات. حاول مجددًا وأنت أقرب قليلًا من الميكروفون. لم يُخصم شيء.',
+  voice_no_speech: 'لم أسمع أي كلمات. حاول مجددًا وأنت أقرب قليلًا من الميكروفون.',
   voice_too_short: 'كان قصيرًا جدًا. اضغط على الميكروفون لفترة أطول قليلًا، أو اضغط مرة واحدة وتحدّث.',
-  voice_too_long: 'يمكن أن تصل الرسالة الصوتية إلى دقيقتين. سجّل رسالة أقصر من فضلك.',
-  voice_failed: 'لم تُرسل الرسالة الصوتية. حاول مجددًا، لم يُخصم شيء.',
+  voice_too_long: 'تعذّر إرسال هذه الرسالة الصوتية. حاول مجددًا من فضلك.',
+  voice_failed: 'لم تُرسل الرسالة الصوتية. حاول مجددًا من فضلك.',
   voice_retry: 'أعد المحاولة',
   voice_play: 'تشغيل الرسالة',
   voice_pause: 'إيقاف مؤقت',
@@ -126100,6 +126116,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   lead_copy_email_aria: 'نسخ عنوان البريد الإلكتروني {{email}}',
   lead_copy_email_failed: 'تعذّر النسخ. حدّد العنوان وانسخه يدويًا.',
   mw_copy_hint: 'افتح جهة الاتصال وانسخ بريدها الإلكتروني واكتب لها من بريدك الخاص.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_slow_down: 'رسائل صوتية كثيرة جدًا في وقت قصير. خذ استراحة قصيرة ثم حاول مجددًا.',
+  voice_keep_talking: 'تابع الكلام، أنا أكتب كل شيء.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -150496,10 +150516,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   voice_cancel: 'ביטול ההקלטה',
   voice_send: 'שליחת ההודעה הקולית',
   voice_transcribing: 'הופך את הקול שלכם לטקסט…',
-  voice_no_speech: 'לא שמעתי מילים. נסו שוב קרוב יותר למיקרופון. לא חויבתם.',
+  voice_no_speech: 'לא שמעתי מילים. נסו שוב קרוב יותר למיקרופון.',
   voice_too_short: 'זה היה קצר מאוד. החזיקו את המיקרופון קצת יותר, או הקישו פעם אחת ודברו.',
-  voice_too_long: 'הודעה קולית יכולה להיות עד 2 דקות. הקליטו הודעה קצרה יותר.',
-  voice_failed: 'ההודעה הקולית לא נשלחה. נסו שוב, לא חויבתם.',
+  voice_too_long: 'לא הצלחנו לשלוח את ההודעה הקולית. נסו שוב.',
+  voice_failed: 'ההודעה הקולית לא נשלחה. נסו שוב.',
   voice_retry: 'לנסות שוב',
   voice_play: 'השמעת ההודעה',
   voice_pause: 'השהיה',
@@ -151298,6 +151318,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   lead_copy_email_aria: 'העתקת כתובת הדוא"ל {{email}}',
   lead_copy_email_failed: 'ההעתקה נכשלה. סמנו את הכתובת והעתיקו אותה ידנית.',
   mw_copy_hint: 'פתחו איש קשר, העתיקו את הדוא"ל שלו וכתבו לו מתיבת הדואר שלכם.',
+
+  /* ── HOMI COST ROUND (voice is free) ── */
+  voice_slow_down: 'יותר מדי הודעות קוליות בזמן קצר. קחו הפסקה קצרה ונסו שוב.',
+  voice_keep_talking: 'תמשיכו לדבר, אני רושם הכול.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

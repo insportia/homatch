@@ -123,6 +123,17 @@ export function editionFor(doc: LegalDoc, requested: string | null | undefined):
 
 export const operatorEntityLabelKey = (op: OperatorIdentity = LEGAL_OPERATOR): string => ENTITY_TYPE_LABEL_KEY[op.legalEntityType];
 
+/*
+ * The label before the identification number. A company carries an
+ * identification CODE (საიდენტიფიკაციო კოდი); the archived 2026-10-25 edition
+ * keeps the "ID No." wording it was published with.
+ */
+export const ID_LABEL_KEY: Record<LegalEntityType, string> = {
+  individual_entrepreneur: 'legal_id_number',
+  llc: 'legal_company_id_code',
+};
+export const operatorIdLabelKey = (op: OperatorIdentity = LEGAL_OPERATOR): string => ID_LABEL_KEY[op.legalEntityType];
+
 /**
  * 'შპს „ულტრა ქონექშენ“' in Georgian (the name already carries შპს). Elsewhere
  * the Latin name when one is configured, otherwise the registered Georgian

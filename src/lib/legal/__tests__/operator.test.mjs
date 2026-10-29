@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import {
-  ARCHIVED_EDITIONS, LEGAL_OPERATOR, PREVIOUS_OPERATOR_2026_10_25, editionFor, operatorDisplayName, operatorEntityLabelKey,
+  ARCHIVED_EDITIONS, LEGAL_OPERATOR, PREVIOUS_OPERATOR_2026_10_25, editionFor, operatorDisplayName, operatorEntityLabelKey, operatorIdLabelKey,
 } from '../operator.ts';
 
 const ROOT = new URL('../../../../', import.meta.url);
@@ -41,6 +41,9 @@ test('archived editions keep the operator they named, unchanged', () => {
   assert.equal(operatorDisplayName('ka', 'ინდივიდუალური მეწარმე', PREVIOUS_OPERATOR_2026_10_25), 'ინდივიდუალური მეწარმე ტარიელი ჩაჩუა');
   assert.equal(operatorDisplayName('en', 'Individual Entrepreneur', PREVIOUS_OPERATOR_2026_10_25), 'Individual Entrepreneur Tariel Chachua');
   assert.equal(operatorEntityLabelKey(PREVIOUS_OPERATOR_2026_10_25), 'legal_entity_individual_entrepreneur');
+  /* The company's label is an identification code; the archived edition keeps "ID No.". */
+  assert.equal(operatorIdLabelKey(), 'legal_company_id_code');
+  assert.equal(operatorIdLabelKey(PREVIOUS_OPERATOR_2026_10_25), 'legal_id_number');
   for (const doc of ['terms', 'privacy', 'cookies']) {
     assert.equal(editionFor(doc, '2026-10-25').operator, PREVIOUS_OPERATOR_2026_10_25, doc);
     for (const asked of [null, undefined, '', '1999-01-01', LEGAL_OPERATOR.versions[doc]]) {
@@ -75,6 +78,10 @@ test('the label key exists in all six languages', async () => {
     ar: 'شركة ذات مسؤولية محدودة', he: 'חברה בערבון מוגבל',
   };
   for (const [lang, value] of Object.entries(want)) assert.equal(translations[lang].legal_entity_llc, value, lang);
+  assert.equal(translations.ka.legal_company_id_code, 'საიდენტიფიკაციო კოდი');
+  assert.equal(translations.en.legal_company_id_code, 'Identification code');
+  for (const lang of ['ru', 'tr', 'ar', 'he']) assert.ok(translations[lang].legal_company_id_code && translations[lang].legal_company_id_code !== 'Identification code', lang);
+  assert.equal(translations.en.legal_id_number, 'ID No.', 'the archived edition keeps its original label');
 });
 
 test('the published versions equal the database row the migration writes', () => {

@@ -336,6 +336,8 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
       await page.waitForSelector('[data-legal-doc] h1', { timeout: 20000 });
       const body = await page.locator('[data-legal-doc]').innerText();
       assert.ok(body.includes('406378511'), `${path}: identification code shown on the legal page`);
+      if (lang === 'ka') assert.ok(body.includes('საიდენტიფიკაციო კოდი'), 'the company is labelled with its identification code');
+      if (lang === 'en') assert.ok(body.includes('Identification code'), 'the company is labelled with its identification code');
       assert.ok(!/01027085016|ტარიელი|Tariel|Chachua/.test(body), `${path}: the previous operator is gone`);
       if (lang === 'ka') {
         assert.ok(body.includes('შპს „ულტრა ქონექშენ“'), 'Georgian operator name, with its Georgian quotation marks');
@@ -378,6 +380,7 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
       assert.ok(body.includes('01027085016'), `${path} 2026-10-25: the previous operator's ID`);
       assert.ok(body.includes(lang === 'ka' ? 'ინდივიდუალური მეწარმე ტარიელი ჩაჩუა' : 'Tariel Chachua'), `${path} 2026-10-25: the previous operator's name`);
       assert.ok(!body.includes('406378511'), `${path} 2026-10-25: the new company is not written into the old edition`);
+      if (lang === 'en') assert.ok(body.includes('ID No.') && !body.includes('Identification code'), 'the archived edition keeps its "ID No." label');
       if (path === '/terms') assert.ok(body.includes('Stripe'), 'the archived Terms keep their credit/Stripe fee text');
       await page.locator('[data-legal-archived] a').click();
       await page.waitForSelector('[data-legal-previous]', { timeout: 20000 });

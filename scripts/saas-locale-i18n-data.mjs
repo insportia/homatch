@@ -32,6 +32,8 @@ export const SAAS_LOCALE_STRINGS = {
     'חברה בערבון מוגבל',
   ],
 
+  legal_company_id_code: ['Identification code', 'საიდენტიფიკაციო კოდი', 'Идентификационный код', 'Kimlik kodu', 'رمز التعريف', 'קוד זיהוי'],
+
   // ── Archived editions (?version=), kept as they were for those who accepted them ──
   legal_archived_notice: [
     'You are reading an archived edition (version {{version}}), which applied until {{until}}. It is kept unchanged for those who accepted it.',

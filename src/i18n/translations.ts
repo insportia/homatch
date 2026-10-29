@@ -25283,6 +25283,9 @@ const en = {
   legal_archived_notice: 'You are reading an archived edition (version {{version}}), which applied until {{until}}. It is kept unchanged for those who accepted it.',
   legal_view_current: 'Read the current version',
   legal_previous_versions: 'Previous versions:',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  legal_company_id_code: 'Identification code',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -50480,6 +50483,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   legal_archived_notice: 'თქვენ კითხულობთ დაარქივებულ ვერსიას ({{version}}), რომელიც მოქმედებდა {{until}}-მდე. ის უცვლელად ინახება მათთვის, ვინც ის დაადასტურა.',
   legal_view_current: 'მიმდინარე ვერსიის ნახვა',
   legal_previous_versions: 'წინა ვერსიები:',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  legal_company_id_code: 'საიდენტიფიკაციო კოდი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -75668,6 +75674,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   legal_archived_notice: 'Вы читаете архивную редакцию (версия {{version}}), которая действовала до {{until}}. Она сохранена без изменений для тех, кто её принял.',
   legal_view_current: 'Открыть действующую редакцию',
   legal_previous_versions: 'Предыдущие редакции:',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  legal_company_id_code: 'Идентификационный код',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -100854,6 +100863,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   legal_archived_notice: 'Arşivlenmiş bir sürümü okuyorsunuz (sürüm {{version}}); bu sürüm {{until}} tarihine kadar geçerliydi. Kabul edenler için değiştirilmeden saklanmaktadır.',
   legal_view_current: 'Güncel sürümü okuyun',
   legal_previous_versions: 'Önceki sürümler:',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  legal_company_id_code: 'Kimlik kodu',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -126040,6 +126052,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   legal_archived_notice: 'أنت تقرأ نسخة مؤرشفة (الإصدار {{version}})، وكانت سارية حتى {{until}}. وهي محفوظة دون تغيير لمن وافق عليها.',
   legal_view_current: 'اقرأ النسخة الحالية',
   legal_previous_versions: 'الإصدارات السابقة:',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  legal_company_id_code: 'رمز التعريف',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -151226,6 +151241,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   legal_archived_notice: 'אתה קורא גרסה בארכיון (גרסה {{version}}), שהייתה בתוקף עד {{until}}. היא נשמרת ללא שינוי עבור מי שאישר אותה.',
   legal_view_current: 'לקריאת הגרסה הנוכחית',
   legal_previous_versions: 'גרסאות קודמות:',
+
+  /* ── SAAS LOCALE + LEGAL OPERATOR (2026-10-29) ── */
+  legal_company_id_code: 'קוד זיהוי',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

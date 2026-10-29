@@ -7,7 +7,7 @@ import { usePublicNavLinks } from '@/site/publicNav';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
 import { PAGE } from '@/components/home/sections/primitives';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { ARCHIVED_EDITIONS, LEGAL_OPERATOR, formatLegalDate, operatorDisplayName, operatorEntityLabelKey, type LegalDoc } from '@/lib/legal/operator';
+import { ARCHIVED_EDITIONS, LEGAL_OPERATOR, formatLegalDate, operatorDisplayName, operatorEntityLabelKey, operatorIdLabelKey, type LegalDoc } from '@/lib/legal/operator';
 import { useLegalEdition } from '@/lib/legal/useLegalEdition';
 
 /*
@@ -169,7 +169,7 @@ export function LegalLayout({
               <div className="rounded-[0.9rem] border border-border bg-card px-4 py-3 text-[14px] leading-relaxed text-muted-foreground">
                 <span className="text-foreground font-medium">{t('legal_operated_by')}</span>{' '}
                 {operator}
-                {' · '}{t('legal_id_number')} <span dir="ltr">{op.identificationNumber}</span>
+                {' · '}{t(operatorIdLabelKey(op))} <span dir="ltr">{op.identificationNumber}</span>
                 {' · '}{LEGAL_OPERATOR.country[lang as keyof typeof LEGAL_OPERATOR.country] ?? LEGAL_OPERATOR.country.en}
               </div>
               {edition.archived ? (
@@ -256,7 +256,7 @@ export function LegalContactCard({ show, doc = 'privacy' }: { show: Array<'legal
     <dl className="mt-1 grid gap-x-6 gap-y-2 rounded-[0.9rem] border border-border bg-card p-4 text-[14px] sm:grid-cols-[auto_1fr]">
       <dt className="text-muted-foreground">{t('legal_contact_operator')}</dt>
       <dd className="text-foreground">
-        {operatorDisplayName(lang, t(operatorEntityLabelKey(op)), op)} · {t('legal_id_number')} <span dir="ltr">{op.identificationNumber}</span>
+        {operatorDisplayName(lang, t(operatorEntityLabelKey(op)), op)} · {t(operatorIdLabelKey(op))} <span dir="ltr">{op.identificationNumber}</span>
         {op.registeredAddress && <> · {op.registeredAddress}</>}
       </dd>
       {show.filter((k) => mails[k]).map((k) => (

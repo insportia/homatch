@@ -30,8 +30,6 @@ import type { HomiState } from '@/components/homi/homiStates';
 import { HomiHomeStage } from '@/components/homi/HomiHomeStage';
 import { HomiCards, HomiStartCard, type HomiChipHandler } from '@/components/homi/HomiCards';
 import { HOMI_INTRO, pick } from '@/lib/homi/content';
-import { VoiceMessageButton } from '@/components/ai/VoiceMessageButton';
-import { VoiceMessageBubble, type VoiceNote } from '@/components/ai/VoiceMessageBubble';
 
 /*
  * The composer sits at the bottom of the window, which on a modern phone
@@ -274,8 +272,6 @@ function AIPageInner() {
   const location = useLocation();
   const navigate = useNavigate();
   const [input, setInput] = useState('');
-  /* Voice messages sent this session, by the text they became. */
-  const [voiceNotes, setVoiceNotes] = useState<Record<string, VoiceNote>>({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -566,9 +562,8 @@ function AIPageInner() {
             <EmptyState onChip={onChip} />
           ) : (
             <div className="max-w-2xl mx-auto space-y-4">
-              {messages.map((m, i) => (m.role === 'user' && voiceNotes[m.content]
-                ? <VoiceMessageBubble key={m.id} note={voiceNotes[m.content]} transcript={m.content} />
-                : <MessageBubble
+              {messages.map((m, i) => (
+                <MessageBubble
                   key={m.id} role={m.role} content={m.content} onNavigate={navigate} meta={m.meta}
                   serviceContext={m.role === 'assistant' ? {
                     /* The question this answer was about: Find Property starts from it. */
@@ -720,19 +715,9 @@ function AIPageInner() {
                 + 'focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] disabled:opacity-60'
               }
             />
-            {/* ONE ROUND BUTTON BESIDE THE FIELD, like any messenger: the mic
-                while the field is empty, send once there is text. Two buttons
-                side by side narrowed the field until the placeholder wrapped
-                to three lines at 320px. Voice needs a wallet, so an account. */}
-            {session && !streaming && !input.trim() ? (
-              <VoiceMessageButton
-                locale={lang}
-                onTranscript={(text, note) => {
-                  setVoiceNotes(prev => ({ ...prev, [text.trim()]: note }));
-                  void sendMessage(text);
-                }}
-              />
-            ) : streaming ? (
+            {/* Voice messages removed from the HOMI chat (owner, 2026-10-29): the field and
+                one round send / stop button, as before. */}
+            {streaming ? (
               <Button
                 variant="ghost" onClick={cancelStream}
                 aria-label={t('ai_stop')}

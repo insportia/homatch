@@ -25,6 +25,7 @@ import {
   type ContactChannel,
 } from '@/crm/model';
 import { suggestNextStep, type CrmStatus, type NextStep } from '@/crm/nextStep';
+import { useServiceVisible } from '@/lib/serviceControls';
 import { cn } from '@/lib/utils';
 import {
   crmEntryDetail, crmEntryProfile, crmUpdate, type CrmEntryDetail, type CrmListItem, type CrmProfile,
@@ -55,6 +56,8 @@ export function CrmEntryDrawer({
 }) {
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
+  /* Email Marketing hidden (fail closed): no Email Studio entry from the CRM. */
+  const emailMarketing = useServiceVisible('email_marketing');
   const fmt = useCrmDateFormat();
   const open = entryId !== null;
 
@@ -169,7 +172,7 @@ export function CrmEntryDrawer({
     if (conversationId) navigate(conversationHref(conversationId));
   };
   const createEmail = () => {
-    if (!entryId) return;
+    if (!entryId || !emailMarketing) return;
     const href = emailStudioHref([{ entryId, propertyId }]);
     if (href) navigate(href);
   };
@@ -261,9 +264,11 @@ export function CrmEntryDrawer({
                   <button type="button" className={cn(GOLD_BUTTON, 'w-full sm:w-auto')} onClick={openConversation} disabled={!conversationId}>
                     <MessageSquare className="h-4 w-4" aria-hidden="true" /> {t('crm_open_conversation')}
                   </button>
-                  <button type="button" className={cn(SECONDARY_BUTTON, 'h-12 w-full sm:w-auto')} onClick={createEmail}>
-                    <Mail className="h-4 w-4" aria-hidden="true" /> {t('crm_create_email')}
-                  </button>
+                  {emailMarketing ? (
+                    <button type="button" className={cn(SECONDARY_BUTTON, 'h-12 w-full sm:w-auto')} onClick={createEmail} data-testid="crm-create-email">
+                      <Mail className="h-4 w-4" aria-hidden="true" /> {t('crm_create_email')}
+                    </button>
+                  ) : null}
                 </div>
                 {!conversationId ? (
                   <p className="text-2xs leading-relaxed text-[hsl(218_15%_40%)]">{t('crm_no_conversation')}</p>

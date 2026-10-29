@@ -79,11 +79,12 @@ type Campaign = Record<string, unknown> & { id: string; owner_id: string; campai
 
 async function runCampaign(sb: Sb, campaign: Campaign): Promise<Record<string, unknown>> {
   // ── SERVICE CONTROL: a paused service dispatches nothing. ────────────────
-  // AI_CALL needs `ai_call_center`, WHATSAPP needs `whatsapp`; e-mail and SMS are
-  // not paused by this. The campaign is NOT changed: its sends stay PENDING and nothing is
-  // claimed, so on reactivation it resumes exactly where it stopped — the existing
-  // claim/lease protocol keeps every send single-delivery.
+  // AI_CALL needs `ai_call_center`, WHATSAPP needs `whatsapp`, EMAIL needs `email_marketing`
+  // (fail closed, hidden 2026-10-29); SMS is not paused by this. The campaign is NOT changed:
+  // its sends stay PENDING and nothing is claimed, so on reactivation it resumes exactly where
+  // it stopped — the existing claim/lease protocol keeps every send single-delivery.
   const service = campaign.campaign_type === 'WHATSAPP' ? 'whatsapp'
+    : campaign.campaign_type === 'EMAIL' ? 'email_marketing'
     : campaign.campaign_type === 'AI_CALL' || !campaign.campaign_type ? 'ai_call_center' : null;
   if (service && !(await serviceBackendEnabled(sb, service))) {
     return { campaignId: campaign.id, skipped: 'SERVICE_DISABLED', service };

@@ -178,9 +178,11 @@ export const COMPONENTS = {
   SERVICE_CONTROLS: {
     paths: [/^src\/lib\/serviceControls\//, /^src\/components\/serviceControls\//, /^src\/pages\/admin\/AdminServiceControlPage\.tsx$/, /^src\/services\/serviceControls\.ts$/,
       fn('service-control'), /^supabase\/functions\/_shared\/serviceControl\.ts$/, /^tests\/sql\/service_controls(_expand|_broker)?\//, /^tests\/mobile\/serviceControls[A-Za-z]*\.(test\.)?mjs$/,
-      /^tests\/matrix\/serviceControlsExpand\.test\.mjs$/, /^scripts\/service-controls-(expand-)?i18n/, /^docs\/claude\/SERVICE_CONTROLS(_INVENTORY)?\.md$/],
+      /^tests\/matrix\/serviceControlsExpand\.test\.mjs$/, /^scripts\/service-controls-(expand-)?i18n/, /^docs\/claude\/SERVICE_CONTROLS(_INVENTORY)?\.md$/,
+      // Email Marketing hidden (2026-10-29): its fail-closed key, pause gate and proofs.
+      /^supabase\/functions\/_shared\/emailMarketing\/pauseGate\.ts$/, /^tests\/matrix\/emailMarketingHidden\.test\.mjs$/, /^tests\/sql\/email_marketing_hidden\//, /^scripts\/saas-email-i18n/],
     suites: ['mobile:routes', 'mobile:shell'],
-    proofs: ['service controls: migration 20261109090000 in the ledger with all six rows OFF; service-control + every gated function PROVEN_EXACT; anon gets SERVICE_DISABLED from each paused backend; customer navigation shows none of the six', 'service controls expansion: migration 20261110090000 in the ledger; the six unchanged (switches, versions); fourteen new rows ON/ON in their groups; every newly gated function PROVEN_EXACT; customer navigation unchanged while all fourteen are ON'],
+    proofs: ['service controls: migration 20261109090000 in the ledger with all six rows OFF; service-control + every gated function PROVEN_EXACT; anon gets SERVICE_DISABLED from each paused backend; customer navigation shows none of the six', 'service controls expansion: migration 20261110090000 in the ledger; the six unchanged (switches, versions); fourteen new rows ON/ON in their groups; every newly gated function PROVEN_EXACT; customer navigation unchanged while all fourteen are ON', 'email marketing hidden: migration 20261207140000 in the ledger; email_marketing OFF/OFF with its audit row; email_campaigns (SMS) unchanged; email-marketing, outreach-send, outreach-campaign-preview, comm-campaign-launch, comm-dispatch-worker, jobs-worker, service-control, homatch-ai PROVEN_EXACT; SCHEDULED/RUNNING email campaigns and Studio schedules unchanged after a tick'],
   },
   BROKER: { paths: [/^src\/(pages\/(Broker|admin\/AdminBrokersPage)|components\/broker)/, fn('[a-z-]*broker[a-z-]*')], suites: ['mobile:broker', 'mobile:routes'] },
   PUBLIC_HOMEPAGE: {

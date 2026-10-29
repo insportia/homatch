@@ -60,14 +60,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (!body?.campaignId) return json({ error: 'campaign_id_required' }, 400);
   // SERVICE CONTROL: an AI_CALL campaign needs `ai_call_center`, a WHATSAPP campaign
-  // `whatsapp`; e-mail and SMS campaigns are not paused by this. Checked before anything is
-  // queued or reserved. (A campaign without a type is launched as AI_CALL below.)
+  // `whatsapp`, an EMAIL campaign `email_marketing` (fail closed), an SMS campaign the historic
+  // `email_campaigns` key. Checked before anything is queued or reserved. (A campaign without a
+  // type is launched as AI_CALL below.)
   {
     const { data: typed } = await sb.from('outreach_campaigns').select('campaign_type').eq('id', body.campaignId).maybeSingle();
     const service: ServiceKey | null = !typed ? null
       : typed.campaign_type === 'WHATSAPP' ? 'whatsapp'
       : typed.campaign_type === 'AI_CALL' || !typed.campaign_type ? 'ai_call_center'
-      : typed.campaign_type === 'EMAIL' || typed.campaign_type === 'SMS' ? 'email_campaigns' : null;
+      : typed.campaign_type === 'EMAIL' ? 'email_marketing'
+      : typed.campaign_type === 'SMS' ? 'email_campaigns' : null;
     if (service && !(await serviceBackendEnabled(sb, service))) return json(serviceDisabledBody(service), 503);
   }
   /* An EMAIL campaign is launched only through Email Studio's review (owner brief 2026-10-24 §10):

@@ -68,7 +68,7 @@ const SECTION_SERVICES: Partial<Record<string, ServiceKey>> = {
   mortgage: 'mortgage',
   investment: 'investment',
   expats: 'for_expats',
-  email_campaign: 'email_campaigns',
+  email_campaign: 'email_marketing',
   homatch_ai: 'ai_assistant',
   developers: 'developers',
   brokers: 'brokers_directory',

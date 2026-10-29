@@ -53,6 +53,7 @@ import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceCo
 import { verifyMirror } from '../../../src/jobs/verifyMirror.ts';
 import { sweepExpiredReservations } from '../_shared/walletSweeper.ts';
 import { usageSnapshotDue } from '../_shared/emailMarketing/core.ts';
+import { isServiceDisabledReply, rearmPausedCampaign } from '../_shared/emailMarketing/pauseGate.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -693,7 +694,18 @@ async function dispatchDueCampaigns(sb: Sb, url: string, cronToken: string): Pro
         },
         body: JSON.stringify({ campaign_id: row.id }),
       });
-      const body = await res.json().catch(() => ({})) as { blocked?: boolean; reason?: string };
+      const body = await res.json().catch(() => ({})) as { blocked?: boolean; reason?: string; code?: string };
+
+      /* A PAUSED SERVICE (Admin → Service Control Center) is not the campaign's failure. The
+         claim functions skip a paused service (migration 20261207140000); this covers a claim
+         made just before the switch flipped. The work is preserved, never failed: a campaign
+         claimed from SCHEDULED goes back to SCHEDULED with its time, one already RUNNING
+         stays RUNNING, and both continue on the first tick after the service is back on. */
+      if (isServiceDisabledReply(body)) {
+        await rearmPausedCampaign(sb as never, row.id, continuing.has(row.id));
+        failed++;
+        continue;
+      }
 
       if (body?.blocked) {
         /*

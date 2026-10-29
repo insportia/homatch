@@ -22,8 +22,12 @@ export const SERVICE_ROUTE_RULES: ReadonlyArray<readonly [RegExp, ServiceKey]> =
   [/^\/investment(\/|$)/, 'investment'],
   [/^\/for-expats(\/|$)/, 'for_expats'],
   [/^\/outreach\/meta(\/|$)/, 'meta_ads'],
-  [/^\/outreach\/email(\/|$)/, 'email_campaigns'],
-  [/^\/email-studio(\/|$)/, 'email_campaigns'],
+  // Email Marketing (hidden 2026-10-29, fail closed): the campaign dashboard and every
+  // sub-page, Email Studio, and the CRM email inbox alias. SMS keeps the historic key.
+  [/^\/outreach\/email(\/|$)/, 'email_marketing'],
+  [/^\/email-studio(\/|$)/, 'email_marketing'],
+  [/^\/inbox\/email(\/|$)/, 'email_marketing'],
+  [/^\/outreach\/sms(\/|$)/, 'email_campaigns'],
   [/^\/ai$/, 'ai_assistant'],
   // The directory and its public profiles, and the professional's own desk: two switches.
   // Hiding is reversible presentation; profiles, listings and payments are kept

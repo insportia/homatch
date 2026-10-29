@@ -35,8 +35,10 @@ export const LIVE_BY_DEFAULT = [
   'brokers_directory', 'broker_desk', 'developers',
 ] as const;
 /** Paid, paused by the owner (find_property_deep 2026-10-18; find_buyers_external — the legacy Apify /
-    Actor discovery campaigns — 2026-10-24): fail closed, like the six. */
-export const PAID_CLOSED_BY_DEFAULT = ['find_property_deep', 'find_buyers_external'] as const;
+    Actor discovery campaigns — 2026-10-24; email_marketing — email campaigns, Email Studio, email
+    plans, sending domains and CRM inbox replies, hidden 2026-10-29): fail closed, like the six.
+    The historic `email_campaigns` key governs SMS campaigns only since 2026-10-29. */
+export const PAID_CLOSED_BY_DEFAULT = ['find_property_deep', 'find_buyers_external', 'email_marketing'] as const;
 export const SERVICE_KEYS = [...PAUSED_BY_DEFAULT, ...LIVE_BY_DEFAULT, ...PAID_CLOSED_BY_DEFAULT] as const;
 export type ServiceKey = typeof SERVICE_KEYS[number];
 export const SERVICE_DISABLED = 'SERVICE_DISABLED';

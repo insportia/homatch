@@ -10,6 +10,15 @@
 // belong to that account; the service role is used for writes the customer may not
 // make directly (provider ids, wallet). Nothing here sends bulk mail, and nothing
 // here charges without an explicit request (purchase) or prior consent (renewal).
+//
+// SERVICE CONTROL (`email_marketing`, fail closed; hidden by the owner 2026-10-29): while it
+// is off EVERY customer action is refused with 503 SERVICE_DISABLED before anything is read,
+// written, charged or sent to a provider. Only the provider usage snapshot stays open (admin
+// `usage_refresh` and the cron `usage_refresh_cron`): a read-only Resend /usage call that
+// transactional email monitoring also relies on. `plan_renew_due` charges NOTHING while off:
+// renewals pause and no period is extended (a paid period that ends during the pause lapses,
+// as it would without a renewal); lapsing and releasing stale reservations, which move no
+// money, keep running.
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { authenticate, json, preflight, serviceClient, checkRateLimit, logEvent, redact } from '../_shared/comm/auth.ts';
@@ -27,6 +36,8 @@ import { handleCopilot } from '../_shared/emailMarketing/copilot.ts';
 import { deleteAsset, uploadAsset } from '../_shared/emailMarketing/assets.ts';
 import { deliverabilityCheck } from '../_shared/emailMarketing/deliverability.ts';
 import { assessCampaign } from '../../../src/emailMarketing/risk/engine.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
+import { emailMarketingActionGated } from '../_shared/emailMarketing/pauseGate.ts';
 
 type Sb = ReturnType<typeof serviceClient>;
 
@@ -49,6 +60,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (action === 'plan_renew_due' || action === 'usage_refresh_cron') {
       if (!(await cronAuthorized(sb, req))) return json({ ok: false, error: 'UNAUTHORIZED' }, 401);
       return action === 'plan_renew_due' ? await renewDue(sb) : await usageRefresh(sb);
+    }
+
+    /* Email Marketing paused: nothing below runs (see the header). */
+    if (emailMarketingActionGated(action) && !(await serviceBackendEnabled(sb, 'email_marketing'))) {
+      return json({ ok: false, ...serviceDisabledBody('email_marketing') }, 503);
     }
 
     const caller = await authenticate(req);
@@ -122,10 +138,12 @@ async function planPurchase(sb: Sb, s: EmailSettings, owner: Owner, body: Record
 }
 
 /* Opted-in renewals whose period is ending. One charge per (owner, ending period): the key
-   names the period, so a re-run of this job cannot renew the same month twice. */
+   names the period, so a re-run of this job cannot renew the same month twice.
+   While Email Marketing is off NO renewal is charged and nothing is extended. */
 async function renewDue(sb: Sb): Promise<Response> {
   const s = await loadEmailSettings(sb);
-  const { data, error } = await sb.rpc('email_plan_due_renewals', { p_limit: 25 });
+  const paused = !(await serviceBackendEnabled(sb, 'email_marketing'));
+  const { data, error } = paused ? { data: [], error: null } : await sb.rpc('email_plan_due_renewals', { p_limit: 25 });
   if (error) return json({ ok: false, error: error.message }, 500);
   let renewed = 0, insufficient = 0, failed = 0, superseded = 0;
   for (const r of (data ?? []) as Array<{ owner_user_id: string; plan_code: string; period_id: string }>) {
@@ -141,7 +159,7 @@ async function renewDue(sb: Sb): Promise<Response> {
   const { data: lapsed } = await sb.rpc('email_plan_lapse_expired');
   /* Reservations left open by a run that died give their allowance back. */
   const { data: stale } = await sb.rpc('email_quota_release_stale', { p_minutes: 30, p_broadcast_days: 7 });
-  const out = { renewed, insufficient, failed, superseded, lapsed: Number(lapsed ?? 0), staleReleased: Number(stale ?? 0) };
+  const out = { renewed, insufficient, failed, superseded, lapsed: Number(lapsed ?? 0), staleReleased: Number(stale ?? 0), renewalsPaused: paused };
   logEvent('email-marketing', 'renewals', out);
   return json({ ok: true, ...out });
 }

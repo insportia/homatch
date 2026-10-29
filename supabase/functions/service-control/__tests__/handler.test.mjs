@@ -94,7 +94,10 @@ test('overview: every service, effective state, readiness by NAME, never a secre
   assert.equal(r.status, 200);
   /* Service order: the six, the live products, then the paid ones that fail closed — Deep Search
      (2026-10-18) and the legacy paid external discovery (matching workspace, 2026-10-24). */
-  assert.deepEqual(r.body.services.map((s) => s.key), [...SIX, ...LIVE.filter((k) => k !== 'find_property_deep'), 'find_property_deep', 'find_buyers_external']);
+  assert.deepEqual(r.body.services.map((s) => s.key), [...SIX, ...LIVE.filter((k) => k !== 'find_property_deep'), 'find_property_deep', 'find_buyers_external', 'email_marketing']);
+  /* Email Marketing (hidden 2026-10-29): no row here, and a missing row is CLOSED and OFF. */
+  const marketing = r.body.services.find((s) => s.key === 'email_marketing');
+  assert.deepEqual([marketing.failMode, marketing.backend, marketing.frontend, marketing.group, marketing.effective], ['CLOSED', false, false, 'marketing', 'PAUSED']);
   const six = r.body.services.filter((s) => SIX.includes(s.key));
   assert.ok(six.every((s) => s.effective === 'PAUSED' && s.frontend === false && s.backend === false && s.failMode === 'CLOSED'), 'the six stay paused and fail closed');
   const live = r.body.services.filter((s) => LIVE.includes(s.key) && s.key !== 'find_property_deep');
@@ -170,14 +173,20 @@ test('group pause: one known group, the group name typed as confirmation, never 
 test('readiness for a live product names its own switches as notes, never as blockers', async () => {
   const { readiness } = await import('../readiness.ts');
   const facts = { secrets: { OPENAI_API_KEY: true }, r2Configured: true,
-    tables: { discovery_runs: true, outreach_campaigns: true },
+    tables: { discovery_runs: true, outreach_campaigns: true, email_studio_campaigns: true },
     settings: { find_property_social_enabled: false, provider_disabled_list: '["DATAFORSEO"]', outreach_email_sending_enabled: false },
     routes: [], products: [] };
   const deep = readiness('find_property_deep', facts);
   assert.equal(deep.ready, true, 'a dormant own setting does not block');
   assert.ok(deep.notes.includes('FIND_PROPERTY_SOCIAL_SETTING_OFF'));
-  const email = readiness('email_campaigns', facts);
+  /* Email Marketing owns the email notes; the historic key is SMS only (2026-10-29). */
+  const email = readiness('email_marketing', facts);
   assert.equal(email.ready, true);
   assert.ok(email.notes.includes('EMAIL_SENDING_SETTING_OFF'));
+  assert.equal(readiness('email_marketing', { ...facts, tables: { outreach_campaigns: true } }).ready, false, 'Email Studio schema is required');
+  const sms = readiness('email_campaigns', facts);
+  assert.equal(sms.ready, true);
+  assert.ok(sms.notes.includes('SMS_SENDING_SETTING_OFF'));
+  assert.ok(!sms.notes.includes('EMAIL_SENDING_SETTING_OFF'), 'the SMS key reports no email switch');
   assert.equal(readiness('verify', { ...facts, secrets: {} }).ready, false, 'Verify cannot run without its AI key');
 });

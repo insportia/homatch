@@ -41,8 +41,12 @@ export default function CampaignsPage() {
   // Paused services (Admin → Service Control Center): no tab of their own and no
   // link into their workspace. Their past campaigns stay listed under ALL.
   const { services } = useServiceControls();
+  // Email Marketing (`email_marketing`, hidden by default since 2026-10-29) and SMS (the
+  // historic `email_campaigns` key) follow the same rule.
   const channelTabs = CHANNEL_TABS.filter((tab) =>
-    (tab !== 'AI_CALL' || services.ai_call_center.frontend) && (tab !== 'WHATSAPP' || services.whatsapp.frontend));
+    (tab !== 'AI_CALL' || services.ai_call_center.frontend) && (tab !== 'WHATSAPP' || services.whatsapp.frontend)
+    && (tab !== 'EMAIL' || services.email_marketing.frontend) && (tab !== 'SMS' || services.email_campaigns.frontend));
+  const emailShown = services.email_marketing.frontend;
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
 
@@ -198,14 +202,19 @@ export default function CampaignsPage() {
                     return (
                       <tr key={c.id} className="border-b last:border-0 hover:bg-muted/30 [&>td]:px-3 [&>td]:py-2">
                         <td className="max-w-[220px]">
-                          <button
-                            type="button"
-                            className="block max-w-full truncate text-start font-medium hover:underline"
-                            /* An email campaign lives in Email Studio (review, designer, send). */
-                            onClick={() => navigate(c.campaign_type === 'EMAIL' ? `/outreach/email/campaigns/${c.id}` : builderPath(`?id=${c.id}`))}
-                          >
-                            {c.name}
-                          </button>
+                          {c.campaign_type === 'EMAIL' && !emailShown ? (
+                            /* Email Marketing is hidden: the campaign stays listed, its workspace is not linked. */
+                            <span className="block max-w-full truncate font-medium" data-testid="campaign-email-hidden">{c.name}</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="block max-w-full truncate text-start font-medium hover:underline"
+                              /* An email campaign lives in Email Studio (review, designer, send). */
+                              onClick={() => navigate(c.campaign_type === 'EMAIL' ? `/outreach/email/campaigns/${c.id}` : builderPath(`?id=${c.id}`))}
+                            >
+                              {c.name}
+                            </button>
+                          )}
                           {c.paused_reason ? (
                             <span className="mt-0.5 flex items-center gap-1 text-[13px] text-muted-foreground">
                               <ShieldAlert className="h-3 w-3 shrink-0" aria-hidden="true" />

@@ -247,7 +247,7 @@ const PRODUCT_LINES: ReadonlyArray<readonly [string | null, string]> = [
   ['find_buyers', 'Find buyers or tenants (/property/add) — add a property and Homatch finds people already expressing intent that fits it.'],
   ['mortgage', 'Mortgage (/mortgage) — the real monthly payment and total cost, including the fees a bank quote leaves out.'],
   ['meta_ads', 'Meta Ads (/outreach/meta) — advertise a property or another offer on Facebook and Instagram. Homatch builds and manages the campaign; the customer picks the goal, budget and photos. The right destination for "how do I advertise this on Facebook" — never send them to Facebook documentation for that.'],
-  ['email_campaigns', 'Email Campaigns (/outreach/email): reaching a list of leads you already have, by email. Only relevant to somebody who is actually doing outreach.'],
+  ['email_marketing', 'Email Campaigns (/outreach/email): reaching a list of leads you already have, by email. Only relevant to somebody who is actually doing outreach.'],
   ['ai_call_center', 'AI Call Center (/outreach/calls): reaching a list of leads you already have, by phone. Only relevant to somebody who is actually doing outreach.'],
   ['find_property', 'Active search (/active-search) — set criteria once and be alerted when new matches appear. For a buyer who is waiting, not one who is deciding.'],
   ['for_expats', 'Moving to Georgia (/for-expats/georgia) — a guided relocation journey that builds a personal, saved step-by-step plan (action FOR_EXPATS).'],

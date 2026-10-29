@@ -8,7 +8,7 @@ change or deploy. Initial state: all six OFF.
 **Expansion** (migration `20261110090000_service_controls_expand.sql`): fourteen live
 products join the same table, in groups, seeded ON/ON because they are live today:
 find_property, find_property_deep, find_buyers, verify, contracts, mortgage, investment,
-for_expats, meta_ads, email_campaigns, ai_assistant, brokers_directory, broker_desk,
+for_expats, meta_ads, email_campaigns (SMS since 2026-10-29), ai_assistant, brokers_directory, broker_desk,
 developers. The inventory (routes, entry points, gates, what keeps running, why each
 platform piece has no switch) is `docs/claude/SERVICE_CONTROLS_INVENTORY.md`.
 
@@ -17,7 +17,7 @@ platform piece has no switch) is `docs/claude/SERVICE_CONTROLS_INVENTORY.md`.
 | Kind | Keys | Control unreadable | Row missing | Frontend before the first answer |
 |---|---|---|---|---|
 | Paused by the owner | the original six (`PAUSED_BY_DEFAULT`) | refuse / hide (closed) | OFF | hidden ("busy" placeholder on its routes) |
-| Paid, paused by the owner (2026-10-18) | `find_property_deep` (`PAID_CLOSED_BY_DEFAULT`) | refuse / hide (closed) | OFF | hidden; never taken from browser memory |
+| Paid, paused by the owner (2026-10-18; 2026-10-24; 2026-10-29) | `find_property_deep`, `find_buyers_external`, `email_marketing` (`PAID_CLOSED_BY_DEFAULT`) | refuse / hide (closed) | OFF | hidden; never taken from browser memory |
 | Live product | the other thirteen (`LIVE_BY_DEFAULT`) | run / show (open) | ON | this browser's last answer (`localStorage` `homatch-service-visibility`), else shown |
 
 An explicit OFF row is honoured for both. Fail-open is deliberate: an outage of the control

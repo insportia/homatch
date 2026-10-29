@@ -30,6 +30,7 @@ import {
   CRM_STATUSES, buildCrmCsv, emailStudioHref, parseEntryParam, statusLabelKey,
 } from '@/crm/model';
 import type { CrmStatus } from '@/crm/nextStep';
+import { useServiceVisible } from '@/lib/serviceControls';
 import { cn } from '@/lib/utils';
 import { crmList, crmListAll, type CrmList, type CrmListItem } from '@/services/leadsCrm';
 
@@ -39,6 +40,8 @@ type Filter = 'ALL' | CrmStatus;
 export default function LeadsCrmPage() {
   const { t } = useLanguage();
   const navigate = useNavigate();
+  /* Email Marketing hidden (fail closed): selecting leads offers no campaign. */
+  const emailMarketing = useServiceVisible('email_marketing');
   const fmt = useCrmDateFormat();
   const [params, setParams] = useSearchParams();
 
@@ -122,6 +125,7 @@ export default function LeadsCrmPage() {
   };
 
   const createEmailForSelected = () => {
+    if (!emailMarketing) return;
     const href = emailStudioHref([...selected.values()].map((i) => ({ entryId: i.entryId, propertyId: i.propertyId })));
     if (href) navigate(href);
   };
@@ -256,9 +260,11 @@ export default function LeadsCrmPage() {
               <button type="button" className={cn(SECONDARY_BUTTON, 'h-12')} onClick={() => setSelected(new Map())}>
                 {t('crm_clear_selection')}
               </button>
-              <button type="button" className={GOLD_BUTTON} onClick={createEmailForSelected}>
-                <Mail className="h-4 w-4" aria-hidden="true" /> {t('crm_create_email')}
-              </button>
+              {emailMarketing ? (
+                <button type="button" className={GOLD_BUTTON} onClick={createEmailForSelected} data-testid="crm-create-email-selected">
+                  <Mail className="h-4 w-4" aria-hidden="true" /> {t('crm_create_email')}
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}

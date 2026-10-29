@@ -50,6 +50,7 @@ import {
 import { checkDraft, DRAFT_SYSTEM_PROMPT } from '../../../src/emailStudio/copyGuard.ts';
 import { galleryImages } from '../../../src/property/gallery.ts';
 import { serviceBackendEnabled, serviceDisabledBody } from './serviceControl.ts';
+import { studioActionNeedsEmailMarketing } from './emailMarketing/pauseGate.ts';
 import { assessCampaign } from '../../../src/emailMarketing/risk/engine.ts';
 import {
   BODY_MAX, checkOutreachDraft, OUTREACH_SYSTEM_PROMPT, parseOutreachRequest,
@@ -245,6 +246,7 @@ async function recordCost(sb: Sb, row: Record<string, unknown>): Promise<void> {
 
 /* ── the router ───────────────────────────────────────────────────────────── */
 
+
 export async function handleStudioAction(req: Request, body: Record<string, unknown>): Promise<Response> {
   if (body.action === 'studio_send_scheduled') return handleScheduledSend(req, body);
   try {
@@ -253,11 +255,12 @@ export async function handleStudioAction(req: Request, body: Record<string, unkn
     const sb = serviceClient();
     const owner = await loadOwner(sb, caller.userId);
     if (!owner) return json({ ok: false, error: 'ACCOUNT_UNAVAILABLE' }, 403);
-    // SERVICE CONTROL (key `email_campaigns`): AI drafting, tests and sends wait while
-    // paused; rendering a preview and reviewing a draft cost nothing and stay open.
-    if ((body.action === 'studio_generate' || body.action === 'studio_test' || body.action === 'studio_send')
-        && !(await serviceBackendEnabled(sb, 'email_campaigns'))) {
-      return json({ ok: false, ...serviceDisabledBody('email_campaigns') }, 503);
+    // SERVICE CONTROL (key `email_marketing`, fail closed, hidden 2026-10-29): every Email
+    // Studio action waits while it is off: render, review, AI drafting, tests and sends. The
+    // CRM lead-draft helper is refused only for its EMAIL channel; chat, WhatsApp, Telegram and
+    // SMS drafts are not Email Marketing and stay open.
+    if (studioActionNeedsEmailMarketing(body) && !(await serviceBackendEnabled(sb, 'email_marketing'))) {
+      return json({ ok: false, ...serviceDisabledBody('email_marketing') }, 503);
     }
 
     switch (body.action) {
@@ -652,9 +655,11 @@ async function handleScheduledSend(req: Request, body: Record<string, unknown>):
       await sb.rpc('email_studio_schedule_outcome', { p_campaign_id: c.id, p_state: 'ACCOUNT_UNAVAILABLE' });
       return json({ ok: false, state: 'ACCOUNT_UNAVAILABLE' });
     }
-    if (!(await serviceBackendEnabled(sb, 'email_campaigns'))) {
-      await sb.rpc('email_studio_schedule_outcome', { p_campaign_id: c.id, p_state: 'SERVICE_PAUSED' });
-      return json({ ok: false, state: 'SERVICE_PAUSED' });
+    /* Paused: the schedule is KEPT (no outcome is written), so it goes out on the first tick
+       after Email Marketing is back. The claim (email_studio_claim_due_scheduled) already skips
+       while paused; this covers a claim made just before the switch flipped. */
+    if (!(await serviceBackendEnabled(sb, 'email_marketing'))) {
+      return json({ ok: false, state: 'SERVICE_PAUSED', ...serviceDisabledBody('email_marketing') }, 503);
     }
     const res = await actionSend(sb, owner, { approved: true, campaignId: c.id, versionHash: c.scheduled_hash });
     const out = await res.clone().json().catch(() => ({})) as { ok?: boolean; state?: string; remaining?: number; error?: string };

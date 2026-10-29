@@ -5,7 +5,8 @@
 // virtual list, so find-in-page and screen readers still see every row.
 
 import { Facebook, Linkedin, Mail, MessageCircle, Phone, Send, Share2 } from 'lucide-react';
-import { useMemo } from 'react';
+import { type ReactNode, useMemo } from 'react';
+import { CopyEmailButton } from '@/components/leads/CopyEmailButton';
 import { formatMoney, intlLocaleFor, isolate } from '@/components/workspace/primitives';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { curatedSummary, type SummaryContext } from '@/leads/curatedSummary';
@@ -61,7 +62,7 @@ export function InterestChips({ interests }: { interests: string[] | null | unde
   );
 }
 
-function Detail({ label, value, href, testId }: { label: string; value: string | null | undefined; href?: string | null; testId?: string }) {
+function Detail({ label, value, href, testId, copy }: { label: string; value: string | null | undefined; href?: string | null; testId?: string; copy?: ReactNode }) {
   if (!value) return null;
   return (
     <div className="min-w-0">
@@ -69,6 +70,7 @@ function Detail({ label, value, href, testId }: { label: string; value: string |
       <dd className="min-w-0 break-words text-sm font-semibold text-[hsl(218_45%_14%)]" dir="ltr" data-testid={testId}>
         {href ? <a href={href} target="_blank" rel="noopener noreferrer" className="underline-offset-4 hover:underline [overflow-wrap:anywhere]">{value}</a> : <span className="[overflow-wrap:anywhere]">{value}</span>}
       </dd>
+      {copy ? <div className="mt-1.5">{copy}</div> : null}
     </div>
   );
 }
@@ -136,7 +138,8 @@ export function CuratedRows({
             </div>
             {unlocked ? (
               <dl className="col-span-2 grid gap-x-4 gap-y-2 rounded-xl bg-[hsl(218_30%_98%)] p-3 sm:grid-cols-2 md:col-start-2 md:col-end-6 lg:grid-cols-4" data-testid="mw-contact">
-                <Detail label={t('mw_field_email')} value={lead.email} href={lead.email ? `mailto:${lead.email}` : null} testId="mw-contact-email" />
+                <Detail label={t('mw_field_email')} value={lead.email} href={lead.email ? `mailto:${lead.email}` : null} testId="mw-contact-email"
+                  copy={<CopyEmailButton email={lead.email} size="sm" testId="mw-copy-email" />} />
                 <Detail label={t('mw_field_phone')} value={lead.phone} href={lead.phone ? `tel:${lead.phone.replace(/[^\d+]/g, '')}` : null} />
                 <Detail label={t('mw_ch_WHATSAPP')} value={lead.whatsapp} />
                 <Detail label={t('mw_ch_TELEGRAM')} value={lead.telegram} />

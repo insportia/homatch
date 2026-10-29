@@ -14,6 +14,7 @@ import type { MarketplaceSearchRequest } from './worker-contract.ts';
 import type { FreshnessState } from './normalize.ts';
 import type { SellerClass } from './seller.ts';
 import { comparePlaces, placeNamesFor } from '../normalize/place.ts';
+import { STREETS } from '../findBuyers/places.ts';
 import { type LocalComparison, vsComparable } from './price-intel.ts';
 
 export const RANKING_VERSION = 'marketplace-ranking-1';
@@ -107,13 +108,39 @@ const inRange = (v: number | null, r: { min: number | null; max: number | null }
 export function districtFit(district: string | null, wanted: readonly string[]): 'MATCH' | 'OTHER' | 'UNKNOWN' | 'NA' {
   if (!wanted.length) return 'NA';
   if (!district) return 'UNKNOWN';
-  const verdicts = wanted.map((w) => placeNamesFor(w).map((name) => comparePlaces(district, name)));
+  const verdicts = wanted.map((w) => {
+    const street = streetDistrictOf(w);
+    return [...placeNamesFor(w), ...(street ? placeNamesFor(street) : [])].map((name) => comparePlaces(district, name));
+  });
   if (verdicts.some((v) => v.includes('AGREE'))) return 'MATCH';
   if (verdicts.every((v) => v.includes('CONFLICT'))) return 'OTHER';
   return 'UNKNOWN';
 }
 
-const structuredAmenity = (must: string, f: PropertyFacts): boolean | null => must === 'PARKING' ? f.parking
+/**
+ * The district a requested STREET lies in, or null. "პეკინზე" is how people name the
+ * Pekini area of Saburtalo, and portals file listings under districts, never streets:
+ * with "პეკინი" kept as the brief's district every Saburtalo listing was rejected as a
+ * different place (production search 8f9ba53b, 2026-10-29: 99 homes, 53 fitting every
+ * other criterion, 0 best matches). Nominative, genitive and street-word forms
+ * ("პეკინი", "პეკინის გამზირი", "Pekini Ave", "Пекинская") resolve; anything the street
+ * table does not know stays unresolved.
+ */
+const STREET_WORDS = /\s+(?:ქ\.|ქუჩა|გამზ\.|გამზირი|street|str\.?|st\.|ave\.?|avenue|ул\.?|улица|проспект|пр\.)$/u;
+export function streetDistrictOf(name: string): string | null {
+  const wanted = name.trim().toLowerCase().replace(STREET_WORDS, '').replace(/^(?:ул\.?|улица|проспект|пр\.)\s+/u, '');
+  if (!wanted) return null;
+  for (const street of Object.values(STREETS)) {
+    for (const form of Object.values(street.names).flat()) {
+      const f = String(form).toLowerCase();
+      const stem = f.replace(/ის$/u, '');
+      if (wanted === f || (stem !== f && (wanted === stem || wanted === `${stem}ი` || wanted === `${stem}ე`))) return street.district;
+    }
+  }
+  return null;
+}
+
+const structuredAmenity =(must: string, f: PropertyFacts): boolean | null => must === 'PARKING' ? f.parking
   : must === 'FURNISHED' ? f.furnished
     : must === 'ELEVATOR' ? f.elevator ?? (f.amenities.includes('ELEVATOR') ? true : f.amenities.includes('NO_ELEVATOR') ? false : null)
       : f.amenities.includes(must) ? true : null;

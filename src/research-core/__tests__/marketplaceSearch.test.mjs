@@ -17,7 +17,7 @@ import { normalizeCandidate, validateListing } from '../marketplace/normalize.ts
 import { classifyPair, resolveProperties } from '../marketplace/property-entity.ts';
 import { classifySeller } from '../marketplace/seller.ts';
 import { localComparison, priceDiscrepancy } from '../marketplace/price-intel.ts';
-import { budgetBand, districtFit, hardFilter } from '../marketplace/ranking.ts';
+import { budgetBand, districtFit, hardFilter, streetDistrictOf } from '../marketplace/ranking.ts';
 import { MAX_UPGRADE_RECOMMENDATIONS, isMeaningful, selectUpgrades, whatYouGain } from '../marketplace/upgrade.ts';
 import { pageResults, processSearch, publicView } from '../marketplace/pipeline.ts';
 import {
@@ -680,4 +680,25 @@ test('district fit does not depend on the alphabet the customer typed (live sear
   assert.equal(districtFit('Мухиани', ['Unknownville']), 'UNKNOWN', 'a request the table does not know is never translated');
   assert.equal(districtFit(null, latin), 'UNKNOWN');
   assert.equal(districtFit('ვაკე', []), 'NA');
+});
+
+test('a requested street is its district: "პეკინზე" finds Saburtalo homes (production search 8f9ba53b, 2026-10-29)', () => {
+  for (const wanted of ['პეკინი', 'პეკინის', 'პეკინის გამზირი', 'Pekini', 'Pekini Ave', 'Пекинская', 'ул. Пекинская']) {
+    assert.equal(streetDistrictOf(wanted), 'saburtalo', wanted);
+    assert.equal(districtFit('საბურთალო', [wanted]), 'MATCH', wanted);
+    assert.equal(districtFit('Saburtalo', [wanted]), 'MATCH', wanted);
+  }
+  assert.equal(districtFit('დიღმის მასივი', ['პეკინი']), 'OTHER', 'a different district is still a different place');
+  assert.equal(districtFit('ვაკე', ['ჭავჭავაძე']), 'MATCH');
+  assert.equal(streetDistrictOf('ვაკე'), null, 'a district is not a street');
+  assert.equal(streetDistrictOf('პეკ'), null);
+  const f = { priceUsd: 150000, pricePerSqmUsd: 1500, areaSqm: 100, rooms: 3, bedrooms: 2, bathrooms: 1, floor: 5, totalFloors: 12,
+    city: 'თბილისი', district: 'საბურთალო', propertyType: 'APARTMENT', transactionType: 'BUY', buildingStatus: 'NEW_BUILD',
+    renovationStatus: null, parking: null, furnished: null, elevator: null, amenities: [], constructionYear: null };
+  const req = { ...F.FIXTURE_REQUEST, districts: ['პეკინი'], priceMinUsd: 120000, priceMaxUsd: 160000, areaMinSqm: 80, areaMaxSqm: 110,
+    rooms: { min: 3, max: 3 }, bedrooms: { min: 2, max: 2 }, bathrooms: null, buildingStatuses: ['NEW_BUILD', 'UNDER_CONSTRUCTION'],
+    mustHave: [], floorPreferences: [], renovationPreferences: [] };
+  const r = hardFilter(f, req);
+  assert.equal(r.checks.find((c) => c.field === 'DISTRICT').result, 'PASS');
+  assert.deepEqual(r.violations, []);
 });

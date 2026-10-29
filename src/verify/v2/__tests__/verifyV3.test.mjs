@@ -129,15 +129,22 @@ test('V2 research-agent: the ads stage, its policy read and the identity prompt 
   const early = ads.indexOf("if (isV3(p)) return finishDeveloperAds(p, 'DISABLED'");
   assert.ok(early > 0 && early < ads.indexOf('await developerAdsPolicyFor(sb)'), 'only V3 returns before the policy read');
   assert.match(RA, /const text = prompt\(s, j, j\.result_json \|\| \{\}, l, \{ adsEnabled: isV3\(j\.result_json\) \? false : undefined \}\);/);
-  // Inside prompt(): the ONLY V3 differences are the Facebook ask and the neighbourhood search.
+  // Inside prompt(): the ONLY V3 difference is the Facebook-page ask, which fed the ads stage alone.
   const p = fnBody(RA, 'function prompt(s: Stage', 'async function reusableStageFor(');
   assert.equal((p.match(/adsEnabled === false/g) ?? []).length, 1);
-  assert.equal((p.match(/\bv3 \?/g) ?? []).length, 3, 'location topics, nearbyPlaces schema, nearbyPlaces paragraph');
+  assert.doesNotMatch(p, /\bv3\b|isV3/, 'no other engine branch in any research prompt');
+  const identity = fnBody(p, "if (s === 'IDENTITY')", "if (s === 'OFFICIAL_COLLECTION')");
+  assert.match(identity, /\(opts\.adsEnabled === false \? '' : `BRAND AND SOCIAL PAGES:/);
   const official = fnBody(p, "if (s === 'OFFICIAL_COLLECTION')", "if (s === 'PUBLIC_RESEARCH')");
+  const publicResearch = fnBody(p, "if (s === 'PUBLIC_RESEARCH')", "if (s === 'MARKET')");
   const market = fnBody(p, "if (s === 'MARKET')", "if (s === 'SYNTHESIS')");
-  for (const part of [official, market]) {
-    assert.doesNotMatch(part, /\bv3\b|adsEnabled|isV3/, 'official collection and market prompts are identical for V2 and V3');
+  for (const part of [official, publicResearch, market]) {
+    assert.doesNotMatch(part, /adsEnabled|isV3|\bv3\b/, 'official collection, public research and market prompts are identical for V2 and V3');
   }
+  // Public research keeps its location topics and nearbyPlaces exactly as V2 (owner: research quality is not reduced).
+  assert.ok(publicResearch.includes("this exact project/property/company: ${scope.targets.join(', ')}."));
+  assert.ok(publicResearch.includes(',"nearbyPlaces":{"category":"SCHOOL|KINDERGARTEN'));
+  assert.match(publicResearch, /\n\s+`nearbyPlaces: the few genuinely NEAREST places/);
 });
 
 /* ───────────────────────── 3. the V3 report ───────────────────────── */

@@ -1,7 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { projectService176Evidence, service176PromptEvidence } from '../../../src/verify/intelligence/service176Evidence.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { PUBLIC_RESEARCH_TARGETS, publicResearchScope, resolveAssetClass, extractControlStructure, LOCATION_TARGETS } from '../../../src/verify/researchPlan.ts';
+import { PUBLIC_RESEARCH_TARGETS, publicResearchScope, resolveAssetClass, extractControlStructure } from '../../../src/verify/researchPlan.ts';
 import { anonSessionUsable, anonTokenPlausible, sha256Hex } from '../../../src/auth/anonymousSessionServer.ts';
 import { harvestReport, normalizeCadastral } from '../../../src/verify/intelligence/harvest.ts';
 import { persistHarvest, loadKnownIntelligence, loadComparables } from '../../../src/verify/intelligence/graphStore.ts';
@@ -1651,8 +1651,6 @@ function prompt(s: Stage, j: any, p: any, l: string, opts: { adsEnabled?: boolea
   const known = s === 'SYNTHESIS' ? '' : knownBriefFor(j, s) + searchBudgetFor(j, s);
   // V2: embedded JSON without empty fields (lossless). V1: unchanged.
   const v2 = engineOf(p) === 'V2';
-  // V3 only (engine.ts): the public-research stage leaves the neighbourhood to OpenStreetMap.
-  const v3 = isV3(p);
   const ctx = (x: any) => (v2 ? withoutEmpty(x) : x);
 
   if (s === 'IDENTITY') {
@@ -1738,10 +1736,10 @@ function prompt(s: Stage, j: any, p: any, l: string, opts: { adsEnabled?: boolea
       known + `${BASE}\nAnswer strings in ${L}. Query=${q}. Known identifiers for this exact property/project/company so far=${JSON.stringify(identifiers)}. Identity=${JSON.stringify(ctx(i)).slice(0, 9000)}. OfficialContext=${compactOfficialContext(o)}.\n` +
       tasFactsNote +
       scopeNoteLine +
-      `PUBLIC RESEARCH STAGE — this is a real, mandatory research stage, not optional enrichment. Do not stop after basic project/address/listing discovery. Using every identifier above, search in Georgian, English AND Russian for each of the following topics as they relate to this exact project/property/company: ${(v3 ? scope.targets.filter((t) => !(LOCATION_TARGETS as readonly string[]).includes(t)) : scope.targets).join(', ')}.\n` +
+      `PUBLIC RESEARCH STAGE — this is a real, mandatory research stage, not optional enrichment. Do not stop after basic project/address/listing discovery. Using every identifier above, search in Georgian, English AND Russian for each of the following topics as they relate to this exact project/property/company: ${scope.targets.join(', ')}.\n` +
       `For every field below, populate it ONLY when your search actually surfaced supporting evidence for THIS exact project/company/property — never guess, never fill a field with a generic industry statement, never invent a name. No evidence for a field = null (or [] for list fields) — never omit the key and never pad with a placeholder string. Prefer specific names/dates/facts over vague description. Each list field should contain short, concrete, evidence-backed entries (e.g. a real person/company name with their role, not a generic sentence).\n` +
       `If you discover a legal company (developer/owner) — by exact name or identification code — that was not already present in Official.companyProfile above, populate companyId/legalCompany with it as precisely as the evidence supports; a downstream deterministic step (not you) decides whether this triggers any further registry lookup.\n` +
-      `Return {"project":string|null,"developer":string|null,"legalCompany":string|null,"companyId":string|null,"foundersOwnersParticipants":string[],"directorsRepresentatives":string[],"companyHistory":string|null,"previousProjects":string[],"architect":string|null,"architectStudio":string|null,"architectReputation":string|null,"contractors":string[],"constructionCompanies":string[],"engineers":string[],"suppliers":string[],"facade":string|null,"windows":string|null,"elevators":string|null,"structuralSystem":string|null,"constructionMaterials":string|null,"insulation":string|null,"MEP":string|null,"energyEfficiency":string|null,"seismicDesign":string|null,"amenities":string[],"landscaping":string|null,"parking":string|null,"financingBank":string|null,"partners":string[],"constructionStart":string|null,"chronology":string|null,"progressHistory":string|null,"currentPhysicalStatus":string|null,"qualitySignals":string[],"developerReputation":string|null,"architectReputationSignals":string[],"complaints":string[],"disputes":string[],"legalPublicFootprint":string[],"mediaCoverage":string[],"socialPublicFootprint":string[],"awardsRecognition":string[],"facts":string[],"unverified":string[]${v3 ? '' : ',"nearbyPlaces":{"category":"SCHOOL|KINDERGARTEN|SUPERMARKET|PHARMACY|CLINIC|PARK|TRANSPORT|ROAD_ACCESS|CITY_CENTRE|SERVICE","name":string,"note":string|null}[]'}}.
+      `Return {"project":string|null,"developer":string|null,"legalCompany":string|null,"companyId":string|null,"foundersOwnersParticipants":string[],"directorsRepresentatives":string[],"companyHistory":string|null,"previousProjects":string[],"architect":string|null,"architectStudio":string|null,"architectReputation":string|null,"contractors":string[],"constructionCompanies":string[],"engineers":string[],"suppliers":string[],"facade":string|null,"windows":string|null,"elevators":string|null,"structuralSystem":string|null,"constructionMaterials":string|null,"insulation":string|null,"MEP":string|null,"energyEfficiency":string|null,"seismicDesign":string|null,"amenities":string[],"landscaping":string|null,"parking":string|null,"financingBank":string|null,"partners":string[],"constructionStart":string|null,"chronology":string|null,"progressHistory":string|null,"currentPhysicalStatus":string|null,"qualitySignals":string[],"developerReputation":string|null,"architectReputationSignals":string[],"complaints":string[],"disputes":string[],"legalPublicFootprint":string[],"mediaCoverage":string[],"socialPublicFootprint":string[],"awardsRecognition":string[],"facts":string[],"unverified":string[],"nearbyPlaces":{"category":"SCHOOL|KINDERGARTEN|SUPERMARKET|PHARMACY|CLINIC|PARK|TRANSPORT|ROAD_ACCESS|CITY_CENTRE|SERVICE","name":string,"note":string|null}[]}.
 ` +
       // WHAT IT IS LIKE TO LIVE THERE HAD NOWHERE TO GO.
       //
@@ -1752,9 +1750,7 @@ function prompt(s: Stage, j: any, p: any, l: string, opts: { adsEnabled?: boolea
       // back [] and the report carried no Location or Infrastructure
       // section at all, correctly, because there was no evidence to write
       // one from. Both ends of the feature were built; the middle was not.
-      // V3: the neighbourhood is measured from OpenStreetMap in code (neighborhood.ts), not searched for.
-      (v3 ? '' : `nearbyPlaces: the few genuinely NEAREST places of each kind that your search actually surfaced for THIS address — not an index of everything in the district, and at most a handful per kind. name is what the place is actually called. note is ONLY what a source literally stated about getting there ("a five-minute walk", "on the same street"); NEVER compute or estimate a distance or a travel time yourself — we have coordinates for neither end, and an invented "350m" is exactly the kind of precise-sounding fabrication this product exists to avoid. Nothing found for a kind = simply no entry for it.`)
-
+      `nearbyPlaces: the few genuinely NEAREST places of each kind that your search actually surfaced for THIS address — not an index of everything in the district, and at most a handful per kind. name is what the place is actually called. note is ONLY what a source literally stated about getting there ("a five-minute walk", "on the same street"); NEVER compute or estimate a distance or a travel time yourself — we have coordinates for neither end, and an invented "350m" is exactly the kind of precise-sounding fabrication this product exists to avoid. Nothing found for a kind = simply no entry for it.`
     );
   }
 

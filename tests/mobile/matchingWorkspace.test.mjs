@@ -144,14 +144,14 @@ test('select a page, then all matching: the quote sends allMatching + filters (n
   assert.match(await dialog.textContent(), /634 credits[\s\S]*\$63\.40/);
   assert.match(await dialog.textContent(), /Already unlocked — not charged again\s*5/);
   await shot(page, SHOTS, 'mw-confirm-1440', false);
-  /* 634 credits against a 500-credit balance: said before the click, with the way to add credits… */
-  assert.equal(await dialog.locator('[data-testid="mw-confirm-over-balance"] a[href="/credits"]').count(), 1);
+  /* 634 credits against a 500-credit balance: said before the click, with the way to the plans (credits are no longer sold)… */
+  assert.equal(await dialog.locator('[data-testid="mw-confirm-over-balance"] a[href="/pricing"]').count(), 1);
   /* …and refused by the server if confirmed anyway, charging nothing. */
   await page.locator('[data-testid="mw-confirm"]').click();
   const err = page.locator('[data-testid="mw-confirm-error"]');
   await err.waitFor({ timeout: 15000 });
   assert.equal(await err.getAttribute('data-code'), 'INSUFFICIENT_CREDITS');
-  assert.equal(await err.locator('a[href="/credits"]').count(), 1);
+  assert.equal(await err.locator('a[href="/pricing"]').count(), 1);
   /* Credits added elsewhere; retrying the SAME confirmation reuses its key, and a double click charges once. */
   state.balance = 2000;
   await page.locator('[data-testid="mw-confirm"]').dblclick();

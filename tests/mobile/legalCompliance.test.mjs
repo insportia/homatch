@@ -312,7 +312,10 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
       assert.equal(await banner.getByRole('button', { name: label }).count(), 1, label);
     }
     for (const label of ['მომსახურების პირობები', 'კონფიდენციალურობის პოლიტიკა', 'ქუქიების პოლიტიკა', 'ქუქიების პარამეტრები']) {
-      assert.ok(await ka.page.locator('footer').getByRole('button', { name: label, exact: true }).count() >= 1, `footer: ${label}`);
+      /* Georgian ships in the entry chunk now, so the banner can paint before the lazy footer: wait for it. */
+      const link = ka.page.locator('footer').getByRole('button', { name: label, exact: true });
+      await link.first().waitFor({ timeout: 15000 }).catch(() => {});
+      assert.ok(await link.count() >= 1, `footer: ${label}`);
     }
     await banner.getByRole('button', { name: 'ყველას მიღება' }).click();
     const stored = JSON.parse(await ka.page.evaluate(() => localStorage.getItem('homatch_cookie_consent')));

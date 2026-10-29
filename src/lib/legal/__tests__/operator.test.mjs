@@ -19,7 +19,7 @@ test('the operator is the LLC, with only the facts the owner gave', () => {
   assert.equal(operatorEntityLabelKey(), 'legal_entity_llc');
   assert.equal(operatorDisplayName('ka', 'x'), 'შპს „ულტრა ქონექშენ“');
   const en = operatorDisplayName('en', 'Limited Liability Company');
-  assert.ok(en.includes('შპს „ულტრა ქონექშენ“') && en.endsWith('(Limited Liability Company)'));
+  assert.ok(en.includes('შპს „ულტრა ქონექშენ“') && en.endsWith(', Limited Liability Company') && !en.includes('('));
   /* The previous operator survives only as the archived edition's identity. */
   const src = read('src/lib/legal/operator.ts');
   const current = src.slice(src.indexOf('export const LEGAL_OPERATOR'), src.indexOf('} as const;'));

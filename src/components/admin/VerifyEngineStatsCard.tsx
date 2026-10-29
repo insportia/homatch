@@ -24,8 +24,10 @@ export function VerifyEngineStatsCard() {
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.rpc('admin_verify_engine_stats', { p_days: 30 });
-    if (error) setFailed(true);
-    else setStats(data as Stats);
+    /* A malformed answer is "unavailable", never a crash of the whole Providers page. */
+    const d = data as Stats | null;
+    if (error || !d || !Array.isArray(d.engines) || !Array.isArray(d.recent)) setFailed(true);
+    else setStats(d);
   }, []);
   useEffect(() => { void load(); }, [load]);
 

@@ -89,12 +89,20 @@ export class SubscriptionError extends Error {
   constructor(public code: string) { super(code); }
 }
 
-export const getPlans = () => invoke<PlansResponse>({ action: 'plans' });
+/* A malformed answer (an old function, a proxy page) is an error, never a half-shaped object a
+   page would crash on. */
+export async function getPlans(): Promise<PlansResponse> {
+  const r = await invoke<PlansResponse>({ action: 'plans' });
+  if (!r || !Array.isArray(r.plans)) throw new SubscriptionError('BAD_RESPONSE');
+  return r;
+}
 
 export async function getEntitlementStatus(): Promise<EntitlementStatus> {
   const { data, error } = await supabase.rpc('entitlement_status_for_me');
   if (error) throw new SubscriptionError(error.message);
-  return data as EntitlementStatus;
+  const st = data as EntitlementStatus | null;
+  if (!st || typeof st !== 'object' || !Array.isArray(st.features)) throw new SubscriptionError('BAD_RESPONSE');
+  return st;
 }
 
 export interface CheckoutStart { checkoutId: string; kind: string; planCode: PlanCode; amountTetri: number; redirectUrl: string; sandbox: boolean }

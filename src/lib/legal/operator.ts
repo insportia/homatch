@@ -138,15 +138,17 @@ export const operatorIdLabelKey = (op: OperatorIdentity = LEGAL_OPERATOR): strin
  * 'შპს „ულტრა ქონექშენ“' in Georgian (the name already carries შპს). Elsewhere
  * the Latin name when one is configured, otherwise the registered Georgian
  * name with the entity type in the reader's language:
- * 'შპს „ულტრა ქონექშენ“ (Limited Liability Company)'.
+ * 'შპს „ულტრა ქონექშენ“, Limited Liability Company' (a comma, not brackets:
+ * bracketed English reads as an internal label inside a sentence).
  */
 export function operatorDisplayName(lang: string, entityTypeLabel: string, op: OperatorIdentity = LEGAL_OPERATOR): string {
   if (lang === 'ka') return op.legalEntityName;
   /* The previous operator was a person: the type label goes before the name. */
   if (op.legalEntityNameLatin) return op.legalEntityType === 'individual_entrepreneur' ? `${entityTypeLabel} ${op.legalEntityNameLatin}` : op.legalEntityNameLatin;
   /* First-strong isolate around the Georgian name, so on the Arabic and Hebrew
-     pages it neither reorders nor drags the parenthesis with it. */
-  return `\u2068${op.legalEntityName}\u2069 (${entityTypeLabel})`;
+     pages it neither reorders nor drags the punctuation with it. A comma, not
+     brackets: bracketed English reads as an internal label inside a sentence. */
+  return `\u2068${op.legalEntityName}\u2069, ${entityTypeLabel}`;
 }
 
 export function formatLegalDate(iso: string, lang: string): string {

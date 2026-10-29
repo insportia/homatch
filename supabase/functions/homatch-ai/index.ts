@@ -52,6 +52,7 @@ import {
   deterministicPayload, readOpenAIStream, SSE_HEADERS, sseFrame, stripAiDashes, trimConversation,
 } from './homi.ts';
 import { loadOwnContext, type OwnContext } from './ownContext.ts';
+import { parsePublicPlans, plansAnswerLines, plansPromptBlock, type PublicPlan } from '../../../src/lib/homi/plansFacts.ts';
 
 /* One OpenAI call per chat turn; see the fetch below. */
 const OPENAI_REQUEST_TIMEOUT_MS = 130_000;
@@ -249,6 +250,21 @@ const PRODUCT_LINES: ReadonlyArray<readonly [string | null, string]> = [
   [null, 'Contact (/contact) — the one official way to reach the HOMATCH team (action CONTACT). Never give any other contact detail.'],
 ];
 
+/* The real subscription plans (saas_public_plans, admin-editable), cached briefly per isolate so
+   every turn knows them without a query each time. A failed read is "no plans", never invented ones. */
+let plansCache: { at: number; plans: PublicPlan[] } | null = null;
+async function loadPlans(db: any): Promise<PublicPlan[]> {
+  if (plansCache && Date.now() - plansCache.at < 60_000) return plansCache.plans;
+  try {
+    const { data, error } = await db.rpc('saas_public_plans');
+    const plans = error ? [] : parsePublicPlans(data);
+    plansCache = { at: Date.now(), plans };
+    return plans;
+  } catch {
+    return plansCache?.plans ?? [];
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'Method Not Allowed' }, 405);
@@ -296,6 +312,7 @@ serve(async (req) => {
     HOMI_PROMPT_SERVICE_KEYS.map(async (k) => [k, await serviceState(sb, k as ServiceKey)] as const),
   ));
   const visibility = buildServiceVisibility(serviceStates);
+  const plans = await loadPlans(sb);
   const routed: HomiRoute = marketplaceRequested
     ? { kind: 'MODEL', tier: 'FULL', searchCue: false, intent: null }
     : routeHomiTurn(lastUserText, { chipIntent: body?.homiIntent, surface: surfaceName });
@@ -492,6 +509,7 @@ serve(async (req) => {
   /* ── HOMI: a written answer, no model ──────────────────────────────── */
   if (deterministic && route.kind === 'DETERMINISTIC') {
     const payload = deterministicPayload(route.intent, lang);
+    if (route.intent === 'PLANS' && plans.length) payload.text = `${payload.text}\n\n${plansAnswerLines(plans, lang)}`;
     const actionsOut: ServiceAction[] = payload.actions.filter((a) => visibility.isVisible(a.id));
     /* Something to tap after every answer: a written answer without its own
        chips (and without the start menu, which IS the choices) gets the
@@ -733,6 +751,7 @@ ${homiPitchInstruction(visibility.visible)}
 SOMETHING GENUINELY UNRELATED AND SUBSTANTIAL — a recipe, a maths problem, code, medical advice: do not write it out, and do not lecture about scope either. One friendly sentence that this is not what you are here for, then offer the nearest thing you CAN do. Never produce an error, never quote a policy, never say "outside my scope" or "I can only". This is about somebody asking you to DO a large unrelated job; an ordinary human aside, a joke, a complaint or a swear word is not that, and is covered by the style rules above.
 WHAT HOMATCH CAN ACTUALLY DO FOR THEM. These are the real products, with the real place each one starts. Never describe a capability Homatch does not have, and never name a destination that is not on this list.
 ${visibleLines(PRODUCT_LINES, visibility).map((l) => `  ${l}`).join('\n')}
+${plansPromptBlock(plans)}
 ${hiddenServicesPrompt(visibility)}
 
 ${whenToMention(visibleLines(MENTION_EXAMPLES, visibility))}

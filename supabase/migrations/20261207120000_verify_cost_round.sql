@@ -10,7 +10,7 @@
 --    job at creation (like verify_v2_research for V2). Seeded only when absent.
 --      identity        luna, maxSearches 2, searchContextSize low
 --      official        luna, maxSearches 0 (extraction over official evidence)
---      public_research luna, maxSearches 3 (default search context: the stage
+--      public_research luna, maxSearches 4 (default search context: the stage
 --                      the report depends on most)
 --      market          mode AUTO (code-first whenever the worker lane yields
 --                      enough comparables), luna, maxSearches 2, context low
@@ -43,7 +43,7 @@ values (
   'verify_v3_research',
   '{"identity":{"model":"gpt-5.6-luna","maxSearches":2,"searchContextSize":"low"},
     "official_collection":{"model":"gpt-5.6-luna","maxSearches":0},
-    "public_research":{"model":"gpt-5.6-luna","maxSearches":3},
+    "public_research":{"model":"gpt-5.6-luna","maxSearches":4},
     "market":{"mode":"AUTO","model":"gpt-5.6-luna","maxSearches":2,"searchContextSize":"low"},
     "report":{"policy":"AUTO","reasoningEffort":"low","repair":true,"maxOutputTokens":28000},
     "budget":{"ceilingUsd":0.15},

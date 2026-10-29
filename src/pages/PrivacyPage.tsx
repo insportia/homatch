@@ -12,7 +12,7 @@ import { LegalContactCard, LegalLayout, LegalList, LegalSub, type LegalSection, 
  */
 export default function PrivacyPage() {
   const { t } = useLanguage();
-  const v = useOperatorVars();
+  const v = useOperatorVars('privacy');
   const mail = <a href={`mailto:${v.email}`} dir="ltr">{v.email}</a>;
 
   const sections: LegalSection[] = [
@@ -118,7 +118,7 @@ export default function PrivacyPage() {
     },
     { id: 'children', title: t('privacy_s9_title'), content: <p>{t('privacy_s9_body')}</p> },
     { id: 'changes', title: t('privacy_s10_title'), content: <p>{t('privacy_s10_body')}</p> },
-    { id: 'contact', title: t('privacy_s11_title'), content: <><p>{t('privacy_s11_intro')}</p><LegalContactCard show={['privacy', 'legal']} /></> },
+    { id: 'contact', title: t('privacy_s11_title'), content: <><p>{t('privacy_s11_intro')}</p><LegalContactCard show={['privacy', 'legal']} doc="privacy" /></> },
   ];
 
   return (

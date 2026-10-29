@@ -58,6 +58,23 @@ export interface StageTuning {
 export interface ReportTuning {
   policy?: (typeof REPORT_POLICIES)[number];
   model?: (typeof RESEARCH_MODELS)[number];
+  /** Reasoning effort of every report call (unset: REPORT_DEFAULTS.reasoningEffort). */
+  reasoningEffort?: (typeof EFFORTS)[number];
+  /** Output ceiling per report call, in tokens (unset: REPORT_DEFAULTS.maxOutputTokens). */
+  maxOutputTokens?: number;
+  /** One cheap repair pass, handed the gate's findings, before any escalation (unset: on). */
+  repair?: boolean;
+  /**
+   * Escalate to the strong model even when the cheap report stands and the
+   * gate only REMOVED sentences it disproved (unset: off; only a report the
+   * gate rejected outright is escalated).
+   */
+  escalateOnRemovals?: boolean;
+}
+/** Hard reuse of public web research across jobs for the same unit/parcel. */
+export interface ReuseTuning {
+  /** Days a stage's public findings may be reused (0 switches reuse off; unset: REUSE_DEFAULT_DAYS). */
+  freshnessDays?: number;
 }
 /** Research spend for one job: past the ceiling a stage still runs, with no paid searches. */
 export interface BudgetTuning {
@@ -72,8 +89,14 @@ export type ResearchTuning = Partial<Record<ResearchStageKey, StageTuning>> & {
   report?: ReportTuning;
   budget?: BudgetTuning;
   escalation?: EscalationTuning;
+  reuse?: ReuseTuning;
 };
 const MAX_SEARCHES_CAP = 10;
+/** What a report call sends when nothing is set (owner, 2026-10-29: Luna writes, low effort). */
+export const REPORT_DEFAULTS = { reasoningEffort: 'low', maxOutputTokens: 28_000, repair: true } as const;
+const MAX_OUTPUT_RANGE = [4_000, 64_000] as const;
+export const REUSE_DEFAULT_DAYS = 7;
+const REUSE_MAX_DAYS = 30;
 
 const pick = <T extends readonly string[]>(allowed: T, v: unknown): T[number] | undefined =>
   typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T[number]) : undefined;
@@ -104,7 +127,19 @@ export function parseResearchTuning(value: unknown): ResearchTuning {
   }
   const policy = pick(REPORT_POLICIES, o.report?.policy);
   const reportModel = pick(RESEARCH_MODELS, o.report?.model);
-  if (policy || reportModel) out.report = { ...(policy ? { policy } : {}), ...(reportModel ? { model: reportModel } : {}) };
+  const reportEffort = pick(EFFORTS, o.report?.reasoningEffort);
+  const maxOut = Number(o.report?.maxOutputTokens);
+  const report: ReportTuning = {
+    ...(policy ? { policy } : {}),
+    ...(reportModel ? { model: reportModel } : {}),
+    ...(reportEffort ? { reasoningEffort: reportEffort } : {}),
+    ...(o.report?.maxOutputTokens != null && Number.isInteger(maxOut) && maxOut >= MAX_OUTPUT_RANGE[0] && maxOut <= MAX_OUTPUT_RANGE[1] ? { maxOutputTokens: maxOut } : {}),
+    ...(typeof o.report?.repair === 'boolean' ? { repair: o.report.repair } : {}),
+    ...(o.report?.escalateOnRemovals === true ? { escalateOnRemovals: true } : {}),
+  };
+  if (Object.keys(report).length) out.report = report;
+  const days = Number(o.reuse?.freshnessDays);
+  if (o.reuse?.freshnessDays != null && Number.isInteger(days) && days >= 0 && days <= REUSE_MAX_DAYS) out.reuse = { freshnessDays: days };
   const preferredUsd = usd(o.budget?.preferredUsd);
   const ceilingUsd = usd(o.budget?.ceilingUsd);
   if (preferredUsd || ceilingUsd) out.budget = { ...(preferredUsd ? { preferredUsd } : {}), ...(ceilingUsd ? { ceilingUsd } : {}) };
@@ -114,27 +149,178 @@ export function parseResearchTuning(value: unknown): ResearchTuning {
 
 const tuningOf = (resultJson: unknown): ResearchTuning | null => {
   const e = resultJson && typeof resultJson === 'object' ? (resultJson as Record<string, any>)._engine : null;
-  return e?.version === 'V2' ? parseResearchTuning(e.research) : null;
+  // V3 runs the V2 pipeline with its own stamped routing (verify_v3_research).
+  return e?.version === 'V2' || e?.version === 'V3' ? parseResearchTuning(e.research) : null;
 };
+const stampedV3 = (resultJson: unknown): boolean =>
+  !!resultJson && typeof resultJson === 'object' && (resultJson as Record<string, any>)._engine?.version === 'V3';
 
 /*
  * THE STRONG MODEL IS A FALLBACK, NOT A TIER (owner, 2026-10-23).
  *
  * AUTO: the cheap model writes every report, complex properties included,
  * from the complete verified evidence package. The strong model is called
- * only when the report's own objective gate (finalizeReport: ungrounded or
- * missing citations, claims the evidence contradicts, absence stated as
- * fact, no summary, …) rejects what the cheap model wrote — never for a
- * complexity label and never for style. Both calls are then paid and both
- * are recorded (_usage + _usageFirstAttempt).
+ * only when the report's own objective gate (finalizeReport) rejects what
+ * the cheap model wrote, never for a complexity label and never for style.
+ *
+ * V1 and V2 jobs: exactly as before, from the job's stamp only (`live` is
+ * ignored). V3 jobs (owner, 2026-10-29): the LIVE verify_v3_research.report
+ * (`live`), then the stamp, then AUTO by default; the cheap repair pass runs
+ * before any escalation (reportRepairEnabled), and every call is recorded
+ * (_reportAttempts). A pinned model (OPENAI_SYNTHESIS_MODEL: `fallback` is
+ * not the cheap model) keeps "pinned means no fallback".
  */
-export function reportRoutingFor(resultJson: unknown, fallback: string): { model: string; policy: string; fallbackModel: string | null } {
-  const t = tuningOf(resultJson);
-  if (!t?.report) return { model: fallback, policy: 'DEFAULT', fallbackModel: null };
-  if (t.report.policy === 'LUNA') return { model: CHEAP_MODEL, policy: 'LUNA', fallbackModel: null };
-  if (t.report.policy === 'TERRA') return { model: STRONG_MODEL, policy: 'TERRA', fallbackModel: null };
-  if (t.report.policy === 'AUTO') return { model: CHEAP_MODEL, policy: 'AUTO', fallbackModel: STRONG_MODEL };
-  return { model: t.report.model ?? fallback, policy: 'FIXED_MODEL', fallbackModel: null };
+export function reportTuningFor(resultJson: unknown, live?: unknown): ReportTuning {
+  if (!stampedV3(resultJson)) return tuningOf(resultJson)?.report ?? {};
+  const fromLive = live == null ? undefined : parseResearchTuning(live).report;
+  return fromLive ?? tuningOf(resultJson)?.report ?? {};
+}
+
+export function reportRoutingFor(resultJson: unknown, fallback: string, live?: unknown): { model: string; policy: string; fallbackModel: string | null } {
+  const v3 = stampedV3(resultJson);
+  const r = reportTuningFor(resultJson, v3 ? live : undefined);
+  if (!v3 && !r.policy && !r.model) return { model: fallback, policy: 'DEFAULT', fallbackModel: null };
+  if (r.policy === 'LUNA') return { model: CHEAP_MODEL, policy: 'LUNA', fallbackModel: null };
+  if (r.policy === 'TERRA') return { model: STRONG_MODEL, policy: 'TERRA', fallbackModel: null };
+  if (r.policy === 'AUTO') return { model: CHEAP_MODEL, policy: 'AUTO', fallbackModel: STRONG_MODEL };
+  if (!v3 || r.model) return { model: r.model ?? fallback, policy: 'FIXED_MODEL', fallbackModel: null };
+  // V3 with nothing set: AUTO on the cheap model. A pinned model stays pinned.
+  return fallback === CHEAP_MODEL
+    ? { model: CHEAP_MODEL, policy: 'AUTO', fallbackModel: STRONG_MODEL }
+    : { model: fallback, policy: 'DEFAULT', fallbackModel: null };
+}
+
+/** The report's prompt-cache key: one per study, because the static rules differ per study. */
+export function reportPromptCacheKey(study: string | null | undefined): string {
+  return `homatch-verify-report:${String(study || 'PROJECT').toLowerCase()}`;
+}
+
+/**
+ * What every report call adds to the Responses API body: reasoning effort,
+ * an output ceiling sized to the schema, and the prompt-cache key that lets
+ * the repair and escalation calls (same static prefix, seconds later) read
+ * the rules and the evidence from cache.
+ */
+export function reportRequestExtras(tuning: ReportTuning, study: string | null | undefined): Record<string, unknown> {
+  return {
+    reasoning: { effort: tuning.reasoningEffort ?? REPORT_DEFAULTS.reasoningEffort },
+    max_output_tokens: tuning.maxOutputTokens ?? REPORT_DEFAULTS.maxOutputTokens,
+    prompt_cache_key: reportPromptCacheKey(study),
+  };
+}
+
+/** Whether the cheap repair pass runs before any escalation (default on). */
+export function reportRepairEnabled(tuning: ReportTuning): boolean {
+  return tuning.repair ?? REPORT_DEFAULTS.repair;
+}
+
+/**
+ * The failures that justify paying for the strong model, or [] when the
+ * cheap report stands. A report the gate rejected outright (mode
+ * DETERMINISTIC although the model answered) or one left without a summary
+ * is blocking. Sentences the gate REMOVED because the evidence disproved them
+ * are already gone from what the customer reads: they are repaired cheaply,
+ * and escalate only when the owner switched escalateOnRemovals on.
+ */
+export function reportBlockingFailures(
+  final: { mode?: string; rejectedBecause?: unknown[]; summary?: { statement?: string } | null } | null | undefined,
+  hadModelOutput: boolean,
+  tuning: ReportTuning = {},
+): string[] {
+  if (!hadModelOutput || !final) return [];
+  const failures = reportQualityFailures(final, hadModelOutput);
+  if (tuning.escalateOnRemovals) return failures;
+  // Rejected outright: escalate for objective failures only. Style alone never pays for a second model.
+  if (final.mode === 'DETERMINISTIC') return failures;
+  if (!String(final.summary?.statement ?? '').trim()) return [...failures, 'no summary statement left after the gate'];
+  return [];
+}
+
+/**
+ * What the repair pass is handed: every finding of a report the gate rejected
+ * outright (style included: a cheap rewrite is the right answer to it), or
+ * the objective findings of a report that stands. [] means no repair.
+ */
+export function reportRepairFindings(final: { mode?: string; rejectedBecause?: unknown[] } | null | undefined, hadModelOutput: boolean): string[] {
+  if (!hadModelOutput || !final) return [];
+  if (final.mode === 'DETERMINISTIC') {
+    const all = (Array.isArray(final.rejectedBecause) ? final.rejectedBecause : []).map((x) => String(x)).filter(Boolean);
+    return all.length ? all : ['the report was rejected by the gate'];
+  }
+  return reportQualityFailures(final, true);
+}
+
+/** Ranks a finalised report: a kept model report beats a rejected one, then fewer gate findings win. Lower is better. */
+export function reportScore(final: { mode?: string; rejectedBecause?: unknown[] } | null | undefined, hadModelOutput: boolean): number {
+  if (!hadModelOutput || !final) return 10_000;
+  return (final.mode === 'MODEL' ? 0 : 1_000) + reportQualityFailures(final, true).length;
+}
+
+/**
+ * The repair instruction: the gate's own findings, verbatim, and what to do
+ * about each kind. Sent after the cheap model's first answer, in the same
+ * conversation, so the static rules and the evidence are read from cache.
+ */
+export function reportRepairPrompt(findings: string[], parseFailed: boolean): string {
+  const list = findings.slice(0, 30).map((f) => `- ${f}`).join('\n');
+  return [
+    `THE QUALITY GATE CHECKED YOUR REPORT AGAINST THE EVIDENCE. ${parseFailed ? 'Your answer could not be read as the required JSON.' : 'It removed or rejected the following:'}`,
+    list,
+    '',
+    'Return the COMPLETE report again as strict JSON of exactly the same shape, corrected:',
+    '- cite only evidence ids you were given; every section, key finding, story chapter and next step needs at least one;',
+    '- a sentence the gate says contradicts the deterministic valuation or the evidence: rewrite it so it agrees with them, or leave it out;',
+    '- never state an absence as a fact where only a search came up empty; no URLs or portal names in prose;',
+    '- keep everything not listed above as it was. Add no new facts.',
+  ].join('\n');
+}
+
+/** One paid report call, as the attempts ledger keeps it (synthesis_json._reportAttempts). */
+export interface ReportAttempt {
+  /** first | repair | escalation; a rebuild's calls carry build > 1. */
+  kind: 'first' | 'repair' | 'escalation' | 'legacy';
+  model: string;
+  inputTokens: number;
+  cachedTokens: number;
+  outputTokens: number;
+  reasoningTokens?: number;
+  /** Which build of this report (1 = the first; each rebuild adds one). */
+  build: number;
+  /** The trigger of that build: research | driver | customer | upgrade. */
+  trigger?: string;
+  /** Whether this call's report is the one the customer reads. */
+  kept?: boolean;
+  at: string;
+}
+const ATTEMPTS_CAP = 40;
+
+/**
+ * The ledger before a new build: the stored one, or for a report written
+ * before the ledger existed its _usageFirstAttempt and _usage (each priced
+ * exactly once, as `legacy`), so the first rebuild never loses history.
+ */
+export function priorReportAttempts(storedSynthesis: unknown): ReportAttempt[] {
+  const s = storedSynthesis && typeof storedSynthesis === 'object' ? (storedSynthesis as Record<string, any>) : {};
+  if (Array.isArray(s._reportAttempts)) return (s._reportAttempts as ReportAttempt[]).filter((a) => a && typeof a === 'object').map((a) => ({ ...a, kept: false }));
+  const legacy = (u: any): ReportAttempt | null => (u && typeof u === 'object' && (Number(u.inputTokens) || Number(u.outputTokens))
+    ? { kind: 'legacy', model: String(u.model || CHEAP_MODEL), inputTokens: Number(u.inputTokens) || 0, cachedTokens: Number(u.cachedTokens) || 0, outputTokens: Number(u.outputTokens) || 0, build: 1, kept: false, at: String(s.synthesizedAt ?? '') }
+    : null);
+  return [legacy(s._usageFirstAttempt), legacy(s._usage)].filter(Boolean) as ReportAttempt[];
+}
+
+/** The next build number for a ledger. */
+export function nextReportBuild(prior: ReportAttempt[]): number {
+  return prior.reduce((n, a) => Math.max(n, Number(a.build) || 1), 0) + 1;
+}
+
+/** The ledger with this build's calls appended, oldest dropped past the cap. */
+export function appendReportAttempts(prior: ReportAttempt[], calls: ReportAttempt[]): ReportAttempt[] {
+  return [...prior, ...calls].slice(-ATTEMPTS_CAP);
+}
+
+/** The cost_events attempt tag of one call (unique per job with VERIFY_REPORT). */
+export function reportAttemptTag(a: Pick<ReportAttempt, 'build' | 'kind'>, index: number): string {
+  return `b${a.build}:${index + 1}:${a.kind}`;
 }
 
 /* Gate findings that are about wording, not facts: never a reason to pay twice. */
@@ -311,4 +497,12 @@ export function marketOfficialContext(o: any): Record<string, unknown> {
     technicalFacts: o?.tasTechnicalFacts,
     conflicts: o?.conflicts,
   });
+}
+
+/** Days a V3 job may hard-reuse public research (0 = off). V1 and V2 jobs never reuse. */
+export function reuseFreshnessDays(resultJson: unknown): number {
+  if (!stampedV3(resultJson)) return 0;
+  const t = tuningOf(resultJson);
+  if (!t) return 0;
+  return t.reuse?.freshnessDays ?? REUSE_DEFAULT_DAYS;
 }

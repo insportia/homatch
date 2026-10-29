@@ -399,6 +399,8 @@ export function VerifyOfficialSourcesPanel() {
                 <span className="text-xs">{t('adm_vos_ads_enabled')}</span>
               </span>
             </label>
+            {/* V3 (engine.ts) never runs this stage and never shows advertising; V1/V2 follow the switch above. */}
+            <p className="text-muted-foreground">{t('adm_vos_ads_v3_note')}</p>
             {ads.providerOff ? <p className="text-amber-600">{t('adm_vos_ads_provider_off')}</p> : null}
             {ads.configured === false ? <p className="text-amber-600">{t('adm_vos_ads_not_configured')}</p> : null}
             <p className="text-muted-foreground break-words">

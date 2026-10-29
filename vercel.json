@@ -26,7 +26,7 @@
       "destination": "https://ptxajsjhobhvsfhmutjn.supabase.co/functions/v1/email-webhook"
     },
     {
-      "source": "/((?!assets/).*)",
+      "source": "/((?!assets/|api/).*)",
       "destination": "/index.html"
     }
   ],

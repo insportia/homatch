@@ -256,6 +256,8 @@ export interface VerifySynthesis {
   officialHistory?: OfficialHistoryClientView | null;
   /** Developer advertising (Meta Ad Library), a marketing signal only. */
   developerAds?: DeveloperAdsView | null;
+  /** Set by the server while Developer Advertising is hidden from customers (verify_developer_ads.visible). */
+  developerAdsHidden?: boolean;
   /** The unit's own NAPR extract, parsed (see propertyRegister.ts). */
   propertyRegister?: PropertyRegister | null;
   /** The developer's financial position from what was actually checked. */
@@ -502,6 +504,8 @@ function VerifyReportBody({
   /* Which chapters this kind of property has (owner, 2026-10-11 v7): the
      registry's own classification, never the code's length. Unknown, other
      and ambiguous keep every chapter (propertyKind.ts sectionsFor). */
+  // Developer Advertising: shown only when the server sent it and did not mark it hidden.
+  const adsShown = !!synthesis.developerAds && synthesis.developerAdsHidden !== true;
   const ks = sectionsFor(((synthesis as { propertyKind?: { kind?: string } }).propertyKind?.kind ?? 'UNKNOWN') as PropertyKind);
   /* v7: the same report for every kind (kindGuard.ts). The deterministic copy names the
      registry kind (an apartment's wording is unchanged), and a non-apartment gets a market
@@ -512,7 +516,7 @@ function VerifyReportBody({
   const has = {
     explore: true,
     story: !!(r.propertyStory?.chapters?.some((c) => clean(c.body)) || history?.milestones?.length || history?.milestoneGroups?.length || history?.evolution?.length),
-    people: ks.projectTeam && !!(inChapter('people').length || people.length || history?.team?.length || synthesis.projectTeam?.length || teamV2Groups.length || synthesis.snapshot?.developer || synthesis.companyFinance?.financingPartner || (synthesis.developerAds && ['COMPLETE', 'CACHED'].includes(synthesis.developerAds.outcome))),
+    people: ks.projectTeam && !!(inChapter('people').length || people.length || history?.team?.length || synthesis.projectTeam?.length || teamV2Groups.length || synthesis.snapshot?.developer || synthesis.companyFinance?.financingPartner || (adsShown && ['COMPLETE', 'CACHED'].includes(synthesis.developerAds!.outcome))),
     building: true,
     legal: !!(position || history?.legal?.length || history?.status || r.currentStatus || synthesis.propertyRegister?.latest || company || rights || synthesis.companyFinance || r.attentionPoints?.length || inChapter('legal').length || !!identityNotice(identity)),
     documents: hasDocuments,
@@ -556,7 +560,7 @@ function VerifyReportBody({
         <ResearchScaleBanner
           coverage={synthesis.research}
           register={synthesis.propertyRegister?.coverage ?? null}
-          adsSeen={synthesis.developerAds ? (synthesis.developerAds.activeCount ?? 0) + (synthesis.developerAds.historicalCount ?? 0) : null}
+          adsSeen={adsShown ? (synthesis.developerAds!.activeCount ?? 0) + (synthesis.developerAds!.historicalCount ?? 0) : null}
           sources={(synthesis.evidenceGroups ?? []).reduce((n: number, g: any) => n + (Array.isArray(g?.items) ? g.items.length : 0), 0) || null}
         />
         <PropertyFactsCard synthesis={synthesis} />
@@ -623,7 +627,7 @@ function VerifyReportBody({
           ) : null}
           {/* What the developer says about the project — labelled as a claim.
               Absent unless the stage completed. */}
-          <DeveloperAdvertising view={synthesis.developerAds} assessment={r.advertisingAssessment} />
+          <DeveloperAdvertising view={adsShown ? synthesis.developerAds : null} assessment={adsShown ? r.advertisingAssessment : null} />
         </Chapter>
       ) : null}
 

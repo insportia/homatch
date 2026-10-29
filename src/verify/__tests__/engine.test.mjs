@@ -8,9 +8,12 @@ import { engineForNewJob, engineOf, parseEngineSetting, VERIFY_V2_AVAILABLE } fr
 const at = '2026-10-23T12:00:00.000Z';
 
 test('missing, malformed and unknown settings are V1', () => {
-  for (const v of [null, undefined, '', 'v2', 'V3', 2, {}, { active: 'v2' }, { active: null }, []]) {
-    assert.deepEqual(parseEngineSetting(v), { active: 'V1', adminPreview: 'V1' }, JSON.stringify(v));
+  for (const v of [null, undefined, '', 'v2', 'v3', 'V4', 2, {}, { active: 'v2' }, { active: null }, []]) {
+    assert.deepEqual(parseEngineSetting(v), { active: 'V1', adminPreview: 'V1', v3Enabled: false }, JSON.stringify(v));
   }
+  // V3 (2026-10-29) is a known engine; it reaches jobs only with v3Enabled true.
+  assert.equal(parseEngineSetting({ active: 'V3' }).active, 'V3');
+  assert.equal(parseEngineSetting({ active: 'V3', v3Enabled: 'yes' }).v3Enabled, false);
   assert.equal(parseEngineSetting({ active: 'V2' }).active, 'V2');
   assert.equal(parseEngineSetting('V2').active, 'V2');
   assert.equal(parseEngineSetting({ active: 'V1', adminPreview: 'V2' }).adminPreview, 'V2');
@@ -52,19 +55,21 @@ test('research-agent stamps the engine once at creation, keeps it on the finishe
   assert.match(src, /const engineSetting = await adminSettingJson\(sb, VERIFY_ENGINE_SETTING_KEY\);/);
   assert.match(src, /const engine = engineForNewJob\(engineSetting, now\(\), undefined, \{ isAdmin \}\);/);
   // Admin is the caller's own users.is_admin, looked up only while a preview is on.
-  assert.match(src, /if \(user && !anonSession && parseEngineSetting\(engineSetting\)\.adminPreview === 'V2'\) \{\n\s+const \{ data: me \} = await sb\.from\('users'\)\.select\('is_admin'\)\.eq\('auth_id', user\.id\)\.maybeSingle\(\);\n\s+isAdmin = me\?\.is_admin === true;/);
+  assert.match(src, /if \(user && !anonSession && parseEngineSetting\(engineSetting\)\.adminPreview !== 'V1'\) \{\n\s+const \{ data: me \} = await sb\.from\('users'\)\.select\('is_admin'\)\.eq\('auth_id', user\.id\)\.maybeSingle\(\);\n\s+isAdmin = me\?\.is_admin === true;/);
   // `stamped` is the engine, plus the research routing on a V2 job (researchRequest.test.mjs).
   assert.match(src, /result_json: \{ _lang: lang, _engine: stamped,/);
   assert.match(src, /_engine: prior\._engine \?\? null,/);
   assert.match(src, /delete r\._engine;/);
-  assert.match(src, /'_engine', '_v2Decisions', '_searchLog', '_escalations', '_developerAds'\]\) delete r\[k\];/);
+  assert.match(src, /'_engine', '_v2Decisions', '_searchLog', '_escalations', '_developerAds', '_reusable', '_reusedStages'\]\) delete r\[k\];/);
   // Read once: the live setting is never consulted after creation.
   assert.equal((src.match(/VERIFY_ENGINE_SETTING_KEY/g) ?? []).length, 2, 'import + the single creation-time read');
 });
 
 test('the Admin card writes both fields on every change', () => {
   const src = readFileSync(fileURLToPath(new URL('../../components/admin/VerifyEngineCard.tsx', import.meta.url)), 'utf8');
-  assert.match(src, /const next = \{ \.\.\.setting, \[target\.field\]: target\.engine \};/);
+  assert.match(src, /const next: VerifyEngineSetting = target\.field === 'v3Enabled' \? \{ \.\.\.setting, v3Enabled: target\.enabled \} : \{ \.\.\.setting, \[target\.field\]: target\.engine \};/);
+  // V3 is offered only while enabled.
+  assert.match(src, /\(engine === 'V3' && !setting\.v3Enabled\)/);
   assert.match(src, /updateAdminSetting\(VERIFY_ENGINE_SETTING_KEY, next, reason\.trim\(\)\)/);
   assert.match(src, /field === 'active' && engine === 'V2' && !VERIFY_V2_AVAILABLE/);
 });

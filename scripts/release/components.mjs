@@ -78,6 +78,8 @@ export const COMPONENTS = {
     paths: [
       /^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|package-lock\.json|\.npmrc|\.nvmrc|\.node-version|deno\.lock|\.gitattributes)$/,
       /^(vite\.config\.[cm]?[jt]s|tsconfig[^/]*\.json|biome\.jsonc?|tailwind\.config\.[cm]?[jt]s|postcss\.config\.[cm]?[jt]s|index\.html|share\.html|\.env\.harness|components\.json|sgconfig\.yml|vercel\.json)$/,
+      // Vercel functions served next to the SPA (api/geo.ts).
+      /^api\/[^/]+\.ts$/,
       /^\.rules\//,
       // Any workflow a component does not own (<component>-*.yml are owned).
       /^\.github\/(?!workflows\/(design-studio|meta-ads)-[^/]+\.ya?ml$)/,
@@ -110,7 +112,12 @@ export const COMPONENTS = {
   },
   BILLING: {
     security: true,
-    paths: [/^src\/(components\/billing|pages\/CreditsPage|services\/(billing|credits))/i, fn('billing', 'credits-topup', 'payment-webhook', 'payment-method-setup', 'atomic-unlock', 'unlock-external-contact', 'research-purchase', 'spend-cap-check')],
+    paths: [/^src\/(components\/billing|pages\/CreditsPage|services\/(billing|credits))/i,
+      // Subscriptions (2026-10-29): client, customer pages, admin page, shared edge code, tests.
+      /^src\/subscriptions\//, /^src\/pages\/(MySubscriptionPage|SubscriptionConfirmPage|SubscriptionSandboxPayPage)\.tsx$/,
+      /^supabase\/functions\/_shared\/(entitlements|saasNotify)\.ts$/, /^supabase\/functions\/_shared\/saasPayments\//,
+      /^tests\/matrix\/saasSubscriptions\.test\.mjs$/, /^tests\/sql\/saas\//, /^scripts\/saas-subs-i18n-/,
+      fn('billing', 'credits-topup', 'payment-webhook', 'payment-method-setup', 'atomic-unlock', 'unlock-external-contact', 'research-purchase', 'spend-cap-check', 'saas-checkout', 'saas-payments-webhook')],
     suites: ['mobile:routes', 'mobile:shell'],
     proofs: ['money: reserve → settle → release on a real row; no unknown COGS silently zero'],
   },
@@ -147,13 +154,20 @@ export const COMPONENTS = {
     suites: ['studio:editor', 'studio:content', 'mobile:routes', 'a11y'],
   },
   DISCOVERY: {
-    paths: [/^supabase\/functions\/_shared\/marketplace(Catalogue|History|Inventory|PropertyContext|PropertyTurn)\.ts$/, /^src\/pages\/(FindPropertyPage|ActiveSearchPage|admin\/AdminDiscovery|admin\/AdminSocialDiscovery)/, /^src\/(components\/matching|components\/findProperty|components\/findBuyers|components\/leads|findBuyers|leads|matching|research-core)\//, /^src\/services\/(findBuyers|findBuyersLeads|homatchLeads|ownerDemoLead|matchingWorkspace|curatedLeadsAdmin)\.ts$/, /^src\/pages\/property\/(HomatchLeadsPage|LeadDetailPage|MatchingWorkspacePage|LegacyMatchingRedirect)\.tsx$/, /^scripts\/matching\//, /^tests\/mobile\/matchingWorkspaceFixture\.mjs$/, /^src\/components\/admin\/(FindBuyersControlCenter|FindBuyersIntelligencePanel)\.tsx$/, /^src\/services\/marketplaceSearch/, fn('supply-matching', 'find-property', 'find-property-plan', 'find-property-run', 'marketplace-search', 'marketplace-worker-ingest', 'run-matching', 'run-matching-v2', 'discovery-queue-worker', 'demand-discovery', 'supply-discovery', 'external-discovery-orchestrator', 'seed-discovery-queries', 'continuous-matching-worker', 'classify-signals', 'classify-signals-v2', 'revalidate-supply', 'generate-search-profile', 'ingest-live-chat', 'source-discovery-massive', 'source-audit', 'source-monitor-public', 'seed-demo-matches', 'match-campaign')],
+    paths: [/^supabase\/functions\/_shared\/marketplace(Catalogue|History|Inventory|PropertyContext|PropertyTurn)\.ts$/, /^src\/pages\/(FindPropertyPage|ActiveSearchPage|admin\/AdminDiscovery|admin\/AdminSocialDiscovery)/, /^src\/(components\/matching|components\/findProperty|components\/findBuyers|components\/leads|findBuyers|leads|matching|research-core)\//, /^src\/services\/(findBuyers|findBuyersLeads|homatchLeads|ownerDemoLead|matchingWorkspace|curatedLeadsAdmin)\.ts$/, /^src\/pages\/property\/(HomatchLeadsPage|LeadDetailPage|MatchingWorkspacePage|LegacyMatchingRedirect)\.tsx$/, /^scripts\/matching\//, /^tests\/mobile\/matchingWorkspaceFixture\.mjs$/, /^src\/components\/admin\/(FindBuyersControlCenter|FindBuyersIntelligencePanel)\.tsx$/, /^src\/services\/marketplaceSearch/, /^supabase\/functions\/_shared\/noModelGuard\.ts$/, /^scripts\/saas-search-i18n-(data|apply)\.mjs$/, fn('supply-matching', 'find-property', 'find-property-plan', 'find-property-run', 'marketplace-search', 'marketplace-worker-ingest', 'run-matching', 'run-matching-v2', 'discovery-queue-worker', 'demand-discovery', 'supply-discovery', 'external-discovery-orchestrator', 'seed-discovery-queries', 'continuous-matching-worker', 'classify-signals', 'classify-signals-v2', 'revalidate-supply', 'generate-search-profile', 'ingest-live-chat', 'source-discovery-massive', 'source-audit', 'source-monitor-public', 'seed-demo-matches', 'match-campaign')],
     suites: ['mobile:discovery', 'mobile:routes'],
   },
   PWA_PUSH: {
     paths: [/^public\/(sw|service-worker|manifest)[^/]*$/, /^src\/serviceWorker\//, /^src\/lib\/(pwa|push)\.ts$/, /^src\/lib\/notifications\//, /^src\/(components\/notifications|pages\/NotificationsPage)/, fn('push-send', 'active-search-notify'),
       // Finished-job notifications (UX round 2026-10-25): the push copy generator and the copy.
-      /^scripts\/sw-push-copy\.mjs$/, /^scripts\/ux-navnotify-i18n-(data|apply)\.mjs$/],
+      /^scripts\/sw-push-copy\.mjs$/, /^scripts\/ux-navnotify-i18n-(data|apply)\.mjs$/,
+      // Reliable transactional notifications (saas-notify, 2026-10-29): the email leg, its retry
+      // sweeper, the generated six-language copy, the one-click unsubscribe, the admin log, and
+      // the client hook that keeps users.preferred_language current.
+      /^supabase\/functions\/_shared\/(notify|notifyEmail|transactionalEmail|notificationCopy|notificationCopy\.generated|notificationUnsubscribe|jobNotify)\.ts$/,
+      /^supabase\/functions\/_shared\/__tests__\/(notificationDelivery|notifyEmail|transactionalEmail|jobNotify)\.test\.mjs$/,
+      /^scripts\/saas-notify-(i18n-data|i18n-apply|copy)\.mjs$/,
+      /^src\/hooks\/usePersistPreferredLanguage\.ts$/, /^src\/components\/admin\/NotificationDeliveryLog\.tsx$/],
     suites: ['push', 'a11y', 'mobile:shell'],
     proofs: ['push: push-send PROVEN_EXACT; a real subscription receives a test notification'],
   },
@@ -178,9 +192,11 @@ export const COMPONENTS = {
   SERVICE_CONTROLS: {
     paths: [/^src\/lib\/serviceControls\//, /^src\/components\/serviceControls\//, /^src\/pages\/admin\/AdminServiceControlPage\.tsx$/, /^src\/services\/serviceControls\.ts$/,
       fn('service-control'), /^supabase\/functions\/_shared\/serviceControl\.ts$/, /^tests\/sql\/service_controls(_expand|_broker)?\//, /^tests\/mobile\/serviceControls[A-Za-z]*\.(test\.)?mjs$/,
-      /^tests\/matrix\/serviceControlsExpand\.test\.mjs$/, /^scripts\/service-controls-(expand-)?i18n/, /^docs\/claude\/SERVICE_CONTROLS(_INVENTORY)?\.md$/],
+      /^tests\/matrix\/serviceControlsExpand\.test\.mjs$/, /^scripts\/service-controls-(expand-)?i18n/, /^docs\/claude\/SERVICE_CONTROLS(_INVENTORY)?\.md$/,
+      // Email Marketing hidden (2026-10-29): its fail-closed key, pause gate and proofs.
+      /^supabase\/functions\/_shared\/emailMarketing\/pauseGate\.ts$/, /^tests\/matrix\/emailMarketingHidden\.test\.mjs$/, /^tests\/sql\/email_marketing_hidden\//, /^scripts\/saas-email-i18n/],
     suites: ['mobile:routes', 'mobile:shell'],
-    proofs: ['service controls: migration 20261109090000 in the ledger with all six rows OFF; service-control + every gated function PROVEN_EXACT; anon gets SERVICE_DISABLED from each paused backend; customer navigation shows none of the six', 'service controls expansion: migration 20261110090000 in the ledger; the six unchanged (switches, versions); fourteen new rows ON/ON in their groups; every newly gated function PROVEN_EXACT; customer navigation unchanged while all fourteen are ON'],
+    proofs: ['service controls: migration 20261109090000 in the ledger with all six rows OFF; service-control + every gated function PROVEN_EXACT; anon gets SERVICE_DISABLED from each paused backend; customer navigation shows none of the six', 'service controls expansion: migration 20261110090000 in the ledger; the six unchanged (switches, versions); fourteen new rows ON/ON in their groups; every newly gated function PROVEN_EXACT; customer navigation unchanged while all fourteen are ON', 'email marketing hidden: migration 20261207140000 in the ledger; email_marketing OFF/OFF with its audit row; email_campaigns (SMS) unchanged; email-marketing, outreach-send, outreach-campaign-preview, comm-campaign-launch, comm-dispatch-worker, jobs-worker, service-control, homatch-ai PROVEN_EXACT; SCHEDULED/RUNNING email campaigns and Studio schedules unchanged after a tick'],
   },
   BROKER: { paths: [/^src\/(pages\/(Broker|admin\/AdminBrokersPage)|components\/broker)/, fn('[a-z-]*broker[a-z-]*')], suites: ['mobile:broker', 'mobile:routes'] },
   PUBLIC_HOMEPAGE: {
@@ -264,6 +280,8 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(contract_revisions|contract_document_delete$|contract_fixed_price$)/, 'VERIFY'],
   // homatch_refuse_spend_while_viewed: the BEFORE INSERT guard on credit_ledger / usage_reservations.
   [/^public\.(billing|credit|payment|wallet|cost_events|ledger|unlock|homatch_refuse_spend_while_viewed$)/, 'BILLING'],
+  // Subscriptions (20261207100000 / 100100): plans, usage ledger, trials, checkout, lifecycle, admin RPCs.
+  [/^public\.(saas_|admin_saas_|entitlement_status_for_me$|contract_analysis_entitlement_for_me$)/, 'BILLING'],
   // Finance V2: tax profiles, commercial policies, the service registry and its admin ledger views/RPCs.
   [/^public\.(finance_tax_profiles$|finance_commercial_policies$|finance_services$|finance_vat_bps_at$|finance_split_gross$|finance_cost_status$|finance_credits_to_usd$|finance_v2_)/, 'BILLING'],
   [/^public\.(discovery|supply_|demand_|match|search_profile|active_search|social_discovery|source_)/, 'DISCOVERY'],

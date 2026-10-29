@@ -46,6 +46,7 @@ import {
 import { useWorkspaceState } from '@/components/matching/workspace/useWorkspaceState';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
+import { useServiceVisible } from '@/lib/serviceControls';
 import { cn } from '@/lib/utils';
 import type { LeadSort } from '@/services/homatchLeads';
 import {
@@ -119,6 +120,9 @@ function WorkspaceContent() {
   const { id: propertyId = '' } = useParams<{ id: string }>();
   const { t, lang } = useLanguage();
   const navigate = useNavigate();
+  /* Email Marketing (fail closed, hidden 2026-10-29): while it is off an unlocked lead is copied
+     and contacted outside HOMATCH; no campaign is offered, created or queued from here. */
+  const emailMarketing = useServiceVisible('email_marketing');
   const [params, setParams] = useSearchParams();
   const url = useMemo(() => parseWsUrl(params), [params]);
   const { state, loaded, failed: stateFailed, refresh: refreshState } = useWorkspaceState();
@@ -361,7 +365,7 @@ function WorkspaceContent() {
     }
   };
   const openCampaign = async (p: WsProduct, ids: string[], listId: string | null) => {
-    if (creatingList) return;
+    if (creatingList || !emailMarketing) return;
     setCreatingList(true);
     try {
       const id = listId ?? (p === 'external' ? await saveCuratedToList(ids) : await saveInternalToList(ids)).listId;
@@ -455,7 +459,7 @@ function WorkspaceContent() {
 
         {success ? (
           <UnlockSuccess count={success.count} credits={success.credits} creating={creatingList}
-            onCreateCampaign={success.ids.length || success.listId ? () => void openCampaign(success.product, success.ids, success.listId) : null}
+            onCreateCampaign={emailMarketing && (success.ids.length || success.listId) ? () => void openCampaign(success.product, success.ids, success.listId) : null}
             onViewUnlocked={state.unlockedLibrary ? () => { setSuccess(null); patchUrl({ view: 'unlocked', product: success.product }); } : null}
             onDismiss={() => setSuccess(null)} />
         ) : null}
@@ -541,7 +545,10 @@ function WorkspaceContent() {
           <p className="rounded-xl border border-[hsl(40_60%_80%)] bg-[hsl(42_100%_97%)] px-3 py-2 text-sm text-[hsl(34_70%_26%)]" role="status" data-testid="mw-selection-notice">{selectionNotice}</p>
         ) : null}
 
-        {view === 'unlocked' ? (
+        {view === 'unlocked' && !emailMarketing ? (
+          <p className="rounded-2xl bg-[#0C1119] p-3 text-sm text-white sm:p-4" data-testid="mw-library-copy-hint">{t('mw_copy_hint')}</p>
+        ) : null}
+        {view === 'unlocked' && emailMarketing ? (
           <div className="flex flex-col gap-2 rounded-2xl bg-[#0C1119] p-3 text-white sm:flex-row sm:items-center sm:justify-between sm:p-4" data-testid="mw-library-actions">
             <p className="text-sm" aria-live="polite">{selectedCount ? t('mw_selected_n', { n: formatCount(selectedCount, lang) }) : t('mw_library_select_hint')}</p>
             <button type="button" disabled={!selectedCount || creatingList} data-testid="mw-library-campaign"

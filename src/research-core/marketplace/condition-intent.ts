@@ -35,14 +35,14 @@ export interface StatedConditions {
 }
 
 const BUILDING_TERMS: Array<[BuildingStatus, RegExp]> = [
-  ['NEW_BUILD', /ახალი?\s?აშენებ|ახალ(?:ი|ს|ში)?\s+(?:კორპუს|შენობ)|\bnew[- ]?build|\bnew(?:ly)?[- ]built\b|\bnew (?:construction|building|development)\b|новостро|нов(?:ый|ом|ого)\s+дом/iu],
-  ['OLD_BUILD', /ძველი?\s?აშენებ|ძველ(?:ი|ს|ში)?\s+(?:კორპუს|შენობ|ფონდ)|\bold[- ](?:build|building|construction|stock)\b|стар(?:ый|ом|ого)\s+(?:фонд|дом)|вторичк/iu],
-  ['UNDER_CONSTRUCTION', /მშენებარე|\bunder[- ]construction\b|\boff[- ]plan\b|строящ|на\s+этапе\s+строительства/iu],
+  ['NEW_BUILD', /ახალი?\s?აშენებ|ახალ(?:ი|ს|ში)?\s+(?:კორპუს|შენობ)|\bnew[- ]?build|\bnew(?:ly)?[- ]built\b|\bnew (?:construction|building|development)\b|новостро|нов(?:ый|ом|ого)\s+дом|yeni\s+(?:bina|yapı|inşaat)|sıfır\s+(?:bina|daire)|(?:مبنى|بناء)\s+جديد|בניין\s+חדש|בנייה\s+חדשה|חדשה\s+מקבלן/iu],
+  ['OLD_BUILD', /ძველი?\s?აშენებ|ძველ(?:ი|ს|ში)?\s+(?:კორპუს|შენობ|ფონდ)|\bold[- ](?:build|building|construction|stock)\b|стар(?:ый|ом|ого)\s+(?:фонд|дом)|вторичк|eski\s+(?:bina|yapı)|(?:مبنى|بناء)\s+قديم|בניין\s+ישן/iu],
+  ['UNDER_CONSTRUCTION', /მშენებარე|მიმდინარე(?:ში|\s+(?:მშენებლობ|კორპუს|პროექტ))|\bunder[- ]construction\b|\boff[- ]plan\b|строящ|на\s+этапе\s+строительства|inşaat\s+halinde|yapım\s+aşamasında|(?:قيد|تحت)\s+الإنشاء|בבנייה|על\s+הנייר/iu],
 ];
 
 const RENOVATION_TERMS: Array<[RenovationStatus, RegExp]> = [
-  ['NEEDS_RENOVATION', /გასარემონტებ|გაურემონტებ|სარემონტო|\bneeds? (?:a )?renovation\b|\bunrenovated\b|требует\s+ремонта|без\s+ремонта/iu],
-  ['RENOVATED', /გარემონტებ|ახალი\s+რემონტ|\brenovated\b|\bwith (?:a )?renovation\b|отремонтир|с\s+ремонтом|евроремонт/iu],
+  ['NEEDS_RENOVATION', /გასარემონტებ|გაურემონტებ|სარემონტო|\bneeds? (?:a )?renovation\b|\bunrenovated\b|требует\s+ремонта|без\s+ремонта|tadilat\s+gerek|bakım\s+gerek|يحتاج\s+(?:إلى\s+)?ترميم|דורש(?:ת)?\s+שיפוץ/iu],
+  ['RENOVATED', /გარემონტებ|ახალი\s+რემონტ|\brenovated\b|\bwith (?:a )?renovation\b|отремонтир|с\s+ремонтом|евроремонт|tadilatlı|yenilenmiş|(?<!\p{L})مرممة?(?!\p{L})|(?<!\p{L})مجددة?(?!\p{L})|משופצ(?:ת)?/iu],
   ['GREEN_FRAME', /მწვანე\s+კარკას|\bgreen[- ]frame\b|зел[её]н\S*\s+каркас/iu],
   ['WHITE_FRAME', /თეთრ\S*\s+კარკას|\bwhite[- ]frame\b|бел\S*\s+каркас/iu],
   ['BLACK_FRAME', /შავ\S*\s+კარკას|\bblack[- ]frame\b|ч[её]рн\S*\s+каркас/iu],
@@ -50,9 +50,9 @@ const RENOVATION_TERMS: Array<[RenovationStatus, RegExp]> = [
 
 /* Role markers, tested on the clause with the matched term removed. Exclusion wins, then a
    wish (a wish never becomes a requirement), then a requirement, then acceptance. */
-const EXCLUDED = /(?:არ\s+(?:მინდა|მაწყობს|მაინტერესებს|განვიხილავ|მჭირდება)|არა\s|გარდა|(?<!\p{L})no(?!\p{L})|(?<!\p{L})not(?!\p{L})|\bwithout\b|\bexcept\b|\bavoid\b|(?<!\p{L})не(?!\p{L})|(?<!\p{L})кроме(?!\p{L}))/iu;
-const PREFERRED = /უკეთესი|სასურველი|ჯობია|სჯობს|იდეალურ|\bprefer|\bideally\b|\bbetter\b|\bif possible\b|лучше|желательн|предпочт|по\s+возможности/iu;
-const REQUIRED = /აუცილებ|მხოლოდ|უნდა\s+(?:იყოს|ჰქონდეს|ქონდეს)|სავალდებულ|\bmust\b|\bonly\b|\brequired\b|\bmandatory\b|\bhas to\b|обязательн|только|должн/iu;
+const EXCLUDED = /(?:არ\s+(?:მინდა|მაწყობს|მაინტერესებს|განვიხილავ|მჭირდება)|არა\s|გარდა|(?<!\p{L})no(?!\p{L})|(?<!\p{L})not(?!\p{L})|\bwithout\b|\bexcept\b|\bavoid\b|(?<!\p{L})не(?!\p{L})|(?<!\p{L})кроме(?!\p{L})|istemiyorum|olmasın|hariç|لا\s+أريد|(?<!\p{L})بدون(?!\p{L})|לא\s+רוצה|(?<!\p{L})(?:בלי|ללא)(?!\p{L}))/iu;
+const PREFERRED = /უკეთესი|სასურველი|ჯობია|სჯობს|იდეალურ|\bprefer|\bideally\b|\bbetter\b|\bif possible\b|лучше|желательн|предпочт|по\s+возможности|tercihen|mümkünse|يفضل|إن\s+أمكن|עדיף|רצוי/iu;
+const REQUIRED = /აუცილებ|მხოლოდ|უნდა\s+(?:იყოს|ჰქონდეს|ქონდეს)|სავალდებულ|\bmust\b|\bonly\b|\brequired\b|\bmandatory\b|\bhas to\b|обязательн|только|должн|mutlaka|kesinlikle|sadece|(?<!\p{L})فقط(?!\p{L})|(?<!\p{L})يجب(?!\p{L})|ضروري|(?<!\p{L})חייב(?:ת)?(?!\p{L})|(?<!\p{L})רק(?!\p{L})/iu;
 const ACCEPTED = /განვიხ|მისაღები|მაწყობს|\balso fine\b|\bfine\b|\bok(?:ay)?\b|\bacceptable\b|\bconsider\b|подойд|рассмотр|устроит|тоже/iu;
 
 /* Clauses: sentence punctuation and the conjunctions that join separate statements. "ან" / "or"

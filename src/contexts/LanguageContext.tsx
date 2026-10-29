@@ -6,9 +6,10 @@ import type { ContentLocale, OverrideMap } from '@/i18n/appContent';
 import { hasUnfilledHole, interpolate, resolveCopy } from '@/i18n/interpolate';
 import { fetchOverrides } from '@/services/appContent';
 import { tellServiceWorkerLanguage } from '@/lib/swLanguage';
-
-const LANG_STORAGE_KEY = 'homatch_lang';
-const SUPPORTED_LANGUAGES: SupportedLanguage[] = ['en', 'ka', 'ru', 'tr', 'ar', 'he'];
+import {
+  LANG_SOURCE_KEY, LANG_STORAGE_KEY, isSupportedLanguage, profileMayApply, resolveInitialLanguage,
+  type LanguageSource,
+} from '@/i18n/languagePreference';
 
 // Dev-only, capped so a broken key can't spam the console. Never runs in
 // production — this is a development-time missing-translation signal only,
@@ -40,51 +41,61 @@ interface LanguageContextValue {
    * setLang or loop.
    */
   applyProfileLanguage: (lang: string | null | undefined) => void;
+  /** Why this language is showing (languagePreference.ts); only 'default' may be offered another. */
+  langSource: LanguageSource;
   t: (key: string, vars?: Record<string, string | number>) => string;
   isRTL: boolean;
 }
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
-function isSupportedLanguage(value: unknown): value is SupportedLanguage {
-  return typeof value === 'string' && SUPPORTED_LANGUAGES.includes(value as SupportedLanguage);
-}
-
-function detectBrowserLanguage(): SupportedLanguage {
+function readStorage(key: string): string | null {
   try {
-    if (typeof navigator === 'undefined') return 'en';
-    const nav = navigator.language?.toLowerCase() ?? 'en';
-    for (const code of SUPPORTED_LANGUAGES) {
-      if (nav.startsWith(code)) return code;
-    }
-  } catch {
-    // Some privacy-focused/mobile browsers can restrict navigator access.
-  }
-  return 'en';
-}
-
-function getInitialLanguage(): SupportedLanguage {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const stored = window.localStorage.getItem(LANG_STORAGE_KEY);
-      if (isSupportedLanguage(stored)) return stored;
-    }
+    if (typeof window !== 'undefined' && window.localStorage) return window.localStorage.getItem(key);
   } catch {
     // Safari private mode / embedded browsers may throw on storage access.
   }
-  return detectBrowserLanguage();
+  return null;
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Keep the in-memory language working even when persistence is blocked.
+  }
+}
+
+function browserLanguages(): readonly string[] {
+  try {
+    if (typeof navigator === 'undefined') return [];
+    return navigator.languages?.length ? navigator.languages : [navigator.language];
+  } catch {
+    // Some privacy-focused/mobile browsers can restrict navigator access.
+    return [];
+  }
+}
+
+/** Explicit pick > saved profile > browser > Georgian (languagePreference.ts). */
+function getInitial(): { lang: SupportedLanguage; source: LanguageSource } {
+  return resolveInitialLanguage({
+    stored: readStorage(LANG_STORAGE_KEY),
+    storedSource: readStorage(LANG_SOURCE_KEY),
+    browser: browserLanguages(),
+  });
 }
 
 /**
  * Fetch the language this visitor will see first, before the app renders.
  *
- * Each language but English is its own chunk (src/i18n/bundles.ts). main.tsx
- * awaits this — bounded, so a failed or slow chunk still lets the app render,
- * in English — which is what keeps a Georgian visitor from seeing an English
- * flash before their own language arrives.
+ * English and Georgian ship in the entry; every other language is its own
+ * chunk (src/i18n/bundles.ts). main.tsx awaits this — bounded, so a failed or
+ * slow chunk still lets the app render, in English — which is what keeps a
+ * Russian, Turkish, Arabic or Hebrew visitor from seeing an English flash
+ * before their own language arrives.
  */
 export function preloadLanguage(timeoutMs = 4000): Promise<void> {
-  const lang = getInitialLanguage();
+  const { lang } = getInitial();
   if (bundleFor(lang)) return Promise.resolve();
   return Promise.race([
     loadLanguage(lang).then(() => undefined, () => undefined),
@@ -92,17 +103,10 @@ export function preloadLanguage(timeoutMs = 4000): Promise<void> {
   ]);
 }
 
-function hadExplicitStoredPreference(): boolean {
-  try {
-    return typeof window !== 'undefined' && !!window.localStorage &&
-      isSupportedLanguage(window.localStorage.getItem(LANG_STORAGE_KEY));
-  } catch {
-    return false;
-  }
-}
-
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangStateNow] = useState<SupportedLanguage>(getInitialLanguage);
+  const [initial] = useState(getInitial);
+  const [lang, setLangStateNow] = useState<SupportedLanguage>(initial.lang);
+  const [langSource, setLangSource] = useState<LanguageSource>(initial.source);
   /* Bumped when a language bundle arrives, so t() re-reads it. */
   const [bundleTick, setBundleTick] = useState(0);
   /* The last language asked for: a slower, earlier request never wins. */
@@ -154,10 +158,10 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     return () => { live = false; };
   }, []);
   const isRTL = RTL_LANGUAGES.includes(lang);
-  // Precedence guard: once true, a profile-stored preference must never
-  // silently override what the user (or this device) already has set —
-  // only a brand-new device/session with zero prior signal may adopt it.
-  const hasExplicitPreferenceRef = useRef(hadExplicitStoredPreference());
+  // Precedence guard: a saved profile language never overrides a language
+  // the person picked on this device; it does outrank the browser's and the
+  // Georgian default (languagePreference.ts).
+  const sourceRef = useRef<LanguageSource>(initial.source);
   const profileAppliedRef = useRef(false);
 
   /* Pushes drawn later by the service worker read in this language (swLanguage.ts). */
@@ -174,25 +178,21 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   const setLang = useCallback((newLang: SupportedLanguage) => {
     if (!isSupportedLanguage(newLang)) return;
-    hasExplicitPreferenceRef.current = true;
-    try {
-      window.localStorage.setItem(LANG_STORAGE_KEY, newLang);
-    } catch {
-      // Keep the in-memory language working even when persistence is blocked.
-    }
+    sourceRef.current = 'explicit';
+    setLangSource('explicit');
+    writeStorage(LANG_STORAGE_KEY, newLang);
+    writeStorage(LANG_SOURCE_KEY, 'explicit');
     setLangState(newLang);
   }, [setLangState]);
 
   const applyProfileLanguage = useCallback((profileLang: string | null | undefined) => {
     if (profileAppliedRef.current) return; // once per session — never re-fights a live choice
     profileAppliedRef.current = true;
-    if (hasExplicitPreferenceRef.current) return; // device/user already has a preference
-    if (!isSupportedLanguage(profileLang)) return;
-    try {
-      window.localStorage.setItem(LANG_STORAGE_KEY, profileLang);
-    } catch {
-      // Non-fatal — the in-memory language still applies for this session.
-    }
+    if (!profileMayApply(sourceRef.current, profileLang)) return; // an explicit pick on this device wins
+    sourceRef.current = 'profile';
+    setLangSource('profile');
+    writeStorage(LANG_STORAGE_KEY, profileLang);
+    writeStorage(LANG_SOURCE_KEY, 'profile');
     setLangState(profileLang);
   }, [setLangState]);
 
@@ -229,7 +229,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   }, [lang, overrides, bundleTick]);
 
   return (
-    <LanguageContext.Provider value={{ lang, setLang, applyProfileLanguage, t, isRTL }}>
+    <LanguageContext.Provider value={{ lang, setLang, applyProfileLanguage, langSource, t, isRTL }}>
       {children}
     </LanguageContext.Provider>
   );
@@ -288,6 +288,7 @@ export function LanguageOverride({
     lang,
     setLang: () => { /* a preview does not change anyone's language */ },
     applyProfileLanguage: outer.applyProfileLanguage,
+    langSource: outer.langSource,
     t,
     isRTL: RTL_LANGUAGES.includes(lang),
   };

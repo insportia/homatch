@@ -3,12 +3,105 @@
 Read this before touching anything money-adjacent. `npm run homatch:scope`
 warns when a diff enters this domain.
 
+## Subscriptions (owner decision 2026-10-29) — SUPERSEDES "PAYG only"
+
+Migrations `20261207100000_saas_subscriptions_core.sql`, `20261207100100_saas_entitlement_wiring.sql`.
+Operator: შპს „ულტრა ქონექშენ“, identification code 406378511.
+
+- **Plans** (`saas_plans`, code references `billing_plans`): STANDARD 990, VIP 2900, UNLIMITED 9900
+  GEL tetri a month, VAT inclusive, `priority_tier` 10/20/30. **Allowances** per billing period
+  (`saas_plan_entitlements`): VERIFY 5 / 15 / unlimited, CONTRACT_ANALYSIS 10 / 30 / unlimited; boolean
+  HOMI_UNLIMITED, INTERNAL_SEARCH, INTERNAL_MATCHING, INTERNAL_UNLOCK_FREE on every plan;
+  PREMIUM_DISCOVERY rows exist (disabled) with a trial switch for the Find Property workstream.
+  Every number is a row edited only through `admin_saas_set_plan / _set_entitlement / _set_trial /
+  _set_setting` (admin only, reason required, `admin_audit_log` SAAS_* with old/new). Admin → Plans
+  and entitlements (`/admin/plans`). No artificial chat quota exists anywhere.
+- **Why new tables**: `user_subscriptions` is read by `billing_current_plan → billing_entitlements →
+  beginExecution / billing_price_quote`. An ACTIVE row there would make every PAYG product answer
+  NOT_FOUND for STANDARD (no `product_plan_entitlements` rows) and apply VIP's dormant 25 % member
+  discount. The subscription truth is `saas_subscriptions`; `billing_current_plan` keeps answering
+  FREE and the legacy wallet path is unchanged. STANDARD/UNLIMITED were added to `billing_plans` with
+  `enabled = false` (the dormant catalogue never renders them); VIP's dormant USD row is untouched.
+  `users.plan` is not mirrored.
+- **Funding order** (`saas_usage_begin`, advisory lock per user+feature): first-use trial
+  (`saas_trials`, PK (user, feature): RESERVED → CONSUMED / RELEASED; a CONSUMED trial never comes
+  back; account must have a confirmed email or phone and not be suspended) → plan allowance of the
+  live period (RESERVED + COMMITTED count, so concurrent starts cannot exceed it) → legacy credit
+  balance (only when `credit_accounts.balance > 0`) → refusal `SUBSCRIPTION_REQUIRED` /
+  `ALLOWANCE_EXHAUSTED` (402; the UI shows the plans, never a top-up).
+- **Success-only usage** (`saas_usage`, unique (user, feature, idempotency_key)): commit only on
+  delivery, release on failure / stop / timeout; `saas_usage_sweep` (via `saas_subscription_tick`,
+  jobs-worker every tick) releases RESERVED rows past the feature TTL (VERIFY 48 h, CONTRACT 1 h).
+  A delivery after the sweep still commits (the customer got it) and is flagged `over_allowance`
+  when the period was full.
+- **Wiring**: Verify — `verify_billing_open` / `_close` / `verify_launch_quote` are wrappers; the
+  previous functions are renamed `*_wallet` and keep the fixed-price path for legacy credit holders
+  (a job that already holds a wallet session keeps it). Key `verify:<job>`; COMPLETE commits,
+  STOPPED / PARTIAL / SYSTEM_FAILED release. Contract Analysis — `deal-room-document-analyze` and
+  `developer-document-extract` go through `_shared/entitlements.ts beginEntitled` (keys
+  `contract:<doc>:<sha>`, `devdoc:<doc>:<sha>`), legacy wallet with `allowIncluded: false`: the old
+  "1 free a month for everyone" is gone. Plan-funded analyses still record COGS (`cost_events`,
+  CONTRACT_ANALYSIS). Internal lead unlock — `internal_leads_unlock` is free (0 credits, no wallet
+  call) for any live subscriber, decided under the lock from the subscription row;
+  non-subscribers keep the priced path only with a positive legacy balance, otherwise
+  `SUBSCRIPTION_REQUIRED`. Contacts are exposed only through `internal_lead_unlocks` rows.
+- **UI reads one function**: `entitlement_status_for_me()` (plan, subscription, per-feature
+  used/limit/unlimited/remaining, trial state/availability, legacy balance).
+- **Lifecycle** (`saas_subscriptions`, one live row per user; `saas_subscription_events` audit +
+  notification outbox): activate on the first verified payment (period = now → +1 calendar month in
+  Asia/Tbilisi, `saas_period_end`); **upgrade now** (new plan and a NEW period start immediately,
+  allowances reset, no proration, no refund of unused days); **downgrade at period end**
+  (`pending_plan_code`); **cancel at period end**; renewal paid inside the 3-day window
+  (`saas_renewal_window_days`) sets `next_period_paid` and the tick rolls into it; unpaid period end →
+  `PAST_DUE` with `saas_past_due_grace_days` (3) of continued access → `EXPIRED`; a payment while
+  PAST_DUE starts a fresh period at once. Notices (jobs-worker → `notify()`): SUBSCRIPTION_ACTIVATED,
+  SUBSCRIPTION_RENEWED, SUBSCRIPTION_ENDED, SUBSCRIPTION_PAYMENT_DUE, PAYMENT_FAILED, TRIAL_USED
+  (enum values added; email templates belong to the notifications workstream).
+- **Payments** (`_shared/saasPayments`): one adapter interface (createSession, verifyWebhook →
+  normalised event, lookupTransaction, refund, chargeRecurring, testConnectivity, capabilities).
+  Access is granted ONLY by `saas_payment_event_apply` after verification: idempotent on
+  (provider, event_id), amount and currency must equal the checkout (else AMOUNT_MISMATCH, nothing
+  granted). The redirect back (`/subscription/confirm`) only polls. `saas-payments-webhook?provider=`
+  is the single door (no JWT; the adapter authenticates). jobs-worker re-reads PENDING bank checkouts
+  (reconciliation) and charges consented saved cards once per period (no automatic retry).
+  - **Bank of Georgia**: OAuth2 client_credentials, create order (GEL, callback, redirect URLs,
+    external_order_id = checkout id), callback `Callback-Signature` SHA256withRSA over the raw body
+    with the bank's public key AND a re-read of the receipt before anything is applied, receipt
+    lookup, refund, saved card for automatic payments + charge. Secrets `BOG_CLIENT_ID`,
+    `BOG_CLIENT_SECRET`, `BOG_CALLBACK_PUBLIC_KEY`.
+  - **TBC Checkout (tpay)**: apikey + client_id/secret token, create payment (merchantPaymentId =
+    checkout id, callbackUrl), callback carries only a payment id so the status is ALWAYS re-read
+    from the API, cancel/refund, saveCard + recId recurring execution. Secrets `TBC_API_KEY`,
+    `TBC_CLIENT_ID`, `TBC_CLIENT_SECRET`.
+  - **SANDBOX**: HMAC-signed test events (`SAAS_SANDBOX_SECRET` + `saas_sandbox_payments_enabled`),
+    admin-only, labelled everywhere (`is_test` on checkouts and payment events), and it grants
+    access ONLY on a database where a superuser set `homatch.saas_sandbox_grants = 'on'` — never in
+    production (there it records `SANDBOX_NO_GRANT`).
+  - Customers are sent only to the live provider in `admin_settings.saas_default_payment_provider`
+    (NONE by default) and only when its secrets exist; otherwise the pricing page shows "online
+    payment activation pending". Until then the audited admin support grant (`admin_saas_support`
+    GRANT / EXTEND / CANCEL_*) is the only way to activate a plan.
+  - The Stripe / mock top-up code (`_shared/payment_provider.ts`, `payment-webhook`) is untouched and
+    keeps serving top-up history. Historic payments, invoices and legal records of the previous
+    operator are never rewritten.
+- **Credits**: `credits-topup` answers 410 `CREDIT_SALES_CLOSED` unless
+  `admin_settings.credit_topups_enabled` is true (seeded false). `/credits` is read-only history.
+  Existing balances stay spendable (legacy path above). Pass-through costs (Meta Ads budgets, paid
+  external discovery / Apify, GPU rendering) are not in any plan and keep their wallet / explicit
+  charge; how those are funded now that credits are not sold is an owner decision.
+- **Tests**: `tests/matrix/saasSubscriptions.test.mjs` (adapters, signatures, webhook path, funding
+  order, notices, source facts), `tests/sql/saas/realdb.mjs` (real PostgreSQL 17: trials, concurrency,
+  lifecycle, replay, sandbox guard, Verify / unlock wiring, admin audit).
+
+The sections below describe the PAYG model as it was. They stay true for legacy credit holders and
+for the pass-through products; where they say "PAYG only" or "no plan gating", this section wins.
+
 ## Invariants
 
 - **Billing is per service** (owner decision, 2026-10-22, replacing "PAYG only").
-  10 credits = $1. Every service keeps PAYG unless the owner gives it its own
-  model. Dormant "billing-v2" plan machinery (billing_plans, user_subscriptions,
-  product_plan_entitlements) is NOT product truth and must not be wired up.
+  10 credits = $1. SUPERSEDED 2026-10-29 by Subscriptions above (saas_* tables). The dormant
+  "billing-v2" machinery (user_subscriptions, product_plan_entitlements) is still NOT product
+  truth and must not be wired up.
 - **Email Marketing plans** (`email_plans`, `email_subscriptions`,
   `email_quota_periods`, migration 20261124090000): Free 50 emails once per
   account (lifetime, never reset); Pro $50/month 50,000; Scale $220/month
@@ -288,7 +381,7 @@ warns when a diff enters this domain.
 - The 10× research-offer pricing ambiguity is documented and deliberately
   unresolved; changing numbers is a product decision, not a code fix.
 
-## Why there is no static PAYG guard test
+## Why there is no static PAYG guard test (historical; subscriptions replaced PAYG-only)
 
 A source-level "no plan gating" test was evaluated and judged brittle: the
 dormant billing-v2 machinery makes any regex-level assertion either

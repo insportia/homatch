@@ -6,20 +6,21 @@
 // RPC that reads what the product already records. Nothing here is
 // estimated without saying so, and nothing changes a price.
 
+import { AlertTriangle, ExternalLink, RefreshCw } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ExternalLink, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/db/supabase';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { cn } from '@/lib/utils';
-import { Confirm, Empty, ErrorNote, Field, PageHeader, inputClass } from '@/components/admin/control/AdminKit';
-import { english, loadAdminStrings, loadFeatureStrings, loadLanguage } from '@/i18n/bundles';
-import { LOCALES } from '@/i18n/locales';
-import { isAdminOnlyKey, isStudioOnlyKey } from '@/i18n/adminSplit';
-import MortgageBankProductsAdmin from '@/components/admin/MortgageBankProductsAdmin';
+import { NotificationDeliveryLog } from '@/components/admin/NotificationDeliveryLog';
 import { centsToUsd, costPerConversationUsd, costPerModelTurnUsd, creditsToUsd, formatCredits, formatUsd, marginState, toNumber } from '@/admin/money';
 import { isHttpsUrl, ruleMoves } from '@/admin/mortgageBankProducts';
+import { Confirm, Empty, ErrorNote, Field, inputClass, PageHeader } from '@/components/admin/control/AdminKit';
+import MortgageBankProductsAdmin from '@/components/admin/MortgageBankProductsAdmin';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { supabase } from '@/db/supabase';
+import { isAdminOnlyKey, isStudioOnlyKey } from '@/i18n/adminSplit';
+import { english, loadAdminStrings, loadFeatureStrings, loadLanguage } from '@/i18n/bundles';
+import { LOCALES } from '@/i18n/locales';
+import { cn } from '@/lib/utils';
 
 export type HomiAdminSection = 'homi' | 'ai-costs' | 'mortgage' | 'mortgage-leads' | 'contracts' | 'notifications' | 'languages';
 
@@ -128,6 +129,8 @@ function HomiSection({ days, costs }: { days: number; costs: boolean }) {
             <Tile label={t('admin_hs_cost_per_conversation')} value={costPerConversationUsd(tot) === null ? '—' : usd(costPerConversationUsd(tot))}
               hint={t('admin_hs_conversations_n', { n: num(tot.conversations ?? 0) })} />
             <Tile label={t('admin_hs_unpriced')} value={num(tot.unpriced_turns)} hint={t('admin_hs_unpriced_hint')} tone={Number(tot.unpriced_turns) > 0 ? 'warn' : undefined} />
+            {/* Cached input is billed at a fraction of fresh input: the share that hit the prompt cache drives cost per turn. */}
+            <Tile label={t('admin_hs_cache')} value={pct(tot.prompt_cache_rate)} hint={t('admin_hs_cache_hint')} />
             {Number(tot.unpriced_turns) > 0 ? (
               <p role="note" className="flex items-start gap-1.5 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-xs sm:col-span-2 lg:col-span-4">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{t('admin_hs_cost_lower_bound', { n: num(tot.unpriced_turns) })}
@@ -160,8 +163,10 @@ function HomiSection({ days, costs }: { days: number; costs: boolean }) {
           </div>
         </section>
       ) : <Empty>{t('admin_hs_no_data')}</Empty>}
-      <Table head={[t('admin_hs_col_model'), t('admin_hs_col_turns'), t('admin_hs_col_tokens'), t('admin_hs_col_cost')]}
-        rows={(data.by_model ?? []).map((m: Json) => [m.model, num(m.turns), `${num(m.input_tokens)} / ${num(m.output_tokens)}`, Number(m.unpriced_turns) > 0 ? `${usd(m.cost_usd)} + ${num(m.unpriced_turns)} ${t('admin_hs_unpriced_short')}` : usd(m.cost_usd)])} />
+      <Table head={[t('admin_hs_col_model'), t('admin_hs_col_turns'), t('admin_hs_col_tokens'), t('admin_hs_cache'), t('admin_hs_col_cost')]}
+        rows={(data.by_model ?? []).map((m: Json) => [m.model, num(m.turns), `${num(m.input_tokens)} / ${num(m.output_tokens)}`,
+          Number(m.input_tokens) > 0 ? pct(Number(m.cached_tokens ?? 0) / Number(m.input_tokens)) : '—',
+          Number(m.unpriced_turns) > 0 ? `${usd(m.cost_usd)} + ${num(m.unpriced_turns)} ${t('admin_hs_unpriced_short')}` : usd(m.cost_usd)])} />
       {!costs ? (
         <>
           <Table head={[t('admin_hs_col_route'), t('admin_hs_col_avg'), 'p95', t('admin_hs_col_ttft')]}
@@ -353,7 +358,9 @@ function NotificationsSection({ days }: { days: number }) {
   if (error) return <ErrorNote message={error} />;
   if (!data) return null;
   const email = data.byChannel?.EMAIL ?? {};
-  const sent = Number(email.SENT ?? 0); const failed = Number(email.FAILED ?? 0);
+  /* DELIVERED rows were SENT first; BOUNCED and COMPLAINED were sent and then refused. */
+  const sent = Number(email.SENT ?? 0) + Number(email.DELIVERED ?? 0);
+  const failed = Number(email.FAILED ?? 0) + Number(email.BOUNCED ?? 0) + Number(email.COMPLAINED ?? 0);
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -364,6 +371,7 @@ function NotificationsSection({ days }: { days: number }) {
       </div>
       <Table head={[t('admin_hs_col_reason'), t('admin_hs_col_count')]} rows={(data.topFailureReasons ?? []).map((r: Json) => [<code key="r" dir="ltr">{r.reason}</code>, num(r.count)])} />
       <p className="text-xs text-muted-foreground">{t('admin_hs_nt_note')} <Link className="underline" to="/admin/notifications">{t('admin_hs_nt_link')}</Link></p>
+      <NotificationDeliveryLog days={days} />
     </div>
   );
 }

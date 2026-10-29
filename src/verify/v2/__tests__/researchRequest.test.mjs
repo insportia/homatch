@@ -52,7 +52,7 @@ test('the report model is chosen per V2 job; V1 and unset keep the default', asy
   assert.equal(reportModelFor({ _engine: { version: 'V1', research: { report: { model: 'gpt-5.6-terra' } } } }, 'gpt-5.6-luna'), 'gpt-5.6-luna');
   assert.equal(reportModelFor(null, 'gpt-5.6-luna'), 'gpt-5.6-luna');
   const vs = readFileSync(fileURLToPath(new URL('../../../../supabase/functions/verify-synthesis/index.ts', import.meta.url)), 'utf8');
-  assert.match(vs, /const reportRouting = reportRoutingFor\(rj, MODEL\);/);
+  assert.match(vs, /const reportRouting = reportRoutingFor\(rj, MODEL, live\.research\);/);
   assert.match(vs, /const first = await callReport\(reportModel\);/);
   assert.match(vs, /synthesisModel: reportModel,/);
   assert.match(vs, /reportConsumption\(usage, usage\?\.model \|\| MODEL\)/, 'cost is priced at the model that wrote it');
@@ -94,6 +94,6 @@ test('research-agent applies all of it to V2 jobs only', () => {
   assert.match(src, /const ctx = \(x: any\) => \(v2 \? withoutEmpty\(x\) : x\);/);
   assert.match(src, /Official=\$\{JSON\.stringify\(v2 \? marketOfficialContext\(p\.official\) : p\.official \|\| \{\}\)\.slice\(0, 16000\)\}/);
   // Routing is stamped once at creation, for V2 jobs only.
-  assert.match(src, /const stamped = engine\.version === 'V2' \? \{ \.\.\.engine, research: parseResearchTuning\(await adminSettingJson\(sb, VERIFY_V2_RESEARCH_SETTING_KEY\)\) \} : engine;/);
+  assert.match(src, /const stamped = engine\.version === 'V2' \? \{ \.\.\.engine, research: parseResearchTuning\(await adminSettingJson\(sb, VERIFY_V2_RESEARCH_SETTING_KEY\)\) \}\n[^\n]*\n\s+: engine\.version === 'V3' \? \{ \.\.\.engine, research: parseResearchTuning\(await adminSettingJson\(sb, VERIFY_V3_RESEARCH_SETTING_KEY\)\) \}\n\s+: engine;/);
   assert.equal((src.match(/VERIFY_V2_RESEARCH_SETTING_KEY/g) ?? []).length, 2);
 });

@@ -6,23 +6,24 @@ import { CustomerSurface } from '@/components/customer/surface';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { applyEdit, emptyBrief, type SearchIntelligenceBrief, sanitizeBrief } from '@/research-core/marketplace/brief';
 import type { ComparisonRow } from '@/research-core/marketplace/comparison';
+import type { Clarification } from '@/research-core/marketplace/queryEngine';
 import {cancelSearch, compareTwo,
   MarketplaceError, type PropertyView, propertyDetail,type SearchSummary,
   searchStatus, startSearch, understand,
 } from '@/services/marketplaceSearch';
+import { rememberDeepConsent } from '@/services/paidCampaign';
 import { CompareView } from './CompareView';
 import { PropertyIntelligence } from './PropertyIntelligence';
 import { ResultsView } from './ResultsView';
 import { BuilderIntro, SearchBuilder } from './SearchBuilder';
+import { SnakeOverlay } from './SnakeThumbnail';
 import { DeepSearchPanel } from './workspace/DeepSearchPanel';
-import { rememberDeepConsent } from '@/services/paidCampaign';
 import { DiscoveryModeStep } from './workspace/DiscoveryModeStep';
 import { ActivityTab, SavedTab } from './workspace/PersonalTabs';
+import { btn } from './workspace/primitives';
 import { SearchesTab } from './workspace/SearchesTab';
 import { SearchProgress } from './workspace/SearchProgress';
-import { btn } from './workspace/primitives';
-import { WorkspaceHeader, WorkspaceTabs, WORKSPACE_TABS, type WorkspaceTab } from './workspace/WorkspaceHeader';
-import { SnakeOverlay } from './SnakeThumbnail';
+import { WORKSPACE_TABS, WorkspaceHeader, type WorkspaceTab, WorkspaceTabs } from './workspace/WorkspaceHeader';
 
 type View = 'LOADING' | 'MODE' | 'INTRO' | 'BUILD' | 'CHOOSE' | 'SEARCH' | 'RESULTS' | 'ERROR';
 const POLL_MS = 4000;
@@ -55,7 +56,7 @@ const writeDraft = (b: SearchIntelligenceBrief | null) => {
  *  no paid results view, and no "coming soon" or "switched off" notice. Customers see nothing
  *  paid; past campaigns stay on their own pages (direct link, Admin). */
 export function MarketplaceSearchExperience({ deepSearchAvailable, deepOffered = true, activeSources = null, sourceNames = [] }: { deepSearchAvailable: boolean; deepOffered?: boolean; activeSources?: number | null; sourceNames?: string[] }) {
-  const { t, isRTL } = useLanguage();
+  const { t, isRTL, lang } = useLanguage();
   const [params] = useSearchParams();
   const route = useParams<{ searchId: string; propertyKey: string }>();
   const navigate = useNavigate();
@@ -63,6 +64,8 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, deepOffered =
   const [view, setView] = useState<View>('LOADING');
   const [text, setText] = useState('');
   const [brief, setBrief] = useState<SearchIntelligenceBrief | null>(null);
+  /* What the reading could not decide alone (currency, transaction, type, place): one chip answers each. */
+  const [clarifications, setClarifications] = useState<Clarification[]>([]);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState<SearchSummary | null>(null);
   const [resultsVersion, setResultsVersion] = useState(0);
@@ -169,13 +172,13 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, deepOffered =
     setBusy(true);
     try {
       const r = await understand(text);
-      if (r.costRef) briefRefs.current = [...briefRefs.current, r.costRef].slice(-20);
       setBriefAndDraft(r.brief);
+      setClarifications(r.clarifications ?? []);
     } catch (e) {
-      /* The model being unavailable (or the per-user quota reached) is not a dead end:
-         every question is asked instead, and nothing is charged or queued. */
+      /* An unreachable service is not a dead end: every question is asked instead. */
       if (e instanceof MarketplaceError && e.code === 'RATE_LIMIT_EXCEEDED') toast.message(t('mps_error_rate_limited'));
       setBriefAndDraft(emptyBrief(text));
+      setClarifications([]);
     } finally {
       setBusy(false);
       setView('BUILD');
@@ -269,8 +272,8 @@ export function MarketplaceSearchExperience({ deepSearchAvailable, deepOffered =
       {view === 'ERROR' && <div role="alert" className="space-y-4 rounded-2xl border border-border bg-card p-6"><p>{t('mps_error_generic')}</p><Link to="/find-property" className={btn.quiet}>{t('fpx_my_searches')}</Link></div>}
       {view === 'INTRO' && <BuilderIntro t={t} text={text} onText={setText} onSubmit={() => void doUnderstand()} busy={busy} />}
       {view === 'BUILD' && brief && (
-        <SearchBuilder t={t} brief={brief} onBrief={setBriefAndDraft} onStart={() => (deepOffered ? setView('CHOOSE') : void doStart())} starting={busy} startLabel={deepOffered ? t('fpx_continue_modes') : undefined}
-          onReset={() => { setBriefAndDraft(null); setView('INTRO'); }} />
+        <SearchBuilder t={t} lang={lang} clarifications={clarifications} onClarified={(id) => setClarifications((list) => list.filter((c) => c.id !== id))} brief={brief} onBrief={setBriefAndDraft} onStart={() => (deepOffered ? setView('CHOOSE') : void doStart())} starting={busy} startLabel={deepOffered ? t('fpx_continue_modes') : undefined}
+          onReset={() => { setBriefAndDraft(null); setClarifications([]); setView('INTRO'); }} />
       )}
       {view === 'CHOOSE' && brief && deepOffered && (
         <DiscoveryModeStep t={t} deepAvailable={deepSearchAvailable} activeSources={activeSources} sourceNames={sourceNames} starting={busy} brief={brief}

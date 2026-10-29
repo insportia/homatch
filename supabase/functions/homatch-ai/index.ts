@@ -2,11 +2,10 @@
 //
 // Three responsibilities beyond the original "answer the user's question"
 // flow (Task #59):
-//   1. Free-tier rate limiting: every plan tier (FREE/PLUS/PRO) gets a
-//      daily message cap, admin-configurable via admin_settings
-//      (ai_chat_daily_limit_free/_plus/_pro, -1 = unlimited), enforced
-//      against the rate_limit_events table (pre-existing schema, never
-//      previously wired to anything).
+//   1. Abuse safeguard, not a quota: HOMI chat is unlimited in every plan
+//      (owner, 2026-10-29). A burst rate, an hourly and a very high daily
+//      ceiling and a repeated-message heuristic (src/lib/homi/contextPlan.ts,
+//      admin_settings homi_abuse_*) stop scripts; nothing depends on the plan.
 //   2. Multilingual intent-to-lead capture: the model is asked to append a
 //      small fenced JSON block after its normal answer, classifying any
 //      real-estate transaction intent or contact info the user disclosed
@@ -46,8 +45,13 @@ import {
 import { ensureReplies, fallbackReplies, HOMI_ALWAYS_REPLIES_INSTRUCTION } from '../../../src/lib/homi/replyFallback.ts';
 import { hasMeta, parseMessageMeta, type HomiMessageMeta } from '../../../src/lib/homi/messageMeta.ts';
 import {
+  ABUSE_SETTING_KEYS, abuseLimitsFrom, abuseVerdict, HOMI_SLOW_DOWN, internalDataForPrompt, isReasoningModel, planInternalSections, repeatedRun,
+  TIER_BUDGET, webBudget, type InternalSection,
+} from '../../../src/lib/homi/contextPlan.ts';
+import {
   deterministicPayload, readOpenAIStream, SSE_HEADERS, sseFrame, stripAiDashes, trimConversation,
 } from './homi.ts';
+import { loadOwnContext, type OwnContext } from './ownContext.ts';
 
 /* One OpenAI call per chat turn; see the fetch below. */
 const OPENAI_REQUEST_TIMEOUT_MS = 130_000;
@@ -57,16 +61,18 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
-/* The lighter tier for short conversational turns. Falls back to MODEL when no
-   fast model is configured, so a missing variable never changes behaviour. */
-const LIGHT_MODEL = Deno.env.get('HOMI_LIGHT_MODEL') || Deno.env.get('OPENAI_FAST_MODEL') || MODEL;
-const RATE_LIMIT_OPERATION = 'ai_chat_message';
-/* Every HOMI turn, deterministic ones included: a burst ceiling, not a quota. */
+/* The light tier for short conversational turns (cost round, 2026-10-29).
+ * Same model as the full tier by default (gpt-5.6-luna): Georgian quality
+ * matters more than the small saving a cheaper chat model would give (owner).
+ * What makes a light turn light is everything else: low reasoning effort, no
+ * web unless the turn policy opens it, and the small context budget
+ * (contextPlan.ts). HOMI_LIGHT_MODEL overrides it; a chat model set there gets
+ * no reasoning field (isReasoningModel) and never runs a web turn. A model id
+ * that is not in provider_price_book shows as UNPRICED in Admin, never as $0. */
+const LIGHT_MODEL = Deno.env.get('HOMI_LIGHT_MODEL') || Deno.env.get('OPENAI_FAST_MODEL') || 'gpt-5.6-luna';
+/* Every HOMI turn, deterministic ones included, is one row of this operation.
+   ABUSE SAFEGUARD, NOT A QUOTA: HOMI chat is unlimited in every plan. */
 const BURST_OPERATION = 'homi_turn';
-const BURST_PER_MINUTE = 20;
-/* Web searches a single turn may run. Whether the tool is offered at all is
-   decided in code (decideTurnPolicy); this caps how far an open turn can go. */
-const TOOL_CALL_BUDGET = { LIGHT: 1, FULL: 4 } as const;
 /*
  * WHICH SURFACES STILL CHARGE PER ANSWER.
  *
@@ -111,31 +117,20 @@ function sourcesOf(p: any): any[] {
   return [...new Map(a.map(x => [x.url, x])).values()];
 }
 
-// ── Rate-limit-exceeded message, localized without a second AI call ────────
-const RATE_LIMIT_MESSAGES: Record<Locale, (limit: number) => string> = {
-  en: limit => `You've reached today's AI Chat limit (${limit} messages). It resets at midnight UTC.`,
-  ka: limit => `დღევანდელი AI ჩატის ლიმიტი ამოწურულია (${limit} შეტყობინება). ლიმიტი განახლდება UTC შუაღამისას.`,
-  ru: limit => `Вы достигли сегодняшнего лимита AI Chat (${limit} сообщений). Лимит обновится в полночь по UTC.`,
-  tr: limit => `Bugünkü AI Sohbet limitinize ulaştınız (${limit} mesaj). Limit UTC gece yarısında sıfırlanır.`,
-  ar: limit => `لقد وصلت إلى الحد اليومي لمحادثة الذكاء الاصطناعي (${limit} رسالة). يُعاد ضبط الحد عند منتصف الليل بتوقيت UTC.`,
-  he: limit => `הגעתם למכסת הצ'אט היומית של הבינה המלאכותית (${limit} הודעות). המכסה מתאפסת בחצות לפי UTC.`,
-};
-
-const BURST_MESSAGES: Record<Locale, string> = {
-  en: "That's a lot of messages very quickly. Give me a minute and try again.",
-  ka: 'ძალიან ბევრი შეტყობინება ძალიან სწრაფად. ერთი წუთით მოიცადე და თავიდან სცადე.',
-  ru: 'Слишком много сообщений за короткое время. Подожди минуту и попробуй снова.',
-  tr: 'Çok kısa sürede çok fazla mesaj. Bir dakika bekleyip tekrar dene.',
-  ar: 'رسائل كثيرة جدًا في وقت قصير. انتظر دقيقة ثم حاول مجددًا.',
-  he: 'יותר מדי הודעות בזמן קצר. חכה דקה ונסה שוב.',
-};
+/* The only refusal HOMI chat has: a gentle "slow down", never a count, a
+   plan, a reset time or an upgrade. A person typing never sees it. */
+const BURST_MESSAGES: Readonly<Record<Locale, string>> = HOMI_SLOW_DOWN;
 
 // ── Intent-to-lead extraction instruction, appended to the system prompt ──
+// COMPACT ON PURPOSE (cost round, 2026-10-29): output tokens are the dearest
+// tokens, and a block of fifteen nulls on every turn paid for nothing. Every
+// field is optional to the parser (splitLeadBlock, parseSuggestedReplies,
+// parseHomiCards, parseAnswerBlocks, allowPitch), so empty keys are omitted.
 const LEAD_EXTRACTION_INSTRUCTION = `
-After your visible reply to the user, on a new line, append exactly ONE fenced code block \`\`\`json ... \`\`\` (nothing after it) containing a single JSON object with this exact shape — use null for anything not stated, never invent a value:
-{"intent_detected": boolean, "transaction_type": "BUY"|"SELL"|"RENT_OUT"|"RENT_IN"|"INVEST"|null, "property_type": string|null, "location": string|null, "budget_min": number|null, "budget_max": number|null, "currency": string|null, "bedrooms": number|null, "timeline": string|null, "contact_name": string|null, "contact_phone": string|null, "contact_email": string|null, "confidence": number, "suggested_replies": string[], "suggested_actions": string[], "cards": array, "blocks": array, "pitch_service": string|null, "routing": {"intent": string, "web_mode": "NO_WEB"|"SUPPLEMENTAL_WEB"|"REQUIRED_LIVE_WEB"|"SPECIALIZED_HOMATCH_WORKFLOW", "internal_used": boolean}}
-"routing" reports how you actually answered THIS turn: "intent" is a 2-5 word English label for what the user wanted (e.g. "property price context", "market research", "contract clause"), "web_mode" is the mode you actually followed, "internal_used" is true when PAGE CONTEXT or HOMATCH INTERNAL DATA materially shaped the answer. Report what happened — never what would sound better.
-Set "intent_detected": true only if the user expressed a genuine intention to buy, sell, rent out, rent, or invest in property (not just idle research or a general question), OR shared their own contact info (phone/email/name) for follow-up. "confidence" is your 0-1 confidence in that assessment. This JSON block is removed before the user sees your answer — it must never replace or duplicate your visible reply, and it must always be present even when intent_detected is false.`;
+After your visible reply, on a new line, append exactly ONE fenced code block \`\`\`json ... \`\`\` (nothing after it) holding one single-line JSON object. OMIT every key whose value would be null, false, 0 or empty; never invent a value. Possible keys:
+{"intent_detected": boolean, "transaction_type": "BUY"|"SELL"|"RENT_OUT"|"RENT_IN"|"INVEST", "property_type": string, "location": string, "budget_min": number, "budget_max": number, "currency": string, "bedrooms": number, "timeline": string, "contact_name": string, "contact_phone": string, "contact_email": string, "confidence": number, "suggested_replies": string[], "suggested_actions": string[], "cards": array, "blocks": array, "pitch_service": string, "routing": {"intent": string, "web_mode": "NO_WEB"|"SUPPLEMENTAL_WEB"|"REQUIRED_LIVE_WEB"|"SPECIALIZED_HOMATCH_WORKFLOW", "internal_used": boolean}}
+"routing" is always present and reports what actually happened THIS turn: "intent" a 2-5 word English label, "web_mode" the mode you followed, "internal_used" true when PAGE CONTEXT or HOMATCH INTERNAL DATA shaped the answer.
+"intent_detected": true only for a genuine intention to buy, sell, rent out, rent or invest (not idle research), or when they shared their own contact details for follow-up; then also give "confidence" (0-1) and the fields they stated. The block is removed before the user sees the answer: it never replaces your reply and is always present.`;
 
 interface LeadExtraction {
   intent_detected?: boolean;
@@ -247,7 +242,7 @@ const PRODUCT_LINES: ReadonlyArray<readonly [string | null, string]> = [
   ['find_buyers', 'Find buyers or tenants (/property/add) — add a property and Homatch finds people already expressing intent that fits it.'],
   ['mortgage', 'Mortgage (/mortgage) — the real monthly payment and total cost, including the fees a bank quote leaves out.'],
   ['meta_ads', 'Meta Ads (/outreach/meta) — advertise a property or another offer on Facebook and Instagram. Homatch builds and manages the campaign; the customer picks the goal, budget and photos. The right destination for "how do I advertise this on Facebook" — never send them to Facebook documentation for that.'],
-  ['email_campaigns', 'Email Campaigns (/outreach/email): reaching a list of leads you already have, by email. Only relevant to somebody who is actually doing outreach.'],
+  ['email_marketing', 'Email Campaigns (/outreach/email): reaching a list of leads you already have, by email. Only relevant to somebody who is actually doing outreach.'],
   ['ai_call_center', 'AI Call Center (/outreach/calls): reaching a list of leads you already have, by phone. Only relevant to somebody who is actually doing outreach.'],
   ['find_property', 'Active search (/active-search) — set criteria once and be alerted when new matches appear. For a buyer who is waiting, not one who is deciding.'],
   ['for_expats', 'Moving to Georgia (/for-expats/georgia) — a guided relocation journey that builds a personal, saved step-by-step plan (action FOR_EXPATS).'],
@@ -278,8 +273,6 @@ serve(async (req) => {
     .slice(-30)
     .map((m: any) => ({ role: m.role, content: m.content.slice(0, 12000) }));
   if (!allMsgs.length) return json({ error: 'messages array required' }, 400);
-  /* Context trimming: newest turns within a character budget, opening question kept. */
-  const { kept: msgs, dropped: droppedTurns } = trimConversation(allMsgs);
   const lastUserText = [...allMsgs].reverse().find((m: any) => m.role === 'user')?.content || '';
   const surfaceName = String((body?.context as any)?.surface ?? 'ai-assistant');
   const wantsStream = body?.stream === true;
@@ -313,6 +306,22 @@ serve(async (req) => {
     ? { kind: 'MODEL', tier: 'LIGHT', searchCue: false, intent: null }
     : routed;
   const deterministic = route.kind === 'DETERMINISTIC';
+  /*
+   * MODEL ROUTING BY TURN SHAPE (decided in code, never by the model). A short
+   * conversational turn with no sign of needing current facts runs on the
+   * light tier: the light model, low reasoning effort where the model takes
+   * it, a small context budget. Everything else, and the paid property
+   * analysis always, runs on the full tier.
+   */
+  const tier: 'LIGHT' | 'FULL' = route.kind === 'MODEL' && route.tier === 'LIGHT' && !marketplaceRequested ? 'LIGHT' : 'FULL';
+  const tierBudget = TIER_BUDGET[tier];
+  /* Context trimming: newest turns within the tier's character budget, opening question kept. */
+  const recentMsgs = allMsgs.slice(-tierBudget.historyMessages);
+  const { kept: msgs, dropped: trimmedTurns } = trimConversation(
+    recentMsgs.map((m: any) => ({ role: m.role, content: m.content.slice(0, tierBudget.messageChars) })),
+    tierBudget.historyChars,
+  );
+  const droppedTurns = trimmedTurns + (allMsgs.length - recentMsgs.length);
 
   /* The anonymous trial counts model answers; a written answer costs nothing. */
   if (anonSession && !deterministic && anonSession.user_messages >= ANON_USER_MESSAGE_LIMIT) {
@@ -404,16 +413,40 @@ serve(async (req) => {
   const turnStartedAt = Date.now();
   const callerIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || null;
 
-  /* ── 0. Burst protection, per account or (anonymous) per address ─────
-   * Free answers still cost a request and a row. Twenty turns a minute is
-   * well above a person typing or clicking and well below a script. */
+  /* ── 0. Abuse safeguard, per account or (anonymous) per address ─────
+   *
+   * NOT A QUOTA. HOMI chat is unlimited in every plan, so nothing here looks
+   * at the plan and nothing here ever tells a person how many messages they
+   * have. Four signals that a caller is a script, each far above a person
+   * typing or tapping chips (admin_settings homi_abuse_*, defaults in
+   * contextPlan.ts): a burst per minute, a sustained hourly rate, a very high
+   * daily ceiling, and the same message sent back to back. The only answer
+   * is a gentle "slow down"; the count is never shown. */
   if (uid || callerIp) {
-    const since = new Date(Date.now() - 60_000).toISOString();
-    const q = sb.from('rate_limit_events').select('id', { count: 'exact', head: true })
-      .eq('operation', BURST_OPERATION).gte('created_at', since);
-    const { count: burst } = await (uid ? q.eq('user_id', uid) : q.is('user_id', null).eq('ip_address', callerIp));
-    if ((burst ?? 0) >= BURST_PER_MINUTE) {
-      return json({ error: BURST_MESSAGES[lang] ?? BURST_MESSAGES.en, code: 'RATE_LIMIT_EXCEEDED', limit: BURST_PER_MINUTE }, 429);
+    const now = Date.now();
+    const count = async (ms: number) => {
+      const q = sb.from('rate_limit_events').select('id', { count: 'exact', head: true })
+        .eq('operation', BURST_OPERATION).gte('created_at', new Date(now - ms).toISOString());
+      const { count: c } = await (uid ? q.eq('user_id', uid) : q.is('user_id', null).eq('ip_address', callerIp));
+      return c ?? 0;
+    };
+    const setting = async (key: string, d: number) => {
+      const { data } = await sb.rpc('billing_setting_num', { p_key: key, p_default: d });
+      return data;
+    };
+    const [minute, hour, day, perMinute, perHour, perDay] = await Promise.all([
+      count(60_000), count(3_600_000), count(86_400_000),
+      setting(ABUSE_SETTING_KEYS.perMinute, 20), setting(ABUSE_SETTING_KEYS.perHour, 300), setting(ABUSE_SETTING_KEYS.perDay, 2000),
+    ]);
+    const limits = abuseLimitsFrom({ perMinute, perHour, perDay });
+    const repeat = repeatedRun(allMsgs.filter((m: any) => m.role === 'user').map((m: any) => m.content));
+    const verdict = abuseVerdict({ minute, hour, day, repeat }, limits);
+    if (verdict !== 'OK') {
+      sb.from('ai_routing_events').insert({
+        user_id: uid ?? null, locale: lang, surface: surfaceName.slice(0, 40), route: null, /* not a served turn; listed under errors */
+        error_code: `ABUSE_${verdict}`, web_mode: 'NO_WEB', web_calls: 0, billed: false, latency_ms: 0,
+      }).then(() => {}, () => {});
+      return json({ error: BURST_MESSAGES[lang] ?? BURST_MESSAGES.en, code: 'RATE_LIMIT_EXCEEDED' }, 429);
     }
     await sb.from('rate_limit_events').insert({ user_id: uid ?? null, ip_address: callerIp, operation: BURST_OPERATION });
   }
@@ -504,39 +537,15 @@ serve(async (req) => {
     }), { headers: { ...CORS, ...SSE_HEADERS } });
   }
 
-  // ── 1. Fair use: today's message count vs. this user's plan tier ────────
+  // ── 1. No plan quota on HOMI chat ──────────────────────────────────────
   //
-  // A RATE CEILING, NOT A PRICE. It used to be both, because chat was free
-  // and this was the only thing standing between the product and a script.
-  // Responses are billed now (see section 2), and the two controls have
-  // separate jobs: the wallet decides whether a person can afford the next
-  // answer, this decides whether a caller is behaving like a person at all.
-  // Deleting it because messages are paid for would leave a compromised
-  // token able to spend a wallet as fast as the network allows.
-  //
-  // The limit now comes from the entitlement engine rather than from
-  // users.plan, because users.plan is a mirror and the subscription is the
-  // truth. The old lookup only knew FREE/PLUS/PRO, so a VIP or Premium customer
-  // would silently have fallen through to the FREE ceiling.
-  const { data: ent } = await sb.rpc('billing_entitlements', { p_user_id: uid });
+  // HOMI chat is unlimited in every plan (owner, 2026-10-29). The per-plan
+  // daily cap that used to live here (the entitlement's fair-use number and
+  // its per-plan admin settings) is gone: the abuse safeguard in section 0
+  // is the only rate control, and it is a RATE CEILING, NOT A PRICE and not a
+  // plan allowance. The plan is still read, for the usage row's plan_code.
+  const { data: ent } = uid ? await sb.rpc('billing_entitlements', { p_user_id: uid }) : { data: null as any };
   const plan = String(ent?.plan_code ?? profile?.plan ?? 'FREE').toUpperCase();
-  const dailyLimit = Number(ent?.ai_fair_use_daily ?? 20);
-
-  if (uid && dailyLimit >= 0) {
-    const now = new Date();
-    const dayStartUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
-    const { count } = await sb
-      .from('rate_limit_events')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', uid)
-      .eq('operation', RATE_LIMIT_OPERATION)
-      .gte('created_at', dayStartUtc);
-    if ((count ?? 0) >= dailyLimit) {
-      const nextMidnightUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)).toISOString();
-      const messageFn = RATE_LIMIT_MESSAGES[lang] || RATE_LIMIT_MESSAGES.en;
-      return json({ error: messageFn(dailyLimit), code: 'RATE_LIMIT_EXCEEDED', limit: dailyLimit, resetAt: nextMidnightUtc }, 429);
-    }
-  }
 
   /* ── 2. Money, decided BEFORE the provider is called ──────────────────
    *
@@ -639,130 +648,12 @@ serve(async (req) => {
    * none). It never fails the answer itself. */
   let internalRetrievalFailed = false;
   const last = [...msgs].reverse().find((m: any) => m.role === 'user')?.content || '';
-  const internal: any = { properties: [], matches: [], intents: [], verifications: [], myGeorgia: [] };
-  try {
-  if (uid) {
   /*
-   * THE RESEARCH THIS PERSON ALREADY PAID FOR.
-   *
-   * Somebody who has just read a Verify report and opens the assistant to ask
-   * "so is the mortgage a problem?" was talking to something that had never
-   * heard of it. They then re-describe their own report, badly, and get a
-   * generic answer about mortgages in Georgia.
-   *
-   * What is handed over is the SYNTHESISED, customer-facing summary — the
-   * same words already on their screen — and never result_json. That column
-   * holds raw official-source evidence, OCR and personal identification
-   * numbers, which the customer boundary strips for good reason and which
-   * would be no less stripped for passing through a chat prompt.
-   *
-   * Scoped to this user's own rows by user_id, so it is their data in their
-   * conversation. It goes nowhere else.
-   */
-  const { data: v } = await sb
-    .from('research_jobs')
-    .select('id,query,entity_name,address,project_name,developer_name,company_name,completed_at,synthesis_json')
-    .eq('user_id', uid)
-    .eq('status', 'COMPLETE')
-    .is('deleted_at', null)
-    .order('completed_at', { ascending: false })
-    .limit(5);
-  // Retention (20261102090000): an expired report is not handed to the
-  // assistant. If expiry cannot be checked, no report context is given.
-  let liveReports: any[] = v || [];
-  try {
-    const expired = await retentionBlockedIds(sb, 'VERIFY_REPORT', liveReports.map((j: any) => j.id));
-    liveReports = liveReports.filter((j: any) => !expired.has(j.id));
-  } catch {
-    liveReports = [];
-  }
-  internal.verifications = liveReports.map((j: any) => {
-    const r = j.synthesis_json?.report;
-    return {
-      jobId: j.id,
-      query: j.query,
-      property: j.entity_name || j.project_name || j.address || null,
-      developer: j.developer_name || j.company_name || null,
-      completedAt: j.completed_at,
-      verdict: r?.summary?.label ?? null,
-      summary: r?.summary?.statement ?? null,
-      keyFindings: (r?.keyFindings ?? []).slice(0, 5).map((f: any) => f?.finding).filter(Boolean),
-      attentionPoints: (r?.attentionPoints ?? []).slice(0, 4).map((a: any) => a?.point).filter(Boolean),
-    };
-  });
-  /*
-   * MY GEORGIA BY HOMI: the person's own onboarding answers, so HOMI never asks
-   * again what they already said (country, cities, intent, budget, plans, the
-   * topics they want help with, and their own note). Their own row, their own
-   * conversation; Matching and sellers never see the note or this context.
-   */
-  const { data: mg } = await sb
-    .from('expat_profiles')
-    .select('first_name,nationality,property_intent,cities,budget_band,rent_band,rent_amount,budget_currency,visit_status,arrival_date,arrival_unknown,stay_length,support_topics,personal_notes,onboarding_completed_at,household')
-    .eq('user_id', uid)
-    .maybeSingle();
-  if (mg && (mg.onboarding_completed_at || mg.property_intent)) {
-    internal.myGeorgia = [{
-      firstName: mg.first_name, country: mg.nationality, propertyIntent: mg.property_intent, cities: mg.cities,
-      budgetBand: mg.budget_band, monthlyRent: mg.rent_band ? { band: mg.rent_band, amount: mg.rent_amount, currency: mg.budget_currency } : null,
-      visitStatus: mg.visit_status, arrival: mg.arrival_unknown ? 'unknown' : mg.arrival_date, stay: mg.stay_length,
-      wantsHelpWith: mg.support_topics, household: mg.household, ownNote: mg.personal_notes, completed: Boolean(mg.onboarding_completed_at),
-    }];
-  }
-  const { data: p } = await sb.from('properties').select('id,title,transaction_type,property_type,matching_status,property_facts(*)').eq('user_id', uid).eq('is_deleted', false).limit(15);
-  internal.properties = p || [];
-  const ids = (p || []).map((x: any) => x.id);
-  if (ids.length) {
-    const { data: m } = await sb.from('matches').select('id,property_id,match_score,signal_strength,intent_confidence,match_reasons,mismatch_reasons,preview_platform,preview_language,preview_city,preview_budget_min,preview_budget_max,preview_currency,preview_excerpt').in('property_id', ids).order('match_score', { ascending: false }).limit(30);
-    internal.matches = m || [];
-  }
-
-  }
-
-  const terms = last.toLowerCase().split(/\s+/).filter((x: string) => x.length > 3).slice(0, 4);
-  if (uid && terms.length) {
-    const pat = terms.map((x: string) => `%${x.replace(/[%_,]/g, '')}%`);
-    const { data: i } = await sb.from('intent_profiles').select('id,intent_type,country,region,city,district,transaction_type,property_types,budget_min,budget_max,currency,bedrooms_min,bedrooms_max,timeline,language,intent_confidence,original_text,investment_intent,relocation_intent').or(pat.map((x: string) => `original_text.ilike.${x}`).join(',')).order('intent_confidence', { ascending: false }).limit(20);
-    internal.intents = i || [];
-  }
-  } catch (err) {
-    internalRetrievalFailed = true;
-    console.error('internal context retrieval failed', err);
-  }
-
-  /*
-   * ONE BUDGET PER SECTION, RATHER THAN ONE CUT ACROSS ALL OF THEM.
-   *
-   * This was a single slice() over the whole object, which has two faults.
-   * A long list of properties could push the rest past the cut entirely, so
-   * whichever section happened to be serialised last simply vanished — and
-   * the cut lands mid-structure, handing the model a truncated fragment of
-   * JSON to interpret rather than a smaller valid object.
-   *
-   * Each section now gets its own allowance and is trimmed by DROPPING WHOLE
-   * ENTRIES until it fits, so what arrives is always well-formed and no
-   * section can starve another.
-   */
-  const internalDataForPrompt = (data: Record<string, unknown[]>): string => {
-    const BUDGET: Record<string, number> = { verifications: 9000, properties: 9000, matches: 7000, intents: 5000, myGeorgia: 4000 };
-    const out: Record<string, unknown[]> = {};
-    for (const [key, rows] of Object.entries(data)) {
-      const budget = BUDGET[key] ?? 3000;
-      const kept: unknown[] = [];
-      for (const row of rows) {
-        kept.push(row);
-        if (JSON.stringify(kept).length > budget) { kept.pop(); break; }
-      }
-      out[key] = kept;
-    }
-    return JSON.stringify(out);
-  };
-  const context = body.context || {};
-  /*
-   * WEB OR NOT, AND WHICH SERVICE — decided in code (src/lib/homi/webPolicy.ts),
+   * WEB OR NOT, AND WHICH SERVICE: decided in code (src/lib/homi/webPolicy.ts),
    * never left to the model. The search tool is only offered when the turn
    * genuinely needs live data; "find me an apartment" is Find Property, not
-   * a web search.
+   * a web search. Decided before retrieval, because the service also decides
+   * which internal sections this turn may carry.
    */
   const decided = decideTurnPolicy(last, { marketplace: marketplaceScope });
   /* A request for a hidden service keeps its web decision but loses the
@@ -770,6 +661,35 @@ serve(async (req) => {
      say it is not available and offer the closest visible alternative. */
   const policy = decided.service && !visibility.isVisible(decided.service) ? { ...decided, service: null } : decided;
   const webAllowed = policy.web === 'ON';
+  /* Low search context and two calls unless a company check, an explicit ask or the paid analysis. */
+  const web = webBudget(tier, policy);
+  /*
+   * ONLY WHAT THIS TURN NEEDS (contextPlan.ts). A generic turn carries no
+   * internal data at all; a turn about their report, their property, their
+   * matches or their move carries that section, within the tier's budget.
+   * Every section stays scoped to this user's own rows.
+   */
+  const sections = new Set<InternalSection>(
+    marketplaceScope ? [] : planInternalSections(last, { tier, service: decided.service, surface: surfaceName }),
+  );
+  /*
+   * PRIVACY P0: ONLY THE CALLER'S OWN ROWS (ownContext.ts). `uid` comes from
+   * the verified JWT (sb.auth.getUser → users.auth_id), never from the body.
+   * Other people's stated needs (intent_profiles, external leads) are never
+   * read: the old ilike over every user's intent_profiles.original_text that
+   * put up to 20 strangers' rows into this prompt is removed for good.
+   */
+  let internal: OwnContext = { properties: [], matches: [], verifications: [], myGeorgia: [] };
+  if (uid && sections.size) {
+    try {
+      internal = await loadOwnContext(sb, uid, sections, (ids) => retentionBlockedIds(sb, 'VERIFY_REPORT', ids));
+    } catch (err) {
+      internalRetrievalFailed = true;
+      console.error('internal context retrieval failed', (err as Error)?.message ?? err);
+    }
+  }
+
+  const context = body.context || {};
   const priorPitches = await pitchHistory();
   const pitchedServices = [...new Set(priorPitches.filter((p): p is string => p !== null))];
   /*
@@ -779,15 +699,21 @@ serve(async (req) => {
    * and first-party Live Chat cannot introduce Homatch three different ways
    * or answer "are you ChatGPT?" three different ways. See _shared/aiIdentity.
    */
-  const instructions = `${HOMATCH_AI_IDENTITY}
+  /*
+   * THE PROMPT IS TWO PARTS, IN THIS ORDER, so the provider's prompt cache can
+   * reuse the first. staticInstructions changes only when Admin switches a
+   * service on or off; nothing user-, locale- or turn-specific is in it.
+   * Everything that changes per turn comes after it, under THIS TURN.
+   */
+  const staticInstructions = `${HOMATCH_AI_IDENTITY}
 
-You are HOMI, HOMATCH's multilingual real-estate guide and research assistant. Homatch has TWO clear user directions: (A) FIND A PROPERTY for buyers/renters/investors; (B) FIND A BUYER OR TENANT for owners/agents/developers. Infer the direction from the request and make it explicit when useful. ${languageDirective(lang)}
+You are HOMI, HOMATCH's multilingual real-estate guide and research assistant. Homatch has TWO clear user directions: (A) FIND A PROPERTY for buyers/renters/investors; (B) FIND A BUYER OR TENANT for owners/agents/developers. Infer the direction from the request and make it explicit when useful.
 
 THE ORDER OF EVERY ANSWER — INTERNAL FIRST, WEB WHEN USEFUL, ANSWER FIRST, SERVICE WHEN RELEVANT.
 1. Understand what they are asking and which property or situation it is about.
-2. Use what is ALREADY IN FRONT OF YOU before anything else: PAGE CONTEXT and HOMATCH INTERNAL DATA below carry the current property (price, location, type, facts), their own Verify reports, their matches and their stated search intents. That material is what makes you Homatch rather than a search box — an answer that ignores a property the customer is literally looking at is a failed answer.
+2. Use what is ALREADY IN FRONT OF YOU before anything else: PAGE CONTEXT and HOMATCH INTERNAL DATA (under THIS TURN at the end) carry the current property (price, location, type, facts) and, when the question is about them, their own Verify reports, properties, matches and My Georgia profile. HOMATCH loads only the sections a turn needs: a section that is absent was not loaded, which never means the customer has none. If they ask about their own saved data and it is not there, ask them to name it (for example "my report" or "my flat") rather than saying it does not exist. That material is what makes you Homatch rather than a search box — an answer that ignores a property the customer is literally looking at is a failed answer.
 3. Only then decide whether CURRENT external information would materially improve the answer, and follow exactly one mode: NO_WEB — the context you hold or stable knowledge already answers it, so searching is waste; SUPPLEMENTAL_WEB — the context answers it, but current comparables, market or neighbourhood facts would sharpen it, so search AND merge both; REQUIRED_LIVE_WEB — the question is about current external facts you do not hold (today's prices, a developer's news, regulations), so research properly; SPECIALIZED_HOMATCH_WORKFLOW — the real answer is a Homatch product doing structured work (a Verify report, a full investment analysis, an actual property search), so give the genuinely useful conversational answer you CAN give, then offer that product as the deeper next step. A service existing NEVER means refusing to answer.
-Never call web_search before you have used what Homatch already knows; never avoid it when currency genuinely matters. Searching is NOT the default: a turn that the context, HOMATCH's products or stable knowledge can answer must not search, and when the person explicitly asks you to check online, do. ${webAllowed ? `This turn may run at most ${TOOL_CALL_BUDGET[route.kind === 'MODEL' ? route.tier : 'FULL']} search call(s).` : 'This turn has no search tool at all (see WEB THIS TURN below).'} web_search is the tool for research, verification, current public facts, and anything about a company/developer/project/person/address/cadastral reference — do not answer from memory alone when the topic could be time-sensitive or unverifiable without a search.
+Never call web_search before you have used what Homatch already knows; never avoid it when currency genuinely matters. Searching is NOT the default: a turn that the context, HOMATCH's products or stable knowledge can answer must not search, and when the person explicitly asks you to check online, do. Whether this turn has a search tool, and how many calls it may run, is stated under THIS TURN at the end. web_search is the tool for research, verification, current public facts, and anything about a company/developer/project/person/address/cadastral reference — do not answer from memory alone when the topic could be time-sensitive or unverifiable without a search.
 
 RESEARCH IS SYNTHESIS, NOT A LINK. When you search: run as many targeted searches as the question deserves; prefer official/registry/bank/municipality sources over marketplaces, marketplaces over third-party claims; cross-check when sources disagree and say so when they do. An asking price is not a transaction price; a listing is not registry truth — keep those apart whenever the difference matters. Then ANSWER THE QUESTION in your own words: what the evidence shows, what it suggests for THEIR situation, and what its limits are, with sources attached as supporting evidence. A reply whose substance is one URL is a failure — the customer must never have to leave Homatch to understand your answer. Depth follows the question: for one narrow current fact, one authoritative source is enough; for a market, price-comparison or research question, one random listing is not — gather until another source stops changing the picture, then stop. If the web fails mid-answer, say so naturally and still give everything the internal context supports.
 
@@ -804,7 +730,7 @@ ${HOMI_CARDS_INSTRUCTION}
 ${HOMI_ANSWER_FORMAT_INSTRUCTION}
 ${HOMI_ALWAYS_REPLIES_INSTRUCTION}
 ${homiPitchInstruction(visibility.visible)}
-${pitchedServices.length ? `Service notes already shown in this conversation (never choose these again): ${pitchedServices.join(', ')}.\n` : ''}${droppedTurns > 0 ? `NOTE: ${droppedTurns} older message(s) of this conversation were left out to keep it short; if the person refers to something you cannot see, ask briefly.\n` : ''}SOMETHING GENUINELY UNRELATED AND SUBSTANTIAL — a recipe, a maths problem, code, medical advice: do not write it out, and do not lecture about scope either. One friendly sentence that this is not what you are here for, then offer the nearest thing you CAN do. Never produce an error, never quote a policy, never say "outside my scope" or "I can only". This is about somebody asking you to DO a large unrelated job; an ordinary human aside, a joke, a complaint or a swear word is not that, and is covered by the style rules above.
+SOMETHING GENUINELY UNRELATED AND SUBSTANTIAL — a recipe, a maths problem, code, medical advice: do not write it out, and do not lecture about scope either. One friendly sentence that this is not what you are here for, then offer the nearest thing you CAN do. Never produce an error, never quote a policy, never say "outside my scope" or "I can only". This is about somebody asking you to DO a large unrelated job; an ordinary human aside, a joke, a complaint or a swear word is not that, and is covered by the style rules above.
 WHAT HOMATCH CAN ACTUALLY DO FOR THEM. These are the real products, with the real place each one starts. Never describe a capability Homatch does not have, and never name a destination that is not on this list.
 ${visibleLines(PRODUCT_LINES, visibility).map((l) => `  ${l}`).join('\n')}
 ${hiddenServicesPrompt(visibility)}
@@ -813,11 +739,21 @@ ${whenToMention(visibleLines(MENTION_EXAMPLES, visibility))}
 THE CUSTOMER'S MY GEORGIA PROFILE is in HOMATCH INTERNAL DATA under \`myGeorgia\` when they have one (country, cities, buy/rent/invest, budget, arrival, stay, what they want help with, their own note). Treat it as already known: never ask again for something it answers, tailor every answer and checklist to it, and prefer official Georgian sources (gov.ge, matsne.gov.ge, rs.ge, sda.gov.ge, napr.gov.ge) with links. Say plainly when a legal, tax, visa or residence point should be confirmed with the authority or a professional. Their note is private to this conversation.
 THE CUSTOMER'S OWN VERIFY REPORTS are in HOMATCH INTERNAL DATA under \`verifications\` when they have any. Use them: refer to the property by name, answer from what that report found, and never make them re-describe their own research to you. Quote a finding as something the report established, and be straight when it is not something the report settled. Do not read a verification out as a list — it is context you already share with them, not something to recite back.
 MORTGAGE NUMBERS ARE NOT YOURS TO COMPUTE. When PAGE CONTEXT carries a \`mortgage\` object, it is the output of Homatch's own deterministic mortgage engine for the scenario the customer is looking at right now — the monthly payment, totals and effective rate under \`scenario\`, and the same engine re-run for the variations people ask about under \`ifTermWere\`, \`ifDownPaymentWere\`, \`ifRateWere\` and \`ifPaidExtraMonthly\`. Quote those figures exactly and say what they mean; never calculate, re-derive, round differently, or estimate a payment, an interest total, a saving or a rate yourself, and never contradict them. If the question needs a figure that is not in the object, say which input is missing and ask for it — \`unknown\` already lists what the customer has not entered, and an unentered cost is NOT zero. Amounts are in \`currency\` and nothing has been converted, so answer in that currency. Never tell anyone they will be approved or are eligible: PTI and LTV here are published macroprudential limits, not a lending decision.
-${LEAD_EXTRACTION_INSTRUCTION}
-${internalRetrievalFailed ? 'NOTE: internal data retrieval FAILED this turn. If they ask about their own saved properties, matches or reports, say plainly that you could not reach their saved data right now — never claim it does not exist, and never invent it.\n' : ''}HOMATCH INTERNAL DATA:${internalDataForPrompt(internal)}
-${marketplaceScope ? 'PROPERTY ANALYSIS: Distinguish source facts, description inferences, unknowns and advice. Never promise a seller will accept a negotiation price. Renovation costs are estimates, never exact facts: ask for basic/mid-range/premium level when missing; use ranges and explicit assumptions, and do not invent Georgian construction prices. If current cost evidence is required, use the existing web-checking rules. Purchase-plus-renovation totals need supported purchase price and a supported estimate, otherwise ask for missing information.' : ''}
-${turnPolicyPrompt(policy)}
-PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
+${LEAD_EXTRACTION_INSTRUCTION}`;
+  const internalJson = internalDataForPrompt(internal, tier);
+  const turnInstructions = [
+    'THIS TURN',
+    languageDirective(lang),
+    webAllowed ? `This turn may run at most ${web.maxToolCalls} search call(s).` : 'This turn has no search tool at all (see WEB THIS TURN below).',
+    pitchedServices.length ? `Service notes already shown in this conversation (never choose these again): ${pitchedServices.join(', ')}.` : '',
+    droppedTurns > 0 ? `NOTE: ${droppedTurns} older message(s) of this conversation were left out to keep it short; if the person refers to something you cannot see, ask briefly.` : '',
+    internalRetrievalFailed ? 'NOTE: internal data retrieval FAILED this turn. If they ask about their own saved properties, matches or reports, say plainly that you could not reach their saved data right now — never claim it does not exist, and never invent it.' : '',
+    `HOMATCH INTERNAL DATA:${internalJson === '{}' ? ' (no sections loaded for this turn)' : internalJson}`,
+    marketplaceScope ? 'PROPERTY ANALYSIS: Distinguish source facts, description inferences, unknowns and advice. Never promise a seller will accept a negotiation price. Renovation costs are estimates, never exact facts: ask for basic/mid-range/premium level when missing; use ranges and explicit assumptions, and do not invent Georgian construction prices. If current cost evidence is required, use the existing web-checking rules. Purchase-plus-renovation totals need supported purchase price and a supported estimate, otherwise ask for missing information.' : '',
+    `${turnPolicyPrompt(policy)}`,
+    `PAGE CONTEXT:${JSON.stringify(context).slice(0, tierBudget.pageContextChars)}`,
+  ].filter(Boolean).join('\n');
+  const instructions = `${staticInstructions}\n\n${turnInstructions}`;
 
   const key = Deno.env.get('OPENAI_API_KEY');
   if (!key) return json({ error: 'OpenAI not configured' }, 500);
@@ -835,14 +771,11 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
   }
 
   const startedAt = Date.now();
-  /*
-   * MODEL ROUTING BY TURN SHAPE (decided in code, never by the model). A short conversational turn with no sign of
-   * needing current facts runs on the light tier (lighter model when one is
-   * configured, low reasoning effort, one search at most). Everything else —
-   * and the paid property analysis, always — runs on the full tier.
-   */
-  const tier: 'LIGHT' | 'FULL' = route.kind === 'MODEL' && route.tier === 'LIGHT' && !marketplaceScope ? 'LIGHT' : 'FULL';
-  const model = tier === 'LIGHT' ? LIGHT_MODEL : MODEL;
+  /* The light model never runs a web turn: search is priced per call for
+     reasoning models in the price book, and a light chat model would be
+     mispriced and weaker at synthesis. A light turn with the web open runs on
+     MODEL at low effort instead. */
+  const model = tier === 'LIGHT' && !webAllowed ? LIGHT_MODEL : MODEL;
   const streamThisTurn = wantsStream && !marketplaceScope;
   const providerAbort = new AbortController();
   /* Bounded below the platform's 150 s response limit: a provider that hangs
@@ -854,20 +787,20 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
     store: false,
     /* The search tool exists for this request only when the turn policy
        opened it. Without it the model cannot go online however it reads
-       the question. */
+       the question. Low context and two calls by default (webBudget). */
     ...(webAllowed
-      ? { tools: [{ type: 'web_search', search_context_size: 'medium' }], tool_choice: 'auto', max_tool_calls: TOOL_CALL_BUDGET[tier] }
+      ? { tools: [{ type: 'web_search', search_context_size: web.contextSize }], tool_choice: 'auto', max_tool_calls: web.maxToolCalls }
       : {}),
-    /* A stable key per surface keeps the long static prefix of the
-       instructions in the provider's prompt cache across people. Only the
-       prefix is shared there; nothing user-specific is cached by us. */
-    prompt_cache_key: `homi:${surfaceName.slice(0, 40)}`,
+    /* A stable key per model and surface keeps the static instructions in the
+       provider's prompt cache across people. Only that prefix is shared;
+       everything per turn comes after it. */
+    prompt_cache_key: `homi:${model}:${surfaceName.slice(0, 40)}`,
     stream: streamThisTurn,
     /* 'low' was the root cause of one-search-one-link answers on research
      * questions: it stops the model at the first plausible result. Research
      * runs on the full tier with medium effort; only short conversational
-     * turns use low. */
-    ...(tier === 'FULL' ? { reasoning: { effort: 'medium' } } : { reasoning: { effort: 'low' } }),
+     * turns use low. A chat model takes no reasoning setting at all. */
+    ...(!isReasoningModel(model) ? {} : tier === 'FULL' ? { reasoning: { effort: 'medium' } } : { reasoning: { effort: 'low' } }),
   };
 
   /** Nothing was produced: give any hold back, record why, tell the client plainly. */
@@ -949,13 +882,15 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
       interaction_id: interactionId,
       suggested_reply_count: suggestedReplies.length,
       homi_tier: tier,
+      homi_route: `MODEL_${tier}`,
+      web_policy: `${policy.web}:${policy.reason}`,
+      web_budget: webAllowed ? web : null,
+      context_sections: [...sections],
       streamed: streamThisTurn,
     },
   };
 
-  // Record this successful turn against the daily rate limit.
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || null;
-  if (uid) await sb.from('rate_limit_events').insert({ user_id: uid, ip_address: ip, operation: RATE_LIMIT_OPERATION });
+  /* No per-turn quota row: the abuse safeguard already counted this turn (homi_turn). */
   if (anonSession) {
     // Counted server-side, after a turn actually succeeded, so a failed call
     // does not burn one of the two.
@@ -1068,9 +1003,15 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
     internal_counts: {
       properties: internal.properties.length,
       matches: internal.matches.length,
-      intents: internal.intents.length,
       verifications: internal.verifications.length,
+      myGeorgia: internal.myGeorgia.length,
       pageContext: (context as any)?.type ?? null,
+      /* What the turn carried and how it was budgeted (cost round 2026-10-29). */
+      sections: [...sections],
+      promptChars: instructions.length,
+      historyKept: msgs.length,
+      droppedTurns,
+      webBudget: webAllowed ? web : null,
       /* The code-side turn policy (webPolicy.ts): why the web was or was not offered. */
       webPolicy: `${policy.web}:${policy.reason}`,
       policyService: policy.service,
@@ -1121,7 +1062,8 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
        customer-safe numbers: what it cost and what is left. No tokens,
        no cost cents, no model — that is our accounting, not theirs. */
     ...(billingForClient ? { billing: billingForClient } : {}),
-    internalSummary: { properties: internal.properties.length, matches: internal.matches.length, intents: internal.intents.length },
+    /* `intents` stays 0 for old clients: other people's intents are never read here. */
+    internalSummary: { properties: internal.properties.length, matches: internal.matches.length, intents: 0 },
     /* Interactive cards, validated against the catalogue (src/lib/homi/cards.ts). */
     cards,
     /* The designed blocks and the rate-limited service note (an ID; the

@@ -176,14 +176,15 @@ export function UnlockDialog({
             </p>
             {error ? (
               <p role="alert" className="rounded-lg bg-[hsl(0_60%_97%)] px-3 py-2 text-sm text-[hsl(0_55%_34%)]">
-                {t(error === 'INSUFFICIENT_CREDITS' ? 'hl_error_credits' : error === 'PRODUCT_DISABLED' ? 'hl_error_disabled' : error === 'PRICE_CHANGED' ? 'hl_error_price_changed' : 'hl_error_generic')}
+                {t(error === 'SUBSCRIPTION_REQUIRED' ? 'sub_prompt_subscribe' : error === 'INSUFFICIENT_CREDITS' ? 'hl_error_credits' : error === 'PRODUCT_DISABLED' ? 'hl_error_disabled' : error === 'PRICE_CHANGED' ? 'hl_error_price_changed' : 'hl_error_generic')}
               </p>
             ) : null}
             <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
               <button type="button" className={BTN_SECONDARY} onClick={onClose} disabled={submitting}>{t('hl_cancel')}</button>
-              {overBalance || error === 'INSUFFICIENT_CREDITS' ? (
-                <button type="button" className={BTN_PRIMARY} onClick={() => navigate('/credits')}>
-                  <Wallet className="h-4 w-4" aria-hidden="true" />{t('hl_top_up')}
+              {overBalance || error === 'INSUFFICIENT_CREDITS' || error === 'SUBSCRIPTION_REQUIRED' ? (
+                /* Credits are no longer sold (2026-10-29): every plan unlocks HOMATCH members free. */
+                <button type="button" className={BTN_PRIMARY} onClick={() => navigate('/pricing')}>
+                  <Wallet className="h-4 w-4" aria-hidden="true" />{t('sub_see_plans')}
                 </button>
               ) : (
                 <button type="button" className={cn(BTN_PRIMARY, 'sm:min-w-[12rem]')} onClick={confirm}

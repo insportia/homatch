@@ -67,15 +67,17 @@ test('the AI decides the role; facts stay the extractor\'s', () => {
   assert.ok(shown(direct));
 });
 
-test('Georgian in Latin letters: the model can make a buyer the rules cannot read', () => {
+test('Georgian in Latin letters: the rules read it now (latinGeorgian.ts), no model needed; a verdict must still quote the text', () => {
+  /* Premise changed 2026-10-29: translit is transliterated and read by the same rules, so the
+     buyer no longer depends on the model. The model's verdicts stay bound to the text. */
   const text = 'vyidulob 3 otaxian binas krwanisshi';
   const rule = classifyDemand(text);
-  assert.notEqual(rule.role, 'BUY_SEEKER', 'the rules do not read transliteration');
-  const r = applyAiVerdict(rule, v('DIRECT_BUYER', { evidence: ['vyidulob 3 otaxian binas'] }), text);
-  assert.equal(r.role, 'BUY_SEEKER');
-  assert.ok(shown(r));
-  /* …but only by quoting the text: a verdict the text does not carry is no lead. */
-  assert.equal(shown(applyAiVerdict(rule, v('DIRECT_BUYER', { evidence: ['ვყიდულობ ბინას'] }), text)), null);
+  assert.equal(rule.role, 'BUY_SEEKER', 'the rules read transliteration');
+  assert.ok(rule.evidence.includes('latin_georgian'));
+  const unread = 'dzalian mainteresebs, sad aris?';
+  const other = classifyDemand(unread);
+  assert.notEqual(other.role, 'BUY_SEEKER');
+  assert.equal(shown(applyAiVerdict(other, v('DIRECT_BUYER', { evidence: ['ვყიდულობ ბინას'] }), unread)), null, 'a verdict the text does not carry is no lead');
 });
 
 test('fb-ai-2 replay of 343cfc41: rental listings read as tenants and "Куплю USDT" read as a buyer are no leads', () => {

@@ -149,18 +149,29 @@ Each service below is listed as `key`, product.
   - `meta-oauth` and `meta-webhooks` callbacks
 - **Own settings (unchanged):** `meta_ads_*`.
 
-**`email_campaigns`: Email & SMS campaigns, Email Studio**
-- **Routes:** `/outreach/email*`, `/email-studio*`
-- **Entry points:**
-  - sidebar `dnav_email`
-  - homepage launcher and section
-  - footer, About
-  - comms hub, developer marketing links
-- **Backend (new work refused):**
-  - `outreach-send` EMAIL/SMS campaigns and `studio_*` sends
-  - `comm-campaign-launch` EMAIL/SMS
-- **Keeps running:** `email-webhook`, SMS webhook, unsubscribe.
-- **Own settings (unchanged):** `outreach_email_sending_enabled`, `outreach_sms_sending_enabled`, `email_studio_sending_enabled` (all OFF today).
+**`email_marketing`: Email Marketing (email campaigns, Email Studio, plans, domains, inbox)**, FAIL CLOSED, hidden by the owner 2026-10-29 (migration 20261207140000, seeded OFF with an audit row)
+- **Routes:** `/outreach/email*`, `/email-studio*`, `/inbox/email`
+- **Entry points (all hidden while off, back when switched on):**
+  - sidebar `dnav_email`, comms workspace, Outreach hub, About, developer links (by address)
+  - homepage launcher tile, AI section tile, Email section, footer link
+  - Matching workspace success panel and Unlocked library, lead drawer, lead card, CRM list and drawer, outreach composer EMAIL channel
+  - campaigns list EMAIL tab and row link, import wizard "new campaign", inbox links (consent card, CRM timeline), task-centre destinations
+  - HOMI prompt line
+- **Lead flow while off:** find a match, open the authorised contact, **Copy email** (CopyEmailButton), write from your own mailbox. Unlock never creates or queues a campaign.
+- **Backend (refused while off):**
+  - `email-marketing`: every customer action (only the admin read-only `usage_refresh` stays open); `plan_renew_due` charges nothing and extends nothing (a paid period ending during the pause lapses)
+  - `outreach-send` EMAIL campaigns and every `studio_*` action (lead drafts only for the EMAIL channel)
+  - `outreach-campaign-preview` EMAIL drafts, `comm-campaign-launch` EMAIL, `comm-dispatch-worker` EMAIL
+  - database: no new EMAIL row in `outreach_campaigns` or `email_studio_campaigns`, no new schedule/start/resume (triggers `trg_0_service_control_email_marketing`)
+- **Pause preserves work:** the claim RPCs skip a paused service; SCHEDULED/RUNNING campaigns and Studio schedules stay as they are and go out on the first tick after it is back on (jobs-worker re-arms a claim refused as SERVICE_DISABLED).
+- **Keeps running:** transactional email (`_shared/notify.ts`, `notifyEmail.ts`, `transactionalEmail.ts`, `jobNotify.ts`), `email-webhook`, unsubscribe, the Resend usage snapshot.
+- **Own settings (unchanged):** `outreach_email_sending_enabled`, `email_studio_sending_enabled`.
+
+**`email_campaigns`: SMS campaigns** (historic key name; email moved to `email_marketing` on 2026-10-29). Live by default, switches untouched.
+- **Routes:** `/outreach/sms*`; campaigns list SMS tab; builder SMS channel
+- **Backend (new work refused):** `outreach-send` SMS, `comm-campaign-launch` SMS, `outreach-campaign-preview` SMS drafts
+- **Keeps running:** SMS webhook, unsubscribe.
+- **Own settings (unchanged):** `outreach_sms_sending_enabled`.
 
 ### Communications
 

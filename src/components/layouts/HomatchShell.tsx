@@ -44,6 +44,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { usePathAvailable, useServiceControls, useServiceVisible, type ServiceKey } from '@/lib/serviceControls';
+import { useEntitlementStatus } from '@/subscriptions/useEntitlementStatus';
+import { planLabel } from '@/subscriptions/components';
 
 interface NavItem {
   key: string;
@@ -256,6 +258,7 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
    * because showing 0.0 to someone whose account simply has not loaded is a
    * lie about their balance. */
   const [credits, setCredits] = useState<number | null>(null);
+  const entitlements = useEntitlementStatus();
 
   const loadCredits = useCallback(async () => {
     if (!homatchUser) return;
@@ -453,8 +456,8 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
                 <DropdownMenuItem onClick={() => navigate('/profile')} className="cursor-pointer gap-2">
                   <UserIcon className="h-4 w-4" /> {t('nav_profile')}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate('/credits')} className="cursor-pointer gap-2">
-                  <CreditCard className="h-4 w-4" /> {t('nav_account_billing')}
+                <DropdownMenuItem onClick={() => navigate('/account/subscription')} className="cursor-pointer gap-2">
+                  <CreditCard className="h-4 w-4" /> {t('sub_go_subscription')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/activity')} className="cursor-pointer gap-2">
                   <Activity className="h-4 w-4" /> {t('nav_activity')}
@@ -480,26 +483,40 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
             balance takes the whole row and the button does the only thing
             a customer can actually do with money here.
           */}
-          <dl className="mt-3 text-[13px]">
+          {/* SUBSCRIPTIONS (2026-10-29): the plan, from entitlement_status_for_me. A legacy credit
+              balance is shown only to accounts that still hold one; credits are no longer sold. */}
+          <dl className="mt-3 grid gap-1.5 text-[13px]">
             <button
               type="button"
-              onClick={() => navigate('/credits')}
+              onClick={() => navigate('/account/subscription')}
               className="w-full min-w-0 rounded-[0.5rem] bg-secondary px-2.5 py-1.5 text-start transition-colors hover:bg-gold-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <span className="block truncate text-muted-foreground">{t('nav_credits')}</span>
-              <span className="block truncate font-semibold tabular-nums text-foreground">
-                {credits === null ? '—' : credits.toFixed(1)}
+              <span className="block truncate text-muted-foreground">{t('sub_nav_plan')}</span>
+              <span className="block truncate font-semibold text-foreground">
+                {entitlements.status ? planLabel(t, entitlements.status.subscription?.hasAccess ? entitlements.status.subscription.planCode : 'FREE') : '—'}
               </span>
             </button>
+            {credits !== null && credits > 0 ? (
+              <button
+                type="button"
+                onClick={() => navigate('/credits')}
+                className="w-full min-w-0 rounded-[0.5rem] bg-secondary px-2.5 py-1.5 text-start transition-colors hover:bg-gold-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="block truncate text-muted-foreground">{t('nav_credits')}</span>
+                <span className="block truncate font-semibold tabular-nums text-foreground">{credits.toFixed(1)}</span>
+              </button>
+            ) : null}
           </dl>
 
-          <Button
-            size="sm"
-            className="mt-2.5 h-9 w-full gap-1.5 rounded-[0.5rem] bg-gold text-primary hover:bg-gold-hover"
-            onClick={() => navigate('/credits')}
-          >
-            {t('cta_top_up')} <ArrowRight className={`h-3.5 w-3.5 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
-          </Button>
+          {!entitlements.status?.subscription?.hasAccess ? (
+            <Button
+              size="sm"
+              className="mt-2.5 h-9 w-full gap-1.5 rounded-[0.5rem] bg-gold text-primary hover:bg-gold-hover"
+              onClick={() => navigate('/pricing')}
+            >
+              {t('sub_see_plans')} <ArrowRight className={`h-3.5 w-3.5 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>
@@ -565,6 +582,8 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
               {/* Available balance. Commercially important, so it is a
                   first-class control in the header rather than something
                   buried in a menu. */}
+              {/* Legacy balance only: shown while the account still holds credits. */}
+              {credits !== null && credits > 0 ? (
               <button
                 type="button"
                 onClick={() => navigate('/credits')}
@@ -577,6 +596,7 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
                 </span>
                 <span className="hidden text-[13px] text-white/60 lg:inline">{t('nav_credits')}</span>
               </button>
+              ) : null}
 
               <div className="hidden sm:block"><InstallApp compact tone="dark" /></div>
               <LanguageSwitcher showGlobe triggerClassName="h-10 rounded-full border border-white/25 px-2.5 text-white/85 hover:bg-white/10 hover:text-white" />

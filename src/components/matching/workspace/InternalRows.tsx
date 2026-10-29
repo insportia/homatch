@@ -5,6 +5,7 @@
 
 import { Loader2, Mail, MessageSquare, Phone, UserRound } from 'lucide-react';
 import { useState } from 'react';
+import { CopyEmailButton } from '@/components/leads/CopyEmailButton';
 import { CategoryPill, useLeadFormatters } from '@/components/leads/LeadCard';
 import { MortgagePill, MortgageSignals, PriceReasons } from '@/components/leads/MortgageSignals';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -39,7 +40,12 @@ function ContactBlock({ matchId }: { matchId: string }) {
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold text-[hsl(218_45%_14%)]" data-testid="mw-internal-contact">
       {contact.phone ? <a href={`tel:${contact.phone.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-1.5" dir="ltr"><Phone className="h-3.5 w-3.5" aria-hidden="true" />{contact.phone}</a> : null}
-      {contact.email ? <a href={`mailto:${contact.email}`} className="inline-flex items-center gap-1.5 [overflow-wrap:anywhere]" dir="ltr"><Mail className="h-3.5 w-3.5" aria-hidden="true" />{contact.email}</a> : null}
+      {contact.email ? (
+        <span className="inline-flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <a href={`mailto:${contact.email}`} className="inline-flex min-w-0 items-center gap-1.5 [overflow-wrap:anywhere]" dir="ltr"><Mail className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{contact.email}</a>
+          <CopyEmailButton email={contact.email} size="sm" testId="mw-copy-email" />
+        </span>
+      ) : null}
       {contact.canMessage ? <span className="inline-flex items-center gap-1.5 text-xs text-[hsl(224_14%_32%)]"><MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />{t('mw_contact_message_ok')}</span> : null}
       {!contact.phone && !contact.email ? <span className="text-xs font-normal text-[hsl(224_14%_32%)]">{t('mw_contact_not_shared')}</span> : null}
     </div>

@@ -26,7 +26,7 @@ import {
   type AnnouncementRow, type LocaleText,
 } from '@/services/adminControl';
 
-const LOCALES = ['en', 'ka', 'ru', 'tr', 'ar', 'he'] as const;
+const LOCALES = ['ka', 'en', 'ru', 'tr', 'ar', 'he'] as const;
 type Locale = typeof LOCALES[number];
 const RTL = new Set<Locale>(['ar', 'he']);
 

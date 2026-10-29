@@ -14,9 +14,10 @@ const { serviceForPath } = await import(join(ROOT, 'src/lib/serviceControls/rout
 const { translations } = await import(join(ROOT, 'src/i18n/translations.ts'));
 const MIGRATION = read('supabase/migrations/20261110090000_service_controls_expand.sql');
 /* The key list is redefined when a service is added; the newest definition is the truth.
-   20261129090000 added the matching workspace keys (owner, 2026-10-24). */
-const MATCHING = read('supabase/migrations/20261129090000_curated_leads_marketplace.sql');
-const MATCHING_KEYS = ['internal_matching', 'curated_leads', 'find_buyers_external'];
+   20261129090000 added the matching workspace keys (owner, 2026-10-24); 20261207140000 added
+   email_marketing (Email Marketing hidden, owner 2026-10-29). */
+const MATCHING = read('supabase/migrations/20261207140000_email_marketing_hidden.sql');
+const MATCHING_KEYS = ['internal_matching', 'curated_leads', 'find_buyers_external', 'email_marketing'];
 
 test('one list of services: database, server and browser agree', () => {
   const check = MATCHING.match(/check \(service_key in \(([\s\S]*?)\)\);/)[1];
@@ -61,7 +62,9 @@ test('each product address belongs to its own service', () => {
     '/property/1/matches': 'find_buyers', '/property/1/buyers/external': 'find_buyers', '/property/1/leads': 'find_buyers', '/property/1/buyer/k': 'find_buyers',
     '/verify': 'verify', '/verify/history': 'verify', '/contracts': 'contracts', '/mortgage': 'mortgage', '/investment': 'investment',
     '/for-expats/georgia': 'for_expats', '/outreach/meta': 'meta_ads', '/outreach/meta/create': 'meta_ads',
-    '/outreach/email': 'email_campaigns', '/email-studio': 'email_campaigns', '/ai': 'ai_assistant',
+    /* Email Marketing (fail closed, 2026-10-29): every email address; SMS keeps the historic key. */
+    '/outreach/email': 'email_marketing', '/outreach/email/campaigns/new': 'email_marketing', '/email-studio': 'email_marketing',
+    '/email-studio/abc': 'email_marketing', '/inbox/email': 'email_marketing', '/outreach/sms': 'email_campaigns', '/ai': 'ai_assistant',
     '/broker': 'broker_desk', '/broker/onboarding': 'broker_desk',
     '/brokers': 'brokers_directory', '/brokers/9': 'brokers_directory', '/admin/brokers': null,
     '/developers': 'developers', '/developers/home': 'developers',
@@ -103,9 +106,13 @@ test('every new server gate checks its own key', () => {
     'supabase/functions/investment-research/index.ts': ['investment'],
     'supabase/functions/investment-consultant/index.ts': ['investment'],
     'supabase/functions/meta-ads-api/index.ts': ['meta_ads'],
-    'supabase/functions/outreach-send/index.ts': ['email_campaigns'],
-    'supabase/functions/comm-campaign-launch/index.ts': ['email_campaigns'],
-    'supabase/functions/_shared/emailStudio.ts': ['email_campaigns'],
+    /* EMAIL → email_marketing (fail closed, 2026-10-29); SMS → the historic email_campaigns. */
+    'supabase/functions/outreach-send/index.ts': ['email_marketing', 'email_campaigns'],
+    'supabase/functions/comm-campaign-launch/index.ts': ['email_marketing', 'email_campaigns'],
+    'supabase/functions/outreach-campaign-preview/index.ts': ['email_marketing', 'email_campaigns'],
+    'supabase/functions/comm-dispatch-worker/index.ts': ['email_marketing'],
+    'supabase/functions/email-marketing/index.ts': ['email_marketing'],
+    'supabase/functions/_shared/emailStudio.ts': ['email_marketing'],
     'supabase/functions/homatch-ai/index.ts': ['find_property', 'mortgage', 'ai_call_center', 'ai_assistant'],
     'supabase/functions/developer-document-extract/index.ts': ['developers'],
     'supabase/functions/developer-floorplan-extract/index.ts': ['developers'],

@@ -587,6 +587,9 @@ jobs:
             "storage-reupload-proof"
             "atomic-unlock"
             "credits-topup"
+            # Subscription checkout (2026-10-29): plans, create, status, admin provider tools.
+            # Browser-facing and JWT-verified; the price and the provider come from the database.
+            "saas-checkout"
             # Stores a reusable payment method and grants the one-time
             # activation bonus. Browser-facing and JWT-verified: it acts on
             # the signed-in customer and on nobody else, and the bonus it
@@ -882,6 +885,10 @@ jobs:
             # that production never sees.
             "classify-signals-v2"
             "payment-webhook"
+            # Subscription payments (2026-10-29). A bank callback holds no user JWT; the
+            # adapter (_shared/saasPayments) verifies the provider signature and an
+            # unverified request changes nothing.
+            "saas-payments-webhook"
             "run-matching"
             "social-collect"
             "spend-cap-check"

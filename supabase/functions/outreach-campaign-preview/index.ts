@@ -5,6 +5,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { previewEmailCost, previewSmsCost, previewCallCost, PricingConfig } from '../_shared/cost_preview.ts';
+import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -53,6 +54,16 @@ serve(async (req) => {
 
     if (!campaign_type || !name) {
       return new Response(JSON.stringify({ error: 'campaign_type and name required' }), { status: 400, headers: corsHeaders });
+    }
+
+    // SERVICE CONTROL: no EMAIL draft while Email Marketing (`email_marketing`, fail closed,
+    // hidden 2026-10-29) is off, no SMS draft while SMS (`email_campaigns`) is off. Refused
+    // before any count, estimate or insert; the database refuses an EMAIL insert as well.
+    {
+      const service = campaign_type === 'EMAIL' ? 'email_marketing' : campaign_type === 'SMS' ? 'email_campaigns' : null;
+      if (service && !(await serviceBackendEnabled(supabase, service))) {
+        return new Response(JSON.stringify(serviceDisabledBody(service)), { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
     }
 
     // Load safety flags + pricing

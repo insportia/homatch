@@ -49,7 +49,8 @@ for (const [width, lang] of [[390, 'he'], [360, 'en']]) {
     for (const view of ['available', 'unlocked']) {
       await openWorkspace(page, BASE, `?product=internal&view=${view}`);
       if (view === 'available') await waitRows(page, 3);
-      else await page.locator('[data-testid="mw-library-actions"]').waitFor();
+      /* Email Marketing is hidden by default: the library shows the copy hint, not the campaign bar. */
+      else await page.locator('[data-testid="mw-library-actions"], [data-testid="mw-library-copy-hint"]').first().waitFor();
       await noOverflow(page, `${lang} ${width} ${view}`);
       if (lang === 'he') assert.equal(await page.evaluate(() => document.documentElement.dir), 'rtl');
     }

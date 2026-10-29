@@ -23,9 +23,28 @@
 import React from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { LEGAL_OPERATOR } from '@/lib/legal/operator';
 
 /** The six the product ships. Must match the i18n bundle exactly. */
-const LOCALES = ['en', 'ka', 'ru', 'tr', 'ar', 'he'] as const;
+const LOCALES = ['ka', 'en', 'ru', 'tr', 'ar', 'he'] as const;
+
+/*
+ * The publisher, from the one legal config (src/lib/legal/operator.ts): the
+ * brand as the name, the registered entity as legalName, and its Georgian
+ * company identification code. Nothing the owner has not provided (address,
+ * VAT number) is emitted.
+ */
+const PUBLISHER = {
+  '@type': 'Organization',
+  name: LEGAL_OPERATOR.brandName,
+  legalName: LEGAL_OPERATOR.legalEntityName,
+  url: LEGAL_OPERATOR.website,
+  identifier: {
+    '@type': 'PropertyValue',
+    propertyID: 'GE company identification code',
+    value: LEGAL_OPERATOR.identificationNumber,
+  },
+} as const;
 
 const ORIGIN = 'https://homatch.live';
 
@@ -82,7 +101,7 @@ export function ExpatSeo({
         description: article.description,
         inLanguage: lang,
         ...(article.modified ? { dateModified: article.modified } : {}),
-        publisher: { '@type': 'Organization', name: 'Homatch' },
+        publisher: PUBLISHER,
         mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },
       }
     : null;

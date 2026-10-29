@@ -101,6 +101,9 @@ const LegacyDealRoomRedirect = lazyRoute(() => import('./pages/LegacyDealRoomRed
 // is revisited later.
 const PartnersPage = lazyRoute(() => import('./pages/PartnersPage'));
 const PricingPage = lazyRoute(() => import('./pages/PricingPage'));
+const MySubscriptionPage = lazyRoute(() => import('./pages/MySubscriptionPage'));
+const SubscriptionConfirmPage = lazyRoute(() => import('./pages/SubscriptionConfirmPage'));
+const SubscriptionSandboxPayPage = lazyRoute(() => import('./pages/SubscriptionSandboxPayPage'));
 const DevelopersPage = lazyRoute(() => import('./pages/DevelopersPage'));
 const AboutPage = lazyRoute(() => import('./pages/AboutPage'));
 const ContactPage = lazyRoute(() => import('./pages/ContactPage'));
@@ -232,6 +235,7 @@ const AdminVerifyCogsPage = lazyRoute(() => import('./pages/admin/AdminVerifyCog
 const AdminHomiServicesPage = lazyRoute(() => import('./pages/admin/AdminHomiServicesPage'));
 const AdminVoiceAiPage = lazyRoute(() => import('./pages/admin/AdminVoiceAiPage'));
 const AdminPricingPage = lazyRoute(() => import('./pages/admin/AdminPricingPage'));
+const AdminPlansPage = lazyRoute(() => import('./pages/admin/AdminPlansPage'));
 const AdminSpendCapsPage = lazyRoute(() => import('./pages/admin/AdminSpendCapsPage'));
 const AdminDiagnosticsPage = lazyRoute(() => import('./pages/admin/AdminDiagnosticsPage'));
 const AdminStoragePage = lazyRoute(() => import('./pages/admin/AdminStoragePage'));
@@ -490,7 +494,12 @@ const routeTable: RouteConfig[] = [
   { name: 'Legacy verification redirect (case)',  path: '/deal-rooms/:id',         element: <LegacyDealRoomRedirect /> },
   { name: 'Activity',          path: '/activity',                 element: <ActivityPage /> },
   { name: 'Notifications',     path: '/notifications',            element: <NotificationsPage /> },
-  { name: 'Credits',           path: '/credits',                  element: <CreditsPage /> },
+  // Read-only history of the credit wallet: new credits are no longer sold (2026-10-29).
+  { name: 'Credits',           path: '/credits',                  element: <CreditsPage />, visible: false },
+  // SUBSCRIPTIONS (2026-10-29). The confirm page never trusts the bank redirect; it polls the server.
+  { name: 'My subscription',   path: '/account/subscription',     element: <MySubscriptionPage /> },
+  { name: 'Subscription confirm', path: '/subscription/confirm',  element: <SubscriptionConfirmPage />, visible: false },
+  { name: 'Subscription sandbox', path: '/subscription/sandbox-pay', element: <SubscriptionSandboxPayPage />, visible: false },
   { name: 'Profile',           path: '/profile',                  element: <ProfilePage /> },
   { name: 'Chat',              path: '/chat',                     element: <ChatPage /> },
   { name: 'Live Chat',         path: '/live-chat',                element: <LiveChatPage /> },
@@ -750,6 +759,7 @@ const routeTable: RouteConfig[] = [
   { name: 'Admin WhatsApp (alias)', path: '/admin/whatsapp',      element: <Navigate to="/admin/communication/whatsapp" replace />, adminOnly: true, visible: false },
   { name: 'Admin Calls (alias)',    path: '/admin/call-center',   element: <Navigate to="/admin/communication/call-center" replace />, adminOnly: true, visible: false },
   { name: 'Admin Pricing',     path: '/admin/pricing',            element: adminWrap(<AdminPricingPage />),     adminOnly: true },
+  { name: 'Admin Plans',       path: '/admin/plans',              element: adminWrap(<AdminPlansPage />),       adminOnly: true },
   { name: 'Admin Spend Caps',  path: '/admin/spend-caps',         element: adminWrap(<AdminSpendCapsPage />),   adminOnly: true },
   { name: 'Admin Diagnostics', path: '/admin/diagnostics',        element: adminWrap(<AdminDiagnosticsPage />), adminOnly: true },
   { name: 'Admin Storage',     path: '/admin/storage',            element: adminWrap(<AdminStoragePage />),     adminOnly: true },

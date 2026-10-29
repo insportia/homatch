@@ -28,7 +28,8 @@ const ROOT = process.cwd();
 /* Its own port (4351 belongs to another suite): authScreens 4341. */
 const PORT = 4359;
 const BASE = `http://127.0.0.1:${PORT}`;
-const VERSIONS = { terms: '2026-10-25', privacy: '2026-10-25' };
+/* Operator change and subscription Terms (2026-10-29): src/lib/legal/operator.ts. */
+const VERSIONS = { terms: '2026-10-29', privacy: '2026-10-29' };
 
 function findChrome() {
   if (process.env.PLAYWRIGHT_CHROME) return process.env.PLAYWRIGHT_CHROME;
@@ -281,7 +282,7 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
     assert.equal(stored.functional, false);
     assert.equal(stored.analytics, false);
     assert.equal(stored.marketing, false);
-    assert.equal(stored.version, '2026-10-25');
+    assert.equal(stored.version, '2026-10-29');
     assert.ok(!Number.isNaN(Date.parse(stored.decidedAt)), 'the choice carries a timestamp');
 
     await page.reload({ waitUntil: 'domcontentloaded' });
@@ -311,7 +312,10 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
       assert.equal(await banner.getByRole('button', { name: label }).count(), 1, label);
     }
     for (const label of ['მომსახურების პირობები', 'კონფიდენციალურობის პოლიტიკა', 'ქუქიების პოლიტიკა', 'ქუქიების პარამეტრები']) {
-      assert.ok(await ka.page.locator('footer').getByRole('button', { name: label, exact: true }).count() >= 1, `footer: ${label}`);
+      /* Georgian ships in the entry chunk now, so the banner can paint before the lazy footer: wait for it. */
+      const link = ka.page.locator('footer').getByRole('button', { name: label, exact: true });
+      await link.first().waitFor({ timeout: 15000 }).catch(() => {});
+      assert.ok(await link.count() >= 1, `footer: ${label}`);
     }
     await banner.getByRole('button', { name: 'ყველას მიღება' }).click();
     const stored = JSON.parse(await ka.page.evaluate(() => localStorage.getItem('homatch_cookie_consent')));
@@ -334,10 +338,13 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
       await page.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('[data-legal-doc] h1', { timeout: 20000 });
       const body = await page.locator('[data-legal-doc]').innerText();
-      assert.ok(body.includes('01027085016'), `${path}: identification number shown on the legal page`);
+      assert.ok(body.includes('406378511'), `${path}: identification code shown on the legal page`);
+      if (lang === 'ka') assert.ok(body.includes('საიდენტიფიკაციო კოდი'), 'the company is labelled with its identification code');
+      if (lang === 'en') assert.ok(body.includes('Identification code'), 'the company is labelled with its identification code');
+      assert.ok(!/01027085016|ტარიელი|Tariel|Chachua/.test(body), `${path}: the previous operator is gone`);
       if (lang === 'ka') {
-        assert.ok(body.includes('ინდივიდუალური მეწარმე ტარიელი ჩაჩუა'), 'Georgian operator name');
-        assert.ok(body.includes('რომელსაც მართავს ინდივიდუალური მეწარმე ტარიელი ჩაჩუა.'), 'approved 4.1 wording with the configured operator');
+        assert.ok(body.includes('შპს „ულტრა ქონექშენ“'), 'Georgian operator name, with its Georgian quotation marks');
+        assert.ok(body.includes('რომელსაც მართავს შპს „ულტრა ქონექშენ“.'), 'approved 4.1 wording with the configured operator');
         for (const exact of [
           'HOMATCH მომხმარებლებს სთავაზობს უძრავ ქონებასთან დაკავშირებული ინტერესების ავტომატური შესაბამისობისა და ციფრული კომუნიკაციის მომსახურებას.',
           'შესაბამისობის გამოვლენის შემდეგ მომხმარებლებს შეუძლიათ ერთმანეთთან კომუნიკაცია HOMATCH-ის შიდა მიმოწერის სისტემის მეშვეობით.',
@@ -346,9 +353,11 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
           'HOMATCH იღებს წინასწარ განსაზღვრულ საფასურს ციფრული შესაბამისობისა და შუამავლობის მომსახურებისთვის და არა მომხმარებლის ტელეფონის ნომრის გაყიდვისთვის.',
         ]) assert.ok(body.includes(exact), `owner wording present: ${exact.slice(0, 40)}…`);
       } else {
-        assert.ok(body.includes('Tariel Chachua'), `${lang}: operator name`);
+        /* No Latin-script name was provided: the registered Georgian name, then the entity type. */
+        assert.ok(body.includes('შპს „ულტრა ქონექშენ“'), `${lang}: operator name`);
+        assert.ok(body.includes(lang === 'ar' ? 'شركة ذات مسؤولية محدودة' : 'Limited Liability Company'), `${lang}: entity type`);
       }
-      assert.ok(!/\bLLC\b|შპს/.test(body), 'never described as an LLC');
+      assert.ok(!/Individual Entrepreneur|ინდივიდუალური მეწარმე|رائد أعمال فردي/.test(body), 'no longer described as an individual entrepreneur');
       assert.ok(!/GDPR Certified|ISO 27001|Government Approved|100% legally/i.test(body), 'no certification claims');
       const overflow = await page.evaluate(() => document.body.scrollWidth > document.documentElement.clientWidth + 1);
       assert.equal(overflow, false, `${lang} ${path}: no horizontal overflow`);
@@ -363,12 +372,30 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
       assert.equal(await page.locator(`#${target} h2`).innerText().then((x) => /^2\./.test(x)), true, 'sections are numbered in order');
       await ctx.close();
     }
+    // The previous operator's edition stays readable as it was (owner, 2026-10-29).
+    for (const [lang, path] of [['ka', '/terms'], ['en', '/privacy'], ['he', '/cookies']]) {
+      const { ctx, page } = await open({ lang });
+      await page.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('[data-legal-previous] a', { timeout: 20000 });
+      await page.locator('[data-legal-previous] a', { hasText: '2026-10-25' }).click();
+      await page.waitForSelector('[data-legal-archived="2026-10-25"]', { timeout: 20000 });
+      const body = await page.locator('[data-legal-doc]').innerText();
+      assert.ok(body.includes('01027085016'), `${path} 2026-10-25: the previous operator's ID`);
+      assert.ok(body.includes(lang === 'ka' ? 'ინდივიდუალური მეწარმე ტარიელი ჩაჩუა' : 'Tariel Chachua'), `${path} 2026-10-25: the previous operator's name`);
+      assert.ok(!body.includes('406378511'), `${path} 2026-10-25: the new company is not written into the old edition`);
+      if (lang === 'en') assert.ok(body.includes('ID No.') && !body.includes('Identification code'), 'the archived edition keeps its "ID No." label');
+      if (path === '/terms') assert.ok(body.includes('Stripe'), 'the archived Terms keep their credit/Stripe fee text');
+      await page.locator('[data-legal-archived] a').click();
+      await page.waitForSelector('[data-legal-previous]', { timeout: 20000 });
+      assert.ok((await page.locator('[data-legal-doc]').innerText()).includes('406378511'), 'back on the current edition');
+      await ctx.close();
+    }
     // Profile → Security carries the legal links and the cookie settings control.
     const { ctx, page } = await open({ session: true });
     await page.goto(`${BASE}/terms`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-legal-doc]', { timeout: 20000 });
     const footer = await page.locator('footer').innerText();
-    assert.ok(footer.includes('Tariel Chachua') && !footer.includes('01027085016'), 'footer names the operator but not the ID number');
+    assert.ok(footer.includes('შპს „ულტრა ქონექშენ“') && !footer.includes('406378511'), 'footer names the operator but not the identification code');
     await ctx.close();
   });
 
@@ -531,7 +558,7 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
           }
           // Footer: operator line wraps inside the viewport, never collapses to nothing.
           const op = await page.evaluate(() => {
-            const p = [...document.querySelectorAll('footer p')].find((x) => /Chachua|ჩაჩუა/.test(x.textContent || ''));
+            const p = [...document.querySelectorAll('footer p')].find((x) => /ულტრა ქონექშენ/.test(x.textContent || ''));
             if (!p) return null;
             const s = p.querySelector('span:last-child'); const r = (s || p).getBoundingClientRect();
             return { w: r.width, right: r.right, left: r.left, vw: document.documentElement.clientWidth };

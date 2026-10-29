@@ -67,7 +67,9 @@ test('4. every OpenAI call is paid from the execution budget, never past it', ()
   assert.match(AI, /opts\.gate\?\.spend\(res\.costMicros\);/, 'what it cost is taken off');
   assert.match(AI, /if \(answered === 'NO_BUDGET'\) return;/, 'a refused batch is not retried into the ceiling');
   assert.match(PIPELINE, /gate: aiGate,/);
-  assert.match(PIPELINE, /intentGate\.admit\(aiCallCeilingMicros\(/, 'the legacy intent path is gated too');
+  /* Code first (2026-10-29): the legacy intent path (its own openAiJson call) is gone; the pipeline's
+     only model call is classifyCandidates, behind this gate and the default-OFF ambiguity switch. */
+  assert.doesNotMatch(PIPELINE.replace(/\/\*[\s\S]*?\*\//g, ''), /openAiJson/, 'no second, separately gated model call in the pipeline');
   assert.match(EXECUTOR, /const aiGate = await campaignAiGate\(db, campaign\.matching_job_id, settings\.aiHeadroomPerItemMicros, run\.id\);/, 'one gate per run');
   assert.match(EXECUTOR, /remaining = spend \? spend\.headroomMicros :/, 'deepening sees the OpenAI spend');
   const adapt = ADAPTIVE.indexOf('executionHeadroomMicros(evidence.budgetMicros, evidence.spentMicros) >= ceiling');

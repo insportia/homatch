@@ -7,7 +7,8 @@ import { usePublicNavLinks } from '@/site/publicNav';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
 import { PAGE } from '@/components/home/sections/primitives';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { LEGAL_OPERATOR, formatLegalDate, operatorDisplayName, type LegalDoc } from '@/lib/legal/operator';
+import { ARCHIVED_EDITIONS, LEGAL_OPERATOR, formatLegalDate, operatorDisplayName, operatorEntityLabelKey, operatorIdLabelKey, type LegalDoc } from '@/lib/legal/operator';
+import { useLegalEdition } from '@/lib/legal/useLegalEdition';
 
 /*
  * THE LEGAL CENTER — one layout for Terms, Privacy and Cookies.
@@ -91,9 +92,13 @@ export function LegalLayout({
     if (tocOpen.current) tocOpen.current.open = false;
   };
 
-  const version = LEGAL_OPERATOR.versions[doc];
-  const effective = formatLegalDate(LEGAL_OPERATOR.effectiveDates[doc], lang);
-  const operator = operatorDisplayName(lang, t('legal_entity_individual_entrepreneur'));
+  /* The edition being read: the current one, or an archived one (?version=), which keeps the operator it named. */
+  const edition = useLegalEdition(doc);
+  const op = edition.operator;
+  const version = edition.version;
+  const effective = formatLegalDate(edition.effectiveDate, lang);
+  const operator = operatorDisplayName(lang, t(operatorEntityLabelKey(op)), op);
+  const docPath = DOCS.find((d) => d.doc === doc)?.path ?? '/terms';
 
   const toc = (
     <ol className="space-y-0.5 text-[14px]">
@@ -164,9 +169,25 @@ export function LegalLayout({
               <div className="rounded-[0.9rem] border border-border bg-card px-4 py-3 text-[14px] leading-relaxed text-muted-foreground">
                 <span className="text-foreground font-medium">{t('legal_operated_by')}</span>{' '}
                 {operator}
-                {' · '}{t('legal_id_number')} <span dir="ltr">{LEGAL_OPERATOR.identificationNumber}</span>
+                {' · '}{t(operatorIdLabelKey(op))} <span dir="ltr">{op.identificationNumber}</span>
                 {' · '}{LEGAL_OPERATOR.country[lang as keyof typeof LEGAL_OPERATOR.country] ?? LEGAL_OPERATOR.country.en}
               </div>
+              {edition.archived ? (
+                <p data-legal-archived={version} className="rounded-[0.9rem] border border-gold-ink/40 bg-secondary/60 px-4 py-2.5 text-[14px] text-foreground">
+                  {t('legal_archived_notice', { version, until: formatLegalDate(edition.supersededOn ?? version, lang) })}{' '}
+                  <Link to={docPath} className="font-medium text-gold-ink underline-offset-2 hover:underline">{t('legal_view_current')}</Link>
+                </p>
+              ) : ARCHIVED_EDITIONS.length > 0 && (
+                <p data-legal-previous className="text-[13px] text-muted-foreground print:hidden">
+                  {t('legal_previous_versions')}{' '}
+                  {ARCHIVED_EDITIONS.map((e, i) => (
+                    <React.Fragment key={e.version}>
+                      {i > 0 && ', '}
+                      <Link to={`${docPath}?version=${e.version}`} dir="ltr" className="text-gold-ink underline-offset-2 hover:underline">{e.version}</Link>
+                    </React.Fragment>
+                  ))}
+                </p>
+              )}
               {lang !== 'ka' && (
                 <p className="rounded-[0.9rem] border border-border bg-secondary/50 px-4 py-2.5 text-[13px] text-muted-foreground">{t('legal_translation_notice')}</p>
               )}
@@ -226,16 +247,17 @@ export function LegalList({ items }: { items: React.ReactNode[] }) {
 }
 
 /** The operator and its published contacts, from src/lib/legal/operator.ts. */
-export function LegalContactCard({ show }: { show: Array<'legal' | 'privacy' | 'support'> }) {
+export function LegalContactCard({ show, doc = 'privacy' }: { show: Array<'legal' | 'privacy' | 'support'>; doc?: LegalDoc }) {
   const { t, lang } = useLanguage();
+  const op = useLegalEdition(doc).operator;
   const mails = { legal: LEGAL_OPERATOR.legalContactEmail, privacy: LEGAL_OPERATOR.privacyContact, support: LEGAL_OPERATOR.supportEmail };
   const label = { legal: t('legal_contact_legal'), privacy: t('legal_contact_privacy'), support: t('legal_contact_support') };
   return (
     <dl className="mt-1 grid gap-x-6 gap-y-2 rounded-[0.9rem] border border-border bg-card p-4 text-[14px] sm:grid-cols-[auto_1fr]">
       <dt className="text-muted-foreground">{t('legal_contact_operator')}</dt>
       <dd className="text-foreground">
-        {operatorDisplayName(lang, t('legal_entity_individual_entrepreneur'))} · {t('legal_id_number')} <span dir="ltr">{LEGAL_OPERATOR.identificationNumber}</span>
-        {LEGAL_OPERATOR.registeredAddress && <> · {LEGAL_OPERATOR.registeredAddress}</>}
+        {operatorDisplayName(lang, t(operatorEntityLabelKey(op)), op)} · {t(operatorIdLabelKey(op))} <span dir="ltr">{op.identificationNumber}</span>
+        {op.registeredAddress && <> · {op.registeredAddress}</>}
       </dd>
       {show.filter((k) => mails[k]).map((k) => (
         <React.Fragment key={k}>
@@ -249,12 +271,13 @@ export function LegalContactCard({ show }: { show: Array<'legal' | 'privacy' | '
   );
 }
 
-/** Translation variables every legal page passes to t(). */
-export function useOperatorVars() {
+/** Translation variables every legal page passes to t(), for the edition being read. */
+export function useOperatorVars(doc: LegalDoc = 'terms') {
   const { t, lang } = useLanguage();
+  const op = useLegalEdition(doc).operator;
   return {
-    operator: operatorDisplayName(lang, t('legal_entity_individual_entrepreneur')),
-    id: LEGAL_OPERATOR.identificationNumber,
+    operator: operatorDisplayName(lang, t(operatorEntityLabelKey(op)), op),
+    id: op.identificationNumber,
     email: LEGAL_OPERATOR.privacyContact ?? '',
     support: LEGAL_OPERATOR.supportEmail ?? '',
   };

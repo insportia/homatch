@@ -16,6 +16,7 @@ import { DIMENSION_ORDER, featureParts, matchReasons, propertyTypeLabel } from '
 import type { LeadContact } from '@/services/homatchLeads';
 import type { CrmProfile } from '@/services/leadsCrm';
 import { formatMoney, intlLocaleFor, isolate } from '@/components/workspace/primitives';
+import { CopyEmailButton } from '@/components/leads/CopyEmailButton';
 import { SectionCard, useCrmDateFormat } from './ui';
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
@@ -112,7 +113,12 @@ export function LeadProfileCard({ profile, contact }: { profile: CrmProfile; con
         ) : (
           <div className="mt-1.5 flex flex-col gap-1.5">
             {contact.phone ? <a href={`tel:${contact.phone}`} dir="ltr" className="inline-flex items-center gap-2 text-sm font-semibold text-[hsl(218_45%_14%)] underline-offset-2 hover:underline"><Phone className="h-4 w-4 text-[hsl(34_90%_36%)]" aria-hidden="true" />{contact.phone}</a> : null}
-            {contact.email ? <a href={`mailto:${contact.email}`} dir="ltr" className="inline-flex items-center gap-2 text-sm font-semibold text-[hsl(218_45%_14%)] underline-offset-2 hover:underline [overflow-wrap:anywhere]"><Mail className="h-4 w-4 text-[hsl(34_90%_36%)]" aria-hidden="true" />{contact.email}</a> : null}
+            {contact.email ? (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5" data-testid="lp-contact-email">
+                <a href={`mailto:${contact.email}`} dir="ltr" className="inline-flex min-w-0 items-center gap-2 text-sm font-semibold text-[hsl(218_45%_14%)] underline-offset-2 hover:underline [overflow-wrap:anywhere]"><Mail className="h-4 w-4 shrink-0 text-[hsl(34_90%_36%)]" aria-hidden="true" />{contact.email}</a>
+                <CopyEmailButton email={contact.email} size="sm" testId="lp-copy-email" />
+              </div>
+            ) : null}
             {!contact.phone && !contact.email ? <p className="text-sm text-[hsl(218_28%_34%)]">{t('hl_contact_message_only')}</p> : null}
             <p className="text-2xs leading-relaxed text-[hsl(218_15%_42%)]">{t('lp_contact_consent')}</p>
           </div>

@@ -28,6 +28,7 @@ export const SERVICE_NAME_KEYS: Record<ServiceKey, TranslationKey> = {
   for_expats: 'svc_name_for_expats',
   meta_ads: 'svc_name_meta_ads',
   email_campaigns: 'svc_name_email_campaigns',
+  email_marketing: 'svc_name_email_marketing',
   ai_assistant: 'svc_name_ai_assistant',
   brokers_directory: 'svc_name_brokers_directory',
   broker_desk: 'svc_name_broker_desk',

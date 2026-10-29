@@ -144,7 +144,8 @@ export function LeadCard({
   onOpenContact: () => void;
   onOpenConversation: () => void;
   onToggleSave: () => void;
-  onCreateEmail: () => void;
+  /** null while Email Marketing is hidden (service email_marketing): no campaign entry. */
+  onCreateEmail: (() => void) | null;
   busy?: boolean;
 }) {
   const { t, lang, money, date } = useLeadFormatters();
@@ -225,9 +226,11 @@ export function LeadCard({
             <button type="button" className={BTN_SECONDARY} onClick={onOpenConversation}>
               <MessageSquare className="h-4 w-4" aria-hidden="true" />{t('hl_cta_open_conversation')}
             </button>
-            <button type="button" className={BTN_SECONDARY} onClick={onCreateEmail}>
-              <Mail className="h-4 w-4" aria-hidden="true" />{t('hl_cta_create_email')}
-            </button>
+            {onCreateEmail ? (
+              <button type="button" className={BTN_SECONDARY} onClick={onCreateEmail} data-testid="lead-create-email">
+                <Mail className="h-4 w-4" aria-hidden="true" />{t('hl_cta_create_email')}
+              </button>
+            ) : null}
           </>
         ) : (
           <button type="button" className={cn(BTN_PRIMARY, 'min-[420px]:flex-1')} onClick={onUnlock} disabled={busy} data-testid="lead-unlock">

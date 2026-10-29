@@ -9,11 +9,14 @@
 //
 // Nothing here ever trusts the raw client-supplied value: normalizeLocale
 // maps ANY input to one of the six fixed, known-safe values below (falling
-// back to English), so a locale string is never interpolated into a prompt
+// back to Georgian, the product's default language since 2026-10-29), so a locale string is never interpolated into a prompt
 // unvalidated and can never be used to inject instructions.
 export type Locale = 'en' | 'ka' | 'ru' | 'tr' | 'ar' | 'he';
 
-export const SUPPORTED_LOCALES: Locale[] = ['en', 'ka', 'ru', 'tr', 'ar', 'he'];
+export const SUPPORTED_LOCALES: Locale[] = ['ka', 'en', 'ru', 'tr', 'ar', 'he'];
+
+/** What a request that names no valid language gets: Georgian, like the client. */
+export const DEFAULT_LOCALE: Locale = 'ka';
 
 export const LANGUAGE_NAMES: Record<Locale, string> = {
   en: 'English',
@@ -28,13 +31,13 @@ export const RTL_LOCALES: Locale[] = ['ar', 'he'];
 
 /**
  * Normalizes ANY user-controlled input to one of the six known-safe locale
- * codes, defaulting to 'en'. Never returns anything else — safe to
+ * codes, defaulting to DEFAULT_LOCALE ('ka'). Never returns anything else — safe to
  * interpolate the resulting LANGUAGE_NAMES[...] value into a prompt.
  */
 export function normalizeLocale(input: unknown): Locale {
   return typeof input === 'string' && (SUPPORTED_LOCALES as string[]).includes(input)
     ? (input as Locale)
-    : 'en';
+    : DEFAULT_LOCALE;
 }
 
 /**
@@ -44,7 +47,7 @@ export function normalizeLocale(input: unknown): Locale {
  * Always returns a normalized, safe Locale.
  */
 export function resolveLocaleFromBody(body: Record<string, unknown> | null | undefined): Locale {
-  if (!body) return 'en';
+  if (!body) return DEFAULT_LOCALE;
   return normalizeLocale(body.locale ?? body.language);
 }
 

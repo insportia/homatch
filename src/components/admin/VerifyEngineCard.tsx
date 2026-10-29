@@ -9,6 +9,9 @@
 // - Admin test verifications (`adminPreview`): jobs started from an admin
 //   account, so V2 can be tested live while every customer stays on V1.
 // Every write carries both fields, so changing one never resets the other.
+// V3 (owner, 2026-10-29): a third engine, offered only while `v3Enabled` is
+// on; switching it off sends new jobs back to V2 (admins) / V1 (customers)
+// with one audited write and no deploy. Running jobs keep their stamp.
 import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -23,13 +26,14 @@ import {
   parseEngineSetting, VERIFY_ENGINE_SETTING_KEY, VERIFY_V2_AVAILABLE, type VerifyEngine, type VerifyEngineSetting,
 } from '@/verify/engine';
 
-type Field = keyof VerifyEngineSetting;
+type Field = 'active' | 'adminPreview';
+type Target = { field: Field; engine: VerifyEngine } | { field: 'v3Enabled'; enabled: boolean };
 
 export function VerifyEngineCard() {
   const { t, lang } = useLanguage();
-  const [setting, setSetting] = useState<VerifyEngineSetting>({ active: 'V1', adminPreview: 'V1' });
+  const [setting, setSetting] = useState<VerifyEngineSetting>({ active: 'V1', adminPreview: 'V1', v3Enabled: false });
   const [history, setHistory] = useState<AuditRow[]>([]);
-  const [target, setTarget] = useState<{ field: Field; engine: VerifyEngine } | null>(null);
+  const [target, setTarget] = useState<Target | null>(null);
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -50,7 +54,7 @@ export function VerifyEngineCard() {
     if (!target) return;
     setSaving(true);
     try {
-      const next = { ...setting, [target.field]: target.engine };
+      const next: VerifyEngineSetting = target.field === 'v3Enabled' ? { ...setting, v3Enabled: target.enabled } : { ...setting, [target.field]: target.engine };
       await updateAdminSetting(VERIFY_ENGINE_SETTING_KEY, next, reason.trim());
       setSetting(next);
       toast.success(t('adm_engine_saved'));
@@ -66,7 +70,7 @@ export function VerifyEngineCard() {
 
   const fmt = (iso: string) => new Date(iso).toLocaleString(lang === 'ka' ? 'ka-GE' : lang);
   const option = (field: Field, engine: VerifyEngine, label: string) => {
-    const unavailable = field === 'active' && engine === 'V2' && !VERIFY_V2_AVAILABLE;
+    const unavailable = (field === 'active' && engine === 'V2' && !VERIFY_V2_AVAILABLE) || (engine === 'V3' && !setting.v3Enabled);
     const on = setting[field] === engine;
     return (
       <Button
@@ -86,11 +90,12 @@ export function VerifyEngineCard() {
       <Badge variant="outline">{title}: {setting[field]}</Badge>
       {option(field, 'V1', t('adm_engine_v1'))}
       {option(field, 'V2', t('adm_engine_v2'))}
+      {option(field, 'V3', t('adm_engine_v3'))}
     </div>
   );
   const describe = (v: unknown) => {
     const s = parseEngineSetting(v);
-    return `${s.active} / ${s.adminPreview}`;
+    return `${s.active} / ${s.adminPreview}${s.v3Enabled ? ' · V3' : ''}`;
   };
 
   return (
@@ -100,6 +105,13 @@ export function VerifyEngineCard() {
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <p className="text-2xs text-muted-foreground">{t('adm_engine_active')}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={setting.v3Enabled ? 'default' : 'outline'}>{t('adm_engine_v3_enabled')}: {setting.v3Enabled ? 'V3' : '—'}</Badge>
+          <Button size="sm" variant="outline" disabled={saving} aria-pressed={setting.v3Enabled} onClick={() => setTarget({ field: 'v3Enabled', enabled: !setting.v3Enabled })}>
+            {setting.v3Enabled ? t('adm_engine_v3_disable') : t('adm_engine_v3_enable')}
+          </Button>
+        </div>
+        {!setting.v3Enabled ? <p className="text-2xs text-muted-foreground">{t('adm_engine_v3_disabled_note')}</p> : null}
         {row('active', t('adm_engine_customers'))}
         {!VERIFY_V2_AVAILABLE ? <p className="text-2xs text-muted-foreground">{t('adm_engine_v2_unavailable')}</p> : null}
         {row('adminPreview', t('adm_engine_admin_preview'))}
@@ -122,7 +134,9 @@ export function VerifyEngineCard() {
       <Confirm
         open={target !== null}
         onOpenChange={(v) => { if (!v) { setTarget(null); setReason(''); } }}
-        title={t(target?.field === 'adminPreview' ? 'adm_engine_confirm_admin_title' : 'adm_engine_confirm_title', { engine: target?.engine ?? '' })}
+        title={target?.field === 'v3Enabled'
+          ? t(target.enabled ? 'adm_engine_v3_enable' : 'adm_engine_v3_disable')
+          : t(target?.field === 'adminPreview' ? 'adm_engine_confirm_admin_title' : 'adm_engine_confirm_title', { engine: target && 'engine' in target ? target.engine : '' })}
         description={t('adm_engine_confirm_body')}
         confirmLabel={t('adm_engine_confirm')}
         onConfirm={() => void confirm()}

@@ -4,6 +4,7 @@ import {
   ArrowUpRight, Building2, Calculator, FileText, Mail, Plane, Search, ShieldCheck, TrendingUp, UserSearch,
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { usePathAvailable } from '@/lib/serviceControls';
 import { HomatchAsk } from '@/components/home/HomatchAsk';
 import { IntentCards } from '@/components/home/IntentCards';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
@@ -63,6 +64,8 @@ export function AISection() {
   /* What a question reaches — every tile opens the real product. AI Call
      Center is deliberately not listed here (owner, 2026-10-24); Investment
      and the expat services are. */
+  /* A paused service (Email Marketing is hidden by default since 2026-10-29) is never offered. */
+  const pathAvailable = usePathAvailable();
   const reach = [
     { key: 'find', icon: Search, to: '/find-property', label: sf('reach_find', 'mp_find_title') },
     { key: 'verify', icon: ShieldCheck, to: '/verify', label: sf('reach_verify', 'mp_verify_capability_title') },
@@ -73,7 +76,7 @@ export function AISection() {
     { key: 'match', icon: UserSearch, to: '/property/add', label: sf('reach_match', 'mp_match_title') },
     { key: 'email', icon: Mail, to: '/outreach/email', label: sf('reach_email', 'mp_email_title') },
     { key: 'dev', icon: Building2, to: '/developers', label: sf('reach_dev', 'mp_dev_eyebrow') },
-  ];
+  ].filter((r) => pathAvailable(r.to));
   const [active, setActive] = useState<string | null>(null);
   const activeItem = reach.find((r) => r.key === active) ?? null;
   const tileRefs = useRef<Record<string, HTMLAnchorElement | null>>({});

@@ -9,6 +9,10 @@
 //     campaigns page and its create dialog on 2026-10-24; its recipients step owns the audience
 //     estimate and per-language filtering), and nothing is sent;
 //   * /outreach/contacts?source=CURATED_LEAD filters server-side and badges the source.
+//
+// Email Marketing is hidden by default (owner, 2026-10-29; service `email_marketing`, fail
+// closed): the hand-off works only while the owner has it ON; hidden, the same address shows
+// "currently unavailable" and creates or sends nothing.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -60,7 +64,7 @@ const profile = { id: 'u1', auth_id: 'u1', email: 'owner@example.test', is_admin
 const LIST_ID = '6f1c2a54-1a2b-4c3d-8e9f-0123456789ab';
 const audience = (total, eligible, byLanguage) => ({ total, withEmail: total, consented: eligible, eligible, byLanguage, bySource: { CURATED_LEAD: total } });
 
-async function boot(t) {
+async function boot(t, { emailMarketing = false } = {}) {
   const { chromium } = resolvePlaywright();
   const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -81,6 +85,9 @@ async function boot(t) {
     if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
     const wantsObject = (req.headers().accept ?? '').includes('pgrst.object');
     if (url.includes('/rest/v1/users')) return r.fulfill(json(wantsObject ? profile : [profile]));
+    if (url.includes('/rpc/service_controls_public')) {
+      return r.fulfill(json(emailMarketing ? [{ service_key: 'email_marketing', frontend_enabled: true, backend_enabled: true }] : []));
+    }
     if (url.includes('/rest/v1/outreach_contact_lists')) {
       return r.fulfill(json([{ id: LIST_ID, name: 'HOMATCH Curated Leads', valid_rows: 0, total_rows: 5, total: 5, import_status: 'COMPLETED', source_kind: 'CURATED_LEAD' }]));
     }
@@ -117,8 +124,19 @@ async function boot(t) {
   return { page, state };
 }
 
-test('?new=1&list= (the unlock handoff) opens a new Email Studio campaign on that list; nothing is sent', opts, async (t) => {
+test('Email Marketing hidden (default): the hand-off address is "currently unavailable"; nothing is created or sent', opts, async (t) => {
   const { page, state } = await boot(t);
+  await page.goto(`${BASE}/outreach/email?new=1&list=${LIST_ID}`, { waitUntil: 'domcontentloaded' });
+  const box = page.getByTestId('service-unavailable');
+  await box.waitFor({ timeout: 30000 });
+  assert.equal(await box.getAttribute('data-service'), 'email_marketing');
+  await page.waitForTimeout(500);
+  assert.equal(new URL(page.url()).pathname, '/outreach/email', 'no redirect into the campaign workspace');
+  assert.deepEqual([state.creates.length, state.sends], [0, 0], 'nothing created, nothing sent');
+});
+
+test('?new=1&list= (the unlock handoff) opens a new Email Studio campaign on that list while Email Marketing is ON; nothing is sent', opts, async (t) => {
+  const { page, state } = await boot(t, { emailMarketing: true });
   await page.goto(`${BASE}/outreach/email?new=1&list=${LIST_ID}`, { waitUntil: 'domcontentloaded' });
   await page.waitForURL((u) => u.pathname === '/outreach/email/campaigns/new' && u.searchParams.get('list') === LIST_ID, { timeout: 30000 });
   /* The workflow starts with the design (owner, UX pass 2026-10-24); the list arrives preselected

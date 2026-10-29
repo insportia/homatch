@@ -34,6 +34,7 @@
 // bought.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { installNoModelGuard } from '../_shared/noModelGuard.ts';
 import {
   directoryStandingOf,
   discloseBroker,
@@ -54,6 +55,9 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 
 /** The most results one request returns. A list nobody scrolls is not a feature. */
 const MAX_RESULTS = 60;
+
+/* Zero AI on the Find Property path (owner, 2026-10-29): model requests are refused at runtime. */
+installNoModelGuard('find-property');
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });

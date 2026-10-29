@@ -37,7 +37,7 @@ export const HOMI_DETERMINISTIC_INTENTS = [
   'FIND_PROPERTY', 'PROPERTY_PRICE', 'ROI_QUICK', 'MORTGAGE_QUICK', 'MORTGAGE_DOCS',
   'MORTGAGE_DOCS_SALARIED', 'MORTGAGE_DOCS_SELF_EMPLOYED', 'MORTGAGE_DOCS_BUSINESS_OWNER',
   'MORTGAGE_DOCS_FREELANCER', 'MORTGAGE_DOCS_RENTAL', 'MORTGAGE_DOCS_EMIGRANT', 'MORTGAGE_DOCS_FOREIGN_INCOME', 'MORTGAGE_DOCS_FOREIGN_NATIONAL',
-  'MORTGAGE_DOCS_CO_BORROWER', 'OTHER_QUESTION',
+  'MORTGAGE_DOCS_CO_BORROWER', 'OTHER_QUESTION', 'PLANS', 'HOMI_FREE',
 ] as const;
 export type HomiDeterministicIntent = typeof HOMI_DETERMINISTIC_INTENTS[number];
 
@@ -428,6 +428,35 @@ export const HOMI_TEMPLATES: Record<HomiDeterministicIntent, HomiTemplate> = {
     actions: ['VERIFY', 'INVESTMENT'],
     chips: [{ label: C.simpler }, { label: C.showOptions, intent: 'START' }],
     mood: 'explaining',
+  },
+
+  /* Plans: generic on purpose. The numbers live in Admin (subscription
+     settings) and on the Pricing page, never in a written answer that could
+     drift from them. */
+  PLANS: {
+    text: {
+      ka: 'HOMATCH ყოველთვიური გეგმებით მუშაობს. ჩემთან საუბარი, ტექსტით თუ ხმით, ყველა გეგმაში შეუზღუდავია. თითოეულ გეგმაში რა შედის და რა ღირს, **ფასების** გვერდზე ნახავ, ნებისმიერი სერვისი კი ფასს დაწყებამდე გაჩვენებს. 🙂',
+      en: "HOMATCH works with monthly plans. Talking to me, by text or by voice, is unlimited in every plan. The **Pricing** page shows what each plan includes and what it costs, and every service shows its price before anything starts. 🙂",
+      ru: 'HOMATCH работает по ежемесячным планам. Общение со мной, текстом или голосом, безлимитно в любом плане. Что входит в каждый план и сколько он стоит, смотри на странице **Цены**, а любой сервис показывает цену до начала работы. 🙂',
+      tr: 'HOMATCH aylık planlarla çalışır. Benimle yazarak ya da sesli konuşmak her planda sınırsızdır. Her planın neleri kapsadığını ve fiyatını **Fiyatlar** sayfasında görebilirsin; her hizmet de başlamadan önce fiyatını gösterir. 🙂',
+      ar: 'تعمل HOMATCH بخطط شهرية. التحدث معي، كتابةً أو صوتًا، غير محدود في كل الخطط. تجد في صفحة **الأسعار** ما تتضمنه كل خطة وسعرها، وكل خدمة تعرض سعرها قبل أن تبدأ. 🙂',
+      he: 'HOMATCH עובדת עם תוכניות חודשיות. השיחה איתי, בכתב או בקול, ללא הגבלה בכל תוכנית. בעמוד **מחירים** תמצא מה כלול בכל תוכנית וכמה היא עולה, וכל שירות מציג את המחיר שלו לפני שמתחילים. 🙂',
+    },
+    chips: [{ label: C.showOptions, intent: 'START' }, { label: C.other, intent: 'OTHER_QUESTION' }],
+    mood: 'explaining',
+  },
+
+  HOMI_FREE: {
+    text: {
+      ka: 'ჩემთან საუბარი შეუზღუდავია ყველა გეგმაში, ხმოვანი შეტყობინებებიც. ლიმიტს არ ვითვლი, ამიტომ მკითხე იმდენი, რამდენიც დაგჭირდება. 🙂',
+      en: "Talking to me is unlimited in every plan, voice messages included. There's no message count, so ask as much as you need. 🙂",
+      ru: 'Общение со мной безлимитно в любом плане, включая голосовые сообщения. Счётчика сообщений нет, так что спрашивай сколько нужно. 🙂',
+      tr: 'Benimle konuşmak her planda sınırsız, sesli mesajlar da dahil. Mesaj sayacı yok, istediğin kadar sorabilirsin. 🙂',
+      ar: 'التحدث معي غير محدود في كل الخطط، بما في ذلك الرسائل الصوتية. لا يوجد عدّاد للرسائل، فاسأل بقدر ما تحتاج. 🙂',
+      he: 'השיחה איתי ללא הגבלה בכל תוכנית, כולל הודעות קוליות. אין מונה הודעות, אז תשאל כמה שצריך. 🙂',
+    },
+    chips: [{ label: C.showOptions, intent: 'START' }, { label: C.other, intent: 'OTHER_QUESTION' }],
+    mood: 'happy',
   },
 };
 

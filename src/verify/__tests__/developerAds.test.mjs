@@ -160,14 +160,16 @@ test('the report section links only through the safe helpers, never an ad landin
   assert.match(src, /verify_ads_marketing_note/);
   assert.match(src, /view\.outcome !== 'COMPLETE' && view\.outcome !== 'CACHED'/, 'only a completed stage renders');
   const report = code('src/components/verify/VerifyReport.tsx');
-  assert.match(report, /<DeveloperAdvertising view=\{synthesis\.developerAds\} assessment=\{r\.advertisingAssessment\} \/>/);
+  // Rendered only while the server neither stripped nor marked it hidden (verify_developer_ads.visible).
+  assert.match(report, /const adsShown = !!synthesis\.developerAds && synthesis\.developerAdsHidden !== true;/);
+  assert.match(report, /<DeveloperAdvertising view=\{adsShown \? synthesis\.developerAds : null\} assessment=\{adsShown \? r\.advertisingAssessment : null\} \/>/);
 });
 
 test('customer payloads carry the view only, never the stage internals', () => {
   const agent = code('supabase/functions/research-agent/index.ts');
   assert.match(agent, /delete \w+\._developerAds/, 'the internal stage state is stripped from customer payloads');
   const synth = code('supabase/functions/verify-synthesis/index.ts');
-  assert.match(synth, /developerAds: pkg\.developerAds && \(pkg\.developerAds\.outcome === 'COMPLETE' \|\| pkg\.developerAds\.outcome === 'CACHED'\)/);
+  assert.match(synth, /developerAds: adsVisible && pkg\.developerAds && \(pkg\.developerAds\.outcome === 'COMPLETE' \|\| pkg\.developerAds\.outcome === 'CACHED'\)/);
   assert.ok(!/_developerAds/.test(synth), 'synthesis never reads the internal stage state');
   // Seeded on by the owner's release authorization (2026-10-09); a missing or
   // unreadable setting still means OFF.
@@ -212,7 +214,7 @@ test('the finished report keeps the advertising stage (job c80f7237: billed, the
   assert.match(fin, /_developerAds: prior\._developerAds \?\? null,/, 'internal state (input, schema, price, cache key) carried too');
   // ...and still never reaches a customer payload.
   assert.match(agent, /delete r\[k\];/);
-  assert.match(agent, /'_developerAds'\]\) delete r\[k\]/);
+  assert.match(agent, /'_developerAds', '_reusable', '_reusedStages'\]\) delete r\[k\]/);
 });
 
 test('a financial lookup is claimed before the worker is started (job c80f7237 started rstax twice)', () => {

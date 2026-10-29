@@ -38,12 +38,16 @@ import { recordCommunitySupply } from '../_shared/communitySupply.ts';
 import { extractCommunityListing } from '../../../src/research-core/discovery/community-listing.ts';
 import { safeWebUrl } from '../../../src/research-core/discovery/source-link.ts';
 import { CLASSIFIER_VERSION, DEMAND_LABELS, discoveryLabelFor, reusableVerdict, routeFor } from '../../../src/research-core/discovery/signal-taxonomy.ts';
+import { RULES_MODEL, ruleSignalVerdict } from '../../../src/research-core/discovery/signalRules.ts';
+import { AI_SWITCHES, aiSwitchOn, selectForModel, SIGNALS_AI_MAX_ITEMS_PER_TICK } from '../../../src/research-core/findBuyers/aiPolicy.ts';
 const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type'};
 const json=(d:any,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...CORS,'Content-Type':'application/json'}});
 const DEMAND=new Set(['BUY','RENT','INVEST','RELOCATE_BUY','RELOCATE_RENT']);
 /* Three tries. Enough to cross a provider blip, few enough that a signal
    nothing can classify stops consuming budget. */
 const MAX_ATTEMPTS=3;
+/* An ambiguous signal filtered out because the model switch was off: never a reusable verdict. */
+const AMBIGUOUS_AI_OFF='rules_ambiguous_ai_off';
 
 Deno.serve(async(req:Request)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:CORS});
@@ -109,7 +113,6 @@ Deno.serve(async(req:Request)=>{
   }
   const {data:signals,error}=await db.from('raw_signals').select(`id,original_text,language,platform,classification_attempts,research_direction,author_is_agency,content_fingerprint,source_id,external_id,source_url,published_at,source:source_registry!source_id(country_code,language,city)`).eq('classification_status','PENDING').lt('classification_attempts',MAX_ATTEMPTS).order('classification_attempts',{ascending:true}).order('discovered_at',{ascending:true}).limit(Math.min(500,batchSize));
   if(error)throw error;if(!signals?.length)return json({success:true,processed:0,classified:0,filteredOut:0,deterministicFiltered:0,errors:0});
-  const key=Deno.env.get('OPENAI_API_KEY')!;if(!key)return json({error:'OPENAI_API_KEY missing'},500);
   let retried=0;let supplyObservations=0,supplyErrors=0;let classified=0,filteredOut=0,deterministicFiltered=0,errors=0,totalCostUsd=0,modelOmitted=0,cacheHits=0;
   /* Every verdict carries the nine-label taxonomy and the classifier version
      that produced it (research-core/discovery/signal-taxonomy.ts). */
@@ -136,10 +139,8 @@ Deno.serve(async(req:Request)=>{
    * question was never asked of them, and refusing them here would silently
    * retire 868 rows nobody re-examined.
    *
-   * UNKNOWN also goes to the model. The reader is deliberately conservative
-   * and most forum posts are neither an offer nor a request; deciding here
-   * that UNKNOWN means "not a lead" would throw away exactly the nuanced
-   * cases the model is better at.
+   * UNKNOWN is not decided here either: it goes on to the six-language rules
+   * below (RULES FIRST), and only what they cannot decide may reach the model.
    */
   for(const s of signals){
     const direction=String((s as any).research_direction||'');
@@ -174,7 +175,7 @@ Deno.serve(async(req:Request)=>{
   const donors=new Map<string,any>();
   if(fingerprints.length){
     const {data:prior}=await db.from('raw_signals').select('id,content_fingerprint,classification_status,intent_type,intent_json').in('content_fingerprint',fingerprints).in('classification_status',['CLASSIFIED','FILTERED_OUT']).limit(500);
-    for(const row of (prior||[]) as any[]){if(reusableVerdict(row.intent_json)&&!donors.has(row.content_fingerprint))donors.set(row.content_fingerprint,row);}
+    for(const row of (prior||[]) as any[]){if(reusableVerdict(row.intent_json)&&row.intent_json?.reason!==AMBIGUOUS_AI_OFF&&!donors.has(row.content_fingerprint))donors.set(row.content_fingerprint,row);}
   }
   const toModel:any[]=[];
   for(const s of aiSignals){
@@ -200,6 +201,55 @@ Deno.serve(async(req:Request)=>{
     cacheHits++;
   }
   aiSignals.length=0;aiSignals.push(...toModel);
+  /*
+   * RULES FIRST, THE MODEL ONLY FOR WHAT THEY CANNOT DECIDE (owner, 2026-10-29).
+   *
+   * Every signal still undecided is read by the six-language rules
+   * (research-core/discovery/signalRules.ts: demandClassifier + readConstraints +
+   * interpret.ts). A confident seeker becomes an intent profile written by code
+   * (ai_model 'rules', $0); a confident offer, agency, job or off-topic post is
+   * FILTERED_OUT with the rule evidence. Only what the rules mark AMBIGUOUS may
+   * reach the model, and only when admin_settings.classify_signals_ai_ambiguous
+   * is true (missing or unreadable = OFF), at most SIGNALS_AI_MAX_ITEMS_PER_TICK
+   * per tick; the rest of an over-cap tick stays PENDING for the next one. With
+   * the switch OFF an ambiguous signal is FILTERED_OUT under its own reason
+   * (rules_ambiguous_ai_off), never promoted to demand and never reused as a
+   * cached verdict, so an admin can return it to PENDING after switching on.
+   */
+  const {data:aiSwitchRow}=await db.from('admin_settings').select('value').eq('key',AI_SWITCHES.SIGNALS_AMBIGUOUS).maybeSingle();
+  const aiAmbiguousEnabled=aiSwitchOn(aiSwitchRow?.value);
+  const ambiguousSignals:any[]=[];let ruleClassified=0,ruleFiltered=0,ambiguousUnresolved=0,ambiguousDeferred=0;
+  for(const s of aiSignals){
+    const rv=ruleSignalVerdict(String(s.original_text||''));
+    const agencyVoice=(s as any).author_is_agency===true;const direction=(s as any).research_direction||null;
+    if(rv.decision==='AMBIGUOUS'){ambiguousSignals.push(s);continue;}
+    await db.from('intent_profiles').delete().eq('signal_id',s.id);
+    if(rv.decision==='NOT_DEMAND'){
+      await db.from('raw_signals').update({classification_status:'FILTERED_OUT',intent_type:rv.intentType,intent_json:tag({intentType:rv.intentType,transactionType:rv.transactionType,intentConfidence:rv.confidence,reason:'deterministic_rules',evidence:rv.evidence,rulesVersion:rv.version},{intentType:rv.intentType,transactionType:rv.transactionType,confidence:rv.confidence,agencyVoice,direction})}).eq('id',s.id);
+      filteredOut++;deterministicFiltered++;ruleFiltered++;
+      if(rv.intentType==='PROPERTY_AD'){try{if(await recordCommunitySupply(db,s as any))supplyObservations++;}catch(e){supplyErrors++;console.error('community supply failed',s.id,e instanceof Error?e.message:String(e));}}
+      continue;
+    }
+    const p=rv.profile;
+    const verdict=tag({...p,reason:'deterministic_rules',evidence:rv.evidence,rulesVersion:rv.version},{intentType:p.intentType,transactionType:p.transactionType,confidence:p.intentConfidence,agencyVoice,direction});
+    if(!DEMAND_LABELS.has(verdict.discoveryLabel)){await db.from('raw_signals').update({classification_status:'FILTERED_OUT',intent_type:p.intentType,intent_json:verdict}).eq('id',s.id);filteredOut++;deterministicFiltered++;ruleFiltered++;continue;}
+    const source=Array.isArray(s.source)?s.source[0]:s.source;
+    const {error:ins}=await db.from('intent_profiles').insert({signal_id:s.id,intent_type:p.intentType,country:source?.country_code||market,region:null,city:p.city,district:p.district,neighborhoods:p.neighborhoods,transaction_type:p.transactionType,property_types:p.propertyTypes,bedrooms_min:p.bedroomsMin,bedrooms_max:p.bedroomsMax,area_min:p.areaMin,area_max:p.areaMax,budget_min:p.budgetMin,budget_max:p.budgetMax,currency:p.currency,timeline:null,relocation_intent:false,investment_intent:false,language:p.language||s.language||source?.language||null,intent_confidence:p.intentConfidence,specificity_score:p.specificityScore,actionability_score:p.actionabilityScore,original_text:s.original_text,translated_text:null,ai_model:RULES_MODEL,classifier_version:CLASSIFIER_VERSION,ai_cost_usd:0});
+    if(ins){await db.from('raw_signals').update({classification_status:'ERROR',classification_error_kind:'WRITE_FAILED',classification_attempts:(s as any).classification_attempts+1,classification_last_error:String(ins.message||ins).slice(0,300)}).eq('id',s.id);errors++;}
+    else{await db.from('raw_signals').update({classification_status:'CLASSIFIED',intent_type:p.intentType,intent_json:verdict}).eq('id',s.id);classified++;ruleClassified++;}
+  }
+  const toAi=selectForModel(ambiguousSignals,{enabled:aiAmbiguousEnabled,ambiguous:()=>true,cap:SIGNALS_AI_MAX_ITEMS_PER_TICK,maxCap:SIGNALS_AI_MAX_ITEMS_PER_TICK});
+  const sentToAi=new Set(toAi.map((s:any)=>s.id));
+  for(const s of ambiguousSignals){
+    if(sentToAi.has(s.id))continue;
+    if(aiAmbiguousEnabled){ambiguousDeferred++;continue;}
+    const rv=ruleSignalVerdict(String(s.original_text||''));
+    await db.from('intent_profiles').delete().eq('signal_id',s.id);
+    await db.from('raw_signals').update({classification_status:'FILTERED_OUT',intent_type:'UNKNOWN',intent_json:tag({intentType:'UNKNOWN',reason:AMBIGUOUS_AI_OFF,evidence:rv.evidence,rulesVersion:rv.version},{intentType:'UNKNOWN',agencyVoice:(s as any).author_is_agency===true,direction:(s as any).research_direction||null})}).eq('id',s.id);
+    filteredOut++;ambiguousUnresolved++;
+  }
+  aiSignals.length=0;aiSignals.push(...toAi);
+  const key=aiSignals.length?Deno.env.get('OPENAI_API_KEY')!:'';if(aiSignals.length&&!key)return json({error:'OPENAI_API_KEY missing'},500);
   for(let i=0;i<aiSignals.length;i+=20){const chunk=aiSignals.slice(i,i+20);try{
     const prompt=`You are Homatch's strict multilingual real-estate DEMAND classifier. Keep ONLY posts where the AUTHOR is actively seeking real estate: wants to BUY, RENT/LEASE, INVEST IN, or relocate and acquire/rent property. Reject all SUPPLY: owner/agent/developer offers, listings, advertisements, 'for rent', 'for sale', property cards, prices+features+contact details, broker inventories, developer promotions. Reject news, jobs, utilities, proxy posts and unrelated content. Property may be any real-estate type: apartment, house, villa, land, plot, agricultural land, office, retail, warehouse, hotel, commercial space, development site, building, studio, penthouse, townhouse or other. Return JSON {"results":[...]} one per id with {"id":string,"intentType":"BUY|RENT|INVEST|RELOCATE_BUY|RELOCATE_RENT|SELLER|AGENT_AD|DEVELOPER|PROPERTY_AD|DISCUSSION|SPAM|NOISE|UNKNOWN","country":string|null,"region":string|null,"city":string|null,"district":string|null,"neighborhoods":string[]|null,"transactionType":"SALE|RENT|INVESTMENT"|null,"propertyTypes":string[]|null,"bedroomsMin":number|null,"bedroomsMax":number|null,"areaMin":number|null,"areaMax":number|null,"budgetMin":number|null,"budgetMax":number|null,"currency":string|null,"timeline":string|null,"relocationIntent":boolean,"investmentIntent":boolean,"language":string|null,"intentConfidence":number,"specificityScore":number,"actionabilityScore":number,"translatedText":string|null}. Use DEVELOPER for a developer promoting a project, DISCUSSION for real-estate talk with no transaction (questions about prices, law, areas), AGENT_AD for any agent or agency speaking. Judge the message text only. If unclear whether the author is seeking or offering, choose UNKNOWN, never BUY/RENT.`;
     const input=chunk.map((s:any)=>({id:s.id,text:String(s.original_text||'').slice(0,2500),language:s.language||null,platform:s.platform}));
@@ -256,7 +306,7 @@ Deno.serve(async(req:Request)=>{
       if(!queueError)brokerReviewQueued=items.length;
     }
   }
-  return json({success:true,processed:signals.length,classified,filteredOut,deterministicFiltered,modelOmitted,cacheHits,errors,retried,totalCostUsd,classifierVersion:CLASSIFIER_VERSION,labels,brokerReviewQueued,supplyObservations,supplyErrors});
+  return json({success:true,processed:signals.length,classified,filteredOut,deterministicFiltered,modelOmitted,cacheHits,errors,retried,totalCostUsd,classifierVersion:CLASSIFIER_VERSION,labels,brokerReviewQueued,supplyObservations,supplyErrors,ruleClassified,ruleFiltered,ambiguousUnresolved,ambiguousDeferred,aiAmbiguousEnabled,sentToModel:aiSignals.length});
  }catch(e){return json({error:e instanceof Error?e.message:String(e)},500)}
 });
 

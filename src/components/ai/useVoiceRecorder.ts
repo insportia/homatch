@@ -18,6 +18,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const SEGMENT_MS = 58_000;
+/**
+ * One PART of a long dictation: two segments, inside the server's two minute,
+ * two segment cap per request. Speaking past it does not stop anything: the
+ * finished part is handed over (takePart) and recording carries on into the
+ * next one, so a message has no length limit the person can feel.
+ */
+export const PART_MS = 2 * SEGMENT_MS;
 
 export type RecorderSupport = 'ok' | 'unsupported' | 'insecure';
 
@@ -74,6 +81,8 @@ export function useVoiceRecorder() {
   const tick = useRef<number>(0);
   const rollover = useRef<number>(0);
   const startedAt = useRef<number>(0);
+  const partStartedAt = useRef<number>(0);
+  const cutting = useRef<((r: Recording | null) => void) | null>(null);
   const mime = useRef<string>('');
   const finishing = useRef<((r: Recording | null) => void) | null>(null);
 
@@ -107,10 +116,22 @@ export function useVoiceRecorder() {
     r.onstop = () => {
       const blob = new Blob(chunks.current, { type: mime.current || r.mimeType });
       if (blob.size > 0) segments.current.push(blob);
-      if (finishing.current) {
+      if (cutting.current && !finishing.current) {
+        /* A part boundary: hand over what was said so far, keep the microphone open. */
+        const done = cutting.current;
+        cutting.current = null;
+        const now = Date.now();
+        const part: Recording = { segments: segments.current.slice(), durationMs: now - partStartedAt.current, levels: levels.current.slice(), mimeType: mime.current };
+        segments.current = [];
+        levels.current = [];
+        partStartedAt.current = now;
+        if (stream.current) startSegment();
+        done(part);
+      } else if (finishing.current) {
         const done = finishing.current;
         finishing.current = null;
-        const durationMs = Date.now() - startedAt.current;
+        cutting.current = null;
+        const durationMs = Date.now() - partStartedAt.current;
         const result: Recording = { segments: segments.current.slice(), durationMs, levels: levels.current.slice(), mimeType: mime.current };
         teardown();
         done(result);
@@ -172,6 +193,7 @@ export function useVoiceRecorder() {
 
     try {
       startedAt.current = Date.now();
+      partStartedAt.current = startedAt.current;
       startSegment();
     } catch {
       teardown();
@@ -191,9 +213,22 @@ export function useVoiceRecorder() {
     try { r.stop(); } catch { finishing.current = null; teardown(); resolve(null); }
   }), [teardown]);
 
+  /**
+   * Hand back the part recorded so far and keep recording into the next one.
+   * Resolves null when nothing is recording.
+   */
+  const takePart = useCallback((): Promise<Recording | null> => new Promise((resolve) => {
+    const r = recorder.current;
+    if (!r || r.state === 'inactive' || finishing.current || cutting.current) { resolve(null); return; }
+    window.clearTimeout(rollover.current);
+    cutting.current = resolve;
+    try { r.stop(); } catch { cutting.current = null; resolve(null); }
+  }), []);
+
   /** Stop and throw everything away. */
   const cancel = useCallback(() => {
     finishing.current = null;
+    cutting.current = null;
     const r = recorder.current;
     stream.current?.getTracks().forEach((t) => t.stop());
     stream.current = null;
@@ -202,5 +237,5 @@ export function useVoiceRecorder() {
     teardown();
   }, [teardown]);
 
-  return { recording, elapsedMs, live, start, stop, cancel };
+  return { recording, elapsedMs, live, start, stop, takePart, cancel };
 }

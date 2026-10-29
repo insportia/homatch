@@ -20,7 +20,7 @@ import type { SuggestedReply } from '../ai/suggestedReplies.ts';
 import { detectService, servicesNamedIn, SERVICE_PROMPT_NAME } from './webPolicy.ts';
 
 /** Service-control keys that are not catalogue actions but appear in HOMI's prompt. */
-export const EXTRA_PROMPT_SERVICE_KEYS = ['email_campaigns', 'ai_call_center'] as const;
+export const EXTRA_PROMPT_SERVICE_KEYS = ['email_marketing', 'ai_call_center'] as const;
 
 /** Every service-control key HOMI's prompt can name: read once per turn. */
 export const HOMI_PROMPT_SERVICE_KEYS: readonly string[] = [
@@ -28,7 +28,7 @@ export const HOMI_PROMPT_SERVICE_KEYS: readonly string[] = [
 ];
 
 const EXTRA_KEY_NAME: Record<string, string> = {
-  email_campaigns: 'Email Campaigns (/outreach/email)',
+  email_marketing: 'Email Campaigns (/outreach/email)',
   ai_call_center: 'AI Call Center (/outreach/calls)',
 };
 

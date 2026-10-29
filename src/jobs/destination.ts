@@ -233,7 +233,23 @@ function labelFor(state: JobState, kind: JobDestination['kind']): string | null 
  * Returns null when there is nothing honest to offer, and the caller renders
  * no button at all.
  */
-export function resolveJobDestination(job: ResolvableJob): JobDestination | null {
+export function resolveJobDestination(
+  job: ResolvableJob,
+  /**
+   * May a link to this address be offered right now (usePathAvailable)? A destination that
+   * belongs to a paused service (Email Marketing is hidden by default since 2026-10-29) is
+   * never offered: the activity list is, for a finished task, and nothing for a running one.
+   */
+  available?: (path: string) => boolean,
+): JobDestination | null {
+  const d = resolveRaw(job);
+  if (!d || !available || available(d.to)) return d;
+  return isTerminal(job.state) && job.state !== 'CANCELLED'
+    ? { to: GENERIC_HOME, labelKey: 'job_open_activity', kind: 'GENERIC' }
+    : null;
+}
+
+function resolveRaw(job: ResolvableJob): JobDestination | null {
   const stored = normalizeResultRef(job.resultRef);
 
   // A stored ref is the deepest thing we have. Whether it counts as "the

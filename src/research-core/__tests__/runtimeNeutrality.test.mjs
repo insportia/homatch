@@ -244,6 +244,8 @@ test('the core is consumed only through its deliberate integration points', () =
     'supabase/functions/_shared/findBuyers/admin.ts',
     'supabase/functions/_shared/__tests__/findBuyersPipelineQualification.test.mjs',
     'supabase/functions/_shared/__tests__/findBuyersAiFirst.test.mjs',
+    // Code first: the model switches (aiPolicy) and the deterministic plan, read from the test side.
+    'supabase/functions/_shared/__tests__/findBuyersCodeFirst.test.mjs',
     'supabase/functions/_shared/__tests__/findBuyersFacebookPages.test.mjs',
     'supabase/functions/_shared/__tests__/findBuyersRequalify.test.mjs',
     /* Find Buyers 2.0 demand persistence: the pure brief → rooms/requirements/fingerprint

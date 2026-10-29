@@ -28,6 +28,7 @@
 // every request is refused.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { installNoModelGuard } from '../_shared/noModelGuard.ts';
 import {
   canTransition, validateWorkerReport, type WorkerRunStatus,
 } from '../../../src/research-core/marketplace/worker-contract.ts';
@@ -58,6 +59,9 @@ function sameHex(a: string, b: string): boolean {
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
 }
+
+/* Zero AI on the Find Property path (owner, 2026-10-29): model requests are refused at runtime. */
+installNoModelGuard('marketplace-worker-ingest');
 
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);

@@ -8,7 +8,7 @@ import { useFieldProps, useNotEditable, useSectionField } from '@/site/content';
 import { ShellScope } from '@/site/render/ShellScope';
 import type { TranslationKey } from '@/i18n/translations';
 import { openCookieSettings } from '@/lib/consent/cookieConsent';
-import { operatorDisplayName } from '@/lib/legal/operator';
+import { operatorDisplayName, operatorEntityLabelKey } from '@/lib/legal/operator';
 import { PAGE } from './primitives';
 import { usePathAvailable, useServiceControls, type ServiceKey } from '@/lib/serviceControls';
 
@@ -93,7 +93,7 @@ function FooterBody() {
         { key: 'link_investment', path: '/investment', service: 'investment' as ServiceKey },
         { key: 'link_ai', path: session ? '/ai' : '/auth/signup', service: 'ai_assistant' as ServiceKey },
         { key: 'link_calls', path: session ? '/outreach/calls' : '/auth/signup', service: 'ai_call_center' as ServiceKey },
-        { key: 'link_email', path: session ? '/outreach/email' : '/auth/signup', service: 'email_campaigns' as ServiceKey },
+        { key: 'link_email', path: session ? '/outreach/email' : '/auth/signup', service: 'email_marketing' as ServiceKey },
       ].filter(offered),
     },
     {
@@ -172,7 +172,7 @@ function FooterBody() {
           <p className="text-xs text-muted-foreground">
             {t('home_footer_copyright', { year: new Date().getFullYear() })}
             {/* The operator, from the one legal config (no ID number here). */}
-            <span className="ms-2 inline-block max-w-full align-baseline opacity-80 break-words">· {operatorDisplayName(lang, t('legal_entity_individual_entrepreneur'))}</span>
+            <span className="ms-2 inline-block max-w-full align-baseline opacity-80 break-words">· {operatorDisplayName(lang, t(operatorEntityLabelKey()))}</span>
           </p>
           <InstallApp source="footer" />
         </div>

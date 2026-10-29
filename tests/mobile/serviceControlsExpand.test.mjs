@@ -59,12 +59,12 @@ const profile = { id: 'u1', auth_id: 'u1', email: 'owner@example.test', is_admin
 const DIRECT = {
   '/find-property': 'find_property', '/property/123456/matches': 'find_buyers', '/verify': 'verify', '/contracts': 'contracts',
   '/mortgage': 'mortgage', '/investment': 'investment', '/for-expats/georgia': 'for_expats', '/outreach/meta': 'meta_ads',
-  '/outreach/email': 'email_campaigns', '/email-studio': 'email_campaigns', '/ai': 'ai_assistant',
+  '/outreach/email': 'email_marketing', '/email-studio': 'email_marketing', '/inbox/email': 'email_marketing', '/ai': 'ai_assistant',
   '/broker': 'broker_desk', '/developers': 'developers',
   '/brokers': 'brokers_directory', '/brokers/11111111-1111-1111-1111-111111111111': 'brokers_directory',
 };
 const LIVE_PREFIXES = ['/find-property', '/verify', '/contracts', '/mortgage', '/investment', '/for-expats', '/outreach/meta',
-  '/outreach/email', '/email-studio', '/broker', '/brokers', '/developers'];
+  '/outreach/email', '/email-studio', '/inbox/email', '/broker', '/brokers', '/developers'];
 const isLivePath = (p) => p === '/ai' || /^\/property\/[^/]+\/(matches|buyers|leads|buyer)(\/|$)/.test(p)
   || LIVE_PREFIXES.some((x) => p === x || p.startsWith(`${x}/`));
 // Backends a mounted live page would call for NEW work; while paused, none may be called.
@@ -375,6 +375,7 @@ test('an unreadable control table never takes a live product down, and never sho
   const links = await hrefs(page);
   for (const path of ['/find-property', '/verify', '/contracts']) assert.ok(links.includes(path), `${path} hidden by an outage`);
   assert.ok(!links.includes('/live-chat') && !links.includes('/publishing') && !links.includes('/design-studio'), 'a paused service surfaced on an outage');
+  assert.ok(!links.includes('/outreach/email'), 'Email Marketing fails closed: an outage never shows it (2026-10-29)');
   const verify = await open(t, { route: '/verify', services: 'unreadable' });
   await verify.page.waitForTimeout(1500);
   assert.equal(await verify.page.getByTestId('service-unavailable').count(), 0, 'Verify was gated by an outage');
@@ -390,8 +391,9 @@ const GROUP_OF = {
   publishing: 'publishing', design_studio: 'design', ai_call_center: 'communications', ai_talk: 'communications', whatsapp: 'communications',
   live_chat: 'communications', find_property: 'discovery', find_property_deep: 'discovery', find_buyers: 'discovery', verify: 'intelligence',
   contracts: 'intelligence', mortgage: 'intelligence', investment: 'intelligence', for_expats: 'intelligence', meta_ads: 'marketing',
-  email_campaigns: 'marketing', ai_assistant: 'assistant', brokers_directory: 'professionals', broker_desk: 'professionals', developers: 'professionals',
+  email_campaigns: 'marketing', email_marketing: 'marketing', ai_assistant: 'assistant', brokers_directory: 'professionals', broker_desk: 'professionals', developers: 'professionals',
 };
+const TOTAL = Object.keys(GROUP_OF).length;
 const card = (key) => {
   const live = LIVE_KEYS.includes(key);
   return {
@@ -443,8 +445,9 @@ test('admin: twenty cards in their groups, counts computed from the cards, fail 
   }
   const text = await page.getByTestId('service-control-center').innerText();
   /* The six and paid Deep Search (paused 2026-10-18) are off; every other product is live. */
-  assert.match(text, new RegExp(`${SERVICE_KEYS.length + PAID_KEYS.length} / 20`), 'paused count is dynamic');
-  assert.match(text, new RegExp(`${LIVE_KEYS.length} / 20`), 'live count is dynamic');
+  /* Email Marketing (hidden 2026-10-29) is the twenty-first card and paused. */
+  assert.match(text, new RegExp(`${SERVICE_KEYS.length + PAID_KEYS.length} / ${TOTAL}`), 'paused count is dynamic');
+  assert.match(text, new RegExp(`${LIVE_KEYS.length} / ${TOTAL}`), 'live count is dynamic');
   assert.doesNotMatch(text, /Pause all six/i, 'there is no global switch on the page');
   assert.equal(await page.getByTestId('svc-pause-group-other').count(), 0);
   // A group whose services are all paused has nothing to pause.

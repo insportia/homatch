@@ -86,7 +86,8 @@ export default function CampaignBuilderPage() {
   // the server refuses its launch on its own (comm-campaign-launch).
   const { services } = useServiceControls();
   const channelChoices = CHANNEL_CHOICES.filter((c) =>
-    (c.code !== 'AI_CALL' || services.ai_call_center.frontend) && (c.code !== 'WHATSAPP' || services.whatsapp.frontend));
+    (c.code !== 'AI_CALL' || services.ai_call_center.frontend) && (c.code !== 'WHATSAPP' || services.whatsapp.frontend)
+    && (c.code !== 'SMS' || services.email_campaigns.frontend));
   const { t, lang: language } = useLanguage();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();

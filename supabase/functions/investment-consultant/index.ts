@@ -64,6 +64,9 @@ import {
 } from '../../../src/investment/consultant/prompt.ts';
 import { serviceBackendEnabledForCaller, serviceDisabledBody } from '../_shared/serviceControl.ts';
 import { deferCost, recordUsageCost, tokenUsage } from '../_shared/providerCost.ts';
+import {
+  ABUSE_SETTING_KEYS, abuseLimitsFrom, abuseVerdict, HOMI_SLOW_DOWN, repeatedRun,
+} from '../../../src/lib/homi/contextPlan.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -72,7 +75,6 @@ const CORS = {
 
 const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 const RATE_LIMIT_OPERATION = 'investment_consultant_turn';
-const DEFAULT_DAILY_LIMIT = 20;
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_HISTORY_TURNS = 8;
 
@@ -208,26 +210,41 @@ serve(async (req) => {
     const uid = profile?.id as string | undefined;
     if (!uid) return json({ error: 'profile_not_found' }, 404);
 
-    /* ── Fair use, not a price ─────────────────────────────────────── */
-    const { data: entitlements } = await supabase.rpc('billing_entitlements', { p_user_id: uid });
-    const dailyLimit = Number(entitlements?.ai_fair_use_daily ?? DEFAULT_DAILY_LIMIT);
-    if (dailyLimit >= 0) {
-      const now = new Date();
-      const dayStart = new Date(
-        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-      ).toISOString();
-      const { count } = await supabase
-        .from('rate_limit_events')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', uid)
-        .eq('operation', RATE_LIMIT_OPERATION)
-        .gte('created_at', dayStart);
-      if ((count ?? 0) >= dailyLimit) {
-        const resetAt = new Date(
-          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
-        ).toISOString();
-        // The client renders this from an i18n key; the code is the contract.
-        return json({ error: 'rate_limited', code: 'RATE_LIMIT_EXCEEDED', limit: dailyLimit, resetAt }, 429);
+    /* ── Abuse safeguard, not a quota ──────────────────────────────────
+     *
+     * The consultant is part of unlimited HOMI (owner, 2026-10-29): no plan
+     * cap, no count, no reset time. The same safeguard as HOMI chat
+     * (src/lib/homi/contextPlan.ts, admin_settings homi_abuse_*): a burst per
+     * minute, an hourly and a very high daily ceiling, and the same message
+     * sent back to back. The only answer is a gentle "slow down". */
+    {
+      const now = Date.now();
+      const count = async (ms: number) => {
+        const { count: c } = await supabase
+          .from('rate_limit_events')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', uid)
+          .eq('operation', RATE_LIMIT_OPERATION)
+          .gte('created_at', new Date(now - ms).toISOString());
+        return c ?? 0;
+      };
+      const setting = async (key: string, d: number) => {
+        const { data, error } = await supabase.rpc('billing_setting_num', { p_key: key, p_default: d });
+        return error ? d : data;
+      };
+      const [minute, hour, day, perMinute, perHour, perDay] = await Promise.all([
+        count(60_000), count(3_600_000), count(86_400_000),
+        setting(ABUSE_SETTING_KEYS.perMinute, 20), setting(ABUSE_SETTING_KEYS.perHour, 300), setting(ABUSE_SETTING_KEYS.perDay, 2000),
+      ]);
+      const priorUserTurns = (Array.isArray(body?.history) ? body.history : [])
+        .filter((h: any) => h?.role === 'user' && typeof h.content === 'string').map((h: any) => h.content as string);
+      const verdict = abuseVerdict(
+        { minute, hour, day, repeat: repeatedRun([...priorUserTurns, message]) },
+        abuseLimitsFrom({ perMinute, perHour, perDay }),
+      );
+      if (verdict !== 'OK') {
+        const lang = (locale in HOMI_SLOW_DOWN ? locale : 'en') as keyof typeof HOMI_SLOW_DOWN;
+        return json({ error: HOMI_SLOW_DOWN[lang], code: 'RATE_LIMIT_EXCEEDED' }, 429);
       }
     }
 

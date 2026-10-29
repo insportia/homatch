@@ -167,11 +167,13 @@ async function outreachSend(req: Request): Promise<Response> {
     if (!campaign.contact_list_id && !(campaign.campaign_type === 'EMAIL' && Array.isArray(campaign.contact_list_ids) && campaign.contact_list_ids.length)) {
       return new Response(JSON.stringify({ error: 'Campaign has no contact_list_id' }), { status: 400, headers: corsHeaders });
     }
-    // SERVICE CONTROL: AI calls need `ai_call_center`; e-mail and SMS campaigns need
-    // `email_campaigns`. Refused before anything is sent or reserved; the campaign keeps its
-    // status, so a scheduled one simply goes out on the first run after resume.
+    // SERVICE CONTROL: AI calls need `ai_call_center`; e-mail campaigns need `email_marketing`
+    // (fail closed, hidden 2026-10-29); SMS campaigns need the historic `email_campaigns` key.
+    // Refused before anything is sent or reserved; the campaign keeps its status, so a
+    // scheduled one simply goes out on the first run after resume (jobs-worker re-arms it).
     {
-      const service = campaign.campaign_type === 'AI_CALL' ? 'ai_call_center' : 'email_campaigns';
+      const service = campaign.campaign_type === 'AI_CALL' ? 'ai_call_center'
+        : campaign.campaign_type === 'EMAIL' ? 'email_marketing' : 'email_campaigns';
       if (!(await serviceBackendEnabled(supabase, service))) {
         return new Response(JSON.stringify(serviceDisabledBody(service)), { status: 503, headers: corsHeaders });
       }

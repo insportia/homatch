@@ -23,6 +23,7 @@ import { AppLayout } from '@/components/layouts/AppLayout';
 import { CustomerSurface, DISCOVERY_SURFACE, EmptyState, PageHero } from '@/components/customer/surface';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
+import { useServiceVisible } from '@/lib/serviceControls';
 import { cn } from '@/lib/utils';
 import {
   getLeadFeedV2, LEAD_PAGE_SIZE, markLeadsSeen, openLeadConversation, requestLeadMatching, toggleLeadSaved, UnlockError,
@@ -69,6 +70,7 @@ function HomatchLeadsContent() {
   const { id: propertyId = '' } = useParams<{ id: string }>();
   const { t, lang } = useLanguage();
   const navigate = useNavigate();
+  const emailMarketing = useServiceVisible('email_marketing');
   const [params, setParams] = useSearchParams();
   const filters = filtersOf(params);
   const filterKey = filters.join(',');
@@ -376,7 +378,7 @@ function HomatchLeadsContent() {
                   onOpenContact={() => setDetail(lead)}
                   onOpenConversation={() => void openConversation(lead)}
                   onToggleSave={() => void toggleSave(lead)}
-                  onCreateEmail={() => navigate(`/email-studio?property=${propertyId}&leads=${lead.matchId}`)} />
+                  onCreateEmail={emailMarketing ? () => navigate(`/email-studio?property=${propertyId}&leads=${lead.matchId}`) : null} />
                 </React.Fragment>
                 );
               })}

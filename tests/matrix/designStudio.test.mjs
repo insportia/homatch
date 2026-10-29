@@ -33,6 +33,9 @@ const DS_SOURCES = [
 
 /* ── Navigation ──────────────────────────────────────────────────── */
 
+/* The SPA catch-all: the last rewrite to /index.html (its source excludes assets/ and api/). */
+const appCatchAll = (v) => v.rewrites.findIndex((r) => r.destination === '/index.html');
+
 test('Design Studio sits directly below For Expats and above Intelligence', () => {
   const shell = read('src/components/layouts/HomatchShell.tsx');
   const nav = shell.slice(shell.indexOf('export const NAV'));
@@ -397,7 +400,7 @@ test('the public viewer is its own small page, not the signed-in app', () => {
   }
   const vercel = JSON.parse(read('vercel.json'));
   const rewrites = vercel.rewrites.map((r) => r.source);
-  assert.ok(rewrites.indexOf('/w/:token') > -1 && rewrites.indexOf('/w/:token') < rewrites.indexOf('/((?!assets/).*)'), '/w/ is not rewritten to share.html before the app');
+  assert.ok(rewrites.indexOf('/w/:token') > -1 && rewrites.indexOf('/w/:token') < appCatchAll(vercel), '/w/ is not rewritten to share.html before the app');
   const html = read('share.html');
   assert.match(html, /noindex/);
   assert.match(html, /src="\/src\/share\/main\.tsx"/);
@@ -407,7 +410,7 @@ test('the public viewer is its own small page, not the signed-in app', () => {
 test('the /d/ design link is rewritten to the viewer like /w/', () => {
   const vercel = JSON.parse(read('vercel.json'));
   const rewrites = vercel.rewrites.map((r) => r.source);
-  assert.ok(rewrites.indexOf('/d/:token') > -1 && rewrites.indexOf('/d/:token') < rewrites.indexOf('/((?!assets/).*)'), '/d/ is not rewritten to share.html before the app');
+  assert.ok(rewrites.indexOf('/d/:token') > -1 && rewrites.indexOf('/d/:token') < appCatchAll(vercel), '/d/ is not rewritten to share.html before the app');
   assert.match(read('src/services/designStudio/shares.ts'), /'DESIGN' \? 'd' : 'w'|\/d\//);
 });
 

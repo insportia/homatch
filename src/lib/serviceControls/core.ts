@@ -9,9 +9,14 @@
 // THREE DEFAULTS, matching the server's fail modes:
 //   * PAUSED_BY_DEFAULT (the original six): HIDDEN UNTIL PROVEN VISIBLE. Before the first
 //     answer, and whenever it cannot be read, they count as hidden.
-//   * PAID_CLOSED_BY_DEFAULT (paid Deep Search, paused 2026-10-18): hidden until an answer
-//     says ON, and never taken from this browser's memory — a stale or failed read never
-//     shows a price or a paid start.
+//   * PAID_CLOSED_BY_DEFAULT (paid Deep Search, paused 2026-10-18; legacy paid discovery;
+//     Email Marketing, hidden 2026-10-29): hidden until an answer says ON, and never taken
+//     from this browser's memory — a stale or failed read never shows a price, a paid start
+//     or an email campaign entry point.
+//
+// `email_marketing` (email campaigns + Email Studio) and `email_campaigns` are two keys:
+// the historic `email_campaigns` row governs SMS campaigns only since 2026-10-29
+// (migration 20261207140000).
 //   * LIVE_BY_DEFAULT (every other product): visible unless an answer says OFF, so an
 //     unreadable control never makes Verify or Find Property disappear. The store seeds
 //     them from the last answer this browser saw (see index.ts), so a paused one does not
@@ -29,7 +34,7 @@ export const LIVE_BY_DEFAULT = [
   'meta_ads', 'email_campaigns', 'ai_assistant',
   'brokers_directory', 'broker_desk', 'developers',
 ] as const;
-export const PAID_CLOSED_BY_DEFAULT = ['find_property_deep', 'find_buyers_external'] as const;
+export const PAID_CLOSED_BY_DEFAULT = ['find_property_deep', 'find_buyers_external', 'email_marketing'] as const;
 export const SERVICE_KEYS = [...PAUSED_BY_DEFAULT, ...LIVE_BY_DEFAULT, ...PAID_CLOSED_BY_DEFAULT] as const;
 export const HIDDEN_UNTIL_ANSWERED = ['brokers_directory', 'broker_desk'] as const;
 export type ServiceKey = typeof SERVICE_KEYS[number];

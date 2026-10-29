@@ -37,6 +37,7 @@
 
 import { maybeEmailNotification } from './transactionalEmail.ts';
 import { runAfterResponse } from './notifyEmail.ts';
+import { deepLinkFor, pickLang, storedCopyFor } from './notificationCopy.ts';
 
 interface Client {
   rpc(fn: string, args: Record<string, unknown>): Promise<{ data: unknown; error: unknown }>;
@@ -64,6 +65,35 @@ async function resolvedRecipient(sb: Client, notificationId: string, fallback: s
     const q = (sb.from('notifications') as any).select('user_id').eq('id', notificationId);
     const { data } = await q.maybeSingle();
     return typeof data?.user_id === 'string' && data.user_id ? data.user_id : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/*
+ * THE STORED TEXT, IN THE RECIPIENT'S LANGUAGE.
+ *
+ * The Notification Center renders typed rows from translation keys, but the stored
+ * title and body are what a push shows when the page is closed and what an older
+ * client shows. For the transactional events (notificationCopy.ts) they are written
+ * in the recipient's language, from the same generated copy the email uses, instead
+ * of whatever English literal the producer passed. Anything else, or any failure to
+ * read the language, keeps the producer's text.
+ */
+async function localizedText(sb: Client, input: NotifyInput): Promise<{ title: string; body: string | null }> {
+  const fallback = { title: input.title, body: input.body ?? null };
+  try {
+    const kind = typeof input.metadata?.kind === 'string' ? input.metadata.kind : null;
+    const productType = typeof input.metadata?.product_type === 'string' ? input.metadata.product_type : null;
+    if (!storedCopyFor(input.type, kind, productType, 'ka')) return fallback;
+    if (typeof sb.from !== 'function' || !UUID.test(input.userId)) return fallback;
+    // deno-lint-ignore no-explicit-any
+    const q = (sb.from('users') as any).select('preferred_language').or(`id.eq.${input.userId},auth_id.eq.${input.userId}`).limit(1);
+    const { data } = await q.maybeSingle();
+    const copy = storedCopyFor(input.type, kind, productType, pickLang(data?.preferred_language));
+    return copy ? { title: copy.title, body: copy.body } : fallback;
   } catch {
     return fallback;
   }
@@ -118,13 +148,16 @@ export interface NotifyInput {
  */
 export async function notify(sb: Client, input: NotifyInput): Promise<string | null> {
   try {
+    const text = await localizedText(sb, input);
+    /* Subscription, payment and trial events always open the subscription page. */
+    const deepLink = deepLinkFor(input.type, input.deepLink);
     const { data, error } = await sb.rpc('notify_emit', {
       p_user_id: input.userId,
       p_type: input.type,
-      p_title: input.title,
-      p_body: input.body ?? null,
+      p_title: text.title,
+      p_body: text.body,
       p_priority: input.priority ?? 'NORMAL',
-      p_deep_link: input.deepLink ?? null,
+      p_deep_link: deepLink,
       p_entity_type: input.entityType ?? null,
       p_entity_id: input.entityId ?? null,
       p_dedupe_key: input.dedupeKey ?? null,
@@ -191,7 +224,8 @@ export async function notify(sb: Client, input: NotifyInput): Promise<string | n
        */
       const recipient = await resolvedRecipient(sb, data, input.userId);
       const kind = typeof input.metadata?.kind === 'string' ? input.metadata.kind : null;
-      const emailLeg = maybeEmailNotification(sb, { notificationId: data, userId: recipient, type: input.type, kind, deepLink: input.deepLink ?? null });
+      const productType = typeof input.metadata?.product_type === 'string' ? input.metadata.product_type : null;
+      const emailLeg = maybeEmailNotification(sb, { notificationId: data, userId: recipient, type: input.type, kind, productType, deepLink });
       if (!runAfterResponse(emailLeg)) await emailLeg;
     }
 

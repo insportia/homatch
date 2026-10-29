@@ -12,16 +12,28 @@
  */
 export type LegalEntityType = 'individual_entrepreneur' | 'llc';
 
+/*
+ * OPERATOR CHANGE, 2026-10-29 (owner): the individual entrepreneur was
+ * replaced by the limited liability company below. The owner provided the
+ * Georgian name and the identification code and nothing else, so:
+ *   - no Latin-script name exists anywhere in the repo or the instruction, and
+ *     none is invented: every locale shows the registered Georgian name,
+ *     followed by the translated entity type outside Georgian;
+ *   - registered address, VAT status, bank details and representative are
+ *     unknown and stay unset (not shown).
+ * Records made under the previous operator (payments, invoices, policy
+ * acceptances, audit rows) are history and are not rewritten.
+ */
 export const LEGAL_OPERATOR = {
   brandName: 'HOMATCH',
-  legalEntityType: 'individual_entrepreneur' as LegalEntityType,
-  /** Authoritative (Georgian) legal name, as registered. */
-  legalEntityName: 'ინდივიდუალური მეწარმე ტარიელი ჩაჩუა',
-  /** The person's name in Latin script, for the non-Georgian pages. */
-  legalEntityNameLatin: 'Tariel Chachua',
-  /** Personal/entrepreneur ID. Shown on the legal pages only. */
-  identificationNumber: '01027085016',
-  /** Not verified yet — not shown. */
+  legalEntityType: 'llc' as LegalEntityType,
+  /** Authoritative (Georgian) legal name, as registered, with its Georgian quotation marks. */
+  legalEntityName: 'შპს „ულტრა ქონექშენ“',
+  /** The registered name in Latin script. Not provided by the owner: null, never guessed. */
+  legalEntityNameLatin: null as string | null,
+  /** Company identification code. Shown on the legal pages only. */
+  identificationNumber: '406378511',
+  /** Not provided yet: not shown. */
   registeredAddress: null as string | null,
   country: { ka: 'საქართველო', en: 'Georgia', ru: 'Грузия', tr: 'Gürcistan', ar: 'جورجيا', he: 'גאורגיה' },
   website: 'https://www.homatch.live',
@@ -36,15 +48,107 @@ export const LEGAL_OPERATOR = {
   supportEmail: 'support@homatch.live' as string | null,
   contactsVerified: false,
   /** Must equal public.legal_policy_versions (the server refuses any other). */
-  versions: { terms: '2026-10-25', privacy: '2026-10-25', cookies: '2026-10-25' },
-  effectiveDates: { terms: '2026-10-25', privacy: '2026-10-25', cookies: '2026-10-25' },
+  /* 2026-10-29: new operator (all three documents name it) and the Terms'
+     subscription section. Equal to supabase/migrations/20261207160000_policy_versions_operator_change.sql. */
+  versions: { terms: '2026-10-29', privacy: '2026-10-29', cookies: '2026-10-29' },
+  effectiveDates: { terms: '2026-10-29', privacy: '2026-10-29', cookies: '2026-10-29' },
 } as const;
 
 export type LegalDoc = 'terms' | 'privacy' | 'cookies';
 
-/** "ინდივიდუალური მეწარმე ტარიელი ჩაჩუა" in Georgian, "Individual Entrepreneur Tariel Chachua" etc. elsewhere. */
-export function operatorDisplayName(lang: string, entityTypeLabel: string): string {
-  return lang === 'ka' ? LEGAL_OPERATOR.legalEntityName : `${entityTypeLabel} ${LEGAL_OPERATOR.legalEntityNameLatin}`;
+/** The translation key of the operator's entity type ("Limited Liability Company" etc.). */
+export const ENTITY_TYPE_LABEL_KEY: Record<LegalEntityType, string> = {
+  individual_entrepreneur: 'legal_entity_individual_entrepreneur',
+  llc: 'legal_entity_llc',
+};
+
+/** Who operated HOMATCH under a given edition of the legal documents. */
+export interface OperatorIdentity {
+  legalEntityType: LegalEntityType;
+  legalEntityName: string;
+  legalEntityNameLatin: string | null;
+  identificationNumber: string;
+  registeredAddress: string | null;
+}
+
+/*
+ * ARCHIVED EDITIONS (owner, 2026-10-29: documents of the previous legal entity
+ * are never overwritten).
+ *
+ * Whoever accepted an earlier edition can still read it as it was, with the
+ * operator it named: /terms?version=2026-10-25 (and /privacy, /cookies). The
+ * 2026-10-25 edition is the only one anybody accepted on record:
+ * public.policy_acceptances and the cookie-consent version both start there
+ * (20261206100000_policy_acceptance.sql). Texts published before it were not
+ * versioned and no acceptance of them exists.
+ *
+ * What differs between 2026-10-25 and 2026-10-29: the operator below and the
+ * Terms' fees section (TermsPage.tsx renders the 2026-10-25 keys for it).
+ * Every other section is the same text in both editions.
+ */
+export const PREVIOUS_OPERATOR_2026_10_25: OperatorIdentity = {
+  legalEntityType: 'individual_entrepreneur',
+  legalEntityName: 'ინდივიდუალური მეწარმე ტარიელი ჩაჩუა',
+  legalEntityNameLatin: 'Tariel Chachua',
+  identificationNumber: '01027085016',
+  registeredAddress: null,
+};
+
+export interface LegalEdition {
+  version: string;
+  effectiveDate: string;
+  /** The day the next edition replaced it; null for the current edition. */
+  supersededOn: string | null;
+  operator: OperatorIdentity;
+}
+
+/** Newest first. The three documents have always been published together. */
+export const ARCHIVED_EDITIONS: readonly LegalEdition[] = [
+  { version: '2026-10-25', effectiveDate: '2026-10-25', supersededOn: '2026-10-29', operator: PREVIOUS_OPERATOR_2026_10_25 },
+];
+
+export function currentEdition(doc: LegalDoc): LegalEdition {
+  return {
+    version: LEGAL_OPERATOR.versions[doc],
+    effectiveDate: LEGAL_OPERATOR.effectiveDates[doc],
+    supersededOn: null,
+    operator: LEGAL_OPERATOR,
+  };
+}
+
+/** The edition a `?version=` asks for; anything unknown (or nothing) is the current one. */
+export function editionFor(doc: LegalDoc, requested: string | null | undefined): LegalEdition {
+  return ARCHIVED_EDITIONS.find((e) => e.version === requested) ?? currentEdition(doc);
+}
+
+export const operatorEntityLabelKey = (op: OperatorIdentity = LEGAL_OPERATOR): string => ENTITY_TYPE_LABEL_KEY[op.legalEntityType];
+
+/*
+ * The label before the identification number. A company carries an
+ * identification CODE (საიდენტიფიკაციო კოდი); the archived 2026-10-25 edition
+ * keeps the "ID No." wording it was published with.
+ */
+export const ID_LABEL_KEY: Record<LegalEntityType, string> = {
+  individual_entrepreneur: 'legal_id_number',
+  llc: 'legal_company_id_code',
+};
+export const operatorIdLabelKey = (op: OperatorIdentity = LEGAL_OPERATOR): string => ID_LABEL_KEY[op.legalEntityType];
+
+/**
+ * 'შპს „ულტრა ქონექშენ“' in Georgian (the name already carries შპს). Elsewhere
+ * the Latin name when one is configured, otherwise the registered Georgian
+ * name with the entity type in the reader's language:
+ * 'შპს „ულტრა ქონექშენ“, Limited Liability Company' (a comma, not brackets:
+ * bracketed English reads as an internal label inside a sentence).
+ */
+export function operatorDisplayName(lang: string, entityTypeLabel: string, op: OperatorIdentity = LEGAL_OPERATOR): string {
+  if (lang === 'ka') return op.legalEntityName;
+  /* The previous operator was a person: the type label goes before the name. */
+  if (op.legalEntityNameLatin) return op.legalEntityType === 'individual_entrepreneur' ? `${entityTypeLabel} ${op.legalEntityNameLatin}` : op.legalEntityNameLatin;
+  /* First-strong isolate around the Georgian name, so on the Arabic and Hebrew
+     pages it neither reorders nor drags the punctuation with it. A comma, not
+     brackets: bracketed English reads as an internal label inside a sentence. */
+  return `\u2068${op.legalEntityName}\u2069, ${entityTypeLabel}`;
 }
 
 export function formatLegalDate(iso: string, lang: string): string {

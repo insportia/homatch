@@ -71,6 +71,15 @@ serve(async (req) => {
       .from('users').select('id, email').eq('auth_id', user.id).maybeSingle();
     if (!hmUser) return json({ error: 'User not found' }, 404);
 
+    /* SUBSCRIPTIONS (owner decision 2026-10-29): new credits are no longer sold. Existing balances
+       stay spendable; history is untouched. The switch exists only so the owner can reopen sales
+       (e.g. for pass-through budgets) without a deploy: admin_settings.credit_topups_enabled. */
+    const { data: salesOpen } = await supabaseAdmin
+      .from('admin_settings').select('value').eq('key', 'credit_topups_enabled').maybeSingle();
+    if (!(salesOpen?.value === true || salesOpen?.value === 'true')) {
+      return json({ error: 'CREDIT_SALES_CLOSED', code: 'CREDIT_SALES_CLOSED' }, 410);
+    }
+
     const [{ data: minSetting }, { data: cpuSetting }] = await Promise.all([
       supabaseAdmin.from('admin_settings').select('value').eq('key', 'billing_min_topup_cents').maybeSingle(),
       supabaseAdmin.from('admin_settings').select('value').eq('key', 'credits_per_usd').maybeSingle(),

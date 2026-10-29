@@ -80,8 +80,13 @@ const RUNNING: Record<ServiceKey, Array<{ label: string; table: string; build: (
   meta_ads: [
     { label: 'campaigns_live', table: 'meta_campaigns', build: (q) => q.in('status', ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED']) },
   ],
+  /* Historic key: SMS campaigns only since 2026-10-29. */
   email_campaigns: [
-    { label: 'campaigns_running', table: 'outreach_campaigns', build: (q) => q.in('campaign_type', ['EMAIL', 'SMS']).in('status', ['SCHEDULED', 'RUNNING', 'PAUSED', 'APPROVED']) },
+    { label: 'campaigns_running', table: 'outreach_campaigns', build: (q) => q.eq('campaign_type', 'SMS').in('status', ['SCHEDULED', 'RUNNING', 'PAUSED', 'APPROVED']) },
+  ],
+  /* Email Marketing: a pause keeps these exactly as they are (migration 20261207140000). */
+  email_marketing: [
+    { label: 'campaigns_running', table: 'outreach_campaigns', build: (q) => q.eq('campaign_type', 'EMAIL').in('status', ['SCHEDULED', 'RUNNING', 'PAUSED', 'APPROVED']) },
     { label: 'studio_sending', table: 'email_studio_campaigns', build: (q) => q.eq('status', 'SENDING') },
   ],
   ai_assistant: [
@@ -99,7 +104,7 @@ export const SERVICE_GROUPS: Record<ServiceKey, string> = {
   find_property: 'discovery', find_property_deep: 'discovery', find_buyers: 'discovery',
   find_buyers_external: 'discovery', internal_matching: 'discovery', curated_leads: 'discovery',
   verify: 'intelligence', contracts: 'intelligence', mortgage: 'intelligence', investment: 'intelligence', for_expats: 'intelligence',
-  meta_ads: 'marketing', email_campaigns: 'marketing',
+  meta_ads: 'marketing', email_campaigns: 'marketing', email_marketing: 'marketing',
   ai_assistant: 'assistant',
   brokers_directory: 'professionals', broker_desk: 'professionals', developers: 'professionals',
 };

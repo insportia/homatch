@@ -144,7 +144,8 @@ test('the extractor writes to the document and to nothing else', () => {
   // A scan costs nothing: the model is never reached for a file with no text.
   // The guard, not the import line of the same name.
   const ocrGuard = source.indexOf('if (!hasMeaningfulText(text))');
-  const billing = source.indexOf('await beginExecution(');
+  // Subscriptions (2026-10-29): the run is funded through beginEntitled (trial, plan, legacy credits).
+  const billing = source.indexOf('await beginEntitled(');
   assert.ok(ocrGuard > 0 && billing > ocrGuard,
     'the empty-text check runs before anything is charged');
 

@@ -81,6 +81,13 @@ test('the report: AUTO is Luna for every property, complex ones included; Terra 
   assert.deepEqual(reportRoutingFor(v2({ report: { policy: 'LUNA' } }), 'gpt-5.6-luna'), { model: 'gpt-5.6-luna', policy: 'LUNA', fallbackModel: null });
   assert.deepEqual(reportRoutingFor(v2({ report: { policy: 'TERRA' } }), 'gpt-5.6-luna'), { model: 'gpt-5.6-terra', policy: 'TERRA', fallbackModel: null });
   assert.deepEqual(reportRoutingFor({ _engine: { version: 'V1' } }, 'gpt-5.6-luna'), { model: 'gpt-5.6-luna', policy: 'DEFAULT', fallbackModel: null });
+  // V2 ignores any live setting: the stamp alone decides, as before.
+  assert.deepEqual(reportRoutingFor(v2({ report: { policy: 'TERRA' } }), 'gpt-5.6-luna', { report: { policy: 'AUTO' } }), { model: 'gpt-5.6-terra', policy: 'TERRA', fallbackModel: null });
+  // V3: AUTO by default; the live V3 setting decides at build time, over the stamp; a pinned model stays pinned.
+  const v3 = (research) => ({ _engine: { version: 'V3', research } });
+  assert.deepEqual(reportRoutingFor(v3({}), 'gpt-5.6-luna'), { model: 'gpt-5.6-luna', policy: 'AUTO', fallbackModel: 'gpt-5.6-terra' });
+  assert.deepEqual(reportRoutingFor(v3({ report: { policy: 'TERRA' } }), 'gpt-5.6-luna', { report: { policy: 'AUTO' } }), { model: 'gpt-5.6-luna', policy: 'AUTO', fallbackModel: 'gpt-5.6-terra' });
+  assert.deepEqual(reportRoutingFor(v3({}), 'gpt-6-astra'), { model: 'gpt-6-astra', policy: 'DEFAULT', fallbackModel: null });
 });
 
 test('the fallback fires only on an objective gate failure — never on style, never on an empty call', () => {
@@ -94,8 +101,11 @@ test('the fallback fires only on an objective gate failure — never on style, n
 test('verify-synthesis: Luna first, the gate, ONE fallback call, the better report kept, both calls costed', () => {
   const vs = readFileSync(fileURLToPath(new URL('../../../../supabase/functions/verify-synthesis/index.ts', import.meta.url)), 'utf8');
   assert.match(vs, /const first = await callReport\(reportModel\);/);
-  assert.match(vs, /const failures = reportQualityFailures\(final, !!raw\);\n\s+if \(callReport && reportRouting\.fallbackModel && failures\.length\) \{/);
-  assert.match(vs, /const keepSecond = !!second\.raw && failures2\.length < failures\.length;/);
+  // First the cheap repair, handed the gate's findings; then Terra only for a blocking failure.
+  assert.match(vs, /const repairFindings = reportRepairFindings\(final, !!raw\);\n\s+if \(v3 && callReport && raw && repairFindings\.length && reportRepairEnabled\(reportTuning\)\) \{/);
+  assert.match(vs, /const failures = v3 \? reportBlockingFailures\(final, !!raw, reportTuning\) : reportQualityFailures\(final, !!raw\);\n\s+if \(callReport && reportRouting\.fallbackModel && failures\.length\) \{/);
+  // V1/V2 keep the earlier comparison exactly.
+  assert.match(vs, /const keepSecond = v3 \? !!second\.raw && reportScore\(final2, true\) < reportScore\(final, !!raw\) : !!second\.raw && failures2\.length < failures\.length;/);
   assert.match(vs, /\.\.\.\(usageFirstAttempt \? \{ _usageFirstAttempt: usageFirstAttempt \} : \{\}\),/);
   // Internal, never sent to the customer.
   assert.match(vs, /_usageFirstAttempt: _droppedFirst, _reportRouting: _droppedRouting/);
@@ -119,8 +129,8 @@ test('research-agent and verify-synthesis wire every control for V2 jobs only', 
   assert.match(ra, /return await launch\(sb, k, m, \{ \.\.\.j, result_json: prior \}, a\[1\] as Stage, l, \{ modelOverride: esc, persist: true \}\);/);
   assert.match(ra, /if \(noTools\) delete b\.tools;/);
   const vs = readFileSync(fileURLToPath(new URL('../../../../supabase/functions/verify-synthesis/index.ts', import.meta.url)), 'utf8');
-  assert.match(vs, /const reportRouting = reportRoutingFor\(rj, MODEL\);\n[\s\S]{0,120}let reportModel = reportRouting\.model;/);
-  assert.match(vs, /_reportRouting: \{ \.\.\.reportRouting, model: reportModel, escalation \},/);
+  assert.match(vs, /const reportRouting = reportRoutingFor\(rj, MODEL, live\.research\);\n[\s\S]{0,320}let reportModel = reportRouting\.model;/);
+  assert.match(vs, /: \{ \.\.\.reportRouting, model: reportModel, escalation \},/);
 });
 
 test('the Admin card stores exactly what the server reads back, audited with a reason, beside the engine card', () => {

@@ -74,6 +74,9 @@ test('no card invents a conclusion of its own', () => {
     // reaches no conclusion; the only prose about it is report.advertisingAssessment,
     // under guardAdvertising.
     'developerAds',
+    // Verify V3 (owner, 2026-10-29): a V3 report marks Developer Advertising as
+    // hidden; the flag only suppresses the section, it concludes nothing.
+    'developerAdsHidden',
     // Round 3 (owner, 2026-10-10): `projectTeam` lists the professionals the
     // TAS documents and public research name, merged in reportGaps.ts — a
     // list of names and roles, no conclusion of its own.

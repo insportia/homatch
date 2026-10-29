@@ -5,26 +5,23 @@
 // loads every raw candidate the workers reported, runs the deterministic
 // pipeline (src/research-core/marketplace/pipeline.ts), upserts the canonical
 // properties in batches, derives the search status from real worker state and,
-// once every worker has finished, asks OpenAI for Results Intelligence over the
-// strongest few properties. Idempotent: running it twice gives the same rows.
+// once every worker has finished, applies the deterministic Results
+// Intelligence (reason order and tradeoffs). Idempotent: running it twice gives
+// the same rows.
 //
-// No billing anywhere: Marketplace Search is free. Every model call is
-// recorded in cost_events and in the search's own telemetry; an unpriced call
-// is recorded as UNPRICED, never as free.
+// ZERO MODEL CALLS (owner, 2026-10-29). Nothing in this module or anything it
+// imports calls OpenAI or any other model, on any path including failures;
+// tests/matrix/findPropertyZeroAi.test.mjs walks the whole import graph.
 
 import { processSearch, publicView, type ResultProperty } from '../../../src/research-core/marketplace/pipeline.ts';
-import {
-  acceptIntelligence, applyIntelligence, buildFactSheets, buildIntelligenceInput,
-  RESULTS_INTELLIGENCE_INSTRUCTIONS, RESULTS_INTELLIGENCE_JSON_SCHEMA,
-} from '../../../src/research-core/marketplace/results-intelligence.ts';
+import { applyIntelligence, deterministicIntelligence } from '../../../src/research-core/marketplace/results-intelligence.ts';
 import {
   deriveSearchStatus, isTerminalSearch, type SearchStatus, type WorkerRunState,
 } from '../../../src/research-core/marketplace/lifecycle.ts';
 import type { ExternalListingCandidate, MarketplaceSearchRequest, WorkerRunStatus } from '../../../src/research-core/marketplace/worker-contract.ts';
-import { converterFrom, ratesFromTable } from '../../../src/research-core/match/structured-gates.ts';
-import type { AiUsage, SearchTelemetry } from '../../../src/research-core/marketplace/telemetry.ts';
+import { converterFrom, FX_NBG_MAX_AGE_DAYS, ratesFromTable } from '../../../src/research-core/match/structured-gates.ts';
+import type { SearchTelemetry } from '../../../src/research-core/marketplace/telemetry.ts';
 import { type RunLease, reapDecision } from '../../../src/research-core/marketplace/dispatch.ts';
-import { estimatedProviderCost } from './providerCost.ts';
 import { wellFormedDeep } from '../../../src/research-core/marketplace/text-safety.ts';
 import { loadSocialCandidates } from './findProperty/socialListings.ts';
 import { serviceBackendEnabled } from './serviceControl.ts';
@@ -34,45 +31,6 @@ import { type ListingRow, mergeListingRows, resolveSharedRuns, sharedLeaders, sh
 type Db = any;
 
 export const MARKETPLACE_SWITCH = 'marketplace_search_enabled';
-/**
- * Per-user quota for the OpenAI-backed `understand` action. Conservative: a
- * person refining one request rarely needs more than a handful of readings.
- * Enforced atomically in Postgres (consume_marketplace_rate_limit) on the
- * platform's rate_limit_events table.
- */
-export const UNDERSTAND_RATE_LIMIT = {
-  operation: 'marketplace_search_understand',
-  burstLimit: 10,
-  burstSeconds: 10 * 60,
-  dailyLimit: 40,
-  dailySeconds: 24 * 60 * 60,
-} as const;
-
-export type RateLimitDecision =
-  | { allowed: true }
-  | { allowed: false; retryAfterSeconds: number; window: 'BURST' | 'DAILY' | 'UNAVAILABLE' };
-
-/** Fails CLOSED: if the quota cannot be read, the paid call does not happen. */
-export async function consumeUnderstandQuota(db: Db, userId: string): Promise<RateLimitDecision> {
-  const L = UNDERSTAND_RATE_LIMIT;
-  try {
-    const { data, error } = await db.rpc('consume_marketplace_rate_limit', {
-      p_user_id: userId, p_operation: L.operation,
-      p_burst_limit: L.burstLimit, p_burst_seconds: L.burstSeconds,
-      p_daily_limit: L.dailyLimit, p_daily_seconds: L.dailySeconds,
-    });
-    if (error || !data) return { allowed: false, retryAfterSeconds: 60, window: 'UNAVAILABLE' };
-    if (data.allowed === true) return { allowed: true };
-    return {
-      allowed: false,
-      retryAfterSeconds: Math.max(1, Math.trunc(Number(data.retry_after_seconds)) || L.burstSeconds),
-      window: data.window === 'DAILY' ? 'DAILY' : 'BURST',
-    };
-  } catch {
-    return { allowed: false, retryAfterSeconds: 60, window: 'UNAVAILABLE' };
-  }
-}
-
 /** PostgREST returns at most 1000 rows per request; every full read pages at this size. */
 export const PAGE_ROWS = 1000;
 
@@ -137,9 +95,6 @@ export async function reapRuns(db: Db, rows: Array<Record<string, unknown>>, max
   return changed;
 }
 
-export const searchModel = () =>
-  Deno.env.get('OPENAI_SEARCH_MODEL') ?? Deno.env.get('OPENAI_FAST_MODEL') ?? Deno.env.get('OPENAI_MODEL') ?? 'gpt-4o-mini';
-
 const truthy = (v: unknown) => v === true || v === 'true' || (typeof v === 'string' && v.replace(/"/g, '') === 'true');
 
 /** Find Property's own HTML portal workers: each has its own admin switch (default off),
@@ -180,68 +135,32 @@ export function workerSwitchOn(switches: MarketplaceSwitches, workerId: string):
 export const anySourceOn = (switches: MarketplaceSwitches) =>
   switches.myhomeEnabled || switches.ssgeEnabled || Object.values(switches.portals).some(Boolean) || !switches.providersKilled;
 
-/** One strict structured-output call through the Responses API. */
-export async function openaiStructured(args: {
-  name: string; instructions: string; input: string; schema: unknown; maxOutputTokens?: number;
-}): Promise<{ ok: boolean; parsed: unknown; inputTokens: number; outputTokens: number; model: string; note: string | null }> {
-  const model = searchModel();
-  const key = Deno.env.get('OPENAI_API_KEY');
-  if (!key) return { ok: false, parsed: null, inputTokens: 0, outputTokens: 0, model, note: 'no_model_configured' };
-  try {
-    const r = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        store: false,
-        max_output_tokens: args.maxOutputTokens ?? 1200,
-        input: [{ role: 'system', content: args.instructions }, { role: 'user', content: args.input }],
-        text: { format: { type: 'json_schema', name: args.name, strict: true, schema: args.schema } },
-      }),
-      signal: AbortSignal.timeout(25_000),
-    });
-    const payload = r.ok ? await r.json() : null;
-    const inputTokens = Number(payload?.usage?.input_tokens ?? 0);
-    const outputTokens = Number(payload?.usage?.output_tokens ?? 0);
-    if (!payload) return { ok: false, parsed: null, inputTokens, outputTokens, model, note: `model_http_${r.status}` };
-    let text = typeof payload.output_text === 'string' ? payload.output_text : '';
-    if (!text) for (const o of payload.output ?? []) for (const c of o?.content ?? []) if (typeof c?.text === 'string') text = c.text;
-    try {
-      return { ok: true, parsed: JSON.parse(text), inputTokens, outputTokens, model, note: null };
-    } catch {
-      return { ok: false, parsed: null, inputTokens, outputTokens, model, note: 'model_returned_unparseable_json' };
-    }
-  } catch {
-    return { ok: false, parsed: null, inputTokens: 0, outputTokens: 0, model, note: 'model_unreachable' };
-  }
-}
-
-/** cost_events row + a telemetry entry. Unpriced stays UNPRICED (cost null in telemetry). */
-/**
- * One cost_events row per model call, at measured tokens, with what it belongs to:
- * correlationId is the search id (RESULTS_INTELLIGENCE) or brief:<uuid> for the brief call a
- * customer makes before a search exists (linked later through brief_cost_refs). No price-book
- * rate → UNPRICED (cost_usd 0 + the state that says so), never a $0 ESTIMATED fact.
- */
-export async function recordAiUsage(db: Db, call: AiUsage['call'], r: { ok: boolean; inputTokens: number; outputTokens: number; model: string }, correlationId: string | null = null): Promise<AiUsage> {
-  const inCost = await estimatedProviderCost(db, { provider: 'OPENAI', unit: 'INPUT_TOKEN', units: r.inputTokens, model: r.model });
-  const outCost = await estimatedProviderCost(db, { provider: 'OPENAI', unit: 'OUTPUT_TOKEN', units: r.outputTokens, model: r.model });
-  const cost = inCost !== null && outCost !== null ? inCost + outCost : null;
-  if (r.inputTokens + r.outputTokens > 0) {
-    await db.from('cost_events').insert({
-      provider: 'OPENAI', operation_type: `MARKETPLACE_${call}`, source: 'marketplace-search',
-      units: r.inputTokens + r.outputTokens, cost_usd: cost ?? 0, success: r.ok, cache_hit: false,
-      pricing_state: cost === null ? 'UNPRICED' : 'ESTIMATED',
-      correlation_id: correlationId, model: r.model, input_tokens: r.inputTokens, output_tokens: r.outputTokens,
-    });
-  }
-  return { call, model: r.model, inputTokens: r.inputTokens, outputTokens: r.outputTokens, costUsd: cost, ok: r.ok, at: new Date().toISOString() };
-}
-
 /** Operator-entered current rates only (fx_rates). A pair with no rate stays unconvertible. */
 export async function loadConverter(db: Db) {
   const { data } = await db.from('fx_rates').select('base_currency,quote_currency,rate,effective_from').is('effective_to', null);
   return converterFrom(ratesFromTable((data ?? []) as never));
+}
+
+/**
+ * Rates for reading a customer's budget (understand): operator rates first, then the
+ * National Bank of Georgia's official rates the mortgage-fx-rates function keeps
+ * (read-only; GEL per one unit, dated). A pair neither table holds stays
+ * unconvertible: the budget is dropped with a reason, never converted at 0 or a guess.
+ */
+export async function loadSearchConverter(db: Db, now = Date.now()) {
+  const [{ data: operator }, { data: nbg }] = await Promise.all([
+    db.from('fx_rates').select('base_currency,quote_currency,rate,effective_from').is('effective_to', null),
+    db.from('mortgage_fx_rates').select('currency,gel_per_unit,rate_date').in('currency', ['USD', 'EUR']),
+  ]);
+  const official: Record<string, { rate: number; asOf?: string }> = {};
+  for (const r of (nbg ?? []) as Array<{ currency: string; gel_per_unit: number | string; rate_date: string }>) {
+    const rate = Number(r.gel_per_unit);
+    const at = Date.parse(String(r.rate_date));
+    if (!(rate > 0) || !Number.isFinite(at) || now - at > (FX_NBG_MAX_AGE_DAYS + 1) * 86_400_000) continue;
+    official[`${String(r.currency).toUpperCase()}_GEL`] = { rate, asOf: String(r.rate_date) };
+  }
+  /* Later tables win in converterFrom: operator-entered rates override the NBG fallback. */
+  return converterFrom(official, ratesFromTable((operator ?? []) as never, now));
 }
 
 const chunk = <T>(list: T[], size: number): T[][] => {
@@ -316,24 +235,10 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
   const telemetry: SearchTelemetry = search.telemetry ?? { ai: [], workers: [], processingMs: [] };
   let properties: Array<ResultProperty & { tradeoffs?: string[] }> = output.properties;
   let aiStatus = search.ai_status as string;
-  /* OpenAI call 2: once, when every worker has finished, over the strongest few only. */
-  if (isTerminalSearch(derived.status) && aiStatus === 'NOT_STARTED') {
-    if (!fitting.length) aiStatus = 'SKIPPED';
-    else {
-      const sheets = buildFactSheets(properties);
-      const r = await openaiStructured({
-        name: 'homatch_results_intelligence',
-        instructions: RESULTS_INTELLIGENCE_INSTRUCTIONS,
-        input: JSON.stringify(buildIntelligenceInput(request, sheets)),
-        schema: RESULTS_INTELLIGENCE_JSON_SCHEMA,
-      });
-      telemetry.ai.push(await recordAiUsage(db, 'RESULTS_INTELLIGENCE', r, searchId));
-      if (r.ok) {
-        properties = applyIntelligence(properties, acceptIntelligence(r.parsed, sheets).accepted);
-        aiStatus = 'DONE';
-      } else aiStatus = 'FAILED';
-    }
-  }
+  /* Results Intelligence, in code: every recompute orders each property's reasons by what
+     this person stated and attaches its tradeoffs. No model, no veto, nothing to fail. */
+  if (fitting.length) properties = applyIntelligence(properties, deterministicIntelligence(properties, request));
+  if (isTerminalSearch(derived.status) && aiStatus === 'NOT_STARTED') aiStatus = fitting.length ? 'DONE' : 'SKIPPED';
 
   const rows = properties.map((p) => ({
     search_id: searchId, property_key: p.key, result_group: p.group, rank: p.rank, score: p.score,

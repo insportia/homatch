@@ -6,7 +6,8 @@
 // see ranking internals, cost or worker errors.
 //
 //   capabilities  is Marketplace Search on, and can it dispatch at all
-//   understand    OpenAI call 1: the customer's words → Search Intelligence Brief
+//   understand    the deterministic query engine: the customer's words → Search
+//                 Intelligence Brief + clarification chips (no model)
 //   start         SERVER READINESS GATE, then plan + search + one run per eligible worker
 //   status        lifecycle, real counters, real stages (lazily times out overdue workers)
 //   results       one page of one result group
@@ -14,17 +15,21 @@
 //   compare       two properties of the same search, factual rows only
 //   cancel        stop a search the customer no longer wants
 //
-// FREE: nothing here reserves, charges or settles. The model call is recorded
-// in cost_events and the search's telemetry (Admin only).
+// FREE: nothing here reserves, charges or settles.
+//
+// ZERO MODEL CALLS (owner, 2026-10-29): interpretation, ranking and every fallback
+// are code. The no-model guard below refuses any request to a model provider made
+// while this function runs, and tests/matrix/findPropertyZeroAi.test.mjs walks
+// this function's whole import graph.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { hasCurrentIdentity, resultCatalogue } from '../_shared/marketplaceCatalogue.ts';
 import { historyExtras, ownedSearchHistory } from '../_shared/marketplaceHistory.ts';
 import { requestNativeMatching } from '../_shared/nativeDemand.ts';
 import { recordSeekerIntent } from '../_shared/seekerIntent.ts';
-import {
-  SEARCH_BRIEF_INSTRUCTIONS, SEARCH_BRIEF_JSON_SCHEMA, briefFromModel, sanitizeBrief, toSearchPlanDraft, demandExtrasFromBrief, demandFingerprint,
-} from '../../../src/research-core/marketplace/brief.ts';
+import { sanitizeBrief, toSearchPlanDraft, demandExtrasFromBrief, demandFingerprint } from '../../../src/research-core/marketplace/brief.ts';
+import { understandSearchText } from '../../../src/research-core/marketplace/queryEngine.ts';
+import { installNoModelGuard } from '../_shared/noModelGuard.ts';
 import { evaluateReadiness } from '../../../src/research-core/marketplace/readiness.ts';
 import {
   type MarketplaceWorkerDefinition, buildSearchRequest, eligibleWorkers,
@@ -37,8 +42,7 @@ import { decideProviderAccess, readProviderAccess, sourceFreshness } from '../..
 import { RESULT_GROUPS, type ResultGroup } from '../../../src/research-core/marketplace/pipeline.ts';
 import { browseResults, catalogueRevision, isCurrentResult, type CustomerProperty } from '../../../src/research-core/marketplace/browse-results.ts';
 import {
-  anySourceOn, consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage, requestKey, SHARE_WINDOW_MS, workerSwitchOn, WORKER_SOURCE_NAMES,
-
+  anySourceOn, loadMarketplaceSwitches, loadSearchConverter, processAndStore, requestKey, SHARE_WINDOW_MS, workerSwitchOn, WORKER_SOURCE_NAMES,
 } from '../_shared/marketplaceSearch.ts';
 import { paidCampaignAvailable } from '../_shared/findProperty/paidAvailability.ts';
 import { clientIp, DEFERRED_CODES, dispatchSearch, liveRefreshOf } from '../_shared/marketplaceCapacity.ts';
@@ -52,6 +56,8 @@ const CORS = {
 const json = (value: unknown, status = 200, extra: Record<string, string> = {}) => new Response(JSON.stringify(value), {
   status, headers: { ...CORS, 'Content-Type': 'application/json', ...extra },
 });
+installNoModelGuard('marketplace-search');
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** A search with no worker answer within this long is closed by its own deadline. */
 const SEARCH_DEADLINE_MS = 20 * 60 * 1000;
@@ -128,7 +134,8 @@ async function summary(db: Db, search: Record<string, unknown>) {
   };
 }
 
-/** brief:<uuid> refs from the client (understand's costRef), bounded and well-formed; anything else is dropped. */
+/** brief:<uuid> refs a client still holds from the retired model reading (understand's costRef), bounded and
+ *  well-formed; anything else is dropped. New readings cost nothing and hand out no ref. */
 function briefCostRefs(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -205,23 +212,13 @@ Deno.serve(async (req: Request) => {
     if (action === 'understand') {
       const text = String(body.text ?? '').trim().slice(0, 2000);
       if (text.length < 3) return json({ error: 'TEXT_REQUIRED' }, 400);
-      /* Per-user quota BEFORE any model call; atomic in Postgres, fails closed. */
-      const quota = await consumeUnderstandQuota(db, userId);
-      if (!quota.allowed) {
-        console.warn('marketplace-search understand rate_limited', quota.window);
-        return json({ error: 'RATE_LIMIT_EXCEEDED', code: 'RATE_LIMIT_EXCEEDED', retryAfterSeconds: quota.retryAfterSeconds },
-          429, { 'Retry-After': String(quota.retryAfterSeconds) });
-      }
-      const r = await openaiStructured({
-        name: 'homatch_search_brief', instructions: SEARCH_BRIEF_INSTRUCTIONS, input: text, schema: SEARCH_BRIEF_JSON_SCHEMA, maxOutputTokens: 900,
-      });
-      /* The brief call happens before a search exists: its cost carries a brief ref the client
-         hands back at start (brief_cost_refs), so the search owns what it cost to set up. */
-      const costRef = crypto.randomUUID();
-      await recordAiUsage(db, 'SEARCH_INTELLIGENCE', r, `brief:${costRef}`);
-      /* No model is not a dead end: an empty brief asks every question one by one. */
-      const brief = briefFromModel(r.ok ? r.parsed : null, text);
-      return json({ understood: r.ok, brief, readiness: evaluateReadiness(brief), costRef });
+      /* The deterministic query engine: no model, no quota, no cost. Rates for a GEL or EUR
+         budget come from fx_rates, then the NBG table; a rate that cannot be read leaves that
+         budget unconverted (dropped with a reason), it never stops the reading. */
+      const converter = await loadSearchConverter(db).catch(() => null);
+      const reading = understandSearchText(text, { converter });
+      return json({ understood: reading.understood, brief: reading.brief, readiness: evaluateReadiness(reading.brief),
+        clarifications: reading.clarifications, engine: reading.engine });
     }
 
     if (action === 'start') {

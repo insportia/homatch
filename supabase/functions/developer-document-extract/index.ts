@@ -52,6 +52,14 @@ import {
   looksLikePromptInjection,
 } from '../../../src/dealroom/domain/documentExtract.ts';
 import { beginExecution, settleExecution, releaseExecution, serviceClient } from '../_shared/billing.ts';
+import { beginEntitled, commitEntitled, releaseEntitled, type EntitledGrant } from '../_shared/entitlements.ts';
+
+/* Give a started use back: the wallet hold (legacy credit holders) or the trial / plan slot. */
+// deno-lint-ignore no-explicit-any
+async function releaseGate(svc: any, g: EntitledGrant, reason: string): Promise<void> {
+  if (g.funding === 'LEGACY_CREDITS' && g.legacy) await releaseExecution(svc, g.legacy, reason);
+  else await releaseEntitled(svc, g, reason);
+}
 import { readRouted } from '../_shared/storage/routed.ts';
 import { serviceBackendEnabledForCaller, serviceDisabledBody } from '../_shared/serviceControl.ts';
 import { deferCost, recordUsageCost, tokenUsage } from '../_shared/providerCost.ts';
@@ -343,21 +351,29 @@ serve(async (req) => {
   if (!hmUser?.id) return json({ error: 'unauthorized' }, 401);
 
   const sha = await sha256Hex(buf);
-  const grant = await beginExecution(svc, {
+  /* SUBSCRIPTIONS (owner decision 2026-10-29): Contract Analysis trial -> plan allowance ->
+   * legacy credits (no monthly free allowance any more). Keyed to the document and its bytes, so
+   * retrying after a transient failure reuses the same use rather than consuming a second one. */
+  const grant = await beginEntitled(svc, {
     userId: hmUser.id,
-    productCode: 'CONTRACT_INTELLIGENCE',
-    // Keyed to the bytes, so retrying after a transient failure reuses the
-    // hold rather than charging twice for the same page.
-    idempotencyKey: `devdoc:${hmUser.id}:${sha}`,
+    feature: 'CONTRACT_ANALYSIS',
+    key: `devdoc:${documentId}:${sha}`,
     jobRef: documentId,
-    metadata: { pages, doc_type: doc.doc_type },
+    legacy: () => beginExecution(svc, {
+      userId: hmUser.id,
+      productCode: 'CONTRACT_INTELLIGENCE',
+      idempotencyKey: `devdoc:${hmUser.id}:${sha}`,
+      jobRef: documentId,
+      allowIncluded: false,
+      metadata: { pages, doc_type: doc.doc_type },
+    }),
   });
 
   if (!grant.ok) {
     await supabase.from('dev_documents').update({
       status: 'UPLOADED', extraction_error: null,
     }).eq('id', documentId);
-    return json({ state: 'BILLING_REQUIRED', reason: grant.reason ?? 'BILLING_REQUIRED' }, 402);
+    return json({ state: 'BILLING_REQUIRED', reason: grant.reason ?? 'SUBSCRIPTION_REQUIRED' }, grant.reason === 'ERROR' ? 503 : 402);
   }
 
   const startedAt = Date.now();
@@ -407,7 +423,7 @@ serve(async (req) => {
 
   if (!modelText) {
     // Our failure, not the customer's: charge nothing and give the slot back.
-    await releaseExecution(svc, grant, 'model_returned_nothing');
+    await releaseGate(svc, grant, 'model_returned_nothing');
     await supabase.from('dev_documents').update({
       status: 'FAILED', extraction_error: 'The document could not be read this time.',
     }).eq('id', documentId);
@@ -464,11 +480,15 @@ serve(async (req) => {
   }).eq('id', documentId);
 
   if (saveErr) {
-    await releaseExecution(svc, grant, 'save_failed');
+    await releaseGate(svc, grant, 'save_failed');
     return json({ state: 'FAILED', reason: 'SAVE_FAILED' }, 500);
   }
 
-  await settleExecution(svc, grant, {
+  if (grant.funding !== 'LEGACY_CREDITS' || !grant.legacy) {
+    // Trial / plan: counted only when fields were actually delivered; an empty reading is returned.
+    if (Object.keys(fields).length > 0) await commitEntitled(svc, grant);
+    else await releaseEntitled(svc, grant, 'nothing_found');
+  } else await settleExecution(svc, grant.legacy, {
     provider: 'openai',
     providerOperation: 'developer_document_extract',
     model: MODEL,

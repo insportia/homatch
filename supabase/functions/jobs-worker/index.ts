@@ -39,6 +39,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { notify } from '../_shared/notify.ts';
 import { dispatchJobNotifications } from '../_shared/jobNotify.ts';
+import { retryDueDeliveries } from '../_shared/notifyEmail.ts';
 /*
  * FOR EXPATS reminders are computed by the same functions the plan screen
  * uses, imported rather than reimplemented. A second copy of "which
@@ -52,7 +53,10 @@ import type { DeadlineBasis, PlanStage, TaskCategory } from '../../../src/expats
 import { serviceBackendEnabled, serviceDisabledBody } from '../_shared/serviceControl.ts';
 import { verifyMirror } from '../../../src/jobs/verifyMirror.ts';
 import { sweepExpiredReservations } from '../_shared/walletSweeper.ts';
+import { subscriptionNotice, type SaasOutboxRow } from '../_shared/saasNotify.ts';
+import { chargeRecurringDue, reconcilePending } from '../_shared/saasPayments/maintenance.ts';
 import { usageSnapshotDue } from '../_shared/emailMarketing/core.ts';
+import { isServiceDisabledReply, rearmPausedCampaign } from '../_shared/emailMarketing/pauseGate.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -693,7 +697,18 @@ async function dispatchDueCampaigns(sb: Sb, url: string, cronToken: string): Pro
         },
         body: JSON.stringify({ campaign_id: row.id }),
       });
-      const body = await res.json().catch(() => ({})) as { blocked?: boolean; reason?: string };
+      const body = await res.json().catch(() => ({})) as { blocked?: boolean; reason?: string; code?: string };
+
+      /* A PAUSED SERVICE (Admin → Service Control Center) is not the campaign's failure. The
+         claim functions skip a paused service (migration 20261207140000); this covers a claim
+         made just before the switch flipped. The work is preserved, never failed: a campaign
+         claimed from SCHEDULED goes back to SCHEDULED with its time, one already RUNNING
+         stays RUNNING, and both continue on the first tick after the service is back on. */
+      if (isServiceDisabledReply(body)) {
+        await rearmPausedCampaign(sb as never, row.id, continuing.has(row.id));
+        failed++;
+        continue;
+      }
 
       if (body?.blocked) {
         /*
@@ -801,7 +816,7 @@ serve(async (req) => {
       return json({ error: 'Forbidden' }, 403);
     }
 
-    const [mirrored, docsStarted, unstuck, swept, refunded, campaigns, emailMaintenance, expatReminders, studioSchedules, reservations] = await Promise.all([
+    const [mirrored, docsStarted, unstuck, swept, refunded, campaigns, emailMaintenance, expatReminders, studioSchedules, reservations, subscriptions] = await Promise.all([
       mirror(sb),
       driveDocuments(sb, url, serviceKey),
       unstickDocuments(sb),
@@ -829,6 +844,12 @@ serve(async (req) => {
         console.error('[jobs-worker] reservation sweep failed', e instanceof Error ? e.message : String(e));
         return { enabled: null, released: null, failed: true };
       }),
+      /* Subscriptions: period boundaries, grace, expiry, stale usage reservations, then the
+         notices those produced. Isolated like the steps above. */
+      subscriptionMaintenance(sb).catch((e) => {
+        console.error('[jobs-worker] subscription maintenance failed', e instanceof Error ? e.message : String(e));
+        return { tick: null, notified: 0, failed: true };
+      }),
     ]);
 
     /* 7. TELL. After the mirror, so a job it just finished is announced this
@@ -836,8 +857,15 @@ serve(async (req) => {
        drains it (_shared/jobNotify.ts), and never throws. */
     const jobNotices = await dispatchJobNotifications(sb, 25);
 
+    /* 8. DELIVER AGAIN. Notification emails whose provider call failed transiently
+       (RETRYING, due) or whose sender died mid-send (stale QUEUED) are tried once
+       more with exponential backoff and the same idempotency key
+       (_shared/notifyEmail.ts). After the tell step, so this tick's new emails
+       have had their own first attempt. Never throws. */
+    const emailRetries = await retryDueDeliveries(sb, { limit: 10 });
+
     return json({
-      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, emailMaintenance, expatReminders, studioSchedules, reservations, jobNotices,
+      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, emailMaintenance, expatReminders, studioSchedules, reservations, subscriptions, jobNotices, emailRetries,
     });
   } catch (e) {
     console.error('[jobs-worker] tick failed', e instanceof Error ? e.message : String(e));
@@ -873,4 +901,35 @@ export async function emailMarketingMaintenance(sb: Sb, url: string, cronToken: 
   await call('plan_renew_due');
   if (usage) await call('usage_refresh_cron');
   return { renew: true, usage };
+}
+
+
+/*
+ * SUBSCRIPTIONS (20261207100000). saas_subscription_tick renews prepaid periods, moves unpaid ones
+ * to PAST_DUE with grace, expires lapsed/cancelled ones and returns stale usage reservations. The
+ * notices it (and the webhook) wrote are claimed once and emitted through notify().
+ */
+// deno-lint-ignore no-explicit-any
+async function subscriptionMaintenance(sb: any) {
+  const { data: flag } = await sb.from('admin_settings').select('value').eq('key', 'saas_sandbox_payments_enabled').maybeSingle();
+  const ctx = { sandboxEnabled: flag?.value === true || flag?.value === 'true', appUrl: Deno.env.get('APP_URL') ?? 'https://www.homatch.live' };
+  // Pending bank payments are re-read from the bank BEFORE the tick, so a paid renewal is not
+  // mistaken for an unpaid period end.
+  const reconciled = await reconcilePending(sb, ctx).catch((e) => {
+    console.error('[jobs-worker] saas reconcile failed', e instanceof Error ? e.message : String(e));
+    return null;
+  });
+  const recurring = await chargeRecurringDue(sb, ctx).catch((e) => {
+    console.error('[jobs-worker] saas recurring failed', e instanceof Error ? e.message : String(e));
+    return null;
+  });
+  const { data: tick, error } = await sb.rpc('saas_subscription_tick', { p_limit: 200 });
+  if (error) console.error('[jobs-worker] saas_subscription_tick', error.message);
+  const { data: rows } = await sb.rpc('saas_claim_notifications', { p_limit: 25 });
+  let notified = 0;
+  for (const row of (rows ?? []) as SaasOutboxRow[]) {
+    const n = subscriptionNotice(row);
+    if (n && (await notify(sb, n))) notified++;
+  }
+  return { tick: tick ?? null, reconciled, recurring, notified };
 }

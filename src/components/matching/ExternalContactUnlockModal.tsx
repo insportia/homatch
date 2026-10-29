@@ -17,6 +17,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
+import { CopyEmailButton } from '@/components/leads/CopyEmailButton';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -287,12 +288,13 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
                     </div>
                   )}
                   {contact.email && (
-                    <div className="flex items-center gap-3 p-3 bg-secondary rounded-lg">
+                    <div className="flex flex-wrap items-center gap-3 p-3 bg-secondary rounded-lg">
                       <Mail className="h-4 w-4 text-primary shrink-0" />
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="text-[13px] text-muted-foreground">{t('profile_field_email')}</p>
-                        <p className="text-sm font-medium" dir="ltr">{contact.email}</p>
+                        <p className="text-sm font-medium [overflow-wrap:anywhere]" dir="ltr">{contact.email}</p>
                       </div>
+                      <CopyEmailButton email={contact.email} size="sm" testId="unlock-copy-email" />
                     </div>
                   )}
                   {contact.whatsapp && (

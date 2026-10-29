@@ -30,7 +30,8 @@ export function parseUnlockRequest(body: unknown): UnlockRequest {
 }
 
 const KNOWN = ['INSUFFICIENT_CREDITS', 'PRODUCT_DISABLED', 'PRODUCT_KILL_SWITCH', 'PAYG_DISABLED', 'NOTHING_SELECTED',
-  'TOO_MANY_SELECTED', 'IDEMPOTENCY_KEY_REQUIRED', 'CREDIT_ACCOUNT_NOT_FOUND', 'SERVICE_DISABLED', 'PRICE_CHANGED'] as const;
+  'TOO_MANY_SELECTED', 'IDEMPOTENCY_KEY_REQUIRED', 'CREDIT_ACCOUNT_NOT_FOUND', 'SERVICE_DISABLED', 'PRICE_CHANGED',
+  'SUBSCRIPTION_REQUIRED'] as const;
 export type UnlockErrorCode = (typeof KNOWN)[number] | 'INTERNAL';
 
 /** Map a Postgres error message to a stable code; never echo internals to the client. */

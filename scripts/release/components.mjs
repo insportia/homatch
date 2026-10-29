@@ -110,7 +110,7 @@ export const COMPONENTS = {
   },
   BILLING: {
     security: true,
-    paths: [/^src\/(components\/billing|pages\/CreditsPage|services\/(billing|credits))/i, fn('billing', 'credits-topup', 'payment-webhook', 'payment-method-setup', 'atomic-unlock', 'unlock-external-contact', 'research-purchase', 'spend-cap-check')],
+    paths: [/^src\/(components\/billing|pages\/CreditsPage|services\/(billing|credits))/i, fn('billing', 'credits-topup', 'payment-webhook', 'payment-method-setup', 'atomic-unlock', 'unlock-external-contact', 'research-purchase', 'spend-cap-check', 'saas-checkout', 'saas-payments-webhook')],
     suites: ['mobile:routes', 'mobile:shell'],
     proofs: ['money: reserve → settle → release on a real row; no unknown COGS silently zero'],
   },

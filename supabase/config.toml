@@ -97,6 +97,10 @@ verify_jwt = false
 [functions.payment-webhook]
 verify_jwt = false
 
+# Subscription payments (2026-10-29): the adapter verifies the provider's signature itself.
+[functions.saas-payments-webhook]
+verify_jwt = false
+
 [functions.run-matching]
 verify_jwt = false
 

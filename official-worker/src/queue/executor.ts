@@ -26,6 +26,7 @@ import { tasApiOptionsFromEnv } from '../workflows/tas/api/TasApiStep.js';
 import { runMyGovApiStep } from '../workflows/mygov/MyGovApiWorkflow.js';
 import { EntityQueue } from '../entities/EntityQueue.js';
 import { compactResult, sha256 } from './evidence.js';
+import { EVIDENCE_UPLOAD_CONCURRENCY, mapSettled } from './concurrency.js';
 import { classifySourceOutcome, lastCaptchaOutcome, SUCCESS_OUTCOMES, type SourceVerdict } from './sourceOutcome.js';
 import { rsDomOnlyNoResult } from '../workflows/financial/RsTaxpayerResponse.js';
 import type { EvidenceRef, QueueTask } from './gateway.js';
@@ -279,26 +280,31 @@ export function createVerifyExecutor(deps: ExecutorDeps): Executor {
         // Bounded upstream (≤ VISUAL_ASSET_MAX assets, byte budget); `stored`
         // tells research-agent the object exists without a storage listing.
         // The two newest cases' visuals (a superset of their gallery assets) are stored the same way, once per hash.
+        // Our own storage only, a few at a time (concurrency.ts): each unique hash once, every
+        // occurrence marked when it landed; the raw replies keep their order in extraRefs.
+        const writeBack0 = performance.now();
+        const allVisuals = [...(result.tasApi?.visuals ?? []), ...(result.tasApi?.priorityVisuals ?? [])];
+        const uniqueIds = [...new Set(allVisuals.map((v: any) => String(v.id)))].filter((id) => getCachedVisual(id));
+        const visualOutcomes = await mapSettled(uniqueIds, EVIDENCE_UPLOAD_CONCURRENCY, (id) => {
+          const img = getCachedVisual(id)!;
+          return upload(id, img.mime === 'image/png' ? 'image/png' : 'image/jpeg', img.bytes);
+        });
         const storedIds = new Set<string>();
-        for (const v of [...(result.tasApi?.visuals ?? []), ...(result.tasApi?.priorityVisuals ?? [])]) {
-          const id = String(v.id);
-          if (storedIds.has(id)) {
-            v.stored = true;
-            continue;
-          }
-          const img = getCachedVisual(id);
-          if (!img) continue;
-          await upload(id, img.mime === 'image/png' ? 'image/png' : 'image/jpeg', img.bytes)
-            .then(() => { v.stored = true; storedIds.add(id); })
-            .catch((e) => console.error(JSON.stringify({ level: 'warn', scope: 'verify_queue', event: 'visual_upload_failed', task: task.id, sha: id.slice(0, 12), error: String((e as Error)?.message ?? e).slice(0, 160) })));
-        }
+        visualOutcomes.forEach((o, i) => {
+          if (o.status === 'fulfilled') storedIds.add(uniqueIds[i]);
+          else console.error(JSON.stringify({ level: 'warn', scope: 'verify_queue', event: 'visual_upload_failed', task: task.id, sha: uniqueIds[i].slice(0, 12), error: String((o.reason as Error)?.message ?? o.reason).slice(0, 160) }));
+        });
+        for (const v of allVisuals) if (storedIds.has(String(v.id))) v.stored = true;
         // Sanitized raw detail / form replies: content-addressed evidence, never inline.
+        const evidenceObjects = tasEvidenceObjects(raw);
+        const refOutcomes = await mapSettled(evidenceObjects, EVIDENCE_UPLOAD_CONCURRENCY, (ev) => upload(ev.sha256, 'application/json', ev.json));
         const extraRefs: EvidenceRef[] = [];
-        for (const ev of tasEvidenceObjects(raw)) {
-          await upload(ev.sha256, 'application/json', ev.json)
-            .then((path) => { extraRefs.push({ sha256: ev.sha256, path, chars: ev.json.length, contentType: 'application/json', documentId: `tas_${ev.documentId}`, title: `TAS ${ev.kind} reply ${ev.documentId}` }); })
-            .catch((e) => console.error(JSON.stringify({ level: 'warn', scope: 'verify_queue', event: 'tas_raw_upload_failed', task: task.id, kind: ev.kind, error: String((e as Error)?.message ?? e).slice(0, 160) })));
-        }
+        refOutcomes.forEach((o, i) => {
+          const ev = evidenceObjects[i];
+          if (o.status === 'fulfilled') extraRefs.push({ sha256: ev.sha256, path: o.value, chars: ev.json.length, contentType: 'application/json', documentId: `tas_${ev.documentId}`, title: `TAS ${ev.kind} reply ${ev.documentId}` });
+          else console.error(JSON.stringify({ level: 'warn', scope: 'verify_queue', event: 'tas_raw_upload_failed', task: task.id, kind: ev.kind, error: String((o.reason as Error)?.message ?? o.reason).slice(0, 160) }));
+        });
+        if (result.tasApi?.timings) result.tasApi.timings.writeBackMs = Math.round(performance.now() - writeBack0);
         return settle(task, { result, keep: false }, upload, scope, spend(), extraRefs);
       }
 

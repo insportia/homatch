@@ -20,7 +20,7 @@ import { compactOfficialContext } from '../../../src/verify/intelligence/officia
 import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/officialPromptContext.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 import { rsTaxpayerLegalStatus, withoutRsRaw } from '../../../src/verify/rsTaxpayer.ts';
-import { driveSettings, shouldFanOut, runPool } from '../../../src/verify/driveScale.ts';
+import { driveSettings, shouldFanOut, runPool, stepDelayMs } from '../../../src/verify/driveScale.ts';
 import { awaitOpenAIBudget, backoffMs, estimateTokens, limitsFor, retryAfterMs, RETRYABLE_STATUSES } from '../../../src/verify/openaiLimit.ts';
 import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, officialCodeNotFound, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
 import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
@@ -6940,7 +6940,13 @@ async function driveJob(sb: any, key: string, model: string, id: string): Promis
       // whatever caused it: move on with what is stored instead of reclaiming
       // the same job every tick.
       if (await recoverStalledOfficial(sb, j)) return;
-      if (i + 1 < DRIVE_TICKS_PER_JOB) await new Promise((r) => setTimeout(r, DRIVE_TICK_SPACING_MS));
+      if (i + 1 < DRIVE_TICKS_PER_JOB) {
+        // A step that moved the job into an internal state (a stage finished, the next one is
+        // ready) is followed at once; a wait, or no change, keeps the spacing (driveScale.ts stepDelayMs).
+        const { data: after } = await sb.from('research_jobs').select('stage,status').eq('id', id).maybeSingle();
+        const wait = stepDelayMs(j, after, DRIVE_TICK_SPACING_MS);
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      }
     }
   } catch (e) {
     // advance() already persists its own failures. Anything reaching here is

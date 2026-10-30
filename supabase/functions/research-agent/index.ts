@@ -8193,7 +8193,8 @@ Deno.serve(async (req) => {
         // full read (reports average ~108 KB) per contended poll was pure
         // database load (capacity audit 2026-10-18).
         if (await advanceExclusive(sb, key, model, j, lang)) {
-          let r = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
+          const reread = () => ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
+          let r = await reread();
           // A step that only parked the job in an internal state is followed at once, as in
           // driveJob — otherwise each hand-off waits for the next poll (driveScale.ts chainNextStep).
           let before = j;
@@ -8201,7 +8202,7 @@ Deno.serve(async (req) => {
           for (let n = 0; n < STATUS_CHAIN_MAX_STEPS && Date.now() < until && chainNextStep(before, r.data); n++) {
             before = r.data;
             if (!(await advanceExclusive(sb, key, model, r.data, lang))) break;
-            r = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
+            r = await reread();
           }
           j = r.data || j;
         }

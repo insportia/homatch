@@ -28,7 +28,7 @@ export function isUnlimitedSource(f: FeatureStatus | null | undefined): boolean 
 export function featureAccessText(status: EntitlementStatus, f: FeatureStatus, t: T): string | null {
   if (isUnlimitedSource(f)) return t('acc_unlimited');
   if (f.source === 'GRANT' && (f.remaining ?? 0) > 0) return t('acc_grant_remaining', { remaining: String(f.remaining) });
-  if (f.trialAvailable) return t('sub_badge_first_free');
+  if (f.trialAvailable) return t(f.feature === 'VERIFY' ? 'sub_badge_first_free_verify' : f.feature === 'CONTRACT_ANALYSIS' ? 'sub_badge_first_free_contract' : 'sub_badge_first_free');
   if (f.included && f.unlimited) return t('sub_badge_included_unlimited');
   if (f.included && (f.remaining ?? 0) > 0) return t('sub_badge_included', { remaining: String(f.remaining) });
   if (status.hasLegacyBalance && !hasUnlimitedAccess(status)) return t('sub_badge_legacy');

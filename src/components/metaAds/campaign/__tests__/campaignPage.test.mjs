@@ -150,7 +150,8 @@ test('no refund wording, and unused fee is released to the HOMATCH Balance', () 
   assert.match(S.mm_c_billing_disclosure[0], /released to your HOMATCH Balance/);
   assert.match(S.mm_c_pv_release[0], /released to your HOMATCH Balance/);
   // Georgian terminology.
-  assert.match(S.mm_c_tab_leads[1], /ლიდ/);
+  // Owner, 2026-10-30: a lead is a კონტაქტი in Georgian copy, never the loanword ლიდი.
+  assert.match(S.mm_c_tab_leads[1], /კონტაქტ/);
   assert.doesNotMatch(Object.values(S).map((v) => v[1]).join(' '), /შესატყვისი/);
   assert.doesNotMatch(Object.values(S).map((v) => v[0]).join(' '), /confirmed buyer/i);
 });

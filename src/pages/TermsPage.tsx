@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { PageBlocks } from '@/site/render/PageBlocks';
 import { LegalContactCard, LegalLayout, LegalList, type LegalSection, useOperatorVars } from '@/components/legal/LegalLayout';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { editionKey } from '@/lib/legal/operator';
 import { useLegalEdition } from '@/lib/legal/useLegalEdition';
+import { PageBlocks } from '@/site/render/PageBlocks';
 
 /*
  * Terms of Service. The order follows the owner-approved structure (legal
@@ -14,7 +15,10 @@ export default function TermsPage() {
   const { t } = useLanguage();
   const v = useOperatorVars('terms');
   /* 2026-10-25 (archived) priced features in credits bought through Stripe; kept word for word. */
-  const archived = useLegalEdition('terms').version === '2026-10-25';
+  const edition = useLegalEdition('terms');
+  const archived = edition.version === '2026-10-25';
+  /* 2026-10-30 removed voice and Stripe; earlier editions render their original wording. */
+  const k = (key: string) => editionKey(key, edition) as 'terms_s8_body';
   const privacyLink = <Link to="/privacy">{t('terms_privacy_policy_link')}</Link>;
 
   const sections: LegalSection[] = [
@@ -65,12 +69,12 @@ export default function TermsPage() {
       </> : <>
         <p>{t('terms_sub_plans')}</p>
         <p>{t('terms_sub_trial')}</p>
-        <p>{t('terms_sub_included')}</p>
+        <p>{t(k('terms_sub_included'))}</p>
         <p>{t('terms_s4_body2')}</p>
         <p>{t('terms_sub_third_party')}</p>
         <p>{t('terms_sub_credits')}</p>
         <p>{t('terms_sub_cancel')}</p>
-        <p>{t('terms_sub_provider')}</p>
+        <p>{t(k('terms_sub_provider'))}</p>
         <p><strong>{t('terms_sub_refund')}</strong></p>
       </>,
     },
@@ -108,7 +112,7 @@ export default function TermsPage() {
     },
     { id: 'ip', title: t('terms_s6_title'), content: <><p>{t('terms_s6_body1')}</p><p>{t('terms_s6_body2')}</p></> },
     { id: 'data', title: t('terms_s7_title'), content: <p>{t('terms_s7_body_pre')} {privacyLink}{t('terms_s7_body_post')}</p> },
-    { id: 'third-parties', title: t('terms_s8_title'), content: <p>{t('terms_s8_body')}</p> },
+    { id: 'third-parties', title: t('terms_s8_title'), content: <p>{t(k('terms_s8_body'))}</p> },
     {
       id: 'limitations', title: t('terms_limits_title'), content: <>
         <p>{t('terms_limits_body1')}</p>

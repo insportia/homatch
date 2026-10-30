@@ -156,7 +156,7 @@ export const MY_GEORGIA_STRINGS = {
   admin_mg_cities: ['Preferred cities', 'სასურველი ქალაქები', 'Предпочитаемые города', 'Tercih edilen şehirler', 'المدن المفضلة', 'ערים מועדפות'],
   admin_mg_intents: ['Buy, rent, invest', 'შეძენა, ქირაობა, ინვესტიცია', 'Покупка, аренда, инвестиции', 'Satın alma, kiralama, yatırım', 'شراء، إيجار، استثمار', 'קנייה, שכירות, השקעה'],
   admin_mg_budgets: ['Budget ranges', 'ბიუჯეტის დიაპაზონები', 'Диапазоны бюджета', 'Bütçe aralıkları', 'نطاقات الميزانية', 'טווחי תקציב'],
-  admin_mg_price: ['Lead price', 'ლიდის ფასი', 'Цена лида', 'Kişi fiyatı', 'سعر العميل', 'מחיר ליד'],
+  admin_mg_price: ['Lead price', 'კონტაქტის ფასი', 'Цена лида', 'Kişi fiyatı', 'سعر العميل', 'מחיר ליד'],
   hl_bulk_expat: ['Foreign person with a completed profile × {{n}} ({{price}} each)', 'უცხოელი შევსებული პროფილით × {{n}} ({{price}} თითო)', 'Иностранец с заполненным профилем × {{n}} ({{price}} за каждого)', 'Profili dolu yabancı × {{n}} (tanesi {{price}})', 'أجنبي بملف مكتمل × {{n}} ({{price}} لكلٍّ)', 'זר עם פרופיל מלא × {{n}} ({{price}} לכל אחד)'],
   /* The stay options for Matching cards (hl_ loads everywhere; the mg_ originals are route-only). */
   hl_stay_weeks: ['A few weeks', 'რამდენიმე კვირა', 'Несколько недель', 'Birkaç hafta', 'بضعة أسابيع', 'כמה שבועות'],

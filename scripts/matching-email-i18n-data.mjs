@@ -2,7 +2,7 @@
 // Order: [en, ka, ru, tr, ar, he]. Georgian: match = დამთხვევა; never "confirmed buyer".
 export const MATCHING_EMAIL_STRINGS = {
   /* ── contact sources (filters, badges) ── */
-  mwe_source_curated: ['HOMATCH Curated Leads', 'HOMATCH-ის შერჩეული ლიდები', 'Отобранные лиды HOMATCH', 'HOMATCH Seçilmiş Potansiyel Müşteriler', 'عملاء HOMATCH المحتملون المختارون', 'לידים נבחרים של HOMATCH'],
+  mwe_source_curated: ['HOMATCH Curated Leads', 'HOMATCH-ის შერჩეული კონტაქტები', 'Отобранные лиды HOMATCH', 'HOMATCH Seçilmiş Potansiyel Müşteriler', 'عملاء HOMATCH المحتملون المختارون', 'לידים נבחרים של HOMATCH'],
   mwe_source_internal: ['HOMATCH Internal Matches', 'HOMATCH-ის შიდა დამთხვევები', 'Внутренние совпадения HOMATCH', 'HOMATCH Dahili Eşleşmeler', 'تطابقات HOMATCH الداخلية', 'התאמות פנימיות של HOMATCH'],
   mwe_source_uploaded: ['User uploaded', 'თქვენ მიერ ატვირთული', 'Загружены вами', 'Sizin yüklediğiniz', 'رفعتها أنت', 'הועלו על ידיך'],
   mwe_source_find_buyers: ['Find Buyers', 'მყიდველების ძიება', 'Поиск покупателей', 'Alıcı Bul', 'البحث عن مشترين', 'איתור קונים'],
@@ -15,16 +15,9 @@ export const MATCHING_EMAIL_STRINGS = {
   mwe_lang_unknown: ['Language unknown', 'ენა უცნობია', 'Язык неизвестен', 'Dil bilinmiyor', 'اللغة غير معروفة', 'השפה לא ידועה'],
 
   /* ── contact profile: where a purchased contact came from ── */
-  mwe_src_curated: ['HOMATCH External Leads Database', 'HOMATCH-ის გარე ლიდების ბაზა', 'Внешняя база лидов HOMATCH', 'HOMATCH Harici Potansiyel Müşteri Veritabanı', 'قاعدة بيانات HOMATCH للعملاء المحتملين الخارجيين', 'מאגר הלידים החיצוני של HOMATCH'],
+  mwe_src_curated: ['HOMATCH External Leads Database', 'HOMATCH-ის გარე კონტაქტების ბაზა', 'Внешняя база лидов HOMATCH', 'HOMATCH Harici Potansiyel Müşteri Veritabanı', 'قاعدة بيانات HOMATCH للعملاء المحتملين الخارجيين', 'מאגר הלידים החיצוני של HOMATCH'],
   mwe_src_internal: ['HOMATCH Internal Matches', 'HOMATCH-ის შიდა დამთხვევები', 'Внутренние совпадения HOMATCH', 'HOMATCH Dahili Eşleşmeler', 'تطابقات HOMATCH الداخلية', 'התאמות פנימיות של HOMATCH'],
-  mwe_src_curated_body: [
-    'You unlocked this potentially interested person from the HOMATCH External Leads Database. The contact is yours to keep; the purchase does not include permission to email them.',
-    'ეს პოტენციურად დაინტერესებული პირი HOMATCH-ის გარე ლიდების ბაზიდან გახსენით. კონტაქტი თქვენთან რჩება, თუმცა შეძენა მისთვის ელფოსტის გაგზავნის ნებართვას არ მოიცავს.',
-    'Вы открыли этого потенциально заинтересованного человека из внешней базы лидов HOMATCH. Контакт остаётся у вас, но покупка не даёт права отправлять ему письма.',
-    'Bu potansiyel ilgili kişiyi HOMATCH Harici Potansiyel Müşteri Veritabanından açtınız. Kişi bilgisi sizde kalır; satın alma, ona e-posta gönderme iznini kapsamaz.',
-    'لقد فتحت بيانات هذا الشخص المحتمل اهتمامه من قاعدة بيانات HOMATCH للعملاء المحتملين الخارجيين. تبقى جهة الاتصال لديك، لكن الشراء لا يشمل إذنًا بمراسلته عبر البريد الإلكتروني.',
-    'פתחת את פרטי האדם שעשוי להתעניין ממאגר הלידים החיצוני של HOMATCH. איש הקשר נשאר אצלך, אך הרכישה אינה כוללת הרשאה לשלוח אליו דוא״ל.',
-  ],
+  mwe_src_curated_body: ['You unlocked this potentially interested person from the HOMATCH External Leads Database. The contact is yours to keep; the purchase does not include permission to email them.', 'ეს პოტენციურად დაინტერესებული პირი HOMATCH-ის გარე კონტაქტების ბაზიდან გახსენით. კონტაქტი თქვენთან რჩება, თუმცა შეძენა მისთვის ელფოსტის გაგზავნის ნებართვას არ მოიცავს.', 'Вы открыли этого потенциально заинтересованного человека из внешней базы лидов HOMATCH. Контакт остаётся у вас, но покупка не даёт права отправлять ему письма.', 'Bu potansiyel ilgili kişiyi HOMATCH Harici Potansiyel Müşteri Veritabanından açtınız. Kişi bilgisi sizde kalır; satın alma, ona e-posta gönderme iznini kapsamaz.', 'لقد فتحت بيانات هذا الشخص المحتمل اهتمامه من قاعدة بيانات HOMATCH للعملاء المحتملين الخارجيين. تبقى جهة الاتصال لديك، لكن الشراء لا يشمل إذنًا بمراسلته عبر البريد الإلكتروني.', 'פתחת את פרטי האדם שעשוי להתעניין ממאגר הלידים החיצוני של HOMATCH. איש הקשר נשאר אצלך, אך הרכישה אינה כוללת הרשאה לשלוח אליו דוא״ל.'],
   mwe_src_internal_body: [
     'You unlocked this person from HOMATCH Internal Matches: someone on HOMATCH whose search matches your property. The purchase does not include permission to email them.',
     'ეს პირი HOMATCH-ის შიდა დამთხვევებიდან გახსენით: HOMATCH-ის მომხმარებელი, რომლის ძიებაც თქვენს ქონებას ემთხვევა. შეძენა მისთვის ელფოსტის გაგზავნის ნებართვას არ მოიცავს.',
@@ -69,14 +62,7 @@ export const MATCHING_EMAIL_STRINGS = {
   mwe_aud_eligible: ['Will receive', 'მიიღებს', 'Получат', 'Alacak', 'سيتلقّون', 'יקבלו'],
   mwe_aud_lang_count: ['{{total}} · {{eligible}} will receive', '{{total}} · მიიღებს {{eligible}}', '{{total}} · получат {{eligible}}', '{{total}} · {{eligible}} alacak', '{{total}} · سيتلقّى {{eligible}}', '{{total}} · יקבלו {{eligible}}'],
   mwe_aud_unavailable: ['The audience could not be checked right now. Who receives the campaign is checked again when it is sent.', 'აუდიტორიის შემოწმება ახლა ვერ მოხერხდა. ვინ მიიღებს კამპანიას, გაგზავნისას ხელახლა შემოწმდება.', 'Сейчас не удалось проверить аудиторию. Кто получит кампанию, проверяется ещё раз при отправке.', 'Hedef kitle şu anda kontrol edilemedi. Kampanyayı kimin alacağı gönderim sırasında yeniden kontrol edilir.', 'تعذّر التحقق من الجمهور الآن. يُعاد التحقق ممن سيتلقى الحملة عند إرسالها.', 'לא ניתן היה לבדוק את הקהל כרגע. מי יקבל את הקמפיין נבדק שוב בעת השליחה.'],
-  mwe_aud_not_all: [
-    '{{n}} contacts will not receive this campaign. Email goes only to people with an address and recorded consent (or another lawful basis) who have not opted out. Purchased leads arrive without consent unless the source recorded it.',
-    '{{n}} კონტაქტი ამ კამპანიას არ მიიღებს. ელფოსტა მხოლოდ მათ ეგზავნება, ვისაც მისამართი და ჩაწერილი თანხმობა (ან სხვა კანონიერი საფუძველი) აქვს და უარი არ უთქვამს. შეძენილ ლიდებს თანხმობა არ აქვთ, თუ წყარომ ის არ ჩაწერა.',
-    'Контактов, которые не получат эту кампанию: {{n}}. Письма уходят только тем, у кого есть адрес и зафиксированное согласие (или иное законное основание) и кто не отписался. Купленные лиды приходят без согласия, если источник его не зафиксировал.',
-    '{{n}} kişi bu kampanyayı almayacak. E-posta yalnızca adresi ve kayıtlı onayı (veya başka bir yasal dayanağı) olan ve aboneliğini iptal etmemiş kişilere gider. Satın alınan potansiyel müşteriler, kaynak kaydetmediyse onaysız gelir.',
-    'لن يتلقى {{n}} من جهات الاتصال هذه الحملة. يُرسل البريد فقط لمن لديهم عنوان وموافقة مسجّلة (أو أساس قانوني آخر) ولم يلغوا اشتراكهم. يصل العملاء المحتملون المشترون بلا موافقة ما لم يسجّلها المصدر.',
-    '{{n}} אנשי קשר לא יקבלו את הקמפיין הזה. דוא״ל נשלח רק למי שיש לו כתובת והסכמה מתועדת (או בסיס חוקי אחר) ולא ביטל את הסכמתו. לידים שנרכשו מגיעים ללא הסכמה, אלא אם המקור תיעד אותה.',
-  ],
+  mwe_aud_not_all: ['{{n}} contacts will not receive this campaign. Email goes only to people with an address and recorded consent (or another lawful basis) who have not opted out. Purchased leads arrive without consent unless the source recorded it.', '{{n}} კონტაქტი ამ კამპანიას არ მიიღებს. ელფოსტა მხოლოდ მათ ეგზავნება, ვისაც მისამართი და ჩაწერილი თანხმობა (ან სხვა კანონიერი საფუძველი) აქვს და უარი არ უთქვამს. შეძენილ კონტაქტებს თანხმობა არ აქვთ, თუ წყარომ ის არ ჩაწერა.', 'Контактов, которые не получат эту кампанию: {{n}}. Письма уходят только тем, у кого есть адрес и зафиксированное согласие (или иное законное основание) и кто не отписался. Купленные лиды приходят без согласия, если источник его не зафиксировал.', '{{n}} kişi bu kampanyayı almayacak. E-posta yalnızca adresi ve kayıtlı onayı (veya başka bir yasal dayanağı) olan ve aboneliğini iptal etmemiş kişilere gider. Satın alınan potansiyel müşteriler, kaynak kaydetmediyse onaysız gelir.', 'لن يتلقى {{n}} من جهات الاتصال هذه الحملة. يُرسل البريد فقط لمن لديهم عنوان وموافقة مسجّلة (أو أساس قانوني آخر) ولم يلغوا اشتراكهم. يصل العملاء المحتملون المشترون بلا موافقة ما لم يسجّلها المصدر.', '{{n}} אנשי קשר לא יקבלו את הקמפיין הזה. דוא״ל נשלח רק למי שיש לו כתובת והסכמה מתועדת (או בסיס חוקי אחר) ולא ביטל את הסכמתו. לידים שנרכשו מגיעים ללא הסכמה, אלא אם המקור תיעד אותה.'],
   mwe_aud_none_eligible: [
     'None of the {{n}} contacts can receive email yet: recorded consent (or another lawful basis) and an address are required. You can still create the draft and record consent first.',
     '{{n}} კონტაქტიდან ელფოსტას ჯერ ვერცერთი მიიღებს: საჭიროა ჩაწერილი თანხმობა (ან სხვა კანონიერი საფუძველი) და მისამართი. მონახაზის შექმნა მაინც შეგიძლიათ და ჯერ თანხმობა ჩაწერეთ.',

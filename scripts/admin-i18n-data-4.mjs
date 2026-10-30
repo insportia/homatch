@@ -16,38 +16,10 @@
 // under a heading that says whose words they are.
 
 export const ADMIN_STRINGS_4 = {
-  wa_status_ready: [
-    'Homatch can message people on WhatsApp.',
-    'Homatch-ს WhatsApp-ით ადამიანებისთვის მიწერა შეუძლია.',
-    'Homatch может писать людям в WhatsApp.',
-    'Homatch, WhatsApp üzerinden mesaj gönderebiliyor.',
-    'يستطيع Homatch مراسلة الناس عبر واتساب.',
-    'Homatch יכול לשלוח הודעות לאנשים בוואטסאפ.',
-  ],
-  wa_status_blocked: [
-    'Homatch cannot message people on WhatsApp yet.',
-    'Homatch-ს ჯერ არ შეუძლია WhatsApp-ით ადამიანებისთვის მიწერა.',
-    'Homatch пока не может писать людям в WhatsApp.',
-    'Homatch henüz WhatsApp üzerinden mesaj gönderemiyor.',
-    'لا يستطيع Homatch بعد مراسلة الناس عبر واتساب.',
-    'Homatch עדיין אינו יכול לשלוח הודעות בוואטסאפ.',
-  ],
-  cc_status_ready: [
-    'Homatch can make and answer phone calls.',
-    'Homatch-ს ზარების განხორციელება და პასუხი შეუძლია.',
-    'Homatch может звонить и отвечать на звонки.',
-    'Homatch telefon araması yapabiliyor ve yanıtlayabiliyor.',
-    'يستطيع Homatch إجراء المكالمات والرد عليها.',
-    'Homatch יכול לבצע שיחות ולענות להן.',
-  ],
-  cc_status_blocked: [
-    'Homatch cannot make phone calls yet.',
-    'Homatch-ს ჯერ არ შეუძლია ზარების განხორციელება.',
-    'Homatch пока не может звонить.',
-    'Homatch henüz telefon araması yapamıyor.',
-    'لا يستطيع Homatch بعد إجراء المكالمات.',
-    'Homatch עדיין אינו יכול לבצע שיחות.',
-  ],
+  wa_status_ready: ['Homatch can message people on WhatsApp.', 'HOMATCH-ს WhatsApp-ით ადამიანებისთვის მიწერა შეუძლია.', 'Homatch может писать людям в WhatsApp.', 'Homatch, WhatsApp üzerinden mesaj gönderebiliyor.', 'يستطيع Homatch مراسلة الناس عبر واتساب.', 'Homatch יכול לשלוח הודעות לאנשים בוואטסאפ.'],
+  wa_status_blocked: ['Homatch cannot message people on WhatsApp yet.', 'HOMATCH-ს ჯერ არ შეუძლია WhatsApp-ით ადამიანებისთვის მიწერა.', 'Homatch пока не может писать людям в WhatsApp.', 'Homatch henüz WhatsApp üzerinden mesaj gönderemiyor.', 'لا يستطيع Homatch بعد مراسلة الناس عبر واتساب.', 'Homatch עדיין אינו יכול לשלוח הודעות בוואטסאפ.'],
+  cc_status_ready: ['Homatch can make and answer phone calls.', 'HOMATCH-ს ზარების განხორციელება და პასუხი შეუძლია.', 'Homatch может звонить и отвечать на звонки.', 'Homatch telefon araması yapabiliyor ve yanıtlayabiliyor.', 'يستطيع Homatch إجراء المكالمات والرد عليها.', 'Homatch יכול לבצע שיחות ולענות להן.'],
+  cc_status_blocked: ['Homatch cannot make phone calls yet.', 'HOMATCH-ს ჯერ არ შეუძლია ზარების განხორციელება.', 'Homatch пока не может звонить.', 'Homatch henüz telefon araması yapamıyor.', 'لا يستطيع Homatch بعد إجراء المكالمات.', 'Homatch עדיין אינו יכול לבצע שיחות.'],
   admin_provider_says: [
     'What the provider reported',
     'რას იუწყება მომწოდებელი',

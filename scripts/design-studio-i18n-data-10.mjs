@@ -7,7 +7,7 @@ export const DS_STRINGS_10 = {
   ds_share_type_walkthrough: ['Walkthrough', 'გავლა', 'Прогулка', 'İç gezinti', 'جولة داخلية', 'סיור'],
   ds_share_type_walkthrough_body: ['Walk through the home at eye level', 'სახლის გავლა თვალის დონეზე', 'Прогулка по дому на уровне глаз', 'Evde göz hizasında dolaşma', 'تجوّل في المنزل على مستوى النظر', 'סיור בבית בגובה העיניים'],
   ds_share_type_design: ['Design presentation', 'დიზაინის პრეზენტაცია', 'Презентация дизайна', 'Tasarım sunumu', 'عرض التصميم', 'מצגת עיצוב'],
-  ds_share_type_design_body: ['The home in 3D with its rooms, finishes and furniture', 'სახლი 3D-ში — ოთახები, მოპირკეთება და ავეჯი', 'Дом в 3D: комнаты, отделка и мебель', 'Odaları, kaplamaları ve mobilyalarıyla 3B ev', 'المنزل ثلاثي الأبعاد بغرفه وتشطيباته وأثاثه', 'הבית בתלת־ממד עם החדרים, הגימורים והרהיטים'],
+  ds_share_type_design_body: ['The home in 3D with its rooms, finishes and furniture', 'სახლი 3D-ში: ოთახები, მოპირკეთება და ავეჯი', 'Дом в 3D: комнаты, отделка и мебель', 'Odaları, kaplamaları ve mobilyalarıyla 3B ev', 'المنزل ثلاثي الأبعاد بغرفه وتشطيباته وأثاثه', 'הבית בתלת־ממד עם החדרים, הגימורים והרהיטים'],
 
   ds_export_title: ['Download this design', 'დიზაინის ჩამოტვირთვა', 'Скачать дизайн', 'Bu tasarımı indir', 'تنزيل هذا التصميم', 'הורדת העיצוב'],
   ds_export_short: ['Download', 'ჩამოტვირთვა', 'Скачать', 'İndir', 'تنزيل', 'הורדה'],
@@ -41,7 +41,7 @@ export const DS_STRINGS_10 = {
   ds_export_none: ['As built', 'როგორც აშენებულია', 'Как построено', 'Yapıldığı gibi', 'كما هو مبني', 'כפי שנבנה'],
   ds_export_plan: ['The plan', 'გეგმა', 'План', 'Plan', 'المخطط', 'התוכנית'],
   ds_export_pieces: ['Pieces of furniture: {{n}}', 'ავეჯის ნივთები: {{n}}', 'Предметов мебели: {{n}}', 'Mobilya parçası: {{n}}', 'قطع الأثاث: {{n}}', 'פריטי ריהוט: {{n}}'],
-  ds_export_error: ['The files could not be made on this device. Nothing was lost — please try again.', 'ფაილები ამ მოწყობილობაზე ვერ შეიქმნა. არაფერი დაკარგულა — სცადეთ ხელახლა.', 'Не удалось создать файлы на этом устройстве. Ничего не потеряно — попробуйте ещё раз.', 'Dosyalar bu cihazda oluşturulamadı. Hiçbir şey kaybolmadı — lütfen tekrar deneyin.', 'تعذّر إنشاء الملفات على هذا الجهاز. لم يُفقد شيء — حاول مجددًا.', 'לא ניתן היה ליצור את הקבצים במכשיר הזה. שום דבר לא אבד — נסו שוב.'],
+  ds_export_error: ['The files could not be made on this device. Nothing was lost — please try again.', 'ფაილები ამ მოწყობილობაზე ვერ შეიქმნა. არაფერი დაკარგულა: სცადეთ ხელახლა.', 'Не удалось создать файлы на этом устройстве. Ничего не потеряно — попробуйте ещё раз.', 'Dosyalar bu cihazda oluşturulamadı. Hiçbir şey kaybolmadı — lütfen tekrar deneyin.', 'تعذّر إنشاء الملفات على هذا الجهاز. لم يُفقد شيء — حاول مجددًا.', 'לא ניתן היה ליצור את הקבצים במכשיר הזה. שום דבר לא אבד — נסו שוב.'],
   ds_export_no_3d: [
     'A 3D file is not offered: the catalogue pieces may not be redistributed, and a mesh file would not carry the design faithfully.',
     '3D ფაილი არ გვთავაზობთ: კატალოგის ნივთების გავრცელება დაუშვებელია და მეშის ფაილი დიზაინს ზუსტად ვერ გადმოსცემს.',

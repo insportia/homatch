@@ -601,14 +601,7 @@ export const INVESTMENT_STRINGS_6 = {
     'من قيمة الإنجاز إلى صافي الربح',
     'משווי האכלוס עד הרווח נטו',
   ],
-  inv_offplan_scenario_note: [
-    'Every figure here rests on your own assumption about the finished value. Homatch does not forecast it.',
-    'აქ ყოველი ციფრი ეყრდნობა თქვენსავე დაშვებას დასრულებულ ღირებულებაზე. Homatch მას არ პროგნოზირებს.',
-    'Каждая цифра здесь опирается на ваше собственное допущение о стоимости готового объекта. Homatch её не прогнозирует.',
-    'Buradaki her rakam, bitmiş değere dair kendi varsayımınıza dayanır. Homatch bunu öngörmez.',
-    'كل رقم هنا يستند إلى افتراضك أنت للقيمة بعد الإنجاز. ولا يتنبأ Homatch بها.',
-    'כל מספר כאן נשען על ההנחה שלכם לגבי השווי הגמור. Homatch אינו חוזה אותה.',
-  ],
+  inv_offplan_scenario_note: ['Every figure here rests on your own assumption about the finished value. Homatch does not forecast it.', 'აქ ყოველი ციფრი ეყრდნობა თქვენსავე დაშვებას დასრულებულ ღირებულებაზე. HOMATCH მას არ პროგნოზირებს.', 'Каждая цифра здесь опирается на ваше собственное допущение о стоимости готового объекта. Homatch её не прогнозирует.', 'Buradaki her rakam, bitmiş değere dair kendi varsayımınıza dayanır. Homatch bunu öngörmez.', 'كل رقم هنا يستند إلى افتراضك أنت للقيمة بعد الإنجاز. ولا يتنبأ Homatch بها.', 'כל מספר כאן נשען על ההנחה שלכם לגבי השווי הגמור. Homatch אינו חוזה אותה.'],
   inv_row_completed_value: [
     'Value at completion',
     'ღირებულება დასრულებისას',
@@ -756,14 +749,7 @@ export const INVESTMENT_STRINGS_6 = {
     'إذا تأخر الإنجاز',
     'אם האכלוס נדחה',
   ],
-  inv_mod_offplan_delay_sub: [
-    'The profit barely moves. The annualised return does, because the money is tied up longer and the property still costs you something.',
-    'მოგება თითქმის არ იცვლება. წლიური უკუგება კი — იცვლება, რადგან ფული უფრო დიდხანს არის დაბლოკილი და ქონება მაინც რაღაცას გიჯდებათ.',
-    'Прибыль почти не меняется. А годовая доходность — да, потому что деньги заморожены дольше, а объект всё это время чего-то стоит.',
-    'Kâr neredeyse değişmez. Yıllık getiri değişir, çünkü para daha uzun bağlı kalır ve mülk yine de size bir şeye mal olur.',
-    'الربح لا يكاد يتغير. أما العائد السنوي فيتغير، لأن المال يبقى محتجزًا أطول والعقار يظل يكلفك شيئًا.',
-    'הרווח כמעט לא זז. התשואה השנתית כן, כי הכסף כבול לזמן ארוך יותר והנכס עדיין עולה לכם משהו.',
-  ],
+  inv_mod_offplan_delay_sub: ['The profit barely moves. The annualised return does, because the money is tied up longer and the property still costs you something.', 'მოგება თითქმის არ იცვლება. წლიური უკუგება კი, იცვლება, რადგან ფული უფრო დიდხანს არის დაბლოკილი და ქონება მაინც რაღაცას გიჯდებათ.', 'Прибыль почти не меняется. А годовая доходность — да, потому что деньги заморожены дольше, а объект всё это время чего-то стоит.', 'Kâr neredeyse değişmez. Yıllık getiri değişir, çünkü para daha uzun bağlı kalır ve mülk yine de size bir şeye mal olur.', 'الربح لا يكاد يتغير. أما العائد السنوي فيتغير، لأن المال يبقى محتجزًا أطول والعقار يظل يكلفك شيئًا.', 'הרווח כמעט לא זז. התשואה השנתית כן, כי הכסף כבול לזמן ארוך יותר והנכס עדיין עולה לכם משהו.'],
   inv_delay_on_time: [
     'Completes on time',
     'დროულად სრულდება',
@@ -945,31 +931,10 @@ export const INVESTMENT_STRINGS_6 = {
     'الحد الأقصى للمتر المربع',
     'מקסימום למ״ר',
   ],
-  inv_v_no_single_number: [
-    'There is no single correct price. What a property is worth depends on what you intend to do with it and what return you need, so Homatch gives you the boundaries rather than one confident figure.',
-    'ერთი სწორი ფასი არ არსებობს. ქონების ღირებულება იმაზეა დამოკიდებული, რას აპირებთ მასთან და რა უკუგება გჭირდებათ — ამიტომ Homatch ზღვრებს გაძლევთ და არა ერთ თავდაჯერებულ ციფრს.',
-    'Единственно правильной цены не существует. Стоимость объекта зависит от того, что вы собираетесь с ним делать и какая доходность вам нужна, поэтому Homatch даёт границы, а не одну уверенную цифру.',
-    'Tek bir doğru fiyat yoktur. Bir mülkün değeri, onunla ne yapacağınıza ve nasıl bir getiriye ihtiyacınız olduğuna bağlıdır; bu yüzden Homatch tek bir iddialı rakam yerine sınırları verir.',
-    'لا يوجد سعر صحيح واحد. قيمة العقار تعتمد على ما تنوي فعله به والعائد الذي تحتاجه، لذا يمنحك Homatch الحدود بدل رقم واحد واثق.',
-    'אין מחיר נכון יחיד. שווי של נכס תלוי במה שאתם מתכוונים לעשות איתו ובתשואה שאתם צריכים, ולכן Homatch נותן לכם את הגבולות ולא מספר בודד ובטוח בעצמו.',
-  ],
+  inv_v_no_single_number: ['There is no single correct price. What a property is worth depends on what you intend to do with it and what return you need, so Homatch gives you the boundaries rather than one confident figure.', 'ერთი სწორი ფასი არ არსებობს. ქონების ღირებულება იმაზეა დამოკიდებული, რას აპირებთ მასთან და რა უკუგება გჭირდებათ, ამიტომ HOMATCH ზღვრებს გაძლევთ და არა ერთ თავდაჯერებულ ციფრს.', 'Единственно правильной цены не существует. Стоимость объекта зависит от того, что вы собираетесь с ним делать и какая доходность вам нужна, поэтому Homatch даёт границы, а не одну уверенную цифру.', 'Tek bir doğru fiyat yoktur. Bir mülkün değeri, onunla ne yapacağınıza ve nasıl bir getiriye ihtiyacınız olduğuna bağlıdır; bu yüzden Homatch tek bir iddialı rakam yerine sınırları verir.', 'لا يوجد سعر صحيح واحد. قيمة العقار تعتمد على ما تنوي فعله به والعائد الذي تحتاجه، لذا يمنحك Homatch الحدود بدل رقم واحد واثق.', 'אין מחיר נכון יחיד. שווי של נכס תלוי במה שאתם מתכוונים לעשות איתו ובתשואה שאתם צריכים, ולכן Homatch נותן לכם את הגבולות ולא מספר בודד ובטוח בעצמו.'],
   inv_v_your_price: ['Your price', 'თქვენი ფასი', 'Ваша цена', 'Sizin fiyatınız', 'سعرك', 'המחיר שלכם'],
-  inv_v_scale_legend: [
-    'Green is workable, gold is your limit, red is where the plan makes nothing.',
-    'მწვანე მუშაობს, ოქროსფერი თქვენი ზღვარია, წითელი — სადაც გეგმა ვეღარაფერს გამოიმუშავებს.',
-    'Зелёное работает, золотое — ваш предел, красное — где план не зарабатывает ничего.',
-    'Yeşil çalışır, altın sizin sınırınız, kırmızı planın hiçbir şey kazandırmadığı yer.',
-    'الأخضر ممكن، والذهبي حدّك، والأحمر حيث لا تحقق الخطة شيئًا.',
-    'ירוק עובד, זהב הוא הגבול שלכם, אדום הוא המקום שבו התוכנית לא מרוויחה דבר.',
-  ],
-  inv_v_scale_legend_with_market: [
-    'Green is workable, gold is your limit, red is where the plan makes nothing. The grey band is what similar homes are currently asking.',
-    'მწვანე მუშაობს, ოქროსფერი თქვენი ზღვარია, წითელი — სადაც გეგმა ვეღარაფერს გამოიმუშავებს. ნაცრისფერი ზოლი მსგავს ბინებზე მოთხოვნილი ფასებია.',
-    'Зелёное работает, золотое — ваш предел, красное — где план не зарабатывает ничего. Серая полоса — то, что сейчас просят за похожие объекты.',
-    'Yeşil çalışır, altın sizin sınırınız, kırmızı planın hiçbir şey kazandırmadığı yer. Gri bant, benzer evlerin şu anki istenen fiyatlarıdır.',
-    'الأخضر ممكن، والذهبي حدّك، والأحمر حيث لا تحقق الخطة شيئًا. والشريط الرمادي هو ما تُطلب به منازل مشابهة حاليًا.',
-    'ירוק עובד, זהב הוא הגבול שלכם, אדום הוא המקום שבו התוכנית לא מרוויחה דבר. הפס האפור הוא מה שמבקשים כרגע על דירות דומות.',
-  ],
+  inv_v_scale_legend: ['Green is workable, gold is your limit, red is where the plan makes nothing.', 'მწვანე მუშაობს, ოქროსფერი თქვენი ზღვარია, წითელი, სადაც გეგმა ვეღარაფერს გამოიმუშავებს.', 'Зелёное работает, золотое — ваш предел, красное — где план не зарабатывает ничего.', 'Yeşil çalışır, altın sizin sınırınız, kırmızı planın hiçbir şey kazandırmadığı yer.', 'الأخضر ممكن، والذهبي حدّك، والأحمر حيث لا تحقق الخطة شيئًا.', 'ירוק עובד, זהב הוא הגבול שלכם, אדום הוא המקום שבו התוכנית לא מרוויחה דבר.'],
+  inv_v_scale_legend_with_market: ['Green is workable, gold is your limit, red is where the plan makes nothing. The grey band is what similar homes are currently asking.', 'მწვანე მუშაობს, ოქროსფერი თქვენი ზღვარია, წითელი, სადაც გეგმა ვეღარაფერს გამოიმუშავებს. ნაცრისფერი ზოლი მსგავს ბინებზე მოთხოვნილი ფასებია.', 'Зелёное работает, золотое — ваш предел, красное — где план не зарабатывает ничего. Серая полоса — то, что сейчас просят за похожие объекты.', 'Yeşil çalışır, altın sizin sınırınız, kırmızı planın hiçbir şey kazandırmadığı yer. Gri bant, benzer evlerin şu anki istenen fiyatlarıdır.', 'الأخضر ممكن، والذهبي حدّك، والأحمر حيث لا تحقق الخطة شيئًا. والشريط الرمادي هو ما تُطلب به منازل مشابهة حاليًا.', 'ירוק עובד, זהב הוא הגבול שלכם, אדום הוא המקום שבו התוכנית לא מרוויחה דבר. הפס האפור הוא מה שמבקשים כרגע על דירות דומות.'],
 
   inv_mod_at_price_eyebrow: ['Your price', 'თქვენი ფასი', 'Ваша цена', 'Sizin fiyatınız', 'سعرك', 'המחיר שלכם'],
   inv_mod_at_price_title: [
@@ -1013,14 +978,7 @@ export const INVESTMENT_STRINGS_6 = {
     'كم يقل هذا السعر عن حدك الأقصى.',
     'כמה המחיר הזה נמוך מהמקסימום שלכם.',
   ],
-  inv_v_add_price_prompt: [
-    'Enter the price you are considering and Homatch scores it against these boundaries.',
-    'შეიყვანეთ ფასი, რომელსაც განიხილავთ, და Homatch შეადარებს მას ამ ზღვრებს.',
-    'Введите цену, которую вы рассматриваете, и Homatch сопоставит её с этими границами.',
-    'Düşündüğünüz fiyatı girin; Homatch onu bu sınırlara göre değerlendirsin.',
-    'أدخل السعر الذي تدرسه ليقيّمه Homatch مقابل هذه الحدود.',
-    'הזינו את המחיר שאתם שוקלים ו-Homatch ידרג אותו מול הגבולות האלה.',
-  ],
+  inv_v_add_price_prompt: ['Enter the price you are considering and Homatch scores it against these boundaries.', 'შეიყვანეთ ფასი, რომელსაც განიხილავთ, და HOMATCH შეადარებს მას ამ ზღვრებს.', 'Введите цену, которую вы рассматриваете, и Homatch сопоставит её с этими границами.', 'Düşündüğünüz fiyatı girin; Homatch onu bu sınırlara göre değerlendirsin.', 'أدخل السعر الذي تدرسه ليقيّمه Homatch مقابل هذه الحدود.', 'הזינו את המחיר שאתם שוקלים ו-Homatch ידרג אותו מול הגבולות האלה.'],
 
   inv_mod_market_range_eyebrow: ['Market', 'ბაზარი', 'Рынок', 'Piyasa', 'السوق', 'שוק'],
   inv_mod_market_range_title: [
@@ -1107,12 +1065,5 @@ export const INVESTMENT_STRINGS_6 = {
     'عند هذا السعر لا تحقق الخطة ربحًا. فهو عند سعر التعادل أو فوقه، ولا يتبقى شيء بعد التكاليف.',
     'במחיר הזה התוכנית לא מרוויחה. הוא בגובה מחיר האיזון או מעליו, כך שאחרי העלויות לא נשאר דבר.',
   ],
-  inv_value_verdict_no_price: [
-    'Enter the price you are considering and Homatch scores it against these boundaries.',
-    'შეიყვანეთ ფასი, რომელსაც განიხილავთ, და Homatch შეადარებს მას ამ ზღვრებს.',
-    'Введите цену, которую вы рассматриваете, и Homatch сопоставит её с этими границами.',
-    'Düşündüğünüz fiyatı girin; Homatch onu bu sınırlara göre değerlendirsin.',
-    'أدخل السعر الذي تدرسه ليقيّمه Homatch مقابل هذه الحدود.',
-    'הזינו את המחיר שאתם שוקלים ו-Homatch ידרג אותו מול הגבולות האלה.',
-  ],
+  inv_value_verdict_no_price: ['Enter the price you are considering and Homatch scores it against these boundaries.', 'შეიყვანეთ ფასი, რომელსაც განიხილავთ, და HOMATCH შეადარებს მას ამ ზღვრებს.', 'Введите цену, которую вы рассматриваете, и Homatch сопоставит её с этими границами.', 'Düşündüğünüz fiyatı girin; Homatch onu bu sınırlara göre değerlendirsin.', 'أدخل السعر الذي تدرسه ليقيّمه Homatch مقابل هذه الحدود.', 'הזינו את המחיר שאתם שוקלים ו-Homatch ידרג אותו מול הגבולות האלה.'],
 };

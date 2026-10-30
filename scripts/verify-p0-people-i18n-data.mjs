@@ -22,14 +22,7 @@ export const VERIFY_P0_PEOPLE_STRINGS = {
     'مذكور في خانة عنوان المخططات (الدور غير مذكور)',
     'מופיע בטבלת הכותרת של השרטוטים (התפקיד לא צוין)',
   ],
-  verify_p0_role_safety_expert: [
-    'Expert — building-safety rules compliance',
-    'ექსპერტი — შენობა-ნაგებობის უსაფრთხოების წესებთან შესაბამისობა',
-    'Эксперт — соответствие правилам безопасности зданий',
-    'Uzman — bina güvenliği kurallarına uygunluk',
-    'خبير — الامتثال لقواعد سلامة المباني',
-    'מומחה — עמידה בכללי בטיחות מבנים',
-  ],
+  verify_p0_role_safety_expert: ['Expert — building-safety rules compliance', 'ექსპერტი: შენობა-ნაგებობის უსაფრთხოების წესებთან შესაბამისობა', 'Эксперт — соответствие правилам безопасности зданий', 'Uzman — bina güvenliği kurallarına uygunluk', 'خبير — الامتثال لقواعد سلامة المباني', 'מומחה — עמידה בכללי בטיחות מבנים'],
   verify_p0_role_geotech_expert: [
     'Expert assessment of the geological survey',
     'საინჟინრო-გეოლოგიური კვლევის საექსპერტო შეფასება',

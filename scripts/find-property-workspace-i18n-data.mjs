@@ -10,14 +10,7 @@
  */
 export const FIND_PROPERTY_WORKSPACE_STRINGS = {
   fpx_eyebrow: ['HOMATCH', 'HOMATCH', 'HOMATCH', 'HOMATCH', 'HOMATCH', 'HOMATCH'],
-  fpx_header_sub: [
-    'Tell us what home you want, in your own words. We search for free, and if you like, we can look even wider.',
-    'მოგვწერეთ, როგორ ბინას ეძებთ, თქვენი სიტყვებით. ჩვენ უფასოდ მოვძებნით, სურვილის შემთხვევაში კი უფრო ფართოდაც.',
-    'Напишите своими словами, какое жильё ищете. Мы поищем бесплатно, а если хотите, ещё шире.',
-    'Nasıl bir ev istediğinizi kendi sözlerinizle yazın. Ücretsiz ararız, isterseniz daha geniş de bakarız.',
-    'اكتب بكلماتك ما المنزل الذي تريده. نبحث لك مجانًا، وإن أردت نبحث على نطاق أوسع.',
-    'כתבו במילים שלכם איזה בית אתם מחפשים. אנחנו נחפש בחינם, ואם תרצו גם רחב יותר.',
-  ],
+  fpx_header_sub: ['Search apartments, houses and commercial spaces by the location and terms you want. If you like, we can also search wider.', 'მოძებნეთ ბინები, სახლები და კომერციული ფართები თქვენთვის სასურველი მდებარეობისა და პირობების მიხედვით. სურვილის შემთხვევაში უფრო ფართოდაც მოვძებნით.', 'Ищите квартиры, дома и коммерческие помещения по нужному району и условиям. При желании поищем и шире.', 'Daire, ev ve ticari alanları istediğiniz konum ve koşullara göre arayın. İsterseniz daha geniş de arayabiliriz.', 'ابحث عن الشقق والمنازل والمساحات التجارية حسب الموقع والشروط التي تريدها. وإن شئت نبحث على نطاق أوسع.', 'חפשו דירות, בתים ושטחים מסחריים לפי המיקום והתנאים שאתם רוצים. אם תרצו, נחפש גם רחב יותר.'],
   fpx_modes_label: ['Ways to search', 'ძიების გზები', 'Как искать', 'Arama yolları', 'طرق البحث', 'דרכי חיפוש'],
   fpx_free_title: ['Free Search', 'უფასო ძიება', 'Бесплатный поиск', 'Ücretsiz arama', 'بحث مجاني', 'חיפוש חינם'],
   fpx_free_price: ['Free', 'უფასო', 'Бесплатно', 'Ücretsiz', 'مجاني', 'חינם'],

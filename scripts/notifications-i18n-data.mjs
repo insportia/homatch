@@ -119,14 +119,7 @@ export const NOTIFICATION_STRINGS = {
     'التحقق الخاص بك جاهز',
     'הבדיקה שלכם מוכנה',
   ],
-  notif_verify_complete_body: [
-    'The report has finished and is ready to read.',
-    'ანგარიში დასრულდა — შეგიძლიათ გაეცნოთ.',
-    'Отчёт готов — его можно открыть.',
-    'Rapor tamamlandı ve okunmaya hazır.',
-    'اكتمل التقرير وهو جاهز للقراءة.',
-    'הדוח הושלם ומוכן לקריאה.',
-  ],
+  notif_verify_complete_body: ['The report has finished and is ready to read.', 'ანგარიში დასრულდა: შეგიძლიათ გაეცნოთ.', 'Отчёт готов — его можно открыть.', 'Rapor tamamlandı ve okunmaya hazır.', 'اكتمل التقرير وهو جاهز للقراءة.', 'הדוח הושלם ומוכן לקריאה.'],
   notif_document_analyzed_title: [
     'Your document has been analysed',
     'დოკუმენტის ანალიზი დასრულდა',
@@ -146,14 +139,7 @@ export const NOTIFICATION_STRINGS = {
 
   /* ── Native matches: both sides ───────────────────────────────────── */
 
-  notif_native_supply_title: [
-    'A Homatch member is looking for something like your property',
-    'Homatch-ის მომხმარებელი თქვენი ქონების მსგავსს ეძებს',
-    'Пользователь Homatch ищет что-то похожее на ваш объект',
-    'Bir Homatch üyesi mülkünüze benzer bir yer arıyor',
-    'عضو في Homatch يبحث عن عقار مشابه لعقارك',
-    'חבר Homatch מחפש נכס דומה לשלכם',
-  ],
+  notif_native_supply_title: ['A Homatch member is looking for something like your property', 'HOMATCH-ის მომხმარებელი თქვენი ქონების მსგავსს ეძებს', 'Пользователь Homatch ищет что-то похожее на ваш объект', 'Bir Homatch üyesi mülkünüze benzer bir yer arıyor', 'عضو في Homatch يبحث عن عقار مشابه لعقارك', 'חבר Homatch מחפש נכס דומה לשלכם'],
   notif_native_supply_many_title: [
     '{{n}} Homatch members are looking for something like your property',
     '{{n}} მომხმარებელი ეძებს თქვენი ქონების მსგავსს',
@@ -170,14 +156,7 @@ export const NOTIFICATION_STRINGS = {
     'متطلباتهم المعلنة تناسب هذا العقار.',
     'הדרישות שהם הגדירו מתאימות לנכס הזה.',
   ],
-  notif_native_demand_title: [
-    'A Homatch property matches your search',
-    'Homatch-ზე თქვენს ძიებას ქონება შეესაბამება',
-    'Объект на Homatch подходит под ваш поиск',
-    'Bir Homatch mülkü aramanızla eşleşiyor',
-    'عقار على Homatch يطابق بحثك',
-    'נכס ב-Homatch מתאים לחיפוש שלכם',
-  ],
+  notif_native_demand_title: ['A Homatch property matches your search', 'HOMATCH-ზე თქვენს ძიებას ქონება შეესაბამება', 'Объект на Homatch подходит под ваш поиск', 'Bir Homatch mülkü aramanızla eşleşiyor', 'عقار على Homatch يطابق بحثك', 'נכס ב-Homatch מתאים לחיפוש שלכם'],
   notif_native_demand_many_title: [
     '{{n}} Homatch properties match your search',
     'თქვენს ძიებას {{n}} ქონება შეესაბამება',

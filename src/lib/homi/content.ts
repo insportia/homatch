@@ -182,7 +182,7 @@ export const HOMI_TEMPLATES: Record<HomiDeterministicIntent, HomiTemplate> = {
 
   CAPABILITIES: {
     text: {
-      ka: 'აი, რაში შემიძლია დაგეხმარო:\n\n- **ქონების მოძებნა**: აღწერე, რას ეძებ, და მოძებნის გეგმას ერთად ავაწყობთ\n- **ქონების შემოწმება**: მესაკუთრე, იპოთეკა, შეზღუდვები და დეველოპერი ოფიციალური წყაროებით\n- **საინვესტიციო შეფასება**: შემოსავალი, ხარჯები და უკუგება სხვადასხვა სცენარით\n- **იპოთეკის კონსულტანტი**: ყოველთვიური შენატანი და სესხისთვის მზადყოფნა\n- **ხელშეკრულების ანალიზი**: რისკიანი პირობები და უფრო უსაფრთხო ფორმულირებები\n- **საქართველოში გადმოსვლა**: შენი პირადი გეგმა ნაბიჯ-ნაბიჯ',
+      ka: 'აი, რაში შემიძლია დაგეხმარო:\n\n- **ქონების ძიება**: აღწერე, რას ეძებ, და ძიების გეგმას ერთად ავაწყობთ\n- **ქონების შემოწმება**: მესაკუთრე, იპოთეკა, შეზღუდვები და დეველოპერი ოფიციალური წყაროებით\n- **საინვესტიციო შეფასება**: შემოსავალი, ხარჯები და უკუგება სხვადასხვა სცენარით\n- **იპოთეკის კონსულტანტი**: ყოველთვიური შენატანი და სესხისთვის მზადყოფნა\n- **ხელშეკრულების ანალიზი**: რისკიანი პირობები და უფრო უსაფრთხო ფორმულირებები\n- **საქართველოში გადმოსვლა**: შენი პირადი გეგმა ნაბიჯ-ნაბიჯ',
       en: "Here's what I can help with:\n\n- **Finding a property**: describe what you're after and we'll build a search plan together\n- **Property check**: owner, mortgage, restrictions and developer, from official sources\n- **Investment analysis**: income, expenses and return across scenarios\n- **Mortgage Consultant**: monthly payment and loan readiness\n- **Contract analysis**: risky terms and safer wording\n- **Moving to Georgia**: your own step-by-step plan",
       ru: 'Вот с чем я могу помочь:\n\n- **Поиск недвижимости**: опиши, что ищешь, и мы вместе составим план поиска\n- **Проверка недвижимости**: собственник, ипотека, ограничения и застройщик по официальным источникам\n- **Инвестиционный анализ**: доход, расходы и доходность в разных сценариях\n- **Ипотечный консультант**: ежемесячный платёж и готовность к кредиту\n- **Анализ договора**: рискованные условия и более безопасные формулировки\n- **Переезд в Грузию**: твой личный пошаговый план',
       tr: 'Sana şu konularda yardımcı olabilirim:\n\n- **Mülk arama**: ne aradığını anlat, arama planını birlikte kuralım\n- **Mülk kontrolü**: resmî kaynaklardan malik, ipotek, kısıtlamalar ve geliştirici\n- **Yatırım analizi**: farklı senaryolarda gelir, gider ve getiri\n- **Konut kredisi danışmanı**: aylık taksit ve krediye hazırlık\n- **Sözleşme analizi**: riskli maddeler ve daha güvenli ifadeler\n- **Gürcistan’a taşınma**: adım adım kişisel planın',
@@ -233,12 +233,12 @@ export const HOMI_TEMPLATES: Record<HomiDeterministicIntent, HomiTemplate> = {
 
   SERVICE_VERIFY: {
     text: {
-      ka: '**ქონების შემოწმება (Verify)** ერთ კონკრეტულ ქონებას ოფიციალურ რეესტრებსა და საჯარო წყაროებში იკვლევს და მყიდველისთვის ანგარიშს ამზადებს: ვინ არის მესაკუთრე, აქვს თუ არა იპოთეკა ან შეზღუდვა, ნამდვილია თუ არა დეველოპერი და რამდენად ლოგიკურია ფასი. დასაწყებად საკადასტრო კოდი ან მისამართი საკმარისია, ფასს კი დაწყებამდე სერვისის გვერდზე ნახავ.',
-      en: "**Property check (Verify)** researches one specific property across official registries and public sources and prepares a buyer's report: who owns it, whether there's a mortgage or restriction, whether the developer is real and whether the price makes sense. A cadastral code or address is enough to start, and you'll see the price on the service page before anything begins.",
-      ru: '**Проверка недвижимости (Verify)** исследует один конкретный объект по официальным реестрам и открытым источникам и готовит отчёт для покупателя: кто собственник, есть ли ипотека или ограничения, реален ли застройщик и обоснована ли цена. Для начала достаточно кадастрового кода или адреса, а цену ты увидишь на странице сервиса до запуска.',
-      tr: '**Mülk kontrolü (Verify)** tek bir mülkü resmî siciller ve açık kaynaklarda araştırır ve alıcı raporu hazırlar: malik kim, ipotek veya kısıtlama var mı, geliştirici gerçek mi ve fiyat mantıklı mı. Başlamak için ada-parsel kodu ya da adres yeterli; fiyatı başlamadan önce hizmet sayfasında görürsün.',
-      ar: '**فحص العقار (Verify)** يبحث في عقار محدد عبر السجلات الرسمية والمصادر العامة ويعدّ تقريرًا للمشتري: من المالك، وهل يوجد رهن أو قيد، وهل المطوّر حقيقي، وهل السعر منطقي. يكفي الرمز المساحي أو العنوان للبدء، وسترى السعر في صفحة الخدمة قبل أي خطوة.',
-      he: '**בדיקת נכס (Verify)** חוקרת נכס מסוים במרשמים רשמיים ובמקורות פתוחים ומכינה דוח לקונה: מי הבעלים, האם יש משכנתא או הגבלה, האם היזם אמיתי והאם המחיר הגיוני. מספיק קוד קדסטרלי או כתובת כדי להתחיל, ואת המחיר תראה בעמוד השירות לפני שמשהו מתחיל.',
+      ka: '**ქონების შემოწმება (Verify)** ერთ კონკრეტულ ქონებას ოფიციალურ რეესტრებსა და საჯარო წყაროებში იკვლევს და მყიდველისთვის ანგარიშს ამზადებს: ვინ არის მესაკუთრე, აქვს თუ არა იპოთეკა ან შეზღუდვა, ნამდვილია თუ არა დეველოპერი და რამდენად ლოგიკურია ფასი. დასაწყებად საკადასტრო კოდი ან მისამართი საკმარისია. პირველი შემოწმება უფასოა, შემდეგ კი გამოწერის გეგმა დაგჭირდება.',
+      en: "**Property check (Verify)** researches one specific property across official registries and public sources and prepares a buyer's report: who owns it, whether there's a mortgage or restriction, whether the developer is real and whether the price makes sense. A cadastral code or address is enough to start. Your first check is free; after that you'll need a subscription plan.",
+      ru: '**Проверка недвижимости (Verify)** исследует один конкретный объект по официальным реестрам и открытым источникам и готовит отчёт для покупателя: кто собственник, есть ли ипотека или ограничения, реален ли застройщик и обоснована ли цена. Для начала достаточно кадастрового кода или адреса. Первая проверка бесплатна, дальше понадобится тариф подписки.',
+      tr: '**Mülk kontrolü (Verify)** tek bir mülkü resmî siciller ve açık kaynaklarda araştırır ve alıcı raporu hazırlar: malik kim, ipotek veya kısıtlama var mı, geliştirici gerçek mi ve fiyat mantıklı mı. Başlamak için ada-parsel kodu ya da adres yeterli. İlk kontrol ücretsiz, sonrası için bir abonelik planı gerekir.',
+      ar: '**فحص العقار (Verify)** يبحث في عقار محدد عبر السجلات الرسمية والمصادر العامة ويعدّ تقريرًا للمشتري: من المالك، وهل يوجد رهن أو قيد، وهل المطوّر حقيقي، وهل السعر منطقي. يكفي الرمز المساحي أو العنوان للبدء. الفحص الأول مجاني، وبعده ستحتاج إلى خطة اشتراك.',
+      he: '**בדיקת נכס (Verify)** חוקרת נכס מסוים במרשמים רשמיים ובמקורות פתוחים ומכינה דוח לקונה: מי הבעלים, האם יש משכנתא או הגבלה, האם היזם אמיתי והאם המחיר הגיוני. מספיק קוד קדסטרלי או כתובת כדי להתחיל. הבדיקה הראשונה בחינם, ואחריה תצטרך תוכנית מנוי.',
     },
     actions: ['VERIFY'],
     chips: [{ label: C.simpler }, { label: C.more }, { label: C.other, intent: 'OTHER_QUESTION' }],
@@ -275,12 +275,12 @@ export const HOMI_TEMPLATES: Record<HomiDeterministicIntent, HomiTemplate> = {
 
   SERVICE_CONTRACTS: {
     text: {
-      ka: '**ხელშეკრულების ანალიზი**: ატვირთე ნასყიდობის ან ქირავნობის ხელშეკრულება (PDF ან DOCX) და აგიხსნი, რას ამბობს სინამდვილეში: ვალდებულებები, რისკიანი პირობები, ფინანსური დეტალები და ვადები. თითოეულ რისკიან მუხლზე შემოგთავაზებ უფრო უსაფრთხო ფორმულირებას, მიღებას კი შენ გადაწყვეტ. ეს იურიდიული კონსულტაცია არ არის.',
-      en: "**Contract analysis**: upload a purchase or rental contract (PDF or DOCX) and I'll explain what it actually says: obligations, risky terms, financial details and deadlines. For each risky clause I'll suggest safer wording, and you decide what to accept. This isn't legal advice.",
-      ru: '**Анализ договора**: загрузи договор купли-продажи или аренды (PDF или DOCX), и я объясню, что в нём на самом деле написано: обязательства, рискованные условия, финансовые детали и сроки. Для каждого рискованного пункта предложу более безопасную формулировку, а что принять, решаешь ты. Это не юридическая консультация.',
-      tr: '**Sözleşme analizi**: satış veya kira sözleşmesini (PDF ya da DOCX) yükle, gerçekte ne dediğini açıklayayım: yükümlülükler, riskli maddeler, mali ayrıntılar ve süreler. Her riskli madde için daha güvenli bir ifade öneririm, neyi kabul edeceğine sen karar verirsin. Bu hukuki danışmanlık değildir.',
-      ar: '**تحليل العقود**: ارفع عقد بيع أو إيجار (PDF أو DOCX) وسأشرح ما يقوله فعلًا: الالتزامات والشروط الخطرة والتفاصيل المالية والمواعيد. لكل بند خطر سأقترح صياغة أكثر أمانًا، والقرار في القبول لك. هذه ليست استشارة قانونية.',
-      he: '**ניתוח חוזה**: העלה חוזה מכר או שכירות (PDF או DOCX) ואסביר מה הוא אומר באמת: התחייבויות, תנאים מסוכנים, פרטים כספיים ומועדים. לכל סעיף מסוכן אציע ניסוח בטוח יותר, ואתה מחליט מה לקבל. זה לא ייעוץ משפטי.',
+      ka: '**ხელშეკრულების ანალიზი**: ატვირთე ნასყიდობის ან ქირავნობის ხელშეკრულება (PDF ან DOCX) და აგიხსნი, რას ამბობს სინამდვილეში: ვალდებულებები, რისკიანი პირობები, ფინანსური დეტალები და ვადები. თითოეულ რისკიან მუხლზე შემოგთავაზებ უფრო უსაფრთხო ფორმულირებას, მიღებას კი შენ გადაწყვეტ. პირველი ანალიზი უფასოა. ეს იურიდიული კონსულტაცია არ არის.',
+      en: "**Contract analysis**: upload a purchase or rental contract (PDF or DOCX) and I'll explain what it actually says: obligations, risky terms, financial details and deadlines. For each risky clause I'll suggest safer wording, and you decide what to accept. Your first analysis is free. This isn't legal advice.",
+      ru: '**Анализ договора**: загрузи договор купли-продажи или аренды (PDF или DOCX), и я объясню, что в нём на самом деле написано: обязательства, рискованные условия, финансовые детали и сроки. Для каждого рискованного пункта предложу более безопасную формулировку, а что принять, решаешь ты. Первый анализ бесплатный. Это не юридическая консультация.',
+      tr: '**Sözleşme analizi**: satış veya kira sözleşmesini (PDF ya da DOCX) yükle, gerçekte ne dediğini açıklayayım: yükümlülükler, riskli maddeler, mali ayrıntılar ve süreler. Her riskli madde için daha güvenli bir ifade öneririm, neyi kabul edeceğine sen karar verirsin. İlk analiz ücretsiz. Bu hukuki danışmanlık değildir.',
+      ar: '**تحليل العقود**: ارفع عقد بيع أو إيجار (PDF أو DOCX) وسأشرح ما يقوله فعلًا: الالتزامات والشروط الخطرة والتفاصيل المالية والمواعيد. لكل بند خطر سأقترح صياغة أكثر أمانًا، والقرار في القبول لك. التحليل الأول مجاني. هذه ليست استشارة قانونية.',
+      he: '**ניתוח חוזה**: העלה חוזה מכר או שכירות (PDF או DOCX) ואסביר מה הוא אומר באמת: התחייבויות, תנאים מסוכנים, פרטים כספיים ומועדים. לכל סעיף מסוכן אציע ניסוח בטוח יותר, ואתה מחליט מה לקבל. הניתוח הראשון בחינם. זה לא ייעוץ משפטי.',
     },
     actions: ['CONTRACT_INTELLIGENCE'],
     mood: 'explaining',
@@ -301,12 +301,12 @@ export const HOMI_TEMPLATES: Record<HomiDeterministicIntent, HomiTemplate> = {
 
   SERVICE_FIND_PROPERTY: {
     text: {
-      ka: '**ქონების მოძებნაში** ჩვეულებრივი სიტყვებით აღწერ, რას ეძებ (უბანი, ბიუჯეტი, ოთახები), და HOMATCH ამას მოძებნის გეგმად აქცევს, რომელსაც შემდეგ თავად შეცვლი, მერე კი რეალურად ეძებს. ფასს დაწყებამდე ნახავ.',
-      en: "**Find Property**: describe what you're looking for in plain words (area, budget, rooms) and HOMATCH turns it into a search plan you can edit, then actually searches. You'll see the price before it starts.",
-      ru: '**Поиск недвижимости**: опиши обычными словами, что ищешь (район, бюджет, комнаты), и HOMATCH превратит это в план поиска, который можно изменить, а затем действительно найдёт. Цену увидишь до запуска.',
-      tr: '**Mülk arama**: ne aradığını kendi kelimelerinle anlat (semt, bütçe, oda sayısı), HOMATCH bunu düzenleyebileceğin bir arama planına çevirir ve gerçekten arar. Fiyatı başlamadan önce görürsün.',
-      ar: '**البحث عن عقار**: صف بكلماتك ما تبحث عنه (الحي والميزانية وعدد الغرف) وتحوّله HOMATCH إلى خطة بحث يمكنك تعديلها ثم تبحث فعلًا. سترى السعر قبل البدء.',
-      he: '**חיפוש נכס**: מתארים במילים פשוטות מה מחפשים (שכונה, תקציב, חדרים) ו-HOMATCH הופכת את זה לתוכנית חיפוש שאפשר לערוך, ואז מחפשת בפועל. את המחיר רואים לפני שמתחילים.',
+      ka: '**ქონების ძიებაში** ჩვეულებრივი სიტყვებით აღწერ, რას ეძებ (უბანი, ბიუჯეტი, ოთახები), და HOMATCH ამას ძიების გეგმად აქცევს, რომელსაც შემდეგ თავად შეცვლი, მერე კი რეალურად ეძებს. თუ ძიებას დამატებითი ხარჯი აქვს, მას დაწყებამდე ნახავ.',
+      en: "**Find Property**: describe what you're looking for in plain words (area, budget, rooms) and HOMATCH turns it into a search plan you can edit, then actually searches. If a search has an extra cost, you'll see it before it starts.",
+      ru: '**Поиск недвижимости**: опиши обычными словами, что ищешь (район, бюджет, комнаты), и HOMATCH превратит это в план поиска, который можно изменить, а затем действительно найдёт. Если у поиска есть дополнительная стоимость, ты увидишь её до запуска.',
+      tr: '**Mülk arama**: ne aradığını kendi kelimelerinle anlat (semt, bütçe, oda sayısı), HOMATCH bunu düzenleyebileceğin bir arama planına çevirir ve gerçekten arar. Aramanın ek bir maliyeti varsa, başlamadan önce görürsün.',
+      ar: '**البحث عن عقار**: صف بكلماتك ما تبحث عنه (الحي والميزانية وعدد الغرف) وتحوّله HOMATCH إلى خطة بحث يمكنك تعديلها ثم تبحث فعلًا. إذا كان للبحث تكلفة إضافية فستراها قبل البدء.',
+      he: '**חיפוש נכס**: מתארים במילים פשוטות מה מחפשים (שכונה, תקציב, חדרים) ו-HOMATCH הופכת את זה לתוכנית חיפוש שאפשר לערוך, ואז מחפשת בפועל. אם לחיפוש יש עלות נוספת, רואים אותה לפני שמתחילים.',
     },
     actions: ['FIND_PROPERTY'],
     mood: 'pointing',
@@ -314,7 +314,7 @@ export const HOMI_TEMPLATES: Record<HomiDeterministicIntent, HomiTemplate> = {
 
   SERVICE_FIND_BUYERS: {
     text: {
-      ka: '**მყიდველის ან მოიჯარის მოძებნა**: დაამატე შენი ქონება და HOMATCH მოძებნის ადამიანებს, რომლებიც უკვე ეძებენ მსგავს ქონებას, ანუ პოტენციურად დაინტერესებულ პირებს. თითოეულ დამთხვევას თავისი მიზეზით ნახავ.',
+      ka: '**მყიდველების პოვნა**: დაამატე შენი ქონება და HOMATCH მოძებნის ადამიანებს, რომლებიც უკვე ეძებენ მსგავს ქონებას, ანუ პოტენციურად დაინტერესებულ პირებს. თითოეულ დამთხვევას თავისი მიზეზით ნახავ.',
       en: '**Find buyers or tenants**: add your property and HOMATCH looks for people already searching for something like it: potentially interested people. You see each match with its reasons.',
       ru: '**Поиск покупателя или арендатора**: добавь свой объект, и HOMATCH найдёт людей, которые уже ищут похожее, то есть потенциально заинтересованных лиц. Каждое совпадение показано с причинами.',
       tr: '**Alıcı veya kiracı bul**: mülkünü ekle, HOMATCH benzerini arayan kişileri, yani potansiyel olarak ilgilenen kişileri bulsun. Her eşleşmeyi gerekçesiyle görürsün.',
@@ -340,7 +340,7 @@ export const HOMI_TEMPLATES: Record<HomiDeterministicIntent, HomiTemplate> = {
 
   FIND_PROPERTY: {
     text: {
-      ka: 'მოდი, ერთად მოვძებნოთ! 🏡 ქონების მოძებნაში უბრალოდ აღწერე, რას ეძებ (უბანი, მაქსიმალური ბიუჯეტი, ოთახების რაოდენობა), და მოძებნის გეგმას ავაწყობ, რომელსაც შემდეგ თავად შეცვლი. უფრო იაფ ვარიანტს თუ ეძებ, ბიუჯეტის ზღვრით დაიწყე.',
+      ka: 'მოდი, ერთად მოვძებნოთ! 🏡 ქონების ძიებაში უბრალოდ აღწერე, რას ეძებ (უბანი, მაქსიმალური ბიუჯეტი, ოთახების რაოდენობა), და ძიების გეგმას ავაწყობ, რომელსაც შემდეგ თავად შეცვლი. უფრო იაფ ვარიანტს თუ ეძებ, ბიუჯეტის ზღვრით დაიწყე.',
       en: "Let's find it together! 🏡 In Find Property, just describe what you want (area, maximum budget, number of rooms) and I'll build a search plan you can then adjust. Looking for something cheaper? Start with a budget limit.",
       ru: 'Давай поищем вместе! 🏡 В поиске недвижимости просто опиши, что нужно (район, максимальный бюджет, количество комнат), и я составлю план поиска, который потом можно поправить. Ищешь вариант подешевле? Начни с ограничения бюджета.',
       tr: 'Birlikte bulalım! 🏡 Mülk aramada ne istediğini anlat (semt, en yüksek bütçe, oda sayısı), sonra düzenleyebileceğin bir arama planı kurayım. Daha ucuz bir seçenek mi arıyorsun? Bütçe sınırıyla başla.',
@@ -435,12 +435,12 @@ export const HOMI_TEMPLATES: Record<HomiDeterministicIntent, HomiTemplate> = {
      drift from them. */
   PLANS: {
     text: {
-      ka: 'HOMATCH ყოველთვიური გეგმებით მუშაობს. ჩემთან საუბარი ყველა გეგმაში შეუზღუდავია. თითოეულ გეგმაში რა შედის და რა ღირს, **ფასების** გვერდზე ნახავ, ნებისმიერი სერვისი კი ფასს დაწყებამდე გაჩვენებს. 🙂',
-      en: "HOMATCH works with monthly plans. Talking to me is unlimited in every plan. The **Pricing** page shows what each plan includes and what it costs, and every service shows its price before anything starts. 🙂",
-      ru: 'HOMATCH работает по ежемесячным планам. Общение со мной безлимитно в любом плане. Что входит в каждый план и сколько он стоит, смотри на странице **Цены**, а любой сервис показывает цену до начала работы. 🙂',
-      tr: 'HOMATCH aylık planlarla çalışır. Benimle konuşmak her planda sınırsızdır. Her planın neleri kapsadığını ve fiyatını **Fiyatlar** sayfasında görebilirsin; her hizmet de başlamadan önce fiyatını gösterir. 🙂',
-      ar: 'تعمل HOMATCH بخطط شهرية. التحدث معي غير محدود في كل الخطط. تجد في صفحة **الأسعار** ما تتضمنه كل خطة وسعرها، وكل خدمة تعرض سعرها قبل أن تبدأ. 🙂',
-      he: 'HOMATCH עובדת עם תוכניות חודשיות. השיחה איתי ללא הגבלה בכל תוכנית. בעמוד **מחירים** תמצא מה כלול בכל תוכנית וכמה היא עולה, וכל שירות מציג את המחיר שלו לפני שמתחילים. 🙂',
+      ka: 'HOMATCH გამოწერის გეგმებით მუშაობს. პირველი ქონების შემოწმება და პირველი ხელშეკრულების ანალიზი უფასოა, შემდეგ კი გამოწერა დაგჭირდება. თითოეულ გეგმაში რა შედის და რა ღირს, **ფასების** გვერდზე ნახავ. 🙂',
+      en: "HOMATCH works with subscription plans. Your first property check and first contract analysis are free; after that you'll need a subscription. The **Pricing** page shows what each plan includes and what it costs. 🙂",
+      ru: 'HOMATCH работает по тарифам подписки. Первая проверка недвижимости и первый анализ договора бесплатны, дальше понадобится подписка. Что входит в каждый тариф и сколько он стоит, смотри на странице **Цены**. 🙂',
+      tr: 'HOMATCH abonelik planlarıyla çalışır. İlk mülk kontrolün ve ilk sözleşme analizin ücretsiz, sonrası için abonelik gerekir. Her planın neleri kapsadığını ve fiyatını **Fiyatlar** sayfasında görebilirsin. 🙂',
+      ar: 'تعمل HOMATCH بخطط اشتراك. أول فحص عقار وأول تحليل عقد مجانيان، وبعدها ستحتاج إلى اشتراك. تجد في صفحة **الأسعار** ما تتضمنه كل خطة وسعرها. 🙂',
+      he: 'HOMATCH עובדת עם תוכניות מנוי. בדיקת הנכס הראשונה וניתוח החוזה הראשון בחינם, ואחר כך צריך מנוי. בעמוד **מחירים** תמצא מה כלול בכל תוכנית וכמה היא עולה. 🙂',
     },
     chips: [{ label: C.showOptions, intent: 'START' }, { label: C.other, intent: 'OTHER_QUESTION' }],
     mood: 'explaining',

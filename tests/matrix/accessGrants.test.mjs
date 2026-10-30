@@ -31,7 +31,7 @@ test('entry-point text follows the resolver precedence and never shows a balance
   assert.equal(featureAccessText(s, feature({ source: 'GRANT', included: true, unlimited: true }), t), 'acc_unlimited');
   assert.equal(featureAccessText(s, feature({ source: 'GRANT', included: true, limit: 3, used: 1, remaining: 2, trialAvailable: true }), t),
     'acc_grant_remaining:{"remaining":"2"}', 'a grant is used before the trial');
-  assert.equal(featureAccessText(s, feature({ source: 'TRIAL', trialAvailable: true }), t), 'sub_badge_first_free');
+  assert.equal(featureAccessText(s, feature({ source: 'TRIAL', trialAvailable: true }), t), 'sub_badge_first_free_verify');
   assert.equal(featureAccessText(s, feature({ source: 'PLAN', included: true, limit: 5, remaining: 4 }), t), 'sub_badge_included:{"remaining":"4"}');
   assert.equal(featureAccessText(status({ hasLegacyBalance: true }), feature({ source: 'LEGACY_CREDITS' }), t), 'sub_badge_legacy');
   assert.equal(isUnlimitedSource(feature({ source: 'PLAN', unlimited: true })), false, 'an Unlimited PLAN is a plan, not owner access');

@@ -64,7 +64,7 @@ export const DS_STRINGS_5 = {
   ds_fp_element_door: ['Door', 'კარი', 'Дверь', 'Kapı', 'باب', 'דלת'],
   ds_fp_element_window: ['Window', 'ფანჯარა', 'Окно', 'Pencere', 'نافذة', 'חלון'],
   ds_fp_element_balcony: ['Balcony', 'აივანი', 'Балкон', 'Balkon', 'شرفة', 'מרפסת'],
-  ds_fp_misread: ['Misread — remove', 'არასწორია — წაშლა', 'Прочитано неверно — убрать', 'Yanlış okundu — kaldır', 'قراءة خاطئة — إزالة', 'נקרא לא נכון — הסרה'],
+  ds_fp_misread: ['Misread — remove', 'არასწორია: წაშლა', 'Прочитано неверно — убрать', 'Yanlış okundu — kaldır', 'قراءة خاطئة — إزالة', 'נקרא לא נכון — הסרה'],
   ds_fp_keep: ['Keep', 'შენარჩუნება', 'Оставить', 'Tut', 'الإبقاء', 'להשאיר'],
   ds_fp_room_type: ['Room type', 'ოთახის ტიპი', 'Тип комнаты', 'Oda türü', 'نوع الغرفة', 'סוג החדר'],
   ds_fp_label_on_drawing: ['On the drawing: {{label}}', 'ნახაზზე: {{label}}', 'На чертеже: {{label}}', 'Çizimde: {{label}}', 'على الرسم: {{label}}', 'בשרטוט: {{label}}'],
@@ -149,5 +149,5 @@ export const DS_STRINGS_5 = {
   ds_fp_error_small: ['The image is too small to read a plan from.', 'სურათი ძალიან პატარაა გეგმის წასაკითხად.', 'Изображение слишком маленькое, чтобы прочитать план.', 'Görsel, plan okumak için çok küçük.', 'الصورة أصغر من أن يُقرأ منها مخطط.', 'התמונה קטנה מדי כדי לקרוא ממנה תוכנית.'],
   ds_fp_error_unreadable: ['This file could not be read as a plan image.', 'ეს ფაილი გეგმის სურათად ვერ წაიკითხა.', 'Этот файл не удалось прочитать как изображение плана.', 'Bu dosya plan görseli olarak okunamadı.', 'تعذّرت قراءة هذا الملف كصورة مخطط.', 'לא ניתן היה לקרוא את הקובץ כתמונת תוכנית.'],
   ds_fp_error_reading_unavailable: ['Reading floor plans is not available right now. Your file is saved; try again later.', 'გეგმების წაკითხვა ახლა მიუწვდომელია. ფაილი შენახულია; სცადეთ მოგვიანებით.', 'Чтение планировок сейчас недоступно. Файл сохранён; попробуйте позже.', 'Kat planı okuma şu anda kullanılamıyor. Dosyanız kaydedildi; daha sonra tekrar deneyin.', 'قراءة المخططات غير متاحة حاليًا. تم حفظ ملفك؛ حاول لاحقًا.', 'קריאת תוכניות אינה זמינה כרגע. הקובץ נשמר; נסו שוב מאוחר יותר.'],
-  ds_fp_error_generic: ['The plan could not be read this time. Nothing was lost — please try again.', 'გეგმა ამჯერად ვერ წაიკითხა. არაფერი დაკარგულა — სცადეთ ხელახლა.', 'Не удалось прочитать планировку. Ничего не потеряно — попробуйте ещё раз.', 'Plan bu sefer okunamadı. Hiçbir şey kaybolmadı — lütfen tekrar deneyin.', 'تعذّرت قراءة المخطط هذه المرة. لم يُفقد شيء — يُرجى المحاولة مجددًا.', 'לא ניתן היה לקרוא את התוכנית הפעם. שום דבר לא אבד — נסו שוב.'],
+  ds_fp_error_generic: ['The plan could not be read this time. Nothing was lost — please try again.', 'გეგმა ამჯერად ვერ წაიკითხა. არაფერი დაკარგულა: სცადეთ ხელახლა.', 'Не удалось прочитать планировку. Ничего не потеряно — попробуйте ещё раз.', 'Plan bu sefer okunamadı. Hiçbir şey kaybolmadı — lütfen tekrar deneyin.', 'تعذّرت قراءة المخطط هذه المرة. لم يُفقد شيء — يُرجى المحاولة مجددًا.', 'לא ניתן היה לקרוא את התוכנית הפעם. שום דבר לא אבד — נסו שוב.'],
 };

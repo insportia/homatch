@@ -97,14 +97,7 @@ export const PAYG_STRINGS_1 = {
     'حفظ البطاقة غير متاح بعد.',
     'שמירת כרטיס אינה זמינה עדיין.',
   ],
-  card_activation_unavailable_body: [
-    'Homatch cannot store a card without charging it yet, so this offer is paused. Your balance and everything you have already bought are unaffected.',
-    'Homatch-ს ჯერ არ შეუძლია ბარათის შენახვა თანხის ჩამოჭრის გარეშე, ამიტომ შეთავაზება შეჩერებულია. თქვენს ბალანსს და უკვე შეძენილს ეს არ ეხება.',
-    'Homatch пока не может сохранить карту без списания, поэтому предложение приостановлено. На ваш баланс и уже купленное это не влияет.',
-    'Homatch henüz kartı ücret almadan kaydedemiyor, bu yüzden teklif duraklatıldı. Bakiyeniz ve satın aldıklarınız etkilenmez.',
-    'لا يستطيع Homatch بعد حفظ البطاقة دون خصم مبلغ، لذلك أُوقف هذا العرض مؤقتًا. لا يتأثر رصيدك ولا ما اشتريته من قبل.',
-    'Homatch עדיין אינו יכול לשמור כרטיס בלי לחייב אותו, ולכן ההצעה מושהית. היתרה שלכם וכל מה שכבר רכשתם אינם מושפעים.',
-  ],
+  card_activation_unavailable_body: ['Homatch cannot store a card without charging it yet, so this offer is paused. Your balance and everything you have already bought are unaffected.', 'HOMATCH-ს ჯერ არ შეუძლია ბარათის შენახვა თანხის ჩამოჭრის გარეშე, ამიტომ შეთავაზება შეჩერებულია. თქვენს ბალანსს და უკვე შეძენილს ეს არ ეხება.', 'Homatch пока не может сохранить карту без списания, поэтому предложение приостановлено. На ваш баланс и уже купленное это не влияет.', 'Homatch henüz kartı ücret almadan kaydedemiyor, bu yüzden teklif duraklatıldı. Bakiyeniz ve satın aldıklarınız etkilenmez.', 'لا يستطيع Homatch بعد حفظ البطاقة دون خصم مبلغ، لذلك أُوقف هذا العرض مؤقتًا. لا يتأثر رصيدك ولا ما اشتريته من قبل.', 'Homatch עדיין אינו יכול לשמור כרטיס בלי לחייב אותו, ולכן ההצעה מושהית. היתרה שלכם וכל מה שכבר רכשתם אינם מושפעים.'],
   card_activation_failed: [
     'The card was not saved.',
     'ბარათი არ შენახულა.',

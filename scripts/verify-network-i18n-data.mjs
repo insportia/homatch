@@ -32,7 +32,7 @@ export const VERIFY_NETWORK_STRINGS = {
 
   verify_net_elapsed: ['Elapsed', 'გასული დრო', 'Прошло времени', 'Geçen süre', 'الوقت المنقضي', 'זמן שחלף'],
   verify_net_now: ['Now: {{step}}', 'ახლა: {{step}}', 'Сейчас: {{step}}', 'Şu an: {{step}}', 'الآن: {{step}}', 'כעת: {{step}}'],
-  verify_net_settled: ['Research complete — your report is ready', 'კვლევა დასრულდა — თქვენი ანგარიში მზადაა', 'Исследование завершено — ваш отчёт готов', 'Araştırma tamamlandı — raporunuz hazır', 'اكتمل البحث — تقريرك جاهز', 'המחקר הושלם — הדוח שלך מוכן'],
+  verify_net_settled: ['Research complete — your report is ready', 'კვლევა დასრულდა: თქვენი ანგარიში მზადაა', 'Исследование завершено — ваш отчёт готов', 'Araştırma tamamlandı — raporunuz hazır', 'اكتمل البحث — تقريرك جاهز', 'המחקר הושלם — הדוח שלך מוכן'],
   verify_net_stopped: ['Research stopped before it could finish', 'კვლევა დასრულებამდე შეწყდა', 'Исследование остановлено до завершения', 'Araştırma tamamlanmadan durdu', 'توقف البحث قبل اكتماله', 'המחקר נעצר לפני שהושלם'],
   verify_net_sr_heading: ['Research steps and their status', 'კვლევის ეტაპები და მათი სტატუსი', 'Этапы исследования и их статус', 'Araştırma adımları ve durumları', 'خطوات البحث وحالتها', 'שלבי המחקר והסטטוס שלהם'],
   verify_net_play_snake: ['Play Snake while we research your property', 'ითამაშეთ Snake-ი, სანამ თქვენს ქონებას ვიკვლევთ', 'Сыграйте в Snake, пока мы исследуем ваш объект', 'Mülkünüzü araştırırken Snake oynayın', 'العب Snake بينما نبحث في عقارك', 'שחקו Snake בזמן שאנחנו חוקרים את הנכס שלכם'],

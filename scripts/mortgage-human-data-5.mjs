@@ -80,14 +80,7 @@ export const PART_5 = {
     'ابدأ من جديد',
     'להתחיל מחדש',
   ],
-  mortgage_global_disclaimer: [
-    'Homatch calculations are for information only and are not a bank offer or a pre-approval. Confirm the final terms directly with your bank.',
-    'Homatch-ის გამოთვლები საინფორმაციო მიზნებისთვისაა და ბანკის შეთავაზებას ან წინასწარ დამტკიცებას არ წარმოადგენს. საბოლოო პირობები გადაამოწმე უშუალოდ ბანკთან.',
-    'Расчёты Homatch носят информационный характер и не являются предложением банка или предварительным одобрением. Итоговые условия уточняйте прямо в банке.',
-    'Homatch hesaplamaları yalnızca bilgi amaçlıdır; banka teklifi ya da ön onay değildir. Son koşulları doğrudan bankanızla teyit edin.',
-    'حسابات Homatch لأغراض المعلومات فقط وليست عرضًا من بنك ولا موافقة مسبقة. تأكّد من الشروط النهائية مباشرة مع بنكك.',
-    'החישובים של Homatch הם למידע בלבד ואינם הצעה של בנק או אישור מראש. אשרו את התנאים הסופיים ישירות מול הבנק.',
-  ],
+  mortgage_global_disclaimer: ['Homatch calculations are for information only and are not a bank offer or a pre-approval. Confirm the final terms directly with your bank.', 'HOMATCH-ის გამოთვლები საინფორმაციო მიზნებისთვისაა და ბანკის შეთავაზებას ან წინასწარ დამტკიცებას არ წარმოადგენს. საბოლოო პირობები გადაამოწმე უშუალოდ ბანკთან.', 'Расчёты Homatch носят информационный характер и не являются предложением банка или предварительным одобрением. Итоговые условия уточняйте прямо в банке.', 'Homatch hesaplamaları yalnızca bilgi amaçlıdır; banka teklifi ya da ön onay değildir. Son koşulları doğrudan bankanızla teyit edin.', 'حسابات Homatch لأغراض المعلومات فقط وليست عرضًا من بنك ولا موافقة مسبقة. تأكّد من الشروط النهائية مباشرة مع بنكك.', 'החישובים של Homatch הם למידע בלבד ואינם הצעה של בנק או אישור מראש. אשרו את התנאים הסופיים ישירות מול הבנק.'],
   mortgage_result_eyebrow: [
     'Your result',
     'შენი შედეგი',

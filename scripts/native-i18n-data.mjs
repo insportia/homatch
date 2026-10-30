@@ -86,14 +86,7 @@ export const NATIVE_STRINGS = {
   native_call_number_label: [
     'Contact number:', 'საკონტაქტო ნომერი:', 'Контактный номер:', 'İletişim numarası:', 'رقم التواصل:', 'מספר ליצירת קשר:',
   ],
-  native_call_not_shared: [
-    "They haven't shared a phone number. Send them a message instead.",
-    'ტელეფონის ნომერი ჯერ არ გაუზიარებიათ — მიწერეთ შეტყობინება.',
-    'Собеседник ещё не поделился номером. Напишите ему сообщение.',
-    'Henüz telefon numarası paylaşmadılar. Bunun yerine mesaj gönderin.',
-    'لم يشارك رقم هاتفه بعد. أرسل له رسالة بدلًا من ذلك.',
-    'עדיין לא שיתפו מספר טלפון. אפשר לשלוח הודעה במקום.',
-  ],
+  native_call_not_shared: ['They haven\'t shared a phone number. Send them a message instead.', 'ტელეფონის ნომერი ჯერ არ გაუზიარებიათ, მიწერეთ შეტყობინება.', 'Собеседник ещё не поделился номером. Напишите ему сообщение.', 'Henüz telefon numarası paylaşmadılar. Bunun yerine mesaj gönderin.', 'لم يشارك رقم هاتفه بعد. أرسل له رسالة بدلًا من ذلك.', 'עדיין לא שיתפו מספר טלפון. אפשר לשלוח הודעה במקום.'],
   native_call_no_number: [
     'No contact number is available for this property.',
     'ამ ქონებისთვის საკონტაქტო ნომერი მითითებული არ არის.',

@@ -13,14 +13,7 @@
  */
 export const INVESTMENT_STRINGS = {
   /* ── Product and page ─────────────────────────────────────────── */
-  inv_page_title: [
-    'Investment Intelligence — Homatch',
-    'საინვესტიციო ანალიტიკა — Homatch',
-    'Инвестиционная аналитика — Homatch',
-    'Yatırım Zekâsı — Homatch',
-    'ذكاء الاستثمار — Homatch',
-    'אינטליגנציית השקעות — Homatch',
-  ],
+  inv_page_title: ['Investment Intelligence — Homatch', 'საინვესტიციო ანალიტიკა: HOMATCH', 'Инвестиционная аналитика — Homatch', 'Yatırım Zekâsı — Homatch', 'ذكاء الاستثمار — Homatch', 'אינטליגנציית השקעות — Homatch'],
   inv_page_description: [
     'Choose an investment strategy, enter the numbers, and see the return, the break-even and the margin of safety — with current market prices alongside them.',
     'აირჩიეთ საინვესტიციო სტრატეგია, შეიყვანეთ ციფრები და ნახეთ უკუგება, ნულოვანი წერტილი და უსაფრთხოების მარაგი — მიმდინარე საბაზრო ფასებთან ერთად.',
@@ -36,7 +29,7 @@ export const INVESTMENT_STRINGS = {
     'Yatırım Zekâsı',
     'ذكاء الاستثمار',
     'אינטליגנציית השקעות',
-  ],
+  ],
   nav_investment: [
     'Investment',
     'ინვესტიცია',
@@ -54,12 +47,12 @@ export const INVESTMENT_STRINGS = {
     'אינטליגנציית השקעות',
   ],
 
-  /* ── Entry ────────────────────────────────────────────────────── */
+  /* ── Entry ────────────────────────────────────────────────────── */
 
-  /* ── Composer and consultant ──────────────────────────────────── */
-  inv_group_property: ['Property', 'ქონება', 'Объект', 'Mülk', 'العقار', 'הנכס'],
-  inv_f_area: ['Area (m²)', 'ფართი (მ²)', 'Площадь (м²)', 'Alan (m²)', 'المساحة (م²)', 'שטח (מ״ר)'],
-  inv_f_other_income: ['Other annual income', 'სხვა წლიური შემოსავალი', 'Прочий годовой доход', 'Diğer yıllık gelir', 'دخل سنوي آخر', 'הכנסה שנתית אחרת'],
+  /* ── Composer and consultant ──────────────────────────────────── */
+  inv_group_property: ['Property', 'ქონება', 'Объект', 'Mülk', 'العقار', 'הנכס'],
+  inv_f_area: ['Area (m²)', 'ფართი (მ²)', 'Площадь (м²)', 'Alan (m²)', 'المساحة (م²)', 'שטח (מ״ר)'],
+  inv_f_other_income: ['Other annual income', 'სხვა წლიური შემოსავალი', 'Прочий годовой доход', 'Diğer yıllık gelir', 'دخل سنوي آخر', 'הכנסה שנתית אחרת'],
   inv_f_management_pct: ['Management (% of rent collected)', 'მართვა (აკრეფილი ქირის %)', 'Управление (% собранной аренды)', 'Yönetim (tahsil edilen kiranın %)', 'الإدارة (% من الإيجار المحصّل)', 'ניהול (% מהשכירות שנגבתה)'],
   inv_f_management_pct_hint: [
     'Charged on rent actually collected, not on rent an empty flat does not produce.',
@@ -68,8 +61,8 @@ export const INVESTMENT_STRINGS = {
     'Fiilen tahsil edilen kira üzerinden alınır; boş dairenin üretmediği kira üzerinden değil.',
     'تُحتسب على الإيجار المحصّل فعليًا، لا على إيجار لا تنتجه شقة شاغرة.',
     'נגבה על שכירות שנגבתה בפועל, לא על שכירות שדירה ריקה אינה מייצרת.',
-  ],
-  inv_f_selling_cost_pct: ['Selling costs (% of sale)', 'გაყიდვის ხარჯები (გაყიდვის %)', 'Расходы на продажу (% от суммы)', 'Satış maliyetleri (satışın %)', 'تكاليف البيع (% من البيع)', 'עלויות מכירה (% מהמכירה)'],
+  ],
+  inv_f_selling_cost_pct: ['Selling costs (% of sale)', 'გაყიდვის ხარჯები (გაყიდვის %)', 'Расходы на продажу (% от суммы)', 'Satış maliyetleri (satışın %)', 'تكاليف البيع (% من البيع)', 'עלויות מכירה (% מהמכירה)'],
 
   /* ── Units and gaps ───────────────────────────────────────────── */
   inv_unit_years: ['{{n}} years', '{{n}} წელი', '{{n}} лет', '{{n}} yıl', '{{n}} سنة', '{{n}} שנים'],

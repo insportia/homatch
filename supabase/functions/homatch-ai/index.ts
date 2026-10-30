@@ -53,7 +53,7 @@ import {
 } from './homi.ts';
 import { loadOwnContext, type OwnContext } from './ownContext.ts';
 import { includedAccess } from '../_shared/entitlements.ts';
-import { parsePublicPlans, plansAnswerLines, plansPromptBlock, type PublicPlan } from '../../../src/lib/homi/plansFacts.ts';
+import { type PlansAnswerOptions, parsePlanTrials, parsePublicPlans, plansAnswerText, plansPromptBlock, type PublicPlan } from '../../../src/lib/homi/plansFacts.ts';
 
 /* One OpenAI call per chat turn; see the fetch below. */
 const OPENAI_REQUEST_TIMEOUT_MS = 130_000;
@@ -253,15 +253,23 @@ const PRODUCT_LINES: ReadonlyArray<readonly [string | null, string]> = [
 
 /* The real subscription plans (saas_public_plans, admin-editable), cached briefly per isolate so
    every turn knows them without a query each time. A failed read is "no plans", never invented ones. */
-let plansCache: { at: number; plans: PublicPlan[] } | null = null;
+let plansCache: { at: number; plans: PublicPlan[]; facts: PlansAnswerOptions } | null = null;
+let plansFacts: PlansAnswerOptions = {};
 async function loadPlans(db: any): Promise<PublicPlan[]> {
-  if (plansCache && Date.now() - plansCache.at < 60_000) return plansCache.plans;
+  if (plansCache && Date.now() - plansCache.at < 60_000) { plansFacts = plansCache.facts; return plansCache.plans; }
   try {
     const { data, error } = await db.rpc('saas_public_plans');
     const plans = error ? [] : parsePublicPlans(data);
-    plansCache = { at: Date.now(), plans };
+    /* Whether online payment works is said honestly: only a real bank chosen as the live provider
+       counts (saas-checkout additionally requires its secrets; until then HOMI says "pending"). */
+    const { data: provider } = await db.from('admin_settings').select('value').eq('key', 'saas_default_payment_provider').maybeSingle();
+    const live = provider?.value === 'BOG' || provider?.value === 'TBC';
+    const facts: PlansAnswerOptions = { trials: error ? undefined : parsePlanTrials(data), paymentsConnected: live };
+    plansCache = { at: Date.now(), plans, facts };
+    plansFacts = facts;
     return plans;
   } catch {
+    plansFacts = plansCache?.facts ?? {};
     return plansCache?.plans ?? [];
   }
 }
@@ -510,7 +518,7 @@ serve(async (req) => {
   /* ── HOMI: a written answer, no model ──────────────────────────────── */
   if (deterministic && route.kind === 'DETERMINISTIC') {
     const payload = deterministicPayload(route.intent, lang);
-    if (route.intent === 'PLANS' && plans.length) payload.text = `${payload.text}\n\n${plansAnswerLines(plans, lang)}`;
+    if (route.intent === 'PLANS' && plans.length) payload.text = plansAnswerText(plans, lang, plansFacts);
     const actionsOut: ServiceAction[] = payload.actions.filter((a) => visibility.isVisible(a.id));
     /* Something to tap after every answer: a written answer without its own
        chips (and without the start menu, which IS the choices) gets the
@@ -758,7 +766,7 @@ ${homiPitchInstruction(visibility.visible)}
 SOMETHING GENUINELY UNRELATED AND SUBSTANTIAL — a recipe, a maths problem, code, medical advice: do not write it out, and do not lecture about scope either. One friendly sentence that this is not what you are here for, then offer the nearest thing you CAN do. Never produce an error, never quote a policy, never say "outside my scope" or "I can only". This is about somebody asking you to DO a large unrelated job; an ordinary human aside, a joke, a complaint or a swear word is not that, and is covered by the style rules above.
 WHAT HOMATCH CAN ACTUALLY DO FOR THEM. These are the real products, with the real place each one starts. Never describe a capability Homatch does not have, and never name a destination that is not on this list.
 ${visibleLines(PRODUCT_LINES, visibility).map((l) => `  ${l}`).join('\n')}
-${plansPromptBlock(plans)}
+${plansPromptBlock(plans, plansFacts)}
 ${hiddenServicesPrompt(visibility)}
 
 ${whenToMention(visibleLines(MENTION_EXAMPLES, visibility))}

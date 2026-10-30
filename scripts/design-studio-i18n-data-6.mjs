@@ -65,14 +65,7 @@ export const DS_STRINGS_6 = {
     'مشاهدته من أي زاوية، وتغيير الإضاءة، وحفظ النسخ ومقارنتها',
     'להסתכל עליו מכל זווית, לשנות את התאורה, לשמור גרסאות ולהשוות ביניהן',
   ],
-  ds_mi_can_paint: [
-    'paint and dress what was identified — walls: {{walls}}, floors: {{floors}}, ceilings: {{ceilings}}',
-    'შეღებოთ და მოაპირკეთოთ ამოცნობილი — კედლები: {{walls}}, იატაკი: {{floors}}, ჭერი: {{ceilings}}',
-    'окрашивать и отделывать распознанное — стены: {{walls}}, полы: {{floors}}, потолки: {{ceilings}}',
-    'tanınanları boyamak ve kaplamak — duvarlar: {{walls}}, zeminler: {{floors}}, tavanlar: {{ceilings}}',
-    'طلاء ما تم التعرّف عليه وتكسيته — الجدران: {{walls}}، الأرضيات: {{floors}}، الأسقف: {{ceilings}}',
-    'לצבוע ולחפות את מה שזוהה — קירות: {{walls}}, רצפות: {{floors}}, תקרות: {{ceilings}}',
-  ],
+  ds_mi_can_paint: ['paint and dress what was identified — walls: {{walls}}, floors: {{floors}}, ceilings: {{ceilings}}', 'შეღებოთ და მოაპირკეთოთ ამოცნობილი, კედლები: {{walls}}, იატაკი: {{floors}}, ჭერი: {{ceilings}}', 'окрашивать и отделывать распознанное — стены: {{walls}}, полы: {{floors}}, потолки: {{ceilings}}', 'tanınanları boyamak ve kaplamak — duvarlar: {{walls}}, zeminler: {{floors}}, tavanlar: {{ceilings}}', 'طلاء ما تم التعرّف عليه وتكسيته — الجدران: {{walls}}، الأرضيات: {{floors}}، الأسقف: {{ceilings}}', 'לצבוע ולחפות את מה שזוהה — קירות: {{walls}}, רצפות: {{floors}}, תקרות: {{ceilings}}'],
   ds_mi_can_hide: [
     'hide furniture that was modelled in (pieces: {{n}})',
     'დამალოთ მოდელში ჩაშენებული ავეჯი (ნივთები: {{n}})',
@@ -163,14 +156,7 @@ export const DS_STRINGS_6 = {
     'הקובץ פגום או שאינו מודל glTF 2.0. ייצאו אותו מחדש והעלו את הקובץ החדש.',
   ],
   ds_mi_error_empty: ['The model has no visible surfaces.', 'მოდელს არ აქვს ხილული ზედაპირები.', 'В модели нет видимых поверхностей.', 'Modelde görünür yüzey yok.', 'لا يحتوي النموذج على أسطح مرئية.', 'למודל אין משטחים נראים.'],
-  ds_mi_error_generic: [
-    'The model could not be checked this time. Nothing was lost — please try again.',
-    'მოდელის შემოწმება ამჯერად ვერ მოხერხდა. არაფერი დაკარგულა — სცადეთ ხელახლა.',
-    'Не удалось проверить модель. Ничего не потеряно — попробуйте ещё раз.',
-    'Model bu sefer kontrol edilemedi. Hiçbir şey kaybolmadı — lütfen tekrar deneyin.',
-    'تعذّر فحص النموذج هذه المرة. لم يُفقد شيء — يُرجى المحاولة مجددًا.',
-    'לא ניתן היה לבדוק את המודל הפעם. שום דבר לא אבד — נסו שוב.',
-  ],
+  ds_mi_error_generic: ['The model could not be checked this time. Nothing was lost — please try again.', 'მოდელის შემოწმება ამჯერად ვერ მოხერხდა. არაფერი დაკარგულა: სცადეთ ხელახლა.', 'Не удалось проверить модель. Ничего не потеряно — попробуйте ещё раз.', 'Model bu sefer kontrol edilemedi. Hiçbir şey kaybolmadı — lütfen tekrar deneyin.', 'تعذّر فحص النموذج هذه المرة. لم يُفقد شيء — يُرجى المحاولة مجددًا.', 'לא ניתן היה לבדוק את המודל הפעם. שום דבר לא אבד — נסו שוב.'],
 
   ds_mi_warn_cm: [
     'The model was drawn in centimetres; HOMATCH shows it in metres.',

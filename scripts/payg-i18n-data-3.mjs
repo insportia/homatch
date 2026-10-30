@@ -55,14 +55,7 @@ export const PAYG_STRINGS_3 = {
     'أكثر من رصيدك',
     'יותר מהיתרה שלכם',
   ],
-  budget_broader_note: [
-    'A larger limit lets Homatch search more sources and go deeper.',
-    'დიდი ზღვარი Homatch-ს მეტ წყაროში და უფრო ღრმად ძებნის საშუალებას აძლევს.',
-    'Больший лимит позволяет Homatch искать в большем числе источников и глубже.',
-    'Daha yüksek bir sınır, Homatch’in daha çok kaynakta ve daha derine bakmasını sağlar.',
-    'الحد الأعلى يتيح لـ Homatch البحث في مصادر أكثر وبعمق أكبر.',
-    'תקרה גבוהה יותר מאפשרת ל-Homatch לחפש ביותר מקורות ולעומק רב יותר.',
-  ],
+  budget_broader_note: ['A larger limit lets Homatch search more sources and go deeper.', 'დიდი ზღვარი HOMATCH-ს მეტ წყაროში და უფრო ღრმად ძებნის საშუალებას აძლევს.', 'Больший лимит позволяет Homatch искать в большем числе источников и глубже.', 'Daha yüksek bir sınır, Homatch’in daha çok kaynakta ve daha derine bakmasını sağlar.', 'الحد الأعلى يتيح لـ Homatch البحث في مصادر أكثر وبعمق أكبر.', 'תקרה גבוהה יותר מאפשרת ל-Homatch לחפש ביותר מקורות ולעומק רב יותר.'],
   budget_cta_authorize: [
     'Search with up to {{credits}} credits',
     'ძებნა მაქსიმუმ {{credits}} კრედიტით',

@@ -11,7 +11,8 @@ import { LEGAL_OPERATOR } from '@/lib/legal/operator';
  * update the row, ship both.
  */
 export const POLICY_VERSIONS = { terms: LEGAL_OPERATOR.versions.terms, privacy: LEGAL_OPERATOR.versions.privacy } as const;
-export const COOKIE_POLICY_VERSION = LEGAL_OPERATOR.versions.cookies;
+/** The version a stored cookie choice must carry (moves only for a cookie change that needs a new choice). */
+export const COOKIE_POLICY_VERSION = LEGAL_OPERATOR.cookieConsentVersion;
 
 /** Paths an account that still owes an acceptance may open. */
 export const POLICY_GATE_ALLOWED = ['/auth/', '/terms', '/privacy', '/cookies'];

@@ -273,14 +273,7 @@ export const MORTGAGE_STRINGS_5 = {
   mortgage_offer_remove: ['Remove this offer', 'ამ შეთავაზების წაშლა', 'Удалить это предложение', 'Bu teklifi kaldır', 'احذف هذا العرض', 'הסרת ההצעה'],
   mortgage_offer_column: ['Figure', 'მაჩვენებელი', 'Показатель', 'Kalem', 'البند', 'נתון'],
   mortgage_offer_effective_rate: ['Effective rate', 'ეფექტური განაკვეთი', 'Эффективная ставка', 'Efektif faiz', 'النسبة الفعلية', 'ריבית אפקטיבית'],
-  mortgage_offer_effective_hint: [
-    'Enter it only if the bank stated it. Left blank, Homatch calculates one from the costs you give and labels it as calculated.',
-    'შეიყვანეთ მხოლოდ იმ შემთხვევაში, თუ ბანკმა დაასახელა. ცარიელი დატოვებისას Homatch გამოთვლის მას თქვენ მიერ მოწოდებული ხარჯებიდან და მონიშნავს როგორც გამოთვლილს.',
-    'Вводите только если её назвал банк. Оставленное пустым Homatch рассчитает из указанных расходов и пометит как расчётное.',
-    'Yalnızca banka belirttiyse girin. Boş bırakılırsa Homatch verdiğiniz maliyetlerden hesaplar ve hesaplanmış olarak etiketler.',
-    'أدخلها فقط إن ذكرها البنك. وإن تُركت فارغة يحسبها Homatch من التكاليف التي تعطيها ويسمها بأنها محسوبة.',
-    'הזינו רק אם הבנק ציין אותה. אם יישאר ריק, Homatch יחשב אחת מהעלויות שתמסרו ויסמן אותה כמחושבת.',
-  ],
+  mortgage_offer_effective_hint: ['Enter it only if the bank stated it. Left blank, Homatch calculates one from the costs you give and labels it as calculated.', 'ჩაწერე მხოლოდ მაშინ, თუ ბანკმა დაასახელა. ცარიელი დატოვებისას HOMATCH თავად დათვლის შეყვანილი ხარჯებიდან და მონიშნავს როგორც გამოთვლილს.', 'Вводите только если её назвал банк. Оставленное пустым Homatch рассчитает из указанных расходов и пометит как расчётное.', 'Yalnızca banka belirttiyse girin. Boş bırakılırsa Homatch verdiğiniz maliyetlerden hesaplar ve hesaplanmış olarak etiketler.', 'أدخلها فقط إن ذكرها البنك. وإن تُركت فارغة يحسبها Homatch من التكاليف التي تعطيها ويسمها بأنها محسوبة.', 'הזינו רק אם הבנק ציין אותה. אם יישאר ריק, Homatch יחשב אחת מהעלויות שתמסרו ויסמן אותה כמחושבת.'],
   mortgage_offer_effective_unavailable: [
     'cannot be calculated',
     'ვერ გამოითვლება',

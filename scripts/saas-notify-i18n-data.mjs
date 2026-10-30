@@ -39,7 +39,7 @@ export const SAAS_NOTIFY_STRINGS = {
 
   /* ── Historic credit top-up (credits are no longer sold; kept so old events still render) ── */
   ntf_payment_ok_title: ['Payment successful', 'გადახდა წარმატებით შესრულდა', 'Оплата прошла успешно', 'Ödeme başarılı', 'تمت عملية الدفع بنجاح', 'התשלום בוצע בהצלחה'],
-  ntf_payment_ok_body: ['Your credit balance has been updated.', 'შენი კრედიტების ბალანსი განახლდა.', 'Баланс кредитов обновлён.', 'Kredi bakiyen güncellendi.', 'تم تحديث رصيدك.', 'יתרת הקרדיטים שלך עודכנה.'],
+  ntf_payment_ok_body: ['Your payment was received. You can see the details in your account.', 'გადახდა მიღებულია. დეტალებს შენს ანგარიშში ნახავ.', 'Платёж получен. Подробности есть в твоём аккаунте.', 'Ödemen alındı. Ayrıntıları hesabında görebilirsin.', 'تم استلام دفعتك. يمكنك رؤية التفاصيل في حسابك.', 'התשלום התקבל. אפשר לראות את הפרטים בחשבון שלך.'],
   ntf_payment_ok_cta: ['Payment details', 'გადახდის დეტალები', 'Детали оплаты', 'Ödeme ayrıntıları', 'تفاصيل الدفع', 'פרטי התשלום'],
   ntf_payment_ok_next: ['You can see your balance and payment history at any time.', 'ბალანსი და გადახდების ისტორია ნებისმიერ დროს შეგიძლია ნახო.', 'Баланс и историю платежей можно посмотреть в любое время.', 'Bakiyeni ve ödeme geçmişini istediğin zaman görebilirsin.', 'يمكنك الاطلاع على رصيدك وسجل الدفعات في أي وقت.', 'אפשר לראות את היתרה ואת היסטוריית התשלומים בכל עת.'],
 

@@ -7,8 +7,8 @@
 export const VERIFY_ENGINE_STRINGS = {
   adm_engine_title: ['Verify engine', 'Verify-ის ძრავა', 'Движок Verify', 'Verify motoru', 'محرك Verify', 'מנוע Verify'],
   adm_engine_active: ['New jobs run on', 'ახალი job-ები მუშაობს', 'Новые задания выполняются на', 'Yeni işler şunda çalışır', 'المهام الجديدة تعمل على', 'משימות חדשות רצות על'],
-  adm_engine_v1: ['V1 — Original', 'V1 — ორიგინალი', 'V1 — Оригинал', 'V1 — Orijinal', 'V1 — الأصلي', 'V1 — מקורי'],
-  adm_engine_v2: ['V2 — Code-First', 'V2 — კოდზე დაფუძნებული', 'V2 — На основе кода', 'V2 — Kod öncelikli', 'V2 — قائم على الكود', 'V2 — מבוסס קוד'],
+  adm_engine_v1: ['V1 — Original', 'V1: ორიგინალი', 'V1 — Оригинал', 'V1 — Orijinal', 'V1 — الأصلي', 'V1 — מקורי'],
+  adm_engine_v2: ['V2 — Code-First', 'V2: კოდზე დაფუძნებული', 'V2 — На основе кода', 'V2 — Kod öncelikli', 'V2 — قائم على الكود', 'V2 — מבוסס קוד'],
   adm_engine_new_jobs_only: [
     'A switch applies to new verifications only. A verification already running finishes on the engine it started with.',
     'გადართვა მხოლოდ ახალ ვერიფიკაციებზე ვრცელდება. უკვე დაწყებული ვერიფიკაცია იმავე ძრავაზე სრულდება, რომლითაც დაიწყო.',

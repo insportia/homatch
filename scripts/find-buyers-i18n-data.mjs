@@ -12,14 +12,7 @@ export const FIND_BUYERS_STRINGS = {
   fbx_find_buyers: ['Find Buyers', 'მყიდველების პოვნა', 'Найти покупателей', 'Alıcı bul', 'العثور على مشترين', 'מציאת קונים'],
   fbx_find_tenants: ['Find Tenants', 'მოიჯარეების პოვნა', 'Найти арендаторов', 'Kiracı bul', 'العثور على مستأجرين', 'מציאת שוכרים'],
   fbx_heading: ['Find the right people for this property', 'იპოვეთ შესაფერისი ადამიანები ამ ქონებისთვის', 'Найдите подходящих людей для этого объекта', 'Bu mülk için doğru kişileri bulun', 'اعثر على الأشخاص المناسبين لهذا العقار', 'מצאו את האנשים הנכונים לנכס הזה'],
-  fbx_supporting: [
-    'HOMATCH searches public demand signals across multiple sources and languages for people whose current property interest closely matches your listing.',
-    'HOMATCH ეძებს საჯარო მოთხოვნის სიგნალებს სხვადასხვა წყაროსა და ენაზე — ადამიანებს, რომელთა ამჟამინდელი ინტერესი თქვენს განცხადებას ზუსტად ემთხვევა.',
-    'HOMATCH ищет публичные сигналы спроса в разных источниках и на разных языках — людей, чей текущий интерес к недвижимости близок к вашему объявлению.',
-    'HOMATCH, güncel mülk ilgisi ilanınızla yakından örtüşen kişileri bulmak için birden çok kaynakta ve dilde herkese açık talep sinyallerini tarar.',
-    'يبحث HOMATCH في إشارات الطلب العامة عبر مصادر ولغات متعددة عن أشخاص يتطابق اهتمامهم الحالي بالعقار بشكل وثيق مع إعلانك.',
-    'HOMATCH מחפש אותות ביקוש ציבוריים במקורות ובשפות רבים, אחר אנשים שהעניין הנוכחי שלהם בנכס תואם מקרוב את המודעה שלכם.',
-  ],
+  fbx_supporting: ['HOMATCH searches public demand signals across multiple sources and languages for people whose current property interest closely matches your listing.', 'HOMATCH ეძებს საჯარო მოთხოვნის სიგნალებს სხვადასხვა წყაროსა და ენაზე, ადამიანებს, რომელთა ამჟამინდელი ინტერესი თქვენს განცხადებას ზუსტად ემთხვევა.', 'HOMATCH ищет публичные сигналы спроса в разных источниках и на разных языках — людей, чей текущий интерес к недвижимости близок к вашему объявлению.', 'HOMATCH, güncel mülk ilgisi ilanınızla yakından örtüşen kişileri bulmak için birden çok kaynakta ve dilde herkese açık talep sinyallerini tarar.', 'يبحث HOMATCH في إشارات الطلب العامة عبر مصادر ولغات متعددة عن أشخاص يتطابق اهتمامهم الحالي بالعقار بشكل وثيق مع إعلانك.', 'HOMATCH מחפש אותות ביקוש ציבוריים במקורות ובשפות רבים, אחר אנשים שהעניין הנוכחי שלהם בנכס תואם מקרוב את המודעה שלכם.'],
   fbx_languages_note: [
     'Searched in Georgian, Russian, English, Arabic, Hebrew and Turkish.',
     'ძიება მიმდინარეობს ქართულ, რუსულ, ინგლისურ, არაბულ, ებრაულ და თურქულ ენებზე.',
@@ -125,7 +118,7 @@ export const FIND_BUYERS_STRINGS = {
   fbx_lang_tr: ['Turkish', 'თურქული', 'Турецкий', 'Türkçe', 'التركية', 'טורקית'],
 
   /* ── admin control center ───────────────────────────────────────────── */
-  fbx_admin_title: ['Find Buyers / Tenants — control center', 'მყიდველების / მოიჯარეების ძიება — მართვის ცენტრი', 'Поиск покупателей / арендаторов — центр управления', 'Alıcı / Kiracı Bul — kontrol merkezi', 'العثور على مشترين / مستأجرين — مركز التحكم', 'מציאת קונים / שוכרים — מרכז שליטה'],
+  fbx_admin_title: ['Find Buyers / Tenants — control center', 'მყიდველების / მოიჯარეების ძიება, მართვის ცენტრი', 'Поиск покупателей / арендаторов — центр управления', 'Alıcı / Kiracı Bul — kontrol merkezi', 'العثور على مشترين / مستأجرين — مركز التحكم', 'מציאת קונים / שוכרים — מרכז שליטה'],
   fbx_admin_subtitle: ['memo23 Actors, campaign economics, source and language intelligence, cost ledger.', 'memo23 აქტორები, კამპანიის ეკონომიკა, წყაროებისა და ენების ანალიტიკა, ხარჯების რეესტრი.', 'Акторы memo23, экономика кампаний, аналитика источников и языков, журнал затрат.', 'memo23 Actor’ları, kampanya ekonomisi, kaynak ve dil istihbaratı, maliyet defteri.', 'Actors من memo23، واقتصاديات الحملات، وذكاء المصادر واللغات، وسجل التكاليف.', 'Actors של memo23, כלכלת קמפיינים, מודיעין מקורות ושפות, יומן עלויות.'],
   fbx_admin_switch: ['Social discovery (memo23)', 'სოციალური ძიება (memo23)', 'Социальный поиск (memo23)', 'Sosyal keşif (memo23)', 'الاكتشاف الاجتماعي (memo23)', 'גילוי חברתי (memo23)'],
   fbx_admin_window: ['Period', 'პერიოდი', 'Период', 'Dönem', 'الفترة', 'תקופה'],
@@ -146,8 +139,8 @@ export const FIND_BUYERS_STRINGS = {
   fbx_admin_other_cogs: ['Other attributable COGS', 'სხვა მიკუთვნებადი COGS', 'Прочая относимая себестоимость', 'Diğer ilişkilendirilebilir COGS', 'تكاليف مباشرة أخرى', 'עלות מכר ישירה אחרת'],
   fbx_admin_total_cogs: ['Total COGS', 'სულ COGS', 'Итого себестоимость', 'Toplam COGS', 'إجمالي التكلفة', 'סך עלות המכר'],
   fbx_admin_contribution: ['Gross contribution', 'მთლიანი წვლილი', 'Валовой вклад', 'Brüt katkı', 'المساهمة الإجمالية', 'תרומה גולמית'],
-  fbx_admin_qualified: ['Qualified leads', 'კვალიფიციური ლიდები', 'Квалифицированные лиды', 'Nitelikli potansiyel müşteriler', 'عملاء مؤهلون', 'לידים מוסמכים'],
-  fbx_admin_strong: ['Strong leads', 'ძლიერი ლიდები', 'Сильные лиды', 'Güçlü potansiyel müşteriler', 'عملاء أقوياء', 'לידים חזקים'],
+  fbx_admin_qualified: ['Qualified leads', 'კვალიფიციური კონტაქტები', 'Квалифицированные лиды', 'Nitelikli potansiyel müşteriler', 'عملاء مؤهلون', 'לידים מוסמכים'],
+  fbx_admin_strong: ['Strong leads', 'ძლიერი კონტაქტები', 'Сильные лиды', 'Güçlü potansiyel müşteriler', 'عملاء أقوياء', 'לידים חזקים'],
   fbx_admin_cpq: ['Cost / qualified', 'ფასი / კვალიფიციური', 'Цена / квалиф.', 'Maliyet / nitelikli', 'التكلفة / مؤهل', 'עלות / מוסמך'],
   fbx_admin_cps: ['Cost / strong', 'ფასი / ძლიერი', 'Цена / сильный', 'Maliyet / güçlü', 'التكلفة / قوي', 'עלות / חזק'],
   fbx_admin_cpu: ['Cost / useful result', 'ფასი / სასარგებლო შედეგი', 'Цена / полезный результат', 'Maliyet / faydalı sonuç', 'التكلفة / نتيجة مفيدة', 'עלות / תוצאה שימושית'],

@@ -18,6 +18,7 @@
 import { createHash } from 'node:crypto';
 import type { EvidenceRef } from './gateway.js';
 import { decodeLegacyGeorgian } from '../documents/legacyGeorgian.js';
+import { EVIDENCE_UPLOAD_CONCURRENCY, mapSettled } from './concurrency.js';
 
 export const DOC_EXCERPT_CHARS = 8_000;
 export const TOTAL_EXCERPT_CHARS = 120_000;
@@ -64,6 +65,9 @@ export async function compactResult(raw: any, upload: Uploader): Promise<Compact
   const docs: any[] = Array.isArray(result.documents) ? result.documents : [];
   const refs: EvidenceRef[] = [];
   const stats = { documents: docs.length, storedDocuments: 0, storedChars: 0, excerptChars: 0, trimmedStructure: false };
+  // Complete texts to store: decided in order below, uploaded a few at a time after the loop
+  // (concurrency.ts); each target gets its path from the upload. Same refs, same order.
+  const pending: Array<{ hash: string; body: string; targets: Array<{ path: string }> }> = [];
 
   // Newest documents keep their excerpt first, as the receiving side expects.
   const order = [...docs].sort((a, b) => String(b?.documentDate ?? '').localeCompare(String(a?.documentDate ?? '')));
@@ -82,9 +86,10 @@ export async function compactResult(raw: any, upload: Uploader): Promise<Compact
       // stored whole, so a later size trim can never lose it.
       const inline = typeof d.rawText === 'string' ? d.rawText : full;
       const hash = sha256(full);
-      const path = await upload(hash, 'text/plain', full);
-      refs.push({ sha256: hash, path, chars: full.length, contentType: 'text/plain', documentId: d.id ?? null, title: d.title ?? null });
-      d.fullTextRef = { sha256: hash, path, chars: full.length };
+      const ref: EvidenceRef = { sha256: hash, path: '', chars: full.length, contentType: 'text/plain', documentId: d.id ?? null, title: d.title ?? null };
+      refs.push(ref);
+      d.fullTextRef = { sha256: hash, path: '', chars: full.length };
+      pending.push({ hash, body: full, targets: [ref, d.fullTextRef] });
       d.textRef = d.fullTextRef;
       d.textSha256 = hash;
       d.rawText = inline;
@@ -99,10 +104,10 @@ export async function compactResult(raw: any, upload: Uploader): Promise<Compact
     const excerpt = full.slice(0, keep);
     if (excerpt.length < full.length || full.length > DOC_EXCERPT_CHARS) {
       const hash = sha256(full);
-      const path = await upload(hash, 'text/plain', full);
-      const ref: EvidenceRef = { sha256: hash, path, chars: full.length, contentType: 'text/plain', documentId: d.id ?? null, title: d.title ?? null };
+      const ref: EvidenceRef = { sha256: hash, path: '', chars: full.length, contentType: 'text/plain', documentId: d.id ?? null, title: d.title ?? null };
       refs.push(ref);
-      d.fullTextRef = { sha256: hash, path, chars: full.length };
+      d.fullTextRef = { sha256: hash, path: '', chars: full.length };
+      pending.push({ hash, body: full, targets: [ref, d.fullTextRef] });
       stats.storedDocuments++;
       stats.storedChars += full.length;
     }
@@ -111,6 +116,15 @@ export async function compactResult(raw: any, upload: Uploader): Promise<Compact
     remaining -= excerpt.length;
     stats.excerptChars += excerpt.length;
   }
+
+  // One upload per distinct text; a failure fails the result exactly as the sequential upload did.
+  const hashes = [...new Set(pending.map((p) => p.hash))];
+  const bodyOf = new Map(pending.map((p) => [p.hash, p.body]));
+  const outcomes = await mapSettled(hashes, EVIDENCE_UPLOAD_CONCURRENCY, (hash) => upload(hash, 'text/plain', bodyOf.get(hash)!));
+  const failed = outcomes.find((o): o is PromiseRejectedResult => o.status === 'rejected');
+  if (failed) throw failed.reason;
+  const pathOf = new Map(hashes.map((h, i) => [h, (outcomes[i] as PromiseFulfilledResult<string>).value]));
+  for (const p of pending) for (const t of p.targets) t.path = pathOf.get(p.hash)!;
 
   let serialized = JSON.stringify(result);
   if (overBy(serialized) > 0) {

@@ -286,6 +286,16 @@ export interface TasTimings {
   pdfTextMs: number;
   pageRenderMs: number;
   visualClassifyMs: number;
+  /**
+   * Per-file download samples (2026-10-30 speed audit): phase, bytes, ms, at most
+   * DOWNLOAD_SAMPLE_MAX. Whether the archive limits throughput per connection or in total decides
+   * any future change to download concurrency; until now only summed totals were recorded.
+   */
+  downloadSamples?: Array<{ phase: 'P' | 'O'; bytes: number; ms: number }>;
+  /** Visual and raw-reply uploads to HOMATCH storage after the archive work (queue executor). */
+  writeBackMs?: number;
+  /** Page rendering stopped for the rest of the run after RENDER_BREAKER_FAILURES straight failures with none rendered. */
+  renderBreaker?: { tripped: boolean; skipped: number; firstError: string | null };
   counts: {
     searchPages: number;
     details: number;
@@ -488,6 +498,36 @@ async function pool<T>(items: T[], n: number, fn: (t: T) => Promise<void>): Prom
   await Promise.all(workers);
 }
 
+/*
+ * THE RENDER BREAKER (2026-10-30 speed audit). In production every page render failed: 0 pages
+ * rendered in all 17 TAS runs of 14 days, 6–35 failures each, while the attempts held the single
+ * render lane for 30–80 s per run (a priority download worker waits behind it). After this many
+ * failures in a row with NOT ONE success in the run, further page renders fail at once, exactly as
+ * a real failure does at every call site (the visual comes from embedded images or tile stitching,
+ * or is counted unrendered). Output is unchanged while rendering is broken; one success anywhere
+ * keeps it from tripping. Tile stitching is not a page render and is never stopped.
+ */
+export const RENDER_BREAKER_FAILURES = 3;
+export const DOWNLOAD_SAMPLE_MAX = 400;
+
+/** The breaker's state machine, pure (one per run). */
+export function renderBreaker(limit = RENDER_BREAKER_FAILURES) {
+  let rendered = 0;
+  let straight = 0;
+  let skipped = 0;
+  let firstError: string | null = null;
+  return {
+    open: (): boolean => rendered === 0 && straight >= limit,
+    ok(): void { rendered++; straight = 0; },
+    fail(e: unknown): void {
+      straight++;
+      if (firstError === null) firstError = String((e as Error)?.message ?? e).slice(0, 200);
+    },
+    skip(): void { skipped++; },
+    state: () => ({ tripped: rendered === 0 && straight >= limit, skipped, firstError }),
+  };
+}
+
 /** Per-page usable text below this many characters = a scanned / image-only page. */
 const PAGE_TEXT_MIN = 50;
 function scanPagesOf(pages: string[] | undefined, text: string, numpages: number | null): number[] {
@@ -585,6 +625,10 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
     } finally {
       timings[key] += performance.now() - t;
     }
+  };
+  const sampleDownload = (phase: 'P' | 'O', bytes: number, ms: number) => {
+    const s = (timings.downloadSamples ??= []);
+    if (s.length < DOWNLOAD_SAMPLE_MAX) s.push({ phase, bytes, ms: Math.round(ms) });
   };
   const result: TasApiResult = {
     implementation: TAS_API_IMPLEMENTATION,
@@ -849,12 +893,20 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
     let renderer: PdfPageRenderer | null = null;
     // One Chromium, one render at a time.
     let renderLock: Promise<unknown> = Promise.resolve();
+    const breaker = renderBreaker();
     const renderPages = (bytes: Uint8Array, o: Parameters<PdfPageRenderer['render']>[1]) => {
+      // Rendering has failed every time so far in this run: fail at once, as a real failure would.
+      if (breaker.open()) {
+        breaker.skip();
+        timings.renderBreaker = breaker.state();
+        return Promise.reject(new Error('RENDER_BREAKER'));
+      }
       const run = renderLock.then(() => {
         renderer ??= options.renderPdfPages!();
         const rr = renderer;
         return timed('pageRenderMs', () => rr.render(bytes, o));
       });
+      run.then(() => breaker.ok(), (e) => breaker.fail(e)).finally(() => { timings.renderBreaker = breaker.state(); });
       renderLock = run.catch(() => {});
       return run;
     };
@@ -1175,9 +1227,11 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       let declared: string | null = null;
       let cls: ReturnType<typeof classifyPayload>;
       try {
+        const dl0 = performance.now();
         const r = await timed('attachmentDownloadsMs', () => client.request(attachmentUrl(a.attachedFileId), {}, { maxBytes: priorityMaxBytes }));
         timings.counts.downloads++;
         timings.counts.downloadBytes += r.bytes.length;
+        sampleDownload('P', r.bytes.length, performance.now() - dl0);
         bytes = r.bytes;
         declared = fileNameFromDisposition(r.disposition);
         cls = classifyPayload({ status: r.status, contentType: r.contentType, bytes: r.bytes, fileName: declared ?? a.fileName });
@@ -1426,9 +1480,11 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
         } else if (downloads < maxDownloads || wantsBytes || exempt) {
           downloads++;
           const exemptMax = smallImage ? BUDGET_EXEMPT_IMAGE_MAX_BYTES : BUDGET_EXEMPT_PDF_MAX_BYTES;
+          const dl0 = performance.now();
           const r = await timed('attachmentDownloadsMs', () => client.request(attachmentUrl(a.attachedFileId), {}, exempt && !wantsBytes ? { maxBytes: exemptMax } : {}));
           timings.counts.downloads++;
           timings.counts.downloadBytes += r.bytes.length;
+          sampleDownload('O', r.bytes.length, performance.now() - dl0);
           // The servlet's own Content-Disposition is the authoritative name
           // (and the only reliable type signal for PLA, which has no magic).
           const declared = fileNameFromDisposition(r.disposition);

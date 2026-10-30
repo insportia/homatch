@@ -180,7 +180,9 @@ test('the badge goes through the presentation boundary at every call site', () =
   const page = code('src/pages/VerifyPage.tsx');
   assert.ok(!/report\.entityType\|\|mode/.test(page),
     'a call site still renders the raw entityType');
-  assert.equal(page.split('<PropertyTypeBadge report={report} mode={mode}/>').length - 1, 3,
+  // Two sites since 2026-10-30: the evidence-only fallback (the third) is gone,
+  // because research completion is not report delivery (reportDelivery.ts).
+  assert.equal(page.split('<PropertyTypeBadge report={report} mode={mode}/>').length - 1, 2,
     'not every badge site uses the shared component');
 });
 

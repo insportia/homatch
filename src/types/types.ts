@@ -1380,4 +1380,8 @@ export interface ResearchJobRecord {
   company_name: string | null;
   coverage_level: string | null;
   outstanding_count: number | null;
+  // Report delivery (src/verify/reportDelivery.ts): research COMPLETE is not a
+  // delivered report. Read by the history list; never the report itself.
+  synthesis_state?: string | null;
+  synthesis_attempts?: number | null;
 }

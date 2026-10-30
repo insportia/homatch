@@ -86,9 +86,9 @@ test('legal compliance: registration acceptance and cookie consent', opts, async
 
   const { chromium } = resolvePlaywright();
   const preview = spawn(
-    process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'],
-    { cwd: ROOT, stdio: 'ignore', shell: process.platform === 'win32' },
+    process.execPath,
+    [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'],
+    { cwd: ROOT, stdio: 'ignore', windowsHide: true },
   );
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
   t.after(async () => { await browser.close().catch(() => {}); preview.kill(); });

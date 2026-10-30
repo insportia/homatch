@@ -3,14 +3,7 @@
 // Discovery Control Center. Order: [en, ka, ru, tr, ar, he].
 export const DISCOVERY_ENGINE_STRINGS = {
   // ── Matches: the 30-day active-demand rule ──────────────────────────────
-  matches_history_title: [
-    'Older than {{days}} days — no longer current demand ({{count}})',
-    '{{days}} დღეზე ძველი — აღარ არის აქტუალური მოთხოვნა ({{count}})',
-    'Старше {{days}} дней — больше не актуальный спрос ({{count}})',
-    '{{days}} günden eski — artık güncel talep değil ({{count}})',
-    'أقدم من {{days}} يومًا — لم يعد طلبًا حاليًا ({{count}})',
-    'ישן מ-{{days}} ימים — כבר לא ביקוש עדכני ({{count}})',
-  ],
+  matches_history_title: ['Older than {{days}} days — no longer current demand ({{count}})', '{{days}} დღეზე ძველი, აღარ არის აქტუალური მოთხოვნა ({{count}})', 'Старше {{days}} дней — больше не актуальный спрос ({{count}})', '{{days}} günden eski — artık güncel talep değil ({{count}})', 'أقدم من {{days}} يومًا — لم يعد طلبًا حاليًا ({{count}})', 'ישן מ-{{days}} ימים — כבר לא ביקוש עדכני ({{count}})'],
   matches_history_body: [
     'These people posted more than {{days}} days ago, so HOMATCH no longer treats them as potentially interested right now. They stay here for reference and cannot be opened for Credits.',
     'ამ ადამიანებმა {{days}} დღეზე მეტი ხნის წინ დაწერეს, ამიტომ HOMATCH მათ ახლა პოტენციურად დაინტერესებულ პირებად აღარ მიიჩნევს. ისინი აქ საცნობაროდ რჩება და კრედიტებით ვერ გაიხსნება.',
@@ -59,14 +52,7 @@ export const DISCOVERY_ENGINE_STRINGS = {
   admin_disc_title: [
     'Discovery control center', 'აღმოჩენის მართვის ცენტრი', 'Центр управления поиском', 'Keşif kontrol merkezi', 'مركز التحكم بالاكتشاف', 'מרכז בקרת גילוי',
   ],
-  admin_disc_sub: [
-    'Is Find Buyers / Find Tenants discovery working right now — sources, queue, classifier, current demand and campaigns.',
-    'მუშაობს თუ არა ახლა მყიდველების / მოიჯარეების ძიება — წყაროები, რიგი, კლასიფიკატორი, აქტუალური მოთხოვნა და კამპანიები.',
-    'Работает ли сейчас поиск покупателей / арендаторов — источники, очередь, классификатор, актуальный спрос и кампании.',
-    'Alıcı / Kiracı Bul keşfi şu anda çalışıyor mu — kaynaklar, kuyruk, sınıflandırıcı, güncel talep ve kampanyalar.',
-    'هل يعمل اكتشاف المشترين / المستأجرين الآن — المصادر والطابور والمصنِّف والطلب الحالي والحملات.',
-    'האם גילוי קונים / שוכרים עובד עכשיו — מקורות, תור, מסווג, ביקוש עדכני וקמפיינים.',
-  ],
+  admin_disc_sub: ['Is Find Buyers / Find Tenants discovery working right now — sources, queue, classifier, current demand and campaigns.', 'მუშაობს თუ არა ახლა მყიდველების / მოიჯარეების ძიება, წყაროები, რიგი, კლასიფიკატორი, აქტუალური მოთხოვნა და კამპანიები.', 'Работает ли сейчас поиск покупателей / арендаторов — источники, очередь, классификатор, актуальный спрос и кампании.', 'Alıcı / Kiracı Bul keşfi şu anda çalışıyor mu — kaynaklar, kuyruk, sınıflandırıcı, güncel talep ve kampanyalar.', 'هل يعمل اكتشاف المشترين / المستأجرين الآن — المصادر والطابور والمصنِّف والطلب الحالي والحملات.', 'האם גילוי קונים / שוכרים עובד עכשיו — מקורות, תור, מסווג, ביקוש עדכני וקמפיינים.'],
   admin_disc_refresh: ['Refresh', 'განახლება', 'Обновить', 'Yenile', 'تحديث', 'רענון'],
   admin_disc_load_failed: [
     'Could not load discovery status.', 'აღმოჩენის სტატუსი ვერ ჩაიტვირთა.', 'Не удалось загрузить статус поиска.', 'Keşif durumu yüklenemedi.', 'تعذّر تحميل حالة الاكتشاف.', 'לא ניתן לטעון את מצב הגילוי.',

@@ -14,14 +14,7 @@ export const HOMATCH_LEADS_STRINGS = {
     'גלו אנשים שדרישות הנכס שלהם תואמות את המודעה שלכם. עיינו בכל הזדמנות רלוונטית ופתחו רק את אנשי הקשר שאליהם תרצו לפנות.',
   ],
   hl_intro_headline: ['Every match is a new opportunity.', 'ყოველი დამთხვევა ახალი შესაძლებლობაა.', 'Каждое совпадение — это новая возможность.', 'Her eşleşme yeni bir fırsattır.', 'كل تطابق فرصة جديدة.', 'כל התאמה היא הזדמנות חדשה.'],
-  hl_intro_description: [
-    'Your next buyer could be searching within a standard budget or exploring the premium market. HOMATCH brings both audiences together, ranked by how closely their needs match your property.',
-    'თქვენი შემდეგი მყიდველი შეიძლება სტანდარტული ბიუჯეტით ეძებდეს ან პრემიუმ ბაზარს იკვლევდეს. HOMATCH ორივე აუდიტორიას ერთად აჩვენებს — იმის მიხედვით, რამდენად ზუსტად ემთხვევა მათი საჭიროებები თქვენს ქონებას.',
-    'Ваш следующий покупатель может искать в рамках стандартного бюджета или присматриваться к премиальному рынку. HOMATCH объединяет обе аудитории и ранжирует их по тому, насколько точно их потребности совпадают с вашим объектом.',
-    'Bir sonraki alıcınız standart bir bütçeyle arıyor ya da premium pazarı keşfediyor olabilir. HOMATCH her iki kitleyi bir araya getirir ve ihtiyaçlarının mülkünüzle ne kadar örtüştüğüne göre sıralar.',
-    'قد يبحث مشتريك التالي ضمن ميزانية قياسية أو يستكشف السوق المميز. يجمع HOMATCH الفئتين معًا، مرتّبتين حسب مدى تطابق احتياجاتهم مع عقارك.',
-    'הקונה הבא שלכם עשוי לחפש בתקציב רגיל או לבחון את שוק הפרימיום. HOMATCH מפגיש את שני הקהלים, מדורגים לפי מידת ההתאמה של צורכיהם לנכס שלכם.',
-  ],
+  hl_intro_description: ['Your next buyer could be searching within a standard budget or exploring the premium market. HOMATCH brings both audiences together, ranked by how closely their needs match your property.', 'თქვენი შემდეგი მყიდველი შეიძლება სტანდარტული ბიუჯეტით ეძებდეს ან პრემიუმ ბაზარს იკვლევდეს. HOMATCH ორივე აუდიტორიას ერთად აჩვენებს, იმის მიხედვით, რამდენად ზუსტად ემთხვევა მათი საჭიროებები თქვენს ქონებას.', 'Ваш следующий покупатель может искать в рамках стандартного бюджета или присматриваться к премиальному рынку. HOMATCH объединяет обе аудитории и ранжирует их по тому, насколько точно их потребности совпадают с вашим объектом.', 'Bir sonraki alıcınız standart bir bütçeyle arıyor ya da premium pazarı keşfediyor olabilir. HOMATCH her iki kitleyi bir araya getirir ve ihtiyaçlarının mülkünüzle ne kadar örtüştüğüne göre sıralar.', 'قد يبحث مشتريك التالي ضمن ميزانية قياسية أو يستكشف السوق المميز. يجمع HOMATCH الفئتين معًا، مرتّبتين حسب مدى تطابق احتياجاتهم مع عقارك.', 'הקונה הבא שלכם עשוי לחפש בתקציב רגיל או לבחון את שוק הפרימיום. HOMATCH מפגיש את שני הקהלים, מדורגים לפי מידת ההתאמה של צורכיהם לנכס שלכם.'],
   hl_intro_closing: [
     'Explore every relevant opportunity. Unlock only the contacts you want to approach.',
     'გაეცანით ყველა შესაბამის შესაძლებლობას. გახსენით მხოლოდ ის კონტაქტები, ვისთანაც დაკავშირება გსურთ.',
@@ -104,22 +97,8 @@ export const HOMATCH_LEADS_STRINGS = {
   hl_looking_rent: ['To rent: {{type}}', 'ქირაობა: {{type}}', 'Аренда: {{type}}', 'Kiralama: {{type}}', 'للإيجار: {{type}}', 'לשכירות: {{type}}'],
 
   /* ── dynamic summary (approved structure; clauses omitted when unsupported) ── */
-  hl_summary_full: [
-    'Looking for a {{propertyType}} in {{preferredLocations}}, with a budget of {{budgetRange}}.',
-    'ეძებს {{propertyType}}-ს — {{preferredLocations}}, ბიუჯეტით {{budgetRange}}.',
-    'Ищет {{propertyType}}: {{preferredLocations}}, бюджет {{budgetRange}}.',
-    '{{preferredLocations}} bölgesinde {{budgetRange}} bütçeyle {{propertyType}} arıyor.',
-    'يبحث عن {{propertyType}} في {{preferredLocations}}، بميزانية {{budgetRange}}.',
-    'מחפש/ת {{propertyType}} ב{{preferredLocations}}, בתקציב של {{budgetRange}}.',
-  ],
-  hl_summary_where: [
-    'Looking for a {{propertyType}} in {{preferredLocations}}.',
-    'ეძებს {{propertyType}}-ს — {{preferredLocations}}.',
-    'Ищет {{propertyType}}: {{preferredLocations}}.',
-    '{{preferredLocations}} bölgesinde {{propertyType}} arıyor.',
-    'يبحث عن {{propertyType}} في {{preferredLocations}}.',
-    'מחפש/ת {{propertyType}} ב{{preferredLocations}}.',
-  ],
+  hl_summary_full: ['Looking for a {{propertyType}} in {{preferredLocations}}, with a budget of {{budgetRange}}.', 'ეძებს {{propertyType}}-ს: {{preferredLocations}}, ბიუჯეტით {{budgetRange}}.', 'Ищет {{propertyType}}: {{preferredLocations}}, бюджет {{budgetRange}}.', '{{preferredLocations}} bölgesinde {{budgetRange}} bütçeyle {{propertyType}} arıyor.', 'يبحث عن {{propertyType}} في {{preferredLocations}}، بميزانية {{budgetRange}}.', 'מחפש/ת {{propertyType}} ב{{preferredLocations}}, בתקציב של {{budgetRange}}.'],
+  hl_summary_where: ['Looking for a {{propertyType}} in {{preferredLocations}}.', 'ეძებს {{propertyType}}-ს: {{preferredLocations}}.', 'Ищет {{propertyType}}: {{preferredLocations}}.', '{{preferredLocations}} bölgesinde {{propertyType}} arıyor.', 'يبحث عن {{propertyType}} في {{preferredLocations}}.', 'מחפש/ת {{propertyType}} ב{{preferredLocations}}.'],
   hl_summary_budget: [
     'Looking for a {{propertyType}}, with a budget of {{budgetRange}}.',
     'ეძებს {{propertyType}}-ს, ბიუჯეტით {{budgetRange}}.',
@@ -178,14 +157,7 @@ export const HOMATCH_LEADS_STRINGS = {
   /* ── unlock dialog ── */
   hl_unlock_title: ['Confirm contact access', 'ამ კონტაქტის გახსნა', 'Открыть этот контакт', 'Bu kişiyi aç', 'فتح جهة الاتصال هذه', 'פתיחת איש קשר זה'],
   hl_bulk_title: ['Selected contacts', 'მონიშნული კონტაქტების გახსნა', 'Открыть выбранные контакты', 'Seçili Kişileri Aç', 'فتح جهات الاتصال المحددة', 'פתיחת אנשי הקשר שנבחרו'],
-  hl_unlock_body: [
-    'You pay once per person. Contacts you already have access to are never charged again, on any listing.',
-    'თითო ადამიანზე იხდით ერთხელ. უკვე გახსნილ კონტაქტებში თანხა აღარასოდეს ჩამოგეჭრებათ — არცერთ განცხადებაზე.',
-    'Вы платите один раз за каждого человека. За уже открытые контакты повторно не списывается — ни по одному объявлению.',
-    'Her kişi için bir kez ödersiniz. Daha önce açtığınız kişiler için hiçbir ilanda yeniden ücret alınmaz.',
-    'تدفع مرة واحدة لكل شخص. لا تُحتسب أي رسوم مرة أخرى على جهات الاتصال التي فتحتها سابقًا، على أي إعلان.',
-    'משלמים פעם אחת לכל אדם. על אנשי קשר שכבר פתחתם לא תחויבו שוב, בשום מודעה.',
-  ],
+  hl_unlock_body: ['You pay once per person. Contacts you already have access to are never charged again, on any listing.', 'თითო ადამიანზე იხდით ერთხელ. უკვე გახსნილ კონტაქტებში თანხა აღარასოდეს ჩამოგეჭრებათ, არცერთ განცხადებაზე.', 'Вы платите один раз за каждого человека. За уже открытые контакты повторно не списывается — ни по одному объявлению.', 'Her kişi için bir kez ödersiniz. Daha önce açtığınız kişiler için hiçbir ilanda yeniden ücret alınmaz.', 'تدفع مرة واحدة لكل شخص. لا تُحتسب أي رسوم مرة أخرى على جهات الاتصال التي فتحتها سابقًا، على أي إعلان.', 'משלמים פעם אחת לכל אדם. על אנשי קשר שכבר פתחתם לא תחויבו שוב, בשום מודעה.'],
   hl_unlock_privacy: [
     'You will see only the contact details this member allows. Access to a contact is not consent to marketing.',
     'დაინახავთ მხოლოდ იმ საკონტაქტო მონაცემებს, რასაც ეს წევრი გიზიარებთ. კონტაქტის გახსნა მარკეტინგზე თანხმობას არ ნიშნავს.',
@@ -211,12 +183,12 @@ export const HOMATCH_LEADS_STRINGS = {
   hl_bulk_summary: ['Standard {{standard}} · Premium {{premium}} · {{credits}} credits', 'სტანდარტული {{standard}} · პრემიუმ {{premium}} · {{credits}} კრედიტი', 'Стандарт {{standard}} · Премиум {{premium}} · {{credits}} кредитов', 'Standart {{standard}} · Premium {{premium}} · {{credits}} kredi', 'قياسي {{standard}} · مميز {{premium}} · {{credits}} رصيد', 'סטנדרטי {{standard}} · פרימיום {{premium}} · {{credits}} קרדיטים'],
   hl_clear_selection: ['Clear', 'გასუფთავება', 'Сбросить', 'Temizle', 'مسح', 'ניקוי'],
   hl_unlock_confirm: ['Confirm · {{n}} credits', 'გახსნა {{n}} კრედიტად', 'Открыть за {{n}} кредитов', '{{n}} krediye aç', 'افتح مقابل {{n}} رصيد', 'פתיחה תמורת {{n}} קרדיטים'],
-  hl_unlock_confirm_free: ['Open — already available', 'გახსნა — უკვე გახსნილია', 'Открыть — уже открыто', 'Aç — zaten açık', 'فتح — مفتوح مسبقًا', 'פתיחה — כבר נפתח'],
+  hl_unlock_confirm_free: ['Open — already available', 'გახსნა: უკვე გახსნილია', 'Открыть — уже открыто', 'Aç — zaten açık', 'فتح — مفتوح مسبقًا', 'פתיחה — כבר נפתח'],
   hl_unlocked_toast_one: ['1 contact now available · {{credits}} credits', 'გაიხსნა 1 კონტაქტი · {{credits}} კრედიტი', 'Открыт 1 контакт · {{credits}} кредитов', '1 kişi açıldı · {{credits}} kredi', 'تم فتح جهة اتصال واحدة · {{credits}} رصيد', 'נפתח איש קשר אחד · {{credits}} קרדיטים'],
   hl_unlocked_toast: ['{{n}} contacts now available · {{credits}} credits', 'გაიხსნა {{n}} კონტაქტი · {{credits}} კრედიტი', 'Открыто контактов: {{n}} · {{credits}} кредитов', '{{n}} kişi açıldı · {{credits}} kredi', 'تم فتح {{n}} جهة اتصال · {{credits}} رصيد', 'נפתחו {{n}} אנשי קשר · {{credits}} קרדיטים'],
-  hl_unlocked_toast_free: ['Already available — no credits used', 'უკვე გახსნილია — კრედიტი არ დახარჯულა', 'Уже открыто — кредиты не списаны', 'Zaten açık — kredi kullanılmadı', 'مفتوح مسبقًا — لم يُستخدم أي رصيد', 'כבר נפתח — לא נוצלו קרדיטים'],
+  hl_unlocked_toast_free: ['Already available — no credits used', 'უკვე გახსნილია: კრედიტი არ დახარჯულა', 'Уже открыто — кредиты не списаны', 'Zaten açık — kredi kullanılmadı', 'مفتوح مسبقًا — لم يُستخدم أي رصيد', 'כבר נפתח — לא נוצלו קרדיטים'],
   hl_cancel: ['Cancel', 'გაუქმება', 'Отмена', 'İptal', 'إلغاء', 'ביטול'],
-  hl_top_up: ['Add credits', 'კრედიტის შევსება', 'Пополнить кредиты', 'Kredi yükle', 'إضافة رصيد', 'הוספת קרדיטים'],
+  hl_top_up: ['View balance', 'ბალანსის ნახვა', 'Посмотреть баланс', 'Bakiyeyi gör', 'عرض الرصيد', 'צפייה ביתרה'],
   hl_retry: ['Try again', 'ხელახლა ცდა', 'Повторить', 'Tekrar dene', 'إعادة المحاولة', 'נסו שוב'],
 
   /* ── details drawer ── */
@@ -353,8 +325,8 @@ export const HOMATCH_LEADS_STRINGS = {
   rb_ext_problem_step_too_small: ['Add at least {{n}} credits to the total.', 'ჯამს დაამატეთ მინიმუმ {{n}} კრედიტი.', 'Добавьте к итогу не менее {{n}} кредитов.', 'Toplama en az {{n}} kredi ekleyin.', 'أضف {{n}} رصيد على الأقل إلى الإجمالي.', 'הוסיפו לסך לפחות {{n}} קרדיטים.'],
   rb_ext_problem_over_balance: ['The additional amount is more than your wallet balance.', 'დამატებითი თანხა საფულის ბალანსს აღემატება.', 'Дополнительная сумма больше баланса кошелька.', 'Ek tutar cüzdan bakiyenizden fazla.', 'المبلغ الإضافي أكبر من رصيد محفظتك.', 'הסכום הנוסף גבוה מיתרת הארנק.'],
   /* ── admin ── */
-  admin_il_title: ['HOMATCH Leads — pricing and Premium rules', 'HOMATCH Leads — ფასები და პრემიუმ წესები', 'HOMATCH Leads — цены и правила Премиум', 'HOMATCH Leads — fiyatlar ve Premium kuralları', 'HOMATCH Leads — الأسعار وقواعد الفئة المميزة', 'HOMATCH Leads — מחירים וכללי פרימיום'],
-  admin_il_subtitle: ['A rule decides only the price segment of a lead, never its match score.', 'წესი განსაზღვრავს მხოლოდ ფასის სეგმენტს და არასოდეს — დამთხვევის ქულას.', 'Правило определяет только ценовой сегмент, но не оценку совпадения.', 'Kural yalnızca fiyat segmentini belirler, eşleşme puanını asla değiştirmez.', 'تحدد القاعدة فئة السعر فقط، ولا تغيّر درجة التطابق أبدًا.', 'הכלל קובע רק את קטגוריית המחיר, לעולם לא את ציון ההתאמה.'],
+  admin_il_title: ['HOMATCH Leads — pricing and Premium rules', 'HOMATCH Leads: ფასები და პრემიუმ წესები', 'HOMATCH Leads — цены и правила Премиум', 'HOMATCH Leads — fiyatlar ve Premium kuralları', 'HOMATCH Leads — الأسعار وقواعد الفئة المميزة', 'HOMATCH Leads — מחירים וכללי פרימיום'],
+  admin_il_subtitle: ['A rule decides only the price segment of a lead, never its match score.', 'წესი განსაზღვრავს მხოლოდ ფასის სეგმენტს და არასოდეს, დამთხვევის ქულას.', 'Правило определяет только ценовой сегмент, но не оценку совпадения.', 'Kural yalnızca fiyat segmentini belirler, eşleşme puanını asla değiştirmez.', 'تحدد القاعدة فئة السعر فقط، ولا تغيّر درجة التطابق أبدًا.', 'הכלל קובע רק את קטגוריית המחיר, לעולם לא את ציון ההתאמה.'],
   admin_il_price_standard: ['Standard price (credits)', 'სტანდარტული ფასი (კრედიტი)', 'Цена Стандарт (кредиты)', 'Standart fiyat (kredi)', 'السعر القياسي (رصيد)', 'מחיר סטנדרטי (קרדיטים)'],
   admin_il_price_premium: ['Premium price (credits)', 'პრემიუმ ფასი (კრედიტი)', 'Цена Премиум (кредиты)', 'Premium fiyat (kredi)', 'السعر المميز (رصيد)', 'מחיר פרימיום (קרדיטים)'],
   admin_il_unlocks_30d: ['Unlocks 30d (Standard / Premium)', 'გახსნები 30 დღე (სტანდ. / პრემ.)', 'Открытия за 30 дн. (Ст. / Прем.)', 'Açılışlar 30g (Standart / Premium)', 'عمليات الفتح 30 يومًا (قياسي / مميز)', 'פתיחות 30 יום (סטנדרטי / פרימיום)'],

@@ -236,6 +236,7 @@ const AdminHomiServicesPage = lazyRoute(() => import('./pages/admin/AdminHomiSer
 const AdminVoiceAiPage = lazyRoute(() => import('./pages/admin/AdminVoiceAiPage'));
 const AdminPricingPage = lazyRoute(() => import('./pages/admin/AdminPricingPage'));
 const AdminPlansPage = lazyRoute(() => import('./pages/admin/AdminPlansPage'));
+const AdminAccessPage = lazyRoute(() => import('./pages/admin/AdminAccessPage'));
 const AdminSpendCapsPage = lazyRoute(() => import('./pages/admin/AdminSpendCapsPage'));
 const AdminDiagnosticsPage = lazyRoute(() => import('./pages/admin/AdminDiagnosticsPage'));
 const AdminStoragePage = lazyRoute(() => import('./pages/admin/AdminStoragePage'));
@@ -760,6 +761,7 @@ const routeTable: RouteConfig[] = [
   { name: 'Admin Calls (alias)',    path: '/admin/call-center',   element: <Navigate to="/admin/communication/call-center" replace />, adminOnly: true, visible: false },
   { name: 'Admin Pricing',     path: '/admin/pricing',            element: adminWrap(<AdminPricingPage />),     adminOnly: true },
   { name: 'Admin Plans',       path: '/admin/plans',              element: adminWrap(<AdminPlansPage />),       adminOnly: true },
+  { name: 'Admin Access',      path: '/admin/access',             element: adminWrap(<AdminAccessPage />),      adminOnly: true },
   { name: 'Admin Spend Caps',  path: '/admin/spend-caps',         element: adminWrap(<AdminSpendCapsPage />),   adminOnly: true },
   { name: 'Admin Diagnostics', path: '/admin/diagnostics',        element: adminWrap(<AdminDiagnosticsPage />), adminOnly: true },
   { name: 'Admin Storage',     path: '/admin/storage',            element: adminWrap(<AdminStoragePage />),     adminOnly: true },

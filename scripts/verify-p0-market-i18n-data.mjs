@@ -10,5 +10,5 @@
 export const VERIFY_P0_MARKET_STRINGS = {
   cmp_reason_same_address: ['Same building address', 'იგივე მისამართი', 'Тот же адрес', 'Aynı bina adresi', 'عنوان المبنى نفسه', 'אותה כתובת בניין'],
   cmp_reason_street_branch: ['A lane off the same street', 'იგივე ქუჩის შესახვევი', 'Переулок той же улицы', 'Aynı sokağın ara sokağı', 'زقاق متفرع من الشارع نفسه', 'סמטה היוצאת מאותו רחוב'],
-  cmp_reason_adjacent_district: ['Neighbouring area — background only', 'მეზობელი უბანი — მხოლოდ ფონისთვის', 'Соседний район — только для фона', 'Komşu semt — yalnızca arka plan', 'حي مجاور — للخلفية فقط', 'שכונה סמוכה — רקע בלבד'],
+  cmp_reason_adjacent_district: ['Neighbouring area — background only', 'მეზობელი უბანი: მხოლოდ ფონისთვის', 'Соседний район — только для фона', 'Komşu semt — yalnızca arka plan', 'حي مجاور — للخلفية فقط', 'שכונה סמוכה — רקע בלבד'],
 };

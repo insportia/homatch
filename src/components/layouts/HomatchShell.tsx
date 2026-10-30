@@ -45,7 +45,8 @@ import {
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { usePathAvailable, useServiceControls, useServiceVisible, type ServiceKey } from '@/lib/serviceControls';
 import { useEntitlementStatus } from '@/subscriptions/useEntitlementStatus';
-import { planLabel } from '@/subscriptions/components';
+import { hasAnyIncluded, planLabel, UnlimitedAccessBadge } from '@/subscriptions/components';
+import { hasUnlimitedAccess } from '@/subscriptions/service';
 
 interface NavItem {
   key: string;
@@ -259,6 +260,8 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
    * lie about their balance. */
   const [credits, setCredits] = useState<number | null>(null);
   const entitlements = useEntitlementStatus();
+  /* Owner / Unlimited grant: from entitlement_status_for_me only, never a role check here. */
+  const unlimitedAccess = hasUnlimitedAccess(entitlements.status);
 
   const loadCredits = useCallback(async () => {
     if (!homatchUser) return;
@@ -493,10 +496,13 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
             >
               <span className="block truncate text-muted-foreground">{t('sub_nav_plan')}</span>
               <span className="block truncate font-semibold text-foreground">
-                {entitlements.status ? planLabel(t, entitlements.status.subscription?.hasAccess ? entitlements.status.subscription.planCode : 'FREE') : '—'}
+                {!entitlements.status ? '—'
+                  : unlimitedAccess ? t('acc_unlimited')
+                  : planLabel(t, entitlements.status.subscription?.hasAccess ? entitlements.status.subscription.planCode : 'FREE')}
               </span>
             </button>
-            {credits !== null && credits > 0 ? (
+            {/* Owner / Unlimited access (20261208110000): no credit balance, no plans button. */}
+            {credits !== null && credits > 0 && !unlimitedAccess ? (
               <button
                 type="button"
                 onClick={() => navigate('/credits')}
@@ -508,7 +514,7 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
             ) : null}
           </dl>
 
-          {!entitlements.status?.subscription?.hasAccess ? (
+          {!hasAnyIncluded(entitlements.status) ? (
             <Button
               size="sm"
               className="mt-2.5 h-9 w-full gap-1.5 rounded-[0.5rem] bg-gold text-primary hover:bg-gold-hover"
@@ -583,7 +589,9 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
                   first-class control in the header rather than something
                   buried in a menu. */}
               {/* Legacy balance only: shown while the account still holds credits. */}
-              {credits !== null && credits > 0 ? (
+              {unlimitedAccess ? (
+                <UnlimitedAccessBadge status={entitlements.status} tone="dark" className="h-10 shrink px-3" />
+              ) : credits !== null && credits > 0 ? (
               <button
                 type="button"
                 onClick={() => navigate('/credits')}

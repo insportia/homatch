@@ -143,17 +143,20 @@ export default function PricingPage() {
               </label>
             ) : null}
             {error ? <p role="alert" className="mt-4 text-sm text-destructive">{error}</p> : null}
-            {currentPlan ? <p className="mt-4 text-sm text-muted-foreground">{t('sub_upgrade_note')}</p> : null}
+            {currentPlan ? <p className="mt-4 text-sm text-muted-foreground">{t('sub_active_note')} {t('sub_upgrade_note')}</p> : null}
           </>
         )}
 
-        <section className="mt-10 flex gap-3 rounded-2xl border border-border/60 bg-card/50 p-5 sm:p-6">
-          <Gift className="mt-0.5 h-5 w-5 shrink-0 text-gold-ink" aria-hidden="true" />
-          <div className="min-w-0">
-            <h2 className="text-base font-semibold">{t('sub_trials_title')}</h2>
-            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t('sub_trials_body')}</p>
-          </div>
-        </section>
+        {/* The first-use offer is said only when the server confirms both trials are on. */}
+        {plans?.trials?.includes('VERIFY') && plans.trials.includes('CONTRACT_ANALYSIS') ? (
+          <section className="mt-10 flex gap-3 rounded-2xl border border-border/60 bg-card/50 p-5 sm:p-6">
+            <Gift className="mt-0.5 h-5 w-5 shrink-0 text-gold-ink" aria-hidden="true" />
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold">{t('sub_trials_title')}</h2>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t('sub_trials_body')}</p>
+            </div>
+          </section>
+        ) : null}
         <p className="mt-6 max-w-[60ch] text-sm leading-relaxed text-muted-foreground">{t('sub_extra_costs')}</p>
       </main>
 

@@ -277,8 +277,8 @@ export function reportRepairPrompt(findings: string[], parseFailed: boolean): st
 
 /** One paid report call, as the attempts ledger keeps it (synthesis_json._reportAttempts). */
 export interface ReportAttempt {
-  /** first | repair | escalation; a rebuild's calls carry build > 1. */
-  kind: 'first' | 'repair' | 'escalation' | 'legacy';
+  /** first | repair | escalation | polish (the summary rewrite); a rebuild's calls carry build > 1. */
+  kind: 'first' | 'repair' | 'escalation' | 'polish' | 'legacy';
   model: string;
   inputTokens: number;
   cachedTokens: number;

@@ -96,7 +96,7 @@ function desk(over = {}) {
 
 async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false, accountType = 'BROKER', summary = desk(), rpc = {} } = {}) {
   const { chromium } = resolvePlaywright();
-  const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
+  const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
   t.after(async () => { await browser.close().catch(() => {}); server.kill(); });
   for (let i = 0; i < 80; i += 1) { try { await fetch(BASE); break; } catch { await new Promise((r) => setTimeout(r, 250)); } }
@@ -279,7 +279,7 @@ test('the directory purchase is confirmed, keyed, and a retry after a refusal re
   assert.equal(calls.filter((c) => c.name === 'broker_directory_purchase').length, 0, 'charged before confirmation');
   await dialog.getByRole('button', { name: 'Pay and publish' }).click();
   await page.waitForTimeout(600);
-  assert.match(await page.evaluate(() => document.body.innerText), /Not enough Credits/);
+  assert.match(await page.evaluate(() => document.body.innerText), /Not enough credits/i);
 
   await page.getByRole('button', { name: 'Buy directory listing' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Pay and publish' }).click();

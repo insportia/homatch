@@ -25,22 +25,8 @@ export const CONVERSATION_STRINGS = {
 
   /* ── Running out of credits, said kindly ────────────────────────── */
 
-  ai_out_of_credits: [
-    'Your credits have almost run out. The conversation stays right here — top up and we carry on from exactly this point.',
-    'კრედიტები თითქმის ამოგეწურა 😄 საუბარი აქვე რჩება — შეავსე და ზუსტად აქედან გავაგრძელოთ.',
-    'Кредиты почти закончились. Разговор никуда не денется — пополните, и продолжим ровно отсюда.',
-    'Krediniz neredeyse bitti. Sohbet olduğu yerde kalıyor — yükleyin, tam buradan devam edelim.',
-    'أوشكت أرصدتك على النفاد. المحادثة باقية كما هي — اشحن رصيدك ونكمل من هذه النقطة بالضبط.',
-    'הקרדיטים כמעט נגמרו. השיחה נשארת בדיוק כאן — טענו עוד ונמשיך מהנקודה הזו.',
-  ],
-  ai_out_of_credits_action: [
-    'Add credits',
-    'კრედიტების დამატება',
-    'Пополнить кредиты',
-    'Kredi ekle',
-    'إضافة رصيد',
-    'הוספת קרדיטים',
-  ],
+  ai_out_of_credits: ['Your credit balance has run out. The conversation stays right here. New credits are no longer sold.', 'კრედიტების ნაშთი ამოიწურა. საუბარი აქვე რჩება. ახალი კრედიტები აღარ იყიდება.', 'Баланс кредитов закончился. Разговор сохранится здесь. Новые кредиты больше не продаются.', 'Kredi bakiyen bitti. Sohbet burada kalır. Yeni kredi artık satılmıyor.', 'نفد رصيدك. تبقى المحادثة هنا. لم تعد الأرصدة الجديدة تُباع.', 'יתרת הקרדיטים נגמרה. השיחה נשארת כאן. קרדיטים חדשים כבר לא נמכרים.'],
+  ai_out_of_credits_action: ['View balance', 'ბალანსის ნახვა', 'Посмотреть баланс', 'Bakiyeyi gör', 'عرض الرصيد', 'צפייה ביתרה'],
 
   /* ── The welcome grant ──────────────────────────────────────────── */
 
@@ -52,14 +38,7 @@ export const CONVERSATION_STRINGS = {
     'أضفنا إلى حسابك 50 رصيدًا للبداية',
     'הוספנו לכם 50 קרדיטים להתחלה',
   ],
-  credits_welcome_body: [
-    'Use them for research and for help from Homatch AI. Credits are service value, not cash.',
-    'გამოიყენე Homatch-ის კვლევებსა და AI დახმარებაში. კრედიტი სერვისის ღირებულებაა და არა ნაღდი ფული.',
-    'Используйте их для исследований и помощи Homatch AI. Кредиты — это стоимость услуг, а не наличные.',
-    'Homatch araştırmalarında ve AI yardımında kullanın. Krediler hizmet değeridir, nakit değildir.',
-    'استخدمها في أبحاث Homatch وفي مساعدة الذكاء الاصطناعي. الأرصدة قيمة خدمات وليست نقودًا.',
-    'השתמשו בהם למחקרים ולעזרה מ-Homatch AI. קרדיטים הם שווי שירות, לא מזומן.',
-  ],
+  credits_welcome_body: ['Use them for research and for help from Homatch AI. Credits are service value, not cash.', 'გამოიყენე HOMATCH-ის კვლევებსა და AI დახმარებაში. კრედიტი სერვისის ღირებულებაა და არა ნაღდი ფული.', 'Используйте их для исследований и помощи Homatch AI. Кредиты — это стоимость услуг, а не наличные.', 'Homatch araştırmalarında ve AI yardımında kullanın. Krediler hizmet değeridir, nakit değildir.', 'استخدمها في أبحاث Homatch وفي مساعدة الذكاء الاصطناعي. الأرصدة قيمة خدمات وليست نقودًا.', 'השתמשו בהם למחקרים ולעזרה מ-Homatch AI. קרדיטים הם שווי שירות, לא מזומן.'],
 
   /* ── Mortgage: the promise before the calculator ────────────────── */
 

@@ -76,7 +76,9 @@ test('every customer service has its own reviewed note, and Verify says it plain
   }
   assert.match(S.homi_pitch_verify_body[1], /საქართველოში პირველია და მხოლოდ HOMATCH-ზე/);
   assert.match(S.homi_pitch_verify_body[0], /first service of its kind in Georgia.*only find it on HOMATCH/);
-  assert.match(S.homi_pitch_contract_intelligence_body[0], /first analysis each month is free, after that it is 3 credits/);
+  // Subscriptions (owner, 2026-10-30): the first analysis is free once, then a plan; never "each month" or a credit price.
+  assert.match(S.homi_pitch_contract_intelligence_body[0], /Your first analysis is free; after that you will need a subscription plan\./);
+  assert.match(S.homi_pitch_contract_intelligence_body[1], /პირველი ანალიზი უფასოა, შემდეგ კი გამოწერის გეგმა დაგჭირდება\./);
 });
 
 test('stored meta is re-validated on read', () => {

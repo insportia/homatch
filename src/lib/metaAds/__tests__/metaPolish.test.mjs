@@ -62,7 +62,7 @@ test('Instant Forms: no permission name is ever shown to a customer', () => {
     assert.equal(v.length, 6, k);
     for (const s of v) assert.doesNotMatch(s, SCOPE_NAMES, `${k}: ${s}`);
   }
-  assert.match(values('mm_b_lf_soon')[1], /Facebook\/Instagram ლიდების მიღება მალე იქნება ხელმისაწვდომი/);
+  assert.match(values('mm_b_lf_soon')[1], /Facebook\/Instagram კონტაქტების მიღება მალე იქნება ხელმისაწვდომი/);
   const page = read('src/pages/outreach/MetaAdsCreatePage.tsx');
   // The goal is selectable only where the owner can resolve it in the builder (accept Meta's terms,
   // reconnect, check again); "coming soon" stays unavailable. Ready still needs the server's AVAILABLE.

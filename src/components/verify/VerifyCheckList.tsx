@@ -21,6 +21,7 @@ import { ChevronRight, ShieldCheck, Loader2, AlertCircle, Pause } from 'lucide-r
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ResearchJobRecord } from '@/types/types';
+import { reportDeliveryState } from '@/verify/reportDelivery';
 
 /** What to call a run, in the order a person would recognise it. */
 export function checkLabel(job: ResearchJobRecord, fallback: string): string {
@@ -87,6 +88,10 @@ export function VerifyCheckList({
         const running = RUNNING.has(status);
         const broken = BROKEN.has(status);
         const paused = status === 'PAUSED';
+        // Research COMPLETE is not a delivered report (prod 674df06e): say which ones are still being prepared or failed.
+        const delivery = status === 'COMPLETE' ? reportDeliveryState(j) : null;
+        const preparing = delivery === 'PREPARING';
+        const reportFailed = delivery === 'FAILED';
         const label = checkLabel(j, t('verify_untitled_case_title'));
         const showCode = j.query && j.query.trim() && j.query.trim() !== label;
         return (
@@ -126,6 +131,18 @@ export function VerifyCheckList({
                     <span className="inline-flex items-center gap-1 text-sm text-primary">
                       <Pause className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                       <span className="break-words">{t('vh_state_paused')}</span>
+                    </span>
+                  ) : null}
+                  {preparing ? (
+                    <span className="inline-flex items-center gap-1 text-sm text-primary" data-testid="vh-report-preparing">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                      <span className="break-words">{t('vh_state_report_preparing')}</span>
+                    </span>
+                  ) : null}
+                  {reportFailed ? (
+                    <span className="inline-flex items-center gap-1 text-sm text-muted-foreground" data-testid="vh-report-failed">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <span className="break-words">{t('vh_state_report_failed')}</span>
                     </span>
                   ) : null}
                   {broken ? (

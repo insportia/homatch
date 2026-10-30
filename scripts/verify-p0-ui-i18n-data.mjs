@@ -23,14 +23,7 @@ export const VERIFY_P0_UI_STRINGS = {
     'صمّموا المبنى ووقّعوا المشروع المعماري المقدَّم إلى البلدية.',
     'תכננו את הבניין וחתמו על התוכנית האדריכלית שהוגשה לעירייה.',
   ],
-  verify_p0_team_duty_structural: [
-    'Responsible for the load-bearing structure — frame, slabs and foundations — and its expert review.',
-    'პასუხისმგებელია მზიდ კონსტრუქციაზე — კარკასზე, გადახურვებსა და საძირკველზე — და მის საექსპერტო შეფასებაზე.',
-    'Отвечают за несущие конструкции — каркас, перекрытия и фундамент — и их экспертизу.',
-    'Taşıyıcı sistemden — karkas, döşemeler ve temel — ve bunun uzman incelemesinden sorumludur.',
-    'مسؤولون عن الهيكل الحامل — الإطار والبلاطات والأساسات — ومراجعته الفنية.',
-    'אחראים לשלד הנושא — מסגרת, תקרות ויסודות — ולבדיקתו המקצועית.',
-  ],
+  verify_p0_team_duty_structural: ['Responsible for the load-bearing structure — frame, slabs and foundations — and its expert review.', 'პასუხისმგებელია მზიდ კონსტრუქციაზე, კარკასზე, გადახურვებსა და საძირკველზე, და მის საექსპერტო შეფასებაზე.', 'Отвечают за несущие конструкции — каркас, перекрытия и фундамент — и их экспертизу.', 'Taşıyıcı sistemden — karkas, döşemeler ve temel — ve bunun uzman incelemesinden sorumludur.', 'مسؤولون عن الهيكل الحامل — الإطار والبلاطات والأساسات — ومراجعته الفنية.', 'אחראים לשלד הנושא — מסגרת, תקרות ויסודות — ולבדיקתו המקצועית.'],
   verify_p0_team_duty_geotechnical: [
     'Studied the ground the building stands on and how deep and how strong its foundations must be.',
     'შეისწავლეს გრუნტი, რომელზეც შენობა დგას, და რამდენად ღრმა და მტკიცე უნდა იყოს საძირკველი.',
@@ -39,14 +32,7 @@ export const VERIFY_P0_UI_STRINGS = {
     'درسوا التربة التي يقوم عليها المبنى ومدى العمق والمتانة المطلوبين للأساسات.',
     'בחנו את הקרקע שעליה עומד הבניין וכמה עמוקים וחזקים צריכים להיות היסודות.',
   ],
-  verify_p0_team_duty_engineering: [
-    'Power, water, sewage, ventilation and lifts — the systems you live with every day.',
-    'ელექტროობა, წყალი, კანალიზაცია, ვენტილაცია და ლიფტები — სისტემები, რომლებითაც ყოველდღე ცხოვრობთ.',
-    'Электричество, вода, канализация, вентиляция и лифты — системы, с которыми вы живёте каждый день.',
-    'Elektrik, su, kanalizasyon, havalandırma ve asansörler — her gün birlikte yaşadığınız sistemler.',
-    'الكهرباء والمياه والصرف والتهوية والمصاعد — الأنظمة التي تعيش معها يوميًا.',
-    'חשמל, מים, ביוב, אוורור ומעליות — המערכות שאיתן חיים בכל יום.',
-  ],
+  verify_p0_team_duty_engineering: ['Power, water, sewage, ventilation and lifts — the systems you live with every day.', 'ელექტროობა, წყალი, კანალიზაცია, ვენტილაცია და ლიფტები, სისტემები, რომლებითაც ყოველდღე ცხოვრობთ.', 'Электричество, вода, канализация, вентиляция и лифты — системы, с которыми вы живёте каждый день.', 'Elektrik, su, kanalizasyon, havalandırma ve asansörler — her gün birlikte yaşadığınız sistemler.', 'الكهرباء والمياه والصرف والتهوية والمصاعد — الأنظمة التي تعيش معها يوميًا.', 'חשמל, מים, ביוב, אוורור ומעליות — המערכות שאיתן חיים בכל יום.'],
   verify_p0_team_duty_design: [
     'Interiors, façades and common areas as they were designed.',
     'ინტერიერი, ფასადები და საერთო სივრცეები ისე, როგორც დაპროექტდა.',
@@ -63,14 +49,7 @@ export const VERIFY_P0_UI_STRINGS = {
     'الشركة التي تبني المشروع وتبيعه.',
     'החברה שבונה ומוכרת את הפרויקט.',
   ],
-  verify_p0_team_duty_applicants: [
-    'Named in the city records as the client who commissioned the project or as the person who filed an application. This is an administrative role — not a design role, and not ownership of your apartment.',
-    'ქალაქის ჩანაწერებში დასახელებულია, როგორც პროექტის დამკვეთი ან განაცხადის შემტანი. ეს ადმინისტრაციული როლია — არა დამპროექტებლის და არა თქვენი ბინის მესაკუთრის.',
-    'Указаны в городских записях как заказчик проекта или лицо, подавшее заявление. Это административная роль — не проектировщик и не владелец вашей квартиры.',
-    'Belediye kayıtlarında projeyi sipariş eden işveren veya başvuruyu yapan kişi olarak geçer. Bu idari bir roldür — tasarımcı değildir ve dairenizin sahibi anlamına gelmez.',
-    'مذكورون في سجلات البلدية بصفتهم العميل الذي طلب المشروع أو مقدّم الطلب. هذا دور إداري — ليس دور تصميم ولا ملكية لشقتك.',
-    'מופיעים ברשומות העירייה כמזמין הפרויקט או כמגיש הבקשה. זהו תפקיד מנהלי — לא תפקיד תכנון ולא בעלות על הדירה שלכם.',
-  ],
+  verify_p0_team_duty_applicants: ['Named in the city records as the client who commissioned the project or as the person who filed an application. This is an administrative role — not a design role, and not ownership of your apartment.', 'ქალაქის ჩანაწერებში დასახელებულია, როგორც პროექტის დამკვეთი ან განაცხადის შემტანი. ეს ადმინისტრაციული როლია, არა დამპროექტებლის და არა თქვენი ბინის მესაკუთრის.', 'Указаны в городских записях как заказчик проекта или лицо, подавшее заявление. Это административная роль — не проектировщик и не владелец вашей квартиры.', 'Belediye kayıtlarında projeyi sipariş eden işveren veya başvuruyu yapan kişi olarak geçer. Bu idari bir roldür — tasarımcı değildir ve dairenizin sahibi anlamına gelmez.', 'مذكورون في سجلات البلدية بصفتهم العميل الذي طلب المشروع أو مقدّم الطلب. هذا دور إداري — ليس دور تصميم ولا ملكية لشقتك.', 'מופיעים ברשומות העירייה כמזמין הפרויקט או כמגיש הבקשה. זהו תפקיד מנהלי — לא תפקיד תכנון ולא בעלות על הדירה שלכם.'],
 
   /* ── roles by code (used when the record held only a form label) ── */
   verify_p0_role_chief_architect: ['Chief architect / lead specialist', 'მთავარი არქიტექტორი / სპეციალისტი', 'Главный архитектор / ведущий специалист', 'Baş mimar / sorumlu uzman', 'المعماري الرئيسي / الأخصائي المسؤول', 'אדריכל ראשי / מומחה אחראי'],
@@ -88,15 +67,8 @@ export const VERIFY_P0_UI_STRINGS = {
     'وهو أيضًا مدير مسجّل في شركة التطوير.',
     'גם דירקטור רשום בחברה היזמית.',
   ],
-  verify_p0_team_public_source: [
-    'From a public source — not an official record',
-    'საჯარო წყაროდან — არა ოფიციალური ჩანაწერიდან',
-    'Из открытого источника — не из официальной записи',
-    'Kamuya açık kaynaktan — resmi kayıt değil',
-    'من مصدر عام — ليس سجلًا رسميًا',
-    'ממקור פומבי — לא מרשומה רשמית',
-  ],
-  verify_p0_team_evidence_show: ['Evidence — {{count}} documented roles', 'მტკიცებულება — {{count}} დოკუმენტირებული როლი', 'Подтверждения — ролей по документам: {{count}}', 'Kanıt — {{count}} belgelenmiş rol', 'الأدلة — {{count}} أدوار موثّقة', 'ראיות — {{count}} תפקידים מתועדים'],
+  verify_p0_team_public_source: ['From a public source — not an official record', 'საჯარო წყაროდან: არა ოფიციალური ჩანაწერიდან', 'Из открытого источника — не из официальной записи', 'Kamuya açık kaynaktan — resmi kayıt değil', 'من مصدر عام — ليس سجلًا رسميًا', 'ממקור פומבי — לא מרשומה רשמית'],
+  verify_p0_team_evidence_show: ['Evidence — {{count}} documented roles', 'მტკიცებულება: {{count}} დოკუმენტირებული როლი', 'Подтверждения — ролей по документам: {{count}}', 'Kanıt — {{count}} belgelenmiş rol', 'الأدلة — {{count}} أدوار موثّقة', 'ראיות — {{count}} תפקידים מתועדים'],
 
   /* ── register representation codes ── */
   verify_p0_rep_joint: ['jointly', 'ერთობლივი', 'совместно', 'birlikte', 'بالاشتراك', 'במשותף'],

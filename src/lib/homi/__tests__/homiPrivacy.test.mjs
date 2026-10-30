@@ -48,6 +48,8 @@ const SCOPES = {
   expat_profiles: [/\.eq\('user_id', callerId\)/],
   properties: [/\.eq\('user_id', callerId\)/],
   matches: [/\.in\('property_id', ids\)/],
+  // Not personal data: one global setting, so HOMI can say honestly whether online payment works.
+  admin_settings: [/\.eq\('key', 'saas_default_payment_provider'\)/],
 };
 
 test('every table HOMI reads is allowlisted and scoped to the verified caller', () => {

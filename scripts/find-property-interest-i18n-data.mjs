@@ -59,7 +59,7 @@ export const FIND_PROPERTY_INTEREST_STRINGS = {
     'אני מאשר/ת: לשריין עכשיו {{credits}} קרדיטים; אחויב על העבודה שנוצלה, עד {{max}}.',
   ],
   fpi_paid_start: ['Reserve {{credits}} credits and start', 'დაბლოკეთ {{credits}} კრედიტი და დაიწყეთ', 'Зарезервировать {{credits}} кредитов и начать', '{{credits}} kredi ayır ve başlat', 'احجز {{credits}} رصيدًا وابدأ', 'לשריין {{credits}} קרדיטים ולהתחיל'],
-  fpi_paid_top_up: ['Top up credits', 'კრედიტების შევსება', 'Пополнить кредиты', 'Kredi yükle', 'اشحن الرصيد', 'טעינת קרדיטים'],
+  fpi_paid_top_up: ['View balance', 'ბალანსის ნახვა', 'Посмотреть баланс', 'Bakiyeyi gör', 'عرض الرصيد', 'צפייה ביתרה'],
   fpi_paid_refused_discovery_off: ['Paid campaigns are not available right now.', 'ფასიანი კამპანიები ახლა მიუწვდომელია.', 'Платные кампании сейчас недоступны.', 'Ücretli kampanyalar şu anda kullanılamıyor.', 'الحملات المدفوعة غير متاحة حاليًا.', 'קמפיינים בתשלום אינם זמינים כרגע.'],
   fpi_paid_refused_paid_campaigns_off: ['Paid campaigns are not available right now.', 'ფასიანი კამპანიები ახლა მიუწვდომელია.', 'Платные кампании сейчас недоступны.', 'Ücretli kampanyalar şu anda kullanılamıyor.', 'الحملات المدفوعة غير متاحة حاليًا.', 'קמפיינים בתשלום אינם זמינים כרגע.'],
   fpi_paid_refused_provider_off: ['Social-network searching is paused right now.', 'სოციალურ ქსელებში ძიება ახლა შეჩერებულია.', 'Поиск по соцсетям сейчас приостановлен.', 'Sosyal ağ araması şu anda duraklatıldı.', 'البحث في الشبكات الاجتماعية متوقف حاليًا.', 'החיפוש ברשתות החברתיות מושהה כרגע.'],

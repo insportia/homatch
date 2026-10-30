@@ -15,14 +15,7 @@ export const DEEP_SEARCH_RESULTS_STRINGS = {
     'התוצאות האלה שוחזרו מהפוסטים ששמרנו אחרי שהקמפיין הסתיים. ייתכן שחלק מהפוסטים עודכנו מאז, ולכן הפרטים עשויים להיות שונים ממה שהקמפיין מצא בתחילה.',
   ],
   /* Paid Deep Search paused (owner, 2026-10-18): the workspace subtitle without the paid hint. */
-  fpx_header_sub_free: [
-    'Tell us what home you want, in your own words. We search for free.',
-    'მოგვწერეთ, როგორ ბინას ეძებთ, თქვენი სიტყვებით. ჩვენ უფასოდ მოვძებნით.',
-    'Напишите своими словами, какое жильё ищете. Мы поищем бесплатно.',
-    'Nasıl bir ev istediğinizi kendi sözlerinizle yazın. Ücretsiz ararız.',
-    'اكتب بكلماتك ما المنزل الذي تريده. نبحث لك مجانًا.',
-    'כתבו במילים שלכם איזה בית אתם מחפשים. אנחנו נחפש בחינם.',
-  ],
+  fpx_header_sub_free: ['Search apartments, houses and commercial spaces by the location and terms you want.', 'მოძებნეთ ბინები, სახლები და კომერციული ფართები თქვენთვის სასურველი მდებარეობისა და პირობების მიხედვით.', 'Ищите квартиры, дома и коммерческие помещения по нужному району и условиям.', 'Daire, ev ve ticari alanları istediğiniz konum ve koşullara göre arayın.', 'ابحث عن الشقق والمنازل والمساحات التجارية حسب الموقع والشروط التي تريدها.', 'חפשו דירות, בתים ושטחים מסחריים לפי המיקום והתנאים שאתם רוצים.'],
   /* Criteria */
   fpc_criteria_title: ['What we are searching for', 'რას ვეძებთ', 'Что мы ищем', 'Ne arıyoruz', 'ما الذي نبحث عنه', 'מה אנחנו מחפשים'],
   fpc_criteria_edit: ['Change criteria', 'კრიტერიუმების შეცვლა', 'Изменить критерии', 'Kriterleri değiştir', 'تغيير المعايير', 'שינוי הקריטריונים'],
@@ -162,7 +155,7 @@ export const DEEP_SEARCH_RESULTS_STRINGS = {
   fpc_check_buildingStatus: ['Building', 'შენობა', 'Здание', 'Bina', 'المبنى', 'בניין'],
   fpc_check_fresh: ['Posted recently', 'ახლახან გამოქვეყნდა', 'Опубликовано недавно', 'Yakın zamanda', 'منشور حديثًا', 'פורסם לאחרונה'],
   fpc_state_match: ['matches', 'ემთხვევა', 'совпадает', 'uyuyor', 'مطابق', 'תואם'],
-  fpc_state_unverified: ['not stated — verify', 'არ წერია — გადაამოწმეთ', 'не указано — проверьте', 'belirtilmemiş — doğrulayın', 'غير مذكور — تحقق', 'לא צוין — לאמת'],
+  fpc_state_unverified: ['not stated — verify', 'არ წერია: გადაამოწმეთ', 'не указано — проверьте', 'belirtilmemiş — doğrulayın', 'غير مذكور — تحقق', 'לא צוין — לאמת'],
   fpc_state_fail: ['does not match', 'არ ემთხვევა', 'не совпадает', 'uymuyor', 'غير مطابق', 'לא תואם'],
   fpc_verify_hint: ['Ask the seller about the unverified points before you visit.', 'ნახვამდე გამყიდველს ჰკითხეთ გადაუმოწმებელ პუნქტებზე.', 'Перед просмотром уточните непроверенные пункты у продавца.', 'Ziyaretten önce doğrulanmamış noktaları satıcıya sorun.', 'اسأل البائع عن النقاط غير المتحقق منها قبل الزيارة.', 'לפני ביקור, שאלו את המוכר על הנקודות שלא אומתו.'],
   fpc_open_original: ['Open original post', 'ორიგინალი პოსტის გახსნა', 'Открыть исходный пост', 'Orijinal gönderiyi aç', 'فتح المنشور الأصلي', 'פתיחת הפוסט המקורי'],
@@ -205,17 +198,10 @@ export const DEEP_SEARCH_RESULTS_STRINGS = {
 
   /* Test campaign */
   fpc_test_chip: ['${{usd}} · test', '${{usd}} · ტესტი', '${{usd}} · тест', '${{usd}} · deneme', '${{usd}} · تجربة', '${{usd}} · ניסיון'],
-  fpc_test_note: [
-    'Temporary test search for authorised accounts: fewer sources and fewer posts, same rules — you pay only for what is used, the rest returns.',
-    'დროებითი სატესტო ძიება ავტორიზებული ანგარიშებისთვის: ნაკლები წყარო და ნაკლები პოსტი, იგივე წესები — იხდით მხოლოდ გამოყენებულში, დანარჩენი ბრუნდება.',
-    'Временный тестовый поиск для уполномоченных аккаунтов: меньше источников и постов, те же правила — платите только за использованное, остальное возвращается.',
-    'Yetkili hesaplar için geçici test araması: daha az kaynak ve gönderi, aynı kurallar — yalnızca kullanılanı ödersiniz, kalanı iade edilir.',
-    'بحث تجريبي مؤقت للحسابات المخوّلة: مصادر ومنشورات أقل، والقواعد نفسها — تدفع فقط مقابل ما يُستخدم ويعود الباقي.',
-    'חיפוש ניסיון זמני לחשבונות מורשים: פחות מקורות ופחות פוסטים, אותם כללים — משלמים רק על מה שנוצל, היתרה חוזרת.',
-  ],
+  fpc_test_note: ['Temporary test search for authorised accounts: fewer sources and fewer posts, same rules — you pay only for what is used, the rest returns.', 'დროებითი სატესტო ძიება ავტორიზებული ანგარიშებისთვის: ნაკლები წყარო და ნაკლები პოსტი, იგივე წესები, იხდით მხოლოდ გამოყენებულში, დანარჩენი ბრუნდება.', 'Временный тестовый поиск для уполномоченных аккаунтов: меньше источников и постов, те же правила — платите только за использованное, остальное возвращается.', 'Yetkili hesaplar için geçici test araması: daha az kaynak ve gönderi, aynı kurallar — yalnızca kullanılanı ödersiniz, kalanı iade edilir.', 'بحث تجريبي مؤقت للحسابات المخوّلة: مصادر ومنشورات أقل، والقواعد نفسها — تدفع فقط مقابل ما يُستخدم ويعود الباقي.', 'חיפוש ניסיון זמני לחשבונות מורשים: פחות מקורות ופחות פוסטים, אותם כללים — משלמים רק על מה שנוצל, היתרה חוזרת.'],
 
   /* Admin */
-  fpc_admin_title: ['Deep Search — campaign economics', 'ღრმა ძიება — კამპანიების ეკონომიკა', 'Глубокий поиск — экономика кампаний', 'Derin Arama — kampanya ekonomisi', 'البحث المعمّق — اقتصاديات الحملات', 'חיפוש מעמיק — כלכלת קמפיינים'],
+  fpc_admin_title: ['Deep Search — campaign economics', 'ღრმა ძიება: კამპანიების ეკონომიკა', 'Глубокий поиск — экономика кампаний', 'Derin Arama — kampanya ekonomisi', 'البحث المعمّق — اقتصاديات الحملات', 'חיפוש מעמיק — כלכלת קמפיינים'],
   fpc_admin_note: [
     'Recorded figures only. Gross spread = revenue − provider cost; it is not net profit. VAT and payment fees are not modelled, so net margin is unknown.',
     'მხოლოდ ჩაწერილი მონაცემები. მთლიანი სხვაობა = შემოსავალი − პროვაიდერის ხარჯი; ეს წმინდა მოგება არ არის. დღგ და გადახდის საკომისიო არ არის გათვლილი, ამიტომ წმინდა მარჟა უცნობია.',

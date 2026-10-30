@@ -20,6 +20,6 @@ export const BUILDER_OVERRIDES = {
   ems_img_replace: ['Replace photo', 'ფოტოს ჩანაცვლება', 'Заменить фото', 'Fotoğrafı değiştir', 'استبدال الصورة', 'החלפת תמונה'],
   ems_send_test: ['Send test email', 'სატესტო წერილის გაგზავნა', 'Отправить тестовое письмо', 'Test e-postası gönder', 'إرسال رسالة تجريبية', 'שליחת מייל בדיקה'],
   ems_save_saving: ['Saving…', 'შენახვა მიმდინარეობს…', 'Сохранение…', 'Kaydediliyor…', 'جارٍ الحفظ…', 'שומר…'],
-  ems_save_error: ['Save failed — kept on this device', 'შენახვა ვერ მოხერხდა — დარჩა ამ მოწყობილობაზე', 'Не удалось сохранить — копия на этом устройстве', 'Kaydedilemedi — bu cihazda tutuldu', 'تعذّر الحفظ — محفوظ على هذا الجهاز', 'השמירה נכשלה — נשמר במכשיר זה'],
+  ems_save_error: ['Save failed — kept on this device', 'შენახვა ვერ მოხერხდა, დარჩა ამ მოწყობილობაზე', 'Не удалось сохранить — копия на этом устройстве', 'Kaydedilemedi — bu cihazda tutuldu', 'تعذّر الحفظ — محفوظ على هذا الجهاز', 'השמירה נכשלה — נשמר במכשיר זה'],
   ems_save_saved_at: ['Saved automatically {{time}}', 'ავტომატურად შენახულია {{time}}', 'Сохранено автоматически {{time}}', 'Otomatik kaydedildi {{time}}', 'حُفظ تلقائيًا {{time}}', 'נשמר אוטומטית {{time}}'],
 };

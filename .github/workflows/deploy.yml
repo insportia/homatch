@@ -389,6 +389,8 @@ jobs:
       (needs.validate.result == 'success' || (needs.validate.result == 'skipped' && needs.provenance.outputs.path == 'FAST'))
     permissions:
       contents: write
+    outputs:
+      boot_smoke: ${{ steps.boot.outputs.result }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1264,6 +1266,37 @@ jobs:
           git push origin refs/deployed/edge --force
           echo "refs/deployed/edge -> ${GITHUB_SHA:0:8} (proven in production)"
 
+      # ── F. Did every critical function BOOT? ──────────────────────────────
+      #
+      # Production 2026-10-29: verify-synthesis was deployed and proven
+      # byte-exact, and could not start (it imported an export that did not
+      # exist): every call answered 503 BOOT_ERROR and a customer's report was
+      # never written while the run stayed green. The proof above asks whether
+      # production runs this revision; this asks whether that revision boots.
+      #
+      # One CORS preflight per critical function with the PUBLIC anon key (so
+      # the gateway's JWT check lets it reach the worker): no body, no user, no
+      # paid call, no write. Any answer below 500 means the module booted; a
+      # 5xx (BOOT_ERROR above all) after retries, a 404 or a gateway-only 401
+      # fails this job, which turns the Deployment Summary red. It runs after
+      # the ref step on purpose and never decides it: refs/deployed/edge says
+      # what production RUNS, and a revision that does not boot is still what
+      # it runs; this makes that impossible to miss. Read-only, idempotent.
+      - name: Edge boot smoke (critical functions)
+        id: boot
+        if: always() && steps.owed.outputs.count != '0'
+        env:
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          set -uo pipefail
+          if node scripts/release/edgeBootSmoke.mjs; then
+            echo "result=BOOTED" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=FAILED" >> "$GITHUB_OUTPUT"
+            echo "::error::Edge boot smoke FAILED: at least one critical edge function does not boot in production. See the table in this run's summary."
+            exit 1
+          fi
+
   # ── Job 5: Deployment summary ─────────────────────────────────────────────
   summary:
     name: Deployment Summary
@@ -1283,6 +1316,7 @@ jobs:
           echo "| Build Frontend | ${{ needs.build-frontend.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| DB Migrations | ${{ needs.migrate.result }} (skipped unless run_migrations) |" >> $GITHUB_STEP_SUMMARY
           echo "| Edge Functions | ${{ needs.deploy-functions.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Edge boot smoke | ${{ needs.deploy-functions.outputs.boot_smoke || 'not run (no edge deploy)' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Supabase project:** \`ptxajsjhobhvsfhmutjn\`" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY

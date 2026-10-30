@@ -69,8 +69,9 @@ import { pricingStateForDerivedCost } from '../_shared/providerCost.ts';
 import {
   appendReportAttempts, nextReportBuild, priorReportAttempts, reportAttemptTag, reportBlockingFailures, reportQualityFailures,
   reportRepairEnabled, reportRepairFindings, reportRepairPrompt, reportRequestExtras, reportRoutingFor, reportScore, reportTuningFor,
-  type ReportAttempt,
+  STRONG_MODEL, type ReportAttempt,
 } from '../../../src/verify/v2/researchRequest.ts';
+import { applySummaryPolish, summaryNeedsPolish, summaryPolishPrompt } from '../../../src/verify/intelligence/summaryPolish.ts';
 import { reusedObservations } from '../../../src/verify/v2/evidenceReuse.ts';
 import { deterministicAdvertisingAssessment } from '../../../src/verify/developerAds.ts';
 import { isV3, VERIFY_V3_RESEARCH_SETTING_KEY } from '../../../src/verify/engine.ts';
@@ -78,6 +79,7 @@ import { codeSectionMetrics } from '../../../src/verify/intelligence/codeMetrics
 import { storyKeptOnRebuild } from '../../../src/verify/intelligence/storyGuard.ts';
 import { reportStudyFor } from '../../../src/verify/intelligence/prompt.ts';
 import { notify } from '../_shared/notify.ts';
+import { recordReportFailure } from '../_shared/verifyReportFailure.ts';
 import { awaitOpenAIBudget, backoffMs, estimateTokens, limitsFor, retryAfterMs, RETRYABLE_STATUSES } from '../../../src/verify/openaiLimit.ts';
 
 /**
@@ -218,6 +220,44 @@ function textOf(p: any): string {
   return a.join('\n').trim();
 }
 
+/* The summary rewrite's one call (summaryPolish.ts): small, two tries, and
+   null on any failure — the summary then stays as the report model wrote it. */
+async function callPolish(db: any, apiKey: string, model: string, system: string, user: string): Promise<{ raw: string; usage: { model: string; inputTokens: number | null; outputTokens: number | null; cachedTokens: number | null; reasoningTokens: number | null } } | null> {
+  try {
+    const body = JSON.stringify({ model, input: [{ role: 'system', content: system }, { role: 'user', content: user }], reasoning: { effort: 'low' }, max_output_tokens: 6000 });
+    await awaitOpenAIBudget(db, model, estimateTokens(system, user) + 6000, limitsFor(await openaiLimits(db), model), 30_000);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body,
+      }).catch(() => null);
+      if (res?.ok) {
+        const b = await res.json();
+        const u = b?.usage ?? null;
+        return {
+          raw: textOf(b),
+          usage: {
+            model,
+            inputTokens: typeof u?.input_tokens === 'number' ? u.input_tokens : null,
+            outputTokens: typeof u?.output_tokens === 'number' ? u.output_tokens : null,
+            cachedTokens: typeof u?.input_tokens_details?.cached_tokens === 'number' ? u.input_tokens_details.cached_tokens : null,
+            reasoningTokens: typeof u?.output_tokens_details?.reasoning_tokens === 'number' ? u.output_tokens_details.reasoning_tokens : null,
+          },
+        };
+      }
+      const status = res?.status ?? 0;
+      await res?.body?.cancel();
+      if (res && !RETRYABLE_STATUSES.has(status)) { console.error(`summary polish refused: ${model} HTTP ${status}`); return null; }
+      if (attempt === 0) await new Promise((r) => setTimeout(r, (res && retryAfterMs(res.headers)) ?? backoffMs(0)));
+    }
+    return null;
+  } catch (e) {
+    console.error('summary polish failed', e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
 /**
  * Write the finished report down.
  *
@@ -264,7 +304,7 @@ function textOf(p: any): string {
 // through the secure viewer (research-agent `document_file`); the caller
 // already knows it, nothing new is disclosed.
 async function forCustomer(db: any, payload: Record<string, unknown>, jobId?: string): Promise<Record<string, unknown>> {
-  const { _usage: _droppedUsage, _timing: _droppedTiming, _usageFirstAttempt: _droppedFirst, _reportRouting: _droppedRouting, _reportAttempts: _droppedAttempts, officialVisuals, ...stripped } = payload as Record<string, any>;
+  const { _usage: _droppedUsage, _timing: _droppedTiming, _usageFirstAttempt: _droppedFirst, _reportRouting: _droppedRouting, _reportAttempts: _droppedAttempts, _summaryPolish: _droppedPolish, officialVisuals, ...stripped } = payload as Record<string, any>;
   const rest: Record<string, any> = jobId ? { ...stripped, jobId } : stripped;
   // Personal numbers never reach the browser, whatever an older build stored.
   if (rest.people) rest.people = redactPeopleSupport(rest.people);
@@ -1092,6 +1132,28 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     }
   }
   if (keptCall >= 0) calls[keptCall].kept = true;
+
+  /* THE SUMMARY REWRITE (owner, 2026-10-30; summaryPolish.ts). The report is
+     finished; Terra rewrites its summary texts only, against the evidence
+     each highlight cites. Never fails the build: a refused or failed call
+     keeps the summary as written. Its own cost row and ledger entry. */
+  let summaryPolish: Record<string, unknown> | null = null;
+  let polishUsage: NonNullable<typeof usage> | null = null;
+  if (apiKey && raw && final.mode !== 'DETERMINISTIC' && summaryNeedsPolish(final.summary)) {
+    const evidence = pkg.items.map((i) => ({ id: i.id, claim: i.claim, ...(i.date ? { date: i.date } : {}) }));
+    const { system: polishSystem, user: polishUser } = summaryPolishPrompt(final.summary, evidence);
+    const answer = await callPolish(writer, apiKey, STRONG_MODEL, polishSystem, polishUser);
+    if (answer) {
+      polishUsage = answer.usage;
+      if (v3) recordCall('polish', STRONG_MODEL, answer.usage);
+      const result = applySummaryPolish(final.summary, answer.raw, evidence);
+      final = { ...final, summary: result.summary };
+      summaryPolish = { model: STRONG_MODEL, changed: result.changed, rejected: result.rejected.slice(0, 20) };
+    } else {
+      summaryPolish = { model: STRONG_MODEL, changed: 0, failed: true };
+    }
+    console.log(JSON.stringify({ scope: 'verify_summary_polish', jobId: job.id, ...summaryPolish }));
+  }
   const reportAttempts = appendReportAttempts(priorAttempts, calls);
   if (final.mode === 'DETERMINISTIC' && final.rejectedBecause.length) {
     // Worth knowing about: a model that keeps failing the gate is a
@@ -1112,6 +1174,8 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     _reportRouting: v3
       ? { ...reportRouting, model: reportModel, escalation, engine: 'V3', repair, reasoningEffort: (reportRequestExtras(reportTuning, null).reasoning as { effort: string }).effort, storySkipped: skipStory }
       : { ...reportRouting, model: reportModel, escalation },
+    /* The summary rewrite's outcome (summaryPolish.ts): what Terra changed, what the guard kept. Internal. */
+    ...(summaryPolish ? { _summaryPolish: summaryPolish } : {}),
     ...(usageFirstAttempt ? { _usageFirstAttempt: usageFirstAttempt } : {}),
     /* V3: every paid report call of every build (verify_stage_cogs prices this ledger), and no advertising. Internal. */
     ...(v3 ? { _reportAttempts: reportAttempts, developerAdsHidden: true } : {}),
@@ -1229,6 +1293,8 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     const tag = build === 1 && i === 0 ? null : reportAttemptTag(call, i);
     await recordReportCost(writer, jobId, { model: call.model, inputTokens: call.inputTokens, outputTokens: call.outputTokens, cachedTokens: call.cachedTokens }, job.synthesis_at ?? null, tag);
   }
+  // V1/V2: the summary rewrite is its own row, tagged per build (V3 carries it in the ledger above).
+  if (!v3 && polishUsage) await recordReportCost(writer, jobId, polishUsage, job.synthesis_at ?? null, `polish:${timing.persistAt}`);
   /* The customer is told when the report exists (prod 1ff4b786: the old
      notification fired at research completion and opened a page still
      writing it). First build only — an upgrade or a forced rebuild is not
@@ -1558,6 +1624,8 @@ serve(async (req) => {
       })().catch(async (e) => {
         console.error(`verify-synthesis: background build failed for ${jobId}`, e instanceof Error ? e.message : String(e));
         await writer.from('research_jobs').update({ synthesis_state: 'FAILED' }).eq('id', jobId).eq('synthesis_state', 'PENDING');
+        // After the state: Admin reads WHY the report was not delivered (never a credential).
+        await recordReportFailure(writer, { jobId, source: 'BACKGROUND', error: e });
       });
       rt.waitUntil(work);
       return json({ pending: true, retryAfterMs: 5000 }, 202);

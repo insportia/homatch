@@ -1057,9 +1057,9 @@ test('partial and empty results say so, without technical errors', opts, async (
     const { page } = await boot(t, { lang: 'ka', resumeStatus: 'COMPLETE', empty: true });
     await page.goto(`${BASE}/find-property/search/11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
     await page.locator('#mps-empty').waitFor({ timeout: 30000 });
-    await page.getByRole('heading', { name: 'ზუსტი შესაბამისობა ჯერ ვერ ვიპოვეთ' }).waitFor({ timeout: 30000 });
+    await page.getByRole('heading', { name: 'ამ პირობებით ქონება ვერ მოიძებნა' }).waitFor({ timeout: 30000 });
     const text = await page.textContent('main');
-    for (const s of ['ზუსტი შესაბამისობა ჯერ ვერ ვიპოვეთ', 'ფართობის შეცვლა', 'ბიუჯეტის შეცვლა']) assert.ok(text.includes(s), s);
+    for (const s of ['ამ პირობებით ქონება ვერ მოიძებნა', 'ფართობის შეცვლა', 'ბიუჯეტის შეცვლა']) assert.ok(text.includes(s), s);
     await shot(page, 'ka-1440-empty');
     await page.getByRole('button', { name: 'ბიუჯეტის შეცვლა', exact: true }).click();
     await page.getByRole('heading', { name: 'რა ფასის ფარგლებში ვეძებოთ?', exact: true }).waitFor({ timeout: 15000 });

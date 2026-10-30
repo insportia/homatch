@@ -24,14 +24,7 @@ export const PAYG_STRINGS_2 = {
     'ادفع مقابل ما تستخدمه فقط',
     'משלמים רק על מה שמשתמשים',
   ],
-  payg_no_subscription: [
-    "No subscription and no monthly fee. If you don't use Homatch, you pay nothing.",
-    'არანაირი გამოწერა და ყოველთვიური გადასახადი. თუ Homatch-ს არ იყენებთ, არაფერს იხდით.',
-    'Никаких подписок и ежемесячных платежей. Не пользуетесь Homatch — не платите ничего.',
-    'Abonelik yok, aylık ücret yok. Homatch’i kullanmazsanız hiçbir şey ödemezsiniz.',
-    'لا اشتراك ولا رسوم شهرية. إذا لم تستخدم Homatch فلن تدفع شيئًا.',
-    'אין מנוי ואין תשלום חודשי. אם לא משתמשים ב-Homatch, לא משלמים כלום.',
-  ],
+  payg_no_subscription: ['No subscription and no monthly fee. If you don\'t use Homatch, you pay nothing.', 'არანაირი გამოწერა და ყოველთვიური გადასახადი. თუ HOMATCH-ს არ იყენებთ, არაფერს იხდით.', 'Никаких подписок и ежемесячных платежей. Не пользуетесь Homatch — не платите ничего.', 'Abonelik yok, aylık ücret yok. Homatch’i kullanmazsanız hiçbir şey ödemezsiniz.', 'لا اشتراك ولا رسوم شهرية. إذا لم تستخدم Homatch فلن تدفع شيئًا.', 'אין מנוי ואין תשלום חודשי. אם לא משתמשים ב-Homatch, לא משלמים כלום.'],
   payg_rate_line: [
     '{{credits}} credits = ${{usd}}',
     '{{credits}} კრედიტი = ${{usd}}',

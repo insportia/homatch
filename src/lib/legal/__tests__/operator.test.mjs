@@ -4,7 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import {
-  ARCHIVED_EDITIONS, LEGAL_OPERATOR, PREVIOUS_OPERATOR_2026_10_25, editionFor, operatorDisplayName, operatorEntityLabelKey, operatorIdLabelKey,
+  ARCHIVED_EDITIONS, KEYS_CHANGED_2026_10_30, LEGAL_OPERATOR, PREVIOUS_OPERATOR_2026_10_25, editionFor, editionKey, listsStripeCookies,
+  operatorDisplayName, operatorEntityLabelKey, operatorIdLabelKey,
 } from '../operator.ts';
 
 const ROOT = new URL('../../../../', import.meta.url);
@@ -27,7 +28,9 @@ test('the operator is the LLC, with only the facts the owner gave', () => {
 });
 
 test('archived editions keep the operator they named, unchanged', () => {
-  assert.deepEqual(ARCHIVED_EDITIONS.map((e) => e.version), ['2026-10-25']);
+  assert.deepEqual(ARCHIVED_EDITIONS.map((e) => e.version), ['2026-10-29', '2026-10-25']);
+  assert.equal(editionFor('terms', '2026-10-29').supersededOn, '2026-10-30');
+  assert.equal(editionFor('terms', '2026-10-29').operator.identificationNumber, '406378511');
   const old = editionFor('terms', '2026-10-25');
   assert.equal(old.supersededOn, '2026-10-29');
   assert.deepEqual({ ...old.operator }, {
@@ -57,7 +60,7 @@ test('archived editions keep the operator they named, unchanged', () => {
 
 test('the archived Terms keep their own fee text, which still exists in all six languages', async () => {
   const terms = read('src/pages/TermsPage.tsx');
-  assert.match(terms, /archived = useLegalEdition\('terms'\)\.version === '2026-10-25'/);
+  assert.match(terms, /const edition = useLegalEdition\('terms'\);\s+const archived = edition\.version === '2026-10-25';/);
   const { translations } = await import(new URL('src/i18n/translations.ts', ROOT).href);
   for (const k of ['terms_s4_title', 'terms_s4_body1', 'terms_s4_body2', 'terms_s4_body3', 'terms_s4_stripe', 'terms_s4_refund', 'legal_entity_individual_entrepreneur']) {
     assert.ok(terms.includes(`'${k}'`) || k === 'legal_entity_individual_entrepreneur', `${k} rendered by the archived edition`);
@@ -85,13 +88,17 @@ test('the label key exists in all six languages', async () => {
 });
 
 test('the published versions equal the database row the migration writes', () => {
-  assert.deepEqual({ ...LEGAL_OPERATOR.versions }, { terms: '2026-10-29', privacy: '2026-10-29', cookies: '2026-10-29' });
+  assert.deepEqual({ ...LEGAL_OPERATOR.versions }, { terms: '2026-10-30', privacy: '2026-10-30', cookies: '2026-10-30' });
   const dir = new URL('supabase/migrations/', ROOT);
   const latest = readdirSync(dir).filter((f) => /policy_versions/.test(f)).sort().at(-1);
   const sql = readFileSync(new URL(latest, dir), 'utf8');
   for (const doc of ['terms', 'privacy']) assert.ok(sql.includes(`'${doc}', '${LEGAL_OPERATOR.versions[doc]}'`), `${doc} seeded at the client's version`);
-  assert.match(sql, /set version\s+= '2026-10-29'/);
-  assert.match(sql, /reaccept_existing = true/, 'a new operator is a material change');
+  assert.match(sql, /set version\s+= '2026-10-30'/);
+  /* 2026-10-30 is not material, but the material 2026-10-29 acceptance still owed must not be released:
+     reaccept stays on and any acceptance from 2026-10-29 on satisfies it. */
+  assert.match(sql, /reaccept_existing\s+= true/);
+  assert.match(sql, /accepted_from_version = '2026-10-29'/);
+  assert.match(sql, /a\.version >= v\.accepted_from_version/);
 });
 
 test('every surface reads the operator from the config', () => {
@@ -114,4 +121,33 @@ test('the Terms fee section describes plans, not credit sales through Stripe', (
   /* The current edition's branch renders none of the credit/Stripe keys. */
   const current = terms.slice(terms.indexOf(': <>', terms.indexOf("terms_s4_refund")));
   for (const gone of ['terms_s4_stripe', 'terms_s4_body1', 'terms_s4_body3', 'terms_s4_refund']) assert.ok(!current.includes(`'${gone}'`), gone);
+});
+
+test('2026-10-30: no voice or Stripe in the current edition; 2026-10-29 keeps its words', async () => {
+  const { translations } = await import(new URL('src/i18n/translations.ts', ROOT).href);
+  const current = editionFor('terms', null);
+  for (const key of KEYS_CHANGED_2026_10_30) {
+    assert.equal(editionKey(key, current), key);
+    assert.equal(editionKey(key, editionFor('terms', '2026-10-29')), `${key}_e1029`);
+    assert.equal(editionKey(key, editionFor('terms', '2026-10-25')), `${key}_e1029`);
+    for (const lang of ['en', 'ka', 'ru', 'tr', 'ar', 'he']) {
+      const now = translations[lang][key];
+      assert.ok(!/Stripe/.test(now), `${key} (${lang}) still names Stripe`);
+      /* HOMI voice messages are gone; ElevenLabs stays listed as a processor (AI TALK). */
+      if (key === 'terms_sub_included') assert.ok(!/voice|ხმოვ|голос|sesli|صوت|קול/i.test(now), `${key} (${lang}) still promises voice`);
+      assert.ok(translations[lang][`${key}_e1029`], `${key}_e1029 kept in ${lang}`);
+    }
+  }
+  /* The archived text is the text that was published (spot checks, word for word). */
+  assert.match(translations.en.terms_sub_included_e1029, /HOMI chat \(text and voice\)/);
+  assert.match(translations.ka.privacy_s1d_body_e1029, /Stripe/);
+  /* The current text describes a licensed Georgian bank provider without naming one. */
+  assert.match(translations.ka.terms_sub_provider, /ლიცენზირებული/);
+  assert.match(translations.en.privacy_s1d_body, /licensed Georgian bank payment provider/);
+  /* Cookies: Stripe rows only in the archived editions; consent is not asked again. */
+  assert.equal(listsStripeCookies(current), false);
+  assert.equal(listsStripeCookies(editionFor('cookies', '2026-10-29')), true);
+  assert.equal(LEGAL_OPERATOR.cookieConsentVersion, '2026-10-29');
+  for (const f of ['src/pages/TermsPage.tsx', 'src/pages/PrivacyPage.tsx']) assert.match(read(f), /editionKey\(key, edition\)/, f);
+  assert.match(read('src/pages/CookiesPage.tsx'), /listsStripeCookies\(useLegalEdition\('cookies'\)\)/);
 });

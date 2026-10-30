@@ -200,7 +200,7 @@ export const PROPERTY_CHAT_STRINGS = {
 
   /* ── attach property ── */
   pc_attach_title: ['Attach one of your properties', 'მიამაგრეთ თქვენი ერთ-ერთი ქონება', 'Прикрепите один из своих объектов', 'Mülklerinizden birini ekleyin', 'أرفق أحد عقاراتك', 'צרפו אחד מהנכסים שלכם'],
-  pc_attach_desc: ['Only verified details from your listing are shared — never your contact details.', 'გაზიარდება მხოლოდ თქვენი განცხადების გადამოწმებული დეტალები — თქვენი საკონტაქტო მონაცემები არასოდეს.', 'Передаются только проверенные данные объявления — никогда ваши контакты.', 'Yalnızca ilanınızın doğrulanmış bilgileri paylaşılır; iletişim bilgileriniz asla paylaşılmaz.', 'تتم مشاركة التفاصيل الموثّقة من إعلانك فقط، ولا تتم مشاركة بيانات الاتصال الخاصة بك أبدًا.', 'משותפים רק פרטים מאומתים מהמודעה — לעולם לא פרטי הקשר שלכם.'],
+  pc_attach_desc: ['Only verified details from your listing are shared — never your contact details.', 'გაზიარდება მხოლოდ თქვენი განცხადების გადამოწმებული დეტალები, თქვენი საკონტაქტო მონაცემები არასოდეს.', 'Передаются только проверенные данные объявления — никогда ваши контакты.', 'Yalnızca ilanınızın doğrulanmış bilgileri paylaşılır; iletişim bilgileriniz asla paylaşılmaz.', 'تتم مشاركة التفاصيل الموثّقة من إعلانك فقط، ولا تتم مشاركة بيانات الاتصال الخاصة بك أبدًا.', 'משותפים רק פרטים מאומתים מהמודעה — לעולם לא פרטי הקשר שלכם.'],
   pc_attach_none: ['You have no active properties to attach yet.', 'მისამაგრებელი აქტიური ქონება ჯერ არ გაქვთ.', 'У вас пока нет активных объектов для прикрепления.', 'Henüz ekleyebileceğiniz aktif bir mülkünüz yok.', 'ليس لديك عقارات نشطة لإرفاقها بعد.', 'אין לכם עדיין נכסים פעילים לצירוף.'],
   pc_attach_btn: ['Attach', 'მიმაგრება', 'Прикрепить', 'Ekle', 'إرفاق', 'צירוף'],
 

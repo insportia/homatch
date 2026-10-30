@@ -106,23 +106,9 @@ export const EXPAT_STRINGS_2 = {
   /* ── What can I buy ─────────────────────────────────────────────── */
   expat_wcib_eyebrow: ['Property', 'უძრავი ქონება', 'Недвижимость', 'Gayrimenkul', 'العقارات', 'נדל"ן'],
   expat_wcib_title: ['What your budget reaches in {{city}}', 'რას წვდება თქვენი ბიუჯეტი {{city}}-ში', 'До чего дотягивается ваш бюджет в городе {{city}}', 'Bütçeniz {{city}} şehrinde nereye yeter', 'إلى أين يصل ميزانيتك في {{city}}', 'לאן מגיע התקציב שלכם ב־{{city}}'],
-  expat_wcib_body: [
-    'Floor area, not listings. Homatch shows the price per square metre it has actually observed in a district and what your budget corresponds to at that price. It does not show apartments for sale, because inventing inventory would be worse than not having it.',
-    'ფართობი და არა განცხადებები. Homatch აჩვენებს კვადრატული მეტრის ფასს, რომელიც უბანში რეალურად დააფიქსირა, და იმას, რასაც თქვენი ბიუჯეტი ამ ფასად შეესაბამება. გასაყიდ ბინებს არ აჩვენებს, რადგან შეთხზული მარაგი უარესია, ვიდრე მისი არქონა.',
-    'Площадь, а не объявления. Homatch показывает цену за квадратный метр, которую он реально наблюдал в районе, и чему при этой цене соответствует ваш бюджет. Квартиры в продаже он не показывает: выдуманный ассортимент хуже, чем его отсутствие.',
-    'İlan değil, metrekare. Homatch bir semtte fiilen gözlemlediği metrekare fiyatını ve bütçenizin o fiyatta neye denk geldiğini gösterir. Satılık daire göstermez, çünkü uydurulmuş bir envanter, hiç envanteri olmamasından kötüdür.',
-    'مساحة لا إعلانات. يعرض Homatch سعر المتر المربع الذي رصده فعلاً في الحي، وما يقابله ميزانيتك بهذا السعر. ولا يعرض شققاً للبيع، لأن اختلاق معروض أسوأ من عدم وجوده.',
-    'שטח רצפה, לא מודעות. Homatch מציג את המחיר למטר רבוע שנצפה בפועל בשכונה ואת מה שהתקציב שלכם שווה במחיר הזה. הוא אינו מציג דירות למכירה, כי המצאת מלאי גרועה מהיעדרו.',
-  ],
+  expat_wcib_body: ['Floor area, not listings. Homatch shows the price per square metre it has actually observed in a district and what your budget corresponds to at that price. It does not show apartments for sale, because inventing inventory would be worse than not having it.', 'აქ ხედავ კვადრატული მეტრის ფასს და არა განცხადებებს. HOMATCH აჩვენებს, რა ფასი დაფიქსირდა უბანში რეალურად და რამდენ ფართობს ყოფნის შენი ბიუჯეტი ამ ფასად. გასაყიდ ბინებს აქ არ ვაჩვენებთ, რადგან მოგონილი განცხადებები მათ არქონაზე უარესი იქნებოდა.', 'Площадь, а не объявления. Homatch показывает цену за квадратный метр, которую он реально наблюдал в районе, и чему при этой цене соответствует ваш бюджет. Квартиры в продаже он не показывает: выдуманный ассортимент хуже, чем его отсутствие.', 'İlan değil, metrekare. Homatch bir semtte fiilen gözlemlediği metrekare fiyatını ve bütçenizin o fiyatta neye denk geldiğini gösterir. Satılık daire göstermez, çünkü uydurulmuş bir envanter, hiç envanteri olmamasından kötüdür.', 'مساحة لا إعلانات. يعرض Homatch سعر المتر المربع الذي رصده فعلاً في الحي، وما يقابله ميزانيتك بهذا السعر. ولا يعرض شققاً للبيع، لأن اختلاق معروض أسوأ من عدم وجوده.', 'שטח רצפה, לא מודעות. Homatch מציג את המחיר למטר רבוע שנצפה בפועל בשכונה ואת מה שהתקציב שלכם שווה במחיר הזה. הוא אינו מציג דירות למכירה, כי המצאת מלאי גרועה מהיעדרו.'],
   expat_wcib_budget_label: ['Your budget', 'თქვენი ბიუჯეტი', 'Ваш бюджет', 'Bütçeniz', 'ميزانيتك', 'התקציב שלכם'],
-  expat_wcib_coverage: [
-    'Homatch has a market reading for {{covered}} of {{total}} districts here',
-    'Homatch-ს აქ {{total}} უბნიდან {{covered}}-ზე აქვს საბაზრო მაჩვენებელი',
-    'У Homatch есть рыночные данные по {{covered}} районам из {{total}}',
-    'Homatch\'in burada {{total}} semtten {{covered}} tanesi için piyasa okuması var',
-    'لدى Homatch قراءة سوق لـ {{covered}} من {{total}} حياً هنا',
-    'ל‑Homatch יש קריאת שוק ל־{{covered}} מתוך {{total}} שכונות כאן',
-  ],
+  expat_wcib_coverage: ['Homatch has a market reading for {{covered}} of {{total}} districts here', 'HOMATCH-ს აქ {{total}} უბნიდან {{covered}}-ზე აქვს საბაზრო მაჩვენებელი', 'У Homatch есть рыночные данные по {{covered}} районам из {{total}}', 'Homatch\'in burada {{total}} semtten {{covered}} tanesi için piyasa okuması var', 'لدى Homatch قراءة سوق لـ {{covered}} من {{total}} حياً هنا', 'ל‑Homatch יש קריאת שוק ל־{{covered}} מתוך {{total}} שכונות כאן'],
   expat_wcib_no_readings: [
     'Homatch has not read this market yet, so there is nothing here to show you. That is about our coverage, not about the city.',
     'Homatch-ს ეს ბაზარი ჯერ არ წაუკითხავს, ამიტომ საჩვენებელი არაფერია. ეს ჩვენს დაფარვაზეა და არა ქალაქზე.',
@@ -177,23 +163,9 @@ export const EXPAT_STRINGS_2 = {
   /* ── Rental communities ─────────────────────────────────────────── */
   expat_communities_eyebrow: ['Renting', 'ქირაობა', 'Аренда', 'Kiralama', 'الاستئجار', 'שכירות'],
   expat_communities_title: ['Where people actually find flats here', 'სად პოულობენ აქ ბინებს სინამდვილეში', 'Где здесь на самом деле находят квартиры', 'Burada daireler gerçekte nerede bulunur', 'أين يجد الناس الشقق هنا فعلاً', 'איפה אנשים באמת מוצאים כאן דירות'],
-  expat_communities_body: [
-    'Not on portals, mostly. These are public groups and channels that Homatch tracks and re-checks; the date each was last verified is shown.',
-    'ძირითადად არა პორტალებზე. ეს საჯარო ჯგუფები და არხებია, რომლებსაც Homatch აკვირდება და გადაამოწმებს. ნაჩვენებია თითოეულის ბოლო გადამოწმების თარიღი.',
-    'В основном не на порталах. Это публичные группы и каналы, которые Homatch отслеживает и перепроверяет; показана дата последней проверки каждого.',
-    'Çoğunlukla portallarda değil. Bunlar Homatch\'in izlediği ve yeniden denetlediği açık gruplar ve kanallar; her birinin son doğrulanma tarihi gösterilir.',
-    'ليس على البوابات في الغالب. هذه مجموعات وقنوات عامة يتابعها Homatch ويعيد فحصها، ويُعرض تاريخ آخر تحقق لكل منها.',
-    'לרוב לא בפורטלים. אלה קבוצות וערוצים ציבוריים ש‑Homatch עוקב אחריהם ובודק מחדש; מוצג תאריך האימות האחרון של כל אחד.',
-  ],
+  expat_communities_body: ['Not on portals, mostly. These are public groups and channels that Homatch tracks and re-checks; the date each was last verified is shown.', 'ძირითადად არა პორტალებზე. ეს საჯარო ჯგუფები და არხებია, რომლებსაც HOMATCH აკვირდება და გადაამოწმებს. ნაჩვენებია თითოეულის ბოლო გადამოწმების თარიღი.', 'В основном не на порталах. Это публичные группы и каналы, которые Homatch отслеживает и перепроверяет; показана дата последней проверки каждого.', 'Çoğunlukla portallarda değil. Bunlar Homatch\'in izlediği ve yeniden denetlediği açık gruplar ve kanallar; her birinin son doğrulanma tarihi gösterilir.', 'ليس على البوابات في الغالب. هذه مجموعات وقنوات عامة يتابعها Homatch ويعيد فحصها، ويُعرض تاريخ آخر تحقق لكل منها.', 'לרוב לא בפורטלים. אלה קבוצות וערוצים ציבוריים ש‑Homatch עוקב אחריהם ובודק מחדש; מוצג תאריך האימות האחרון של כל אחד.'],
   expat_communities_checked: ['checked {{date}}', 'შემოწმდა {{date}}', 'проверено {{date}}', '{{date}} tarihinde denetlendi', 'فُحص في {{date}}', 'נבדק ב־{{date}}'],
-  expat_communities_disclaimer: [
-    'Homatch does not run these groups, does not vet their members and takes no part in what is posted in them. They are listed because they are where the market is, not as a recommendation.',
-    'ამ ჯგუფებს Homatch არ მართავს, წევრებს არ ამოწმებს და მათში გამოქვეყნებულში მონაწილეობას არ იღებს. ისინი ჩამოთვლილია იმიტომ, რომ ბაზარი იქაა და არა როგორც რეკომენდაცია.',
-    'Homatch не управляет этими группами, не проверяет их участников и не участвует в том, что там публикуется. Они перечислены потому, что рынок находится там, а не как рекомендация.',
-    'Homatch bu grupları yönetmez, üyelerini denetlemez ve orada paylaşılanlarda payı yoktur. Piyasa orada olduğu için listelendiler, tavsiye olarak değil.',
-    'لا يدير Homatch هذه المجموعات ولا يدقق أعضاءها ولا شأن له بما يُنشر فيها. أُدرجت لأن السوق هناك، لا بوصفها توصية.',
-    'Homatch אינו מפעיל את הקבוצות האלה, אינו בודק את חבריהן ואין לו חלק במה שמתפרסם בהן. הן מופיעות כי שם נמצא השוק, ולא כהמלצה.',
-  ],
+  expat_communities_disclaimer: ['Homatch does not run these groups, does not vet their members and takes no part in what is posted in them. They are listed because they are where the market is, not as a recommendation.', 'ამ ჯგუფებს HOMATCH არ მართავს, წევრებს არ ამოწმებს და მათში გამოქვეყნებულში მონაწილეობას არ იღებს. ისინი ჩამოთვლილია იმიტომ, რომ ბაზარი იქაა და არა როგორც რეკომენდაცია.', 'Homatch не управляет этими группами, не проверяет их участников и не участвует в том, что там публикуется. Они перечислены потому, что рынок находится там, а не как рекомендация.', 'Homatch bu grupları yönetmez, üyelerini denetlemez ve orada paylaşılanlarda payı yoktur. Piyasa orada olduğu için listelendiler, tavsiye olarak değil.', 'لا يدير Homatch هذه المجموعات ولا يدقق أعضاءها ولا شأن له بما يُنشر فيها. أُدرجت لأن السوق هناك، لا بوصفها توصية.', 'Homatch אינו מפעיל את הקבוצות האלה, אינו בודק את חבריהן ואין לו חלק במה שמתפרסם בהן. הן מופיעות כי שם נמצא השוק, ולא כהמלצה.'],
 
   /* ── Topic index and topic page ─────────────────────────────────── */
   expat_topics_eyebrow: ['Practical Georgia', 'პრაქტიკული საქართველო', 'Практическая Грузия', 'Pratik Gürcistan', 'جورجيا العملية', 'גאורגיה המעשית'],
@@ -223,15 +195,8 @@ export const EXPAT_STRINGS_2 = {
   expat_topic_due_recheck: ['Due a recheck', 'გადასამოწმებელია', 'Нужна перепроверка', 'Yeniden kontrol gerekiyor', 'يحتاج إعادة تحقق', 'דורש בדיקה חוזרת'],
   expat_topic_review_title: ['What we have not confirmed', 'რა ვერ დავადასტურეთ', 'Чего мы не подтвердили', 'Doğrulayamadıklarımız', 'ما لم نؤكده', 'מה לא אימתנו'],
   expat_topic_facts_heading: ['The figures, and who says so', 'ციფრები და ვინ ამბობს', 'Цифры и кто их называет', 'Rakamlar ve kim söylüyor', 'الأرقام ومن يقولها', 'המספרים ומי אומר אותם'],
-  expat_topic_next_title: ['What Homatch can do next', 'რა შეუძლია შემდეგ Homatch-ს', 'Что Homatch может дальше', 'Homatch bundan sonra ne yapabilir', 'ما يمكن لـ Homatch فعله بعد ذلك', 'מה Homatch יכול לעשות אחר כך'],
-  expat_topic_next_body: [
-    'These are separate Homatch products. They open with what you were reading about.',
-    'ესენი Homatch-ის ცალკე პროდუქტებია. ისინი იმით იხსნება, რასაც კითხულობდით.',
-    'Это отдельные продукты Homatch. Они открываются с тем, о чём вы читали.',
-    'Bunlar ayrı Homatch ürünleridir. Okuduğunuz konuyla açılırlar.',
-    'هذه منتجات مستقلة من Homatch، وتُفتح على ما كنت تقرأ عنه.',
-    'אלה מוצרים נפרדים של Homatch. הם נפתחים עם מה שקראתם עליו.',
-  ],
+  expat_topic_next_title: ['What Homatch can do next', 'რა შეუძლია შემდეგ HOMATCH-ს', 'Что Homatch может дальше', 'Homatch bundan sonra ne yapabilir', 'ما يمكن لـ Homatch فعله بعد ذلك', 'מה Homatch יכול לעשות אחר כך'],
+  expat_topic_next_body: ['These are separate Homatch products. They open with what you were reading about.', 'ესენი HOMATCH-ის ცალკე პროდუქტებია. ისინი იმით იხსნება, რასაც კითხულობდით.', 'Это отдельные продукты Homatch. Они открываются с тем, о чём вы читали.', 'Bunlar ayrı Homatch ürünleridir. Okuduğunuz konuyla açılırlar.', 'هذه منتجات مستقلة من Homatch، وتُفتح على ما كنت تقرأ عنه.', 'אלה מוצרים נפרדים של Homatch. הם נפתחים עם מה שקראתם עליו.'],
   expat_topic_missing_title: ['We do not have this page', 'ასეთი გვერდი არ გვაქვს', 'Такой страницы у нас нет', 'Böyle bir sayfamız yok', 'ليست لدينا هذه الصفحة', 'אין לנו את העמוד הזה'],
   expat_topic_missing_body: [
     'It may not be written yet, or it may be waiting for a source we can stand behind.',

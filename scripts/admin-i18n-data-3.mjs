@@ -14,36 +14,17 @@ export const ADMIN_STRINGS_3 = {
   email_admin_title: [
     'Email', 'ელფოსტა', 'Email', 'E-posta', 'البريد الإلكتروني', 'אימייל',
   ],
-  email_admin_subtitle: [
-    'Whether Homatch can send email, and whether replies come back.',
-    'შეუძლია თუ არა Homatch-ს ელფოსტის გაგზავნა და ბრუნდება თუ არა პასუხები.',
-    'Может ли Homatch отправлять письма и возвращаются ли ответы.',
-    'Homatch e-posta gönderebiliyor mu ve yanıtlar geri geliyor mu.',
-    'هل يستطيع Homatch إرسال البريد، وهل تصل الردود.',
-    'האם Homatch יכול לשלוח אימייל, והאם תשובות חוזרות.',
-  ],
+  email_admin_subtitle: ['Whether Homatch can send email, and whether replies come back.', 'შეუძლია თუ არა HOMATCH-ს ელფოსტის გაგზავნა და ბრუნდება თუ არა პასუხები.', 'Может ли Homatch отправлять письма и возвращаются ли ответы.', 'Homatch e-posta gönderebiliyor mu ve yanıtlar geri geliyor mu.', 'هل يستطيع Homatch إرسال البريد، وهل تصل الردود.', 'האם Homatch יכול לשלוח אימייל, והאם תשובות חוזרות.'],
   email_sending: [
     'Sending', 'გაგზავნა', 'Отправка', 'Gönderme', 'الإرسال', 'שליחה',
   ],
   email_receiving: [
     'Receiving', 'მიღება', 'Получение', 'Alma', 'الاستقبال', 'קבלה',
   ],
-  email_sending_ok: [
-    'Homatch can send email.', 'Homatch-ს ელფოსტის გაგზავნა შეუძლია.', 'Homatch может отправлять письма.',
-    'Homatch e-posta gönderebiliyor.', 'يستطيع Homatch إرسال البريد.', 'Homatch יכול לשלוח אימייל.',
-  ],
-  email_sending_no: [
-    'Homatch cannot send email.', 'Homatch-ს ელფოსტის გაგზავნა არ შეუძლია.', 'Homatch не может отправлять письма.',
-    'Homatch e-posta gönderemiyor.', 'لا يستطيع Homatch إرسال البريد.', 'Homatch אינו יכול לשלוח אימייל.',
-  ],
-  email_receiving_ok: [
-    'Replies reach Homatch.', 'პასუხები Homatch-ს აღწევს.', 'Ответы доходят до Homatch.',
-    'Yanıtlar Homatch’e ulaşıyor.', 'تصل الردود إلى Homatch.', 'תשובות מגיעות ל‑Homatch.',
-  ],
-  email_receiving_no: [
-    'Replies do not reach Homatch.', 'პასუხები Homatch-ს ვერ აღწევს.', 'Ответы не доходят до Homatch.',
-    'Yanıtlar Homatch’e ulaşmıyor.', 'لا تصل الردود إلى Homatch.', 'תשובות אינן מגיעות ל‑Homatch.',
-  ],
+  email_sending_ok: ['Homatch can send email.', 'HOMATCH-ს ელფოსტის გაგზავნა შეუძლია.', 'Homatch может отправлять письма.', 'Homatch e-posta gönderebiliyor.', 'يستطيع Homatch إرسال البريد.', 'Homatch יכול לשלוח אימייל.'],
+  email_sending_no: ['Homatch cannot send email.', 'HOMATCH-ს ელფოსტის გაგზავნა არ შეუძლია.', 'Homatch не может отправлять письма.', 'Homatch e-posta gönderemiyor.', 'لا يستطيع Homatch إرسال البريد.', 'Homatch אינו יכול לשלוח אימייל.'],
+  email_receiving_ok: ['Replies reach Homatch.', 'პასუხები HOMATCH-ს აღწევს.', 'Ответы доходят до Homatch.', 'Yanıtlar Homatch’e ulaşıyor.', 'تصل الردود إلى Homatch.', 'תשובות מגיעות ל‑Homatch.'],
+  email_receiving_no: ['Replies do not reach Homatch.', 'პასუხები HOMATCH-ს ვერ აღწევს.', 'Ответы не доходят до Homatch.', 'Yanıtlar Homatch’e ulaşmıyor.', 'لا تصل الردود إلى Homatch.', 'תשובות אינן מגיעות ל‑Homatch.'],
   email_addresses_title: [
     'Receiving addresses', 'მიმღები მისამართები', 'Адреса для приёма',
     'Alıcı adresleri', 'عناوين الاستقبال', 'כתובות לקבלה',
@@ -56,27 +37,13 @@ export const ADMIN_STRINGS_3 = {
     'لا يوجد مالك لأي عنوان استقبال بعد، لذا يُسجَّل الرد دون أن ينتمي إلى أحد.',
     'לאף כתובת קבלה אין עדיין בעלים, ולכן תשובה נרשמת כשייכת לאיש.',
   ],
-  email_never_received: [
-    'No email has ever arrived. Point the provider at the Homatch webhook and add the MX record for the receiving domain.',
-    'ელფოსტა ჯერ არასდროს მოსულა. მიუთითეთ მომწოდებელს Homatch-ის webhook და დაამატეთ MX ჩანაწერი მიმღები დომენისთვის.',
-    'Письма ещё ни разу не приходили. Укажите провайдеру webhook Homatch и добавьте MX-запись для принимающего домена.',
-    'Hiç e-posta gelmedi. Sağlayıcıyı Homatch webhook’una yönlendirin ve alıcı alan adı için MX kaydını ekleyin.',
-    'لم يصل أي بريد إطلاقاً. وجّه المزوّد إلى webhook الخاص بـ Homatch وأضف سجل MX لنطاق الاستقبال.',
-    'מעולם לא הגיע אימייל. הפנו את הספק ל‑webhook של Homatch והוסיפו רשומת MX לדומיין הקבלה.',
-  ],
+  email_never_received: ['No email has ever arrived. Point the provider at the Homatch webhook and add the MX record for the receiving domain.', 'ელფოსტა ჯერ არასდროს მოსულა. მიუთითეთ მომწოდებელს HOMATCH-ის webhook და დაამატეთ MX ჩანაწერი მიმღები დომენისთვის.', 'Письма ещё ни разу не приходили. Укажите провайдеру webhook Homatch и добавьте MX-запись для принимающего домена.', 'Hiç e-posta gelmedi. Sağlayıcıyı Homatch webhook’una yönlendirin ve alıcı alan adı için MX kaydını ekleyin.', 'لم يصل أي بريد إطلاقاً. وجّه المزوّد إلى webhook الخاص بـ Homatch وأضف سجل MX لنطاق الاستقبال.', 'מעולם לא הגיע אימייל. הפנו את הספק ל‑webhook של Homatch והוסיפו רשומת MX לדומיין הקבלה.'],
 
   /* ── WhatsApp ───────────────────────────────────────────────────── */
   wa_admin_title: [
     'WhatsApp', 'WhatsApp', 'WhatsApp', 'WhatsApp', 'واتساب', 'וואטסאפ',
   ],
-  wa_admin_subtitle: [
-    'Whether Homatch can message people on WhatsApp, and what is missing if it cannot.',
-    'შეუძლია თუ არა Homatch-ს WhatsApp-ით მიწერა და რა აკლია, თუ არ შეუძლია.',
-    'Может ли Homatch писать людям в WhatsApp и чего не хватает, если нет.',
-    'Homatch WhatsApp’tan mesaj gönderebiliyor mu ve gönderemiyorsa ne eksik.',
-    'هل يستطيع Homatch مراسلة الناس عبر واتساب، وما الناقص إن لم يستطع.',
-    'האם Homatch יכול לשלוח הודעות בוואטסאפ, ומה חסר אם לא.',
-  ],
+  wa_admin_subtitle: ['Whether Homatch can message people on WhatsApp, and what is missing if it cannot.', 'შეუძლია თუ არა HOMATCH-ს WhatsApp-ით მიწერა და რა აკლია, თუ არ შეუძლია.', 'Может ли Homatch писать людям в WhatsApp и чего не хватает, если нет.', 'Homatch WhatsApp’tan mesaj gönderebiliyor mu ve gönderemiyorsa ne eksik.', 'هل يستطيع Homatch مراسلة الناس عبر واتساب، وما الناقص إن لم يستطع.', 'האם Homatch יכול לשלוח הודעות בוואטסאפ, ומה חסר אם לא.'],
   wa_setup_title: [
     'Setup checklist', 'დაყენების სია', 'Чек-лист настройки',
     'Kurulum listesi', 'قائمة الإعداد', 'רשימת הגדרה',

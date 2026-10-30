@@ -160,14 +160,7 @@ export const INVESTMENT_STRINGS_5 = {
     'قيد العمل',
     'בתהליך',
   ],
-  inv_home_footnote: [
-    'Every figure is calculated from the assumptions you enter and is reproducible from them. Homatch does not forecast prices, value property or give investment advice.',
-    'ყოველი ციფრი თქვენ მიერ შეყვანილი დაშვებებიდან იანგარიშება და მათგან აღწარმოებადია. Homatch არ პროგნოზირებს ფასებს, არ აფასებს ქონებას და არ იძლევა საინვესტიციო რჩევას.',
-    'Каждая цифра рассчитана из введённых вами допущений и воспроизводима из них. Homatch не прогнозирует цены, не оценивает недвижимость и не даёт инвестиционных советов.',
-    'Her rakam girdiğiniz varsayımlardan hesaplanır ve onlardan yeniden üretilebilir. Homatch fiyat öngörmez, mülk değerlemez ve yatırım tavsiyesi vermez.',
-    'كل رقم محسوب من الافتراضات التي تدخلها وقابل لإعادة الإنتاج منها. لا يتنبأ Homatch بالأسعار ولا يقيّم العقارات ولا يقدم نصائح استثمارية.',
-    'כל מספר מחושב מההנחות שהזנתם וניתן לשחזור מהן. Homatch אינו חוזה מחירים, אינו מעריך נכסים ואינו נותן ייעוץ השקעות.',
-  ],
+  inv_home_footnote: ['Every figure is calculated from the assumptions you enter and is reproducible from them. Homatch does not forecast prices, value property or give investment advice.', 'ყოველი ციფრი თქვენ მიერ შეყვანილი დაშვებებიდან იანგარიშება და მათგან აღწარმოებადია. HOMATCH არ პროგნოზირებს ფასებს, არ აფასებს ქონებას და არ იძლევა საინვესტიციო რჩევას.', 'Каждая цифра рассчитана из введённых вами допущений и воспроизводима из них. Homatch не прогнозирует цены, не оценивает недвижимость и не даёт инвестиционных советов.', 'Her rakam girdiğiniz varsayımlardan hesaplanır ve onlardan yeniden üretilebilir. Homatch fiyat öngörmez, mülk değerlemez ve yatırım tavsiyesi vermez.', 'كل رقم محسوب من الافتراضات التي تدخلها وقابل لإعادة الإنتاج منها. لا يتنبأ Homatch بالأسعار ولا يقيّم العقارات ولا يقدم نصائح استثمارية.', 'כל מספר מחושב מההנחות שהזנתם וניתן לשחזור מהן. Homatch אינו חוזה מחירים, אינו מעריך נכסים ואינו נותן ייעוץ השקעות.'],
 
   /* ── The four strategies ─────────────────────────────────────────── */
 
@@ -187,14 +180,7 @@ export const INVESTMENT_STRINGS_5 = {
     'شراء ← تجديد ← بيع',
     'קנייה ← שיפוץ ← מכירה',
   ],
-  inv_strategy_renovate_desc: [
-    'Buy below its finished value, spend on the works, and sell. Homatch calculates the all-in cost, the profit at your resale price, and the price the sale has to reach before the deal stops working.',
-    'იყიდეთ დასრულებულ ღირებულებაზე დაბლა, დახარჯეთ სამუშაოებზე და გაყიდეთ. Homatch ითვლის სრულ თვითღირებულებას, მოგებას თქვენს გასაყიდ ფასზე და იმ ფასს, რომელსაც გაყიდვა უნდა მიაღწიოს.',
-    'Купить дешевле готовой стоимости, вложиться в работы и продать. Homatch считает полную себестоимость, прибыль при вашей цене перепродажи и цену, ниже которой сделка перестаёт работать.',
-    'Bitmiş değerinin altına alın, işlere harcayın ve satın. Homatch tüm maliyeti, sizin satış fiyatınızdaki kârı ve satışın ulaşması gereken fiyatı hesaplar.',
-    'اشترِ بأقل من قيمته بعد الإنجاز، وأنفق على الأعمال، ثم بِع. يحسب Homatch التكلفة الكاملة والربح عند سعر إعادة بيعك والسعر الذي يجب أن يبلغه البيع.',
-    'לקנות מתחת לשווי הגמור, להשקיע בעבודות ולמכור. Homatch מחשב את העלות הכוללת, את הרווח במחיר המכירה שלכם, ואת המחיר שהמכירה חייבת להגיע אליו.',
-  ],
+  inv_strategy_renovate_desc: ['Buy below its finished value, spend on the works, and sell. Homatch calculates the all-in cost, the profit at your resale price, and the price the sale has to reach before the deal stops working.', 'იყიდე დასრულებულ ღირებულებაზე დაბლა, დახარჯე სამუშაოებზე და გაყიდე. HOMATCH ითვლის სრულ თვითღირებულებას, მოგებას შენს გასაყიდ ფასზე და იმ ფასს, რომელსაც გაყიდვა უნდა მიაღწიოს.', 'Купить дешевле готовой стоимости, вложиться в работы и продать. Homatch считает полную себестоимость, прибыль при вашей цене перепродажи и цену, ниже которой сделка перестаёт работать.', 'Bitmiş değerinin altına alın, işlere harcayın ve satın. Homatch tüm maliyeti, sizin satış fiyatınızdaki kârı ve satışın ulaşması gereken fiyatı hesaplar.', 'اشترِ بأقل من قيمته بعد الإنجاز، وأنفق على الأعمال، ثم بِع. يحسب Homatch التكلفة الكاملة والربح عند سعر إعادة بيعك والسعر الذي يجب أن يبلغه البيع.', 'לקנות מתחת לשווי הגמור, להשקיע בעבודות ולמכור. Homatch מחשב את העלות הכוללת, את הרווח במחיר המכירה שלכם, ואת המחיר שהמכירה חייבת להגיע אליו.'],
 
   inv_strategy_construction_title: [
     'Construction resale',
@@ -212,14 +198,7 @@ export const INVESTMENT_STRINGS_5 = {
     'شراء مبكر ← الإنجاز ← بيع',
     'קנייה מוקדמת ← אכלוס ← מכירה',
   ],
-  inv_strategy_construction_desc: [
-    'Buy off-plan on an instalment schedule and sell at or after completion. Homatch tracks what you have actually paid against what you still owe, and what a delay costs you.',
-    'იყიდეთ მშენებარე ეტაპზე განვადებით და გაყიდეთ დასრულებისას ან მოგვიანებით. Homatch ადევნებს თვალს რეალურად გადახდილსა და დარჩენილ ვალდებულებას და აჩვენებს, რა ჯდება დაგვიანება.',
-    'Купить на этапе строительства в рассрочку и продать при сдаче или позже. Homatch отслеживает, сколько вы реально заплатили и сколько ещё должны, и во что обходится задержка.',
-    'Proje aşamasında taksitle alın, teslimde veya sonrasında satın. Homatch fiilen ödediğinizi kalan borcunuzla birlikte izler ve gecikmenin maliyetini gösterir.',
-    'اشترِ على الخارطة بجدول أقساط وبِع عند الإنجاز أو بعده. يتتبع Homatch ما دفعته فعليًا مقابل ما تبقى عليك، وما يكلفه التأخير.',
-    'לקנות על הנייר בתשלומים ולמכור באכלוס או אחריו. Homatch עוקב אחר מה ששילמתם בפועל מול מה שנותר, וכמה עולה עיכוב.',
-  ],
+  inv_strategy_construction_desc: ['Buy off-plan on an instalment schedule and sell at or after completion. Homatch tracks what you have actually paid against what you still owe, and what a delay costs you.', 'იყიდე მშენებარე ეტაპზე განვადებით და გაყიდე დასრულებისას ან მოგვიანებით. HOMATCH ადევნებს თვალს რეალურად გადახდილსა და დარჩენილ ვალდებულებას და გაჩვენებს, რა ჯდება დაგვიანება.', 'Купить на этапе строительства в рассрочку и продать при сдаче или позже. Homatch отслеживает, сколько вы реально заплатили и сколько ещё должны, и во что обходится задержка.', 'Proje aşamasında taksitle alın, teslimde veya sonrasında satın. Homatch fiilen ödediğinizi kalan borcunuzla birlikte izler ve gecikmenin maliyetini gösterir.', 'اشترِ على الخارطة بجدول أقساط وبِع عند الإنجاز أو بعده. يتتبع Homatch ما دفعته فعليًا مقابل ما تبقى عليك، وما يكلفه التأخير.', 'לקנות על הנייר בתשלומים ולמכור באכלוס או אחריו. Homatch עוקב אחר מה ששילמתם בפועל מול מה שנותר, וכמה עולה עיכוב.'],
 
   inv_strategy_rental_title: [
     'Rental investment',
@@ -237,14 +216,7 @@ export const INVESTMENT_STRINGS_5 = {
     'شراء ← تأجير ← احتفاظ',
     'קנייה ← השכרה ← החזקה',
   ],
-  inv_strategy_rental_desc: [
-    'Hold the property and let it. Homatch calculates net income after costs and vacancy, yield, cash-on-cash return, how long the money takes to come back, and the rent at which it stops covering itself.',
-    'შეინარჩუნეთ ქონება და გააქირავეთ. Homatch ითვლის წმინდა შემოსავალს ხარჯებისა და თავისუფალი პერიოდის შემდეგ, სარგებელს, ნაღდ უკუგებას, ფულის დაბრუნების ვადას და იმ ქირას, რომლის ქვემოთაც თავს ვეღარ იტანს.',
-    'Держать объект и сдавать. Homatch считает чистый доход после расходов и простоя, доходность, возврат на вложенные деньги, срок окупаемости и аренду, ниже которой объект перестаёт себя окупать.',
-    'Mülkü tutun ve kiraya verin. Homatch giderler ve boşluk sonrası net geliri, getiriyi, nakit getirisini, paranın geri dönüş süresini ve kendini karşılamayı bıraktığı kirayı hesaplar.',
-    'احتفظ بالعقار وأجّره. يحسب Homatch صافي الدخل بعد التكاليف وفترات الشغور، والعائد، والعائد على النقد، ومدة استرداد المال، والإيجار الذي يتوقف عنده العقار عن تغطية نفسه.',
-    'להחזיק את הנכס ולהשכיר אותו. Homatch מחשב הכנסה נטו אחרי הוצאות ותקופות ריקנות, תשואה, תשואה על המזומן, כמה זמן הכסף חוזר, ואת שכר הדירה שמתחתיו הנכס מפסיק לכסות את עצמו.',
-  ],
+  inv_strategy_rental_desc: ['Hold the property and let it. Homatch calculates net income after costs and vacancy, yield, cash-on-cash return, how long the money takes to come back, and the rent at which it stops covering itself.', 'შეინარჩუნე ქონება და გააქირავე. HOMATCH ითვლის წმინდა შემოსავალს ხარჯებისა და თავისუფალი პერიოდის შემდეგ, სარგებელს, ნაღდ უკუგებას, ფულის დაბრუნების ვადას და იმ ქირას, რომლის ქვემოთაც გეგმა თავს ვეღარ იტანს.', 'Держать объект и сдавать. Homatch считает чистый доход после расходов и простоя, доходность, возврат на вложенные деньги, срок окупаемости и аренду, ниже которой объект перестаёт себя окупать.', 'Mülkü tutun ve kiraya verin. Homatch giderler ve boşluk sonrası net geliri, getiriyi, nakit getirisini, paranın geri dönüş süresini ve kendini karşılamayı bıraktığı kirayı hesaplar.', 'احتفظ بالعقار وأجّره. يحسب Homatch صافي الدخل بعد التكاليف وفترات الشغور، والعائد، والعائد على النقد، ومدة استرداد المال، والإيجار الذي يتوقف عنده العقار عن تغطية نفسه.', 'להחזיק את הנכס ולהשכיר אותו. Homatch מחשב הכנסה נטו אחרי הוצאות ותקופות ריקנות, תשואה, תשואה על המזומן, כמה זמן הכסף חוזר, ואת שכר הדירה שמתחתיו הנכס מפסיק לכסות את עצמו.'],
 
   inv_strategy_value_title: [
     'Investment value',
@@ -262,14 +234,7 @@ export const INVESTMENT_STRINGS_5 = {
     'كم يساوي بالنسبة لخطتي؟',
     'כמה זה שווה לתוכנית שלי?',
   ],
-  inv_strategy_value_desc: [
-    'Work backwards from the return you require to the most you can pay. Homatch gives you a target entry price, a maximum, and the price at which the strategy breaks even — not one invented valuation.',
-    'იმუშავეთ უკუღმა: საჭირო უკუგებიდან მაქსიმალურ გადასახდელ ფასამდე. Homatch გაძლევთ სამიზნე შესვლის ფასს, მაქსიმუმს და ნულოვანი შედეგის ფასს — და არა ერთ მოგონილ შეფასებას.',
-    'Идти от нужной вам доходности назад — к максимальной цене, которую можно заплатить. Homatch даёт целевую цену входа, максимум и цену безубыточности, а не одну выдуманную оценку.',
-    'İstediğiniz getiriden geriye doğru, ödeyebileceğiniz en yüksek fiyata gidin. Homatch size hedef giriş fiyatı, üst sınır ve başabaş fiyatı verir; uydurulmuş tek bir değerleme değil.',
-    'اعمل عكسيًا من العائد الذي تطلبه إلى أقصى ما يمكنك دفعه. يمنحك Homatch سعر دخول مستهدفًا وحدًا أقصى وسعر التعادل، لا تقييمًا واحدًا مُختلقًا.',
-    'לעבוד לאחור מהתשואה שאתם דורשים אל המחיר הגבוה ביותר שתוכלו לשלם. Homatch נותן מחיר כניסה מטרה, מקסימום, ומחיר איזון — לא הערכה בודדת ומומצאת.',
-  ],
+  inv_strategy_value_desc: ['Work backwards from the return you require to the most you can pay. Homatch gives you a target entry price, a maximum, and the price at which the strategy breaks even — not one invented valuation.', 'იმუშავე უკუღმა: საჭირო უკუგებიდან მაქსიმალურ გადასახდელ ფასამდე. HOMATCH გაძლევს სამიზნე შესვლის ფასს, მაქსიმუმს და ნულოვანი შედეგის ფასს და არა ერთ მოგონილ შეფასებას.', 'Идти от нужной вам доходности назад — к максимальной цене, которую можно заплатить. Homatch даёт целевую цену входа, максимум и цену безубыточности, а не одну выдуманную оценку.', 'İstediğiniz getiriden geriye doğru, ödeyebileceğiniz en yüksek fiyata gidin. Homatch size hedef giriş fiyatı, üst sınır ve başabaş fiyatı verir; uydurulmuş tek bir değerleme değil.', 'اعمل عكسيًا من العائد الذي تطلبه إلى أقصى ما يمكنك دفعه. يمنحك Homatch سعر دخول مستهدفًا وحدًا أقصى وسعر التعادل، لا تقييمًا واحدًا مُختلقًا.', 'לעבוד לאחור מהתשואה שאתם דורשים אל המחיר הגבוה ביותר שתוכלו לשלם. Homatch נותן מחיר כניסה מטרה, מקסימום, ומחיר איזון — לא הערכה בודדת ומומצאת.'],
 
   /* ── Groups ──────────────────────────────────────────────────────── */
 
@@ -298,14 +263,7 @@ export const INVESTMENT_STRINGS_5 = {
     'الاحتفاظ والخروج',
     'החזקה ויציאה',
   ],
-  inv_group_operating_desc: [
-    'Running costs a year. Leave a line blank and it is treated as zero — and the result says so.',
-    'წლიური საექსპლუატაციო ხარჯები. ცარიელი ველი ნულად ითვლება — და შედეგი ამას აღნიშნავს.',
-    'Годовые эксплуатационные расходы. Пустая строка считается нулём — и результат об этом скажет.',
-    'Yıllık işletme giderleri. Boş bırakılan satır sıfır sayılır ve sonuç bunu belirtir.',
-    'مصاريف التشغيل السنوية. السطر الفارغ يُحتسب صفرًا، والنتيجة تذكر ذلك.',
-    'הוצאות תפעול שנתיות. שורה ריקה נחשבת אפס — והתוצאה אומרת זאת.',
-  ],
+  inv_group_operating_desc: ['Running costs a year. Leave a line blank and it is treated as zero — and the result says so.', 'წლიური საექსპლუატაციო ხარჯები. ცარიელი ველი ნულად ითვლება, და შედეგი ამას აღნიშნავს.', 'Годовые эксплуатационные расходы. Пустая строка считается нулём — и результат об этом скажет.', 'Yıllık işletme giderleri. Boş bırakılan satır sıfır sayılır ve sonuç bunu belirtir.', 'مصاريف التشغيل السنوية. السطر الفارغ يُحتسب صفرًا، والنتيجة تذكر ذلك.', 'הוצאות תפעול שנתיות. שורה ריקה נחשבת אפס — והתוצאה אומרת זאת.'],
   inv_group_payment_structure: [
     'Payment schedule',
     'გადახდის გრაფიკი',
@@ -406,14 +364,7 @@ export const INVESTMENT_STRINGS_5 = {
     'القيمة المتوقعة عند الإنجاز',
     'השווי הצפוי באכלוס',
   ],
-  inv_f_expected_completed_hint: [
-    'What you believe a finished unit like this will be worth. Your assumption, not a Homatch forecast.',
-    'რას იღირებს, თქვენი აზრით, დასრულებული ასეთი ბინა. ეს თქვენი დაშვებაა და არა Homatch-ის პროგნოზი.',
-    'Сколько, по-вашему, будет стоить такая готовая квартира. Это ваше допущение, а не прогноз Homatch.',
-    'Böyle bitmiş bir dairenin ne edeceğine dair kendi görüşünüz. Homatch öngörüsü değil, sizin varsayımınız.',
-    'ما تعتقد أن وحدة منتهية كهذه ستساويه. هذا افتراضك أنت، وليس توقعًا من Homatch.',
-    'כמה לדעתכם תשווה דירה גמורה כזו. זו ההנחה שלכם, לא תחזית של Homatch.',
-  ],
+  inv_f_expected_completed_hint: ['What you believe a finished unit like this will be worth. Your assumption, not a Homatch forecast.', 'რას იღირებს, თქვენი აზრით, დასრულებული ასეთი ბინა. ეს თქვენი დაშვებაა და არა HOMATCH-ის პროგნოზი.', 'Сколько, по-вашему, будет стоить такая готовая квартира. Это ваше допущение, а не прогноз Homatch.', 'Böyle bitmiş bir dairenin ne edeceğine dair kendi görüşünüz. Homatch öngörüsü değil, sizin varsayımınız.', 'ما تعتقد أن وحدة منتهية كهذه ستساويه. هذا افتراضك أنت، وليس توقعًا من Homatch.', 'כמה לדעתכם תשווה דירה גמורה כזו. זו ההנחה שלכם, לא תחזית של Homatch.'],
   inv_f_expected_completed_per_sqm: [
     'Expected value at completion per m²',
     'მოსალოდნელი ღირებულება დასრულებისას კვ.მ-ზე',
@@ -430,14 +381,7 @@ export const INVESTMENT_STRINGS_5 = {
     'سعر إعادة البيع المتوقع',
     'מחיר המכירה הצפוי',
   ],
-  inv_f_expected_resale_hint: [
-    'What you expect to sell for once the works are done. Your assumption, not a Homatch forecast.',
-    'რა ფასად აპირებთ გაყიდვას სამუშაოების დასრულების შემდეგ. ეს თქვენი დაშვებაა და არა Homatch-ის პროგნოზი.',
-    'За сколько вы рассчитываете продать после работ. Это ваше допущение, а не прогноз Homatch.',
-    'İşler bittikten sonra kaça satmayı beklediğiniz. Homatch öngörüsü değil, sizin varsayımınız.',
-    'بكم تتوقع البيع بعد انتهاء الأعمال. هذا افتراضك أنت، وليس توقعًا من Homatch.',
-    'בכמה אתם מצפים למכור אחרי סיום העבודות. זו ההנחה שלכם, לא תחזית של Homatch.',
-  ],
+  inv_f_expected_resale_hint: ['What you expect to sell for once the works are done. Your assumption, not a Homatch forecast.', 'რა ფასად აპირებთ გაყიდვას სამუშაოების დასრულების შემდეგ. ეს თქვენი დაშვებაა და არა HOMATCH-ის პროგნოზი.', 'За сколько вы рассчитываете продать после работ. Это ваше допущение, а не прогноз Homatch.', 'İşler bittikten sonra kaça satmayı beklediğiniz. Homatch öngörüsü değil, sizin varsayımınız.', 'بكم تتوقع البيع بعد انتهاء الأعمال. هذا افتراضك أنت، وليس توقعًا من Homatch.', 'בכמה אתם מצפים למכור אחרי סיום העבודות. זו ההנחה שלכם, לא תחזית של Homatch.'],
   inv_f_expected_resale_per_sqm: [
     'Expected resale price per m²',
     'მოსალოდნელი გასაყიდი ფასი კვ.მ-ზე',
@@ -494,14 +438,7 @@ export const INVESTMENT_STRINGS_5 = {
     'هل نحتسب بيعًا في النهاية؟',
     'לכלול מכירה בסוף?',
   ],
-  inv_f_include_exit_hint: [
-    'Off, the result is about the income. On, it also values the eventual exit.',
-    'გამორთული — შედეგი შემოსავალზეა. ჩართული — ითვალისწინებს საბოლოო გაყიდვასაც.',
-    'Выключено — результат про доход. Включено — учитывается и будущий выход.',
-    'Kapalıyken sonuç geliri anlatır. Açıkken nihai çıkışı da değerlendirir.',
-    'عند الإيقاف تكون النتيجة عن الدخل. وعند التفعيل تحتسب الخروج النهائي أيضًا.',
-    'כבוי — התוצאה על ההכנסה. דלוק — היא כוללת גם את היציאה בסוף.',
-  ],
+  inv_f_include_exit_hint: ['Off, the result is about the income. On, it also values the eventual exit.', 'გამორთული: შედეგი შემოსავალზეა. ჩართული: ითვალისწინებს საბოლოო გაყიდვასაც.', 'Выключено — результат про доход. Включено — учитывается и будущий выход.', 'Kapalıyken sonuç geliri anlatır. Açıkken nihai çıkışı da değerlendirir.', 'عند الإيقاف تكون النتيجة عن الدخل. وعند التفعيل تحتسب الخروج النهائي أيضًا.', 'כבוי — התוצאה על ההכנסה. דלוק — היא כוללת גם את היציאה בסוף.'],
   inv_f_installment_count: [
     'Number of instalments',
     'განვადების რაოდენობა',
@@ -583,14 +520,7 @@ export const INVESTMENT_STRINGS_5 = {
     'السعر الذي تدرسه',
     'המחיר שאתם שוקלים',
   ],
-  inv_f_proposed_price_hint: [
-    'Optional. Enter it and Homatch scores that exact price against the boundaries it calculated.',
-    'არასავალდებულო. შეიყვანეთ და Homatch სწორედ ამ ფასს შეადარებს გამოთვლილ ზღვრებს.',
-    'Необязательно. Введите — и Homatch оценит именно эту цену относительно рассчитанных границ.',
-    'İsteğe bağlı. Girdiğinizde Homatch tam da bu fiyatı hesapladığı sınırlara göre değerlendirir.',
-    'اختياري. أدخله ليقيّم Homatch هذا السعر تحديدًا مقابل الحدود التي حسبها.',
-    'רשות. הזינו ו-Homatch ידרג בדיוק את המחיר הזה מול הגבולות שחישב.',
-  ],
+  inv_f_proposed_price_hint: ['Optional. Enter it and Homatch scores that exact price against the boundaries it calculated.', 'არასავალდებულო. შეიყვანეთ და HOMATCH სწორედ ამ ფასს შეადარებს გამოთვლილ ზღვრებს.', 'Необязательно. Введите — и Homatch оценит именно эту цену относительно рассчитанных границ.', 'İsteğe bağlı. Girdiğinizde Homatch tam da bu fiyatı hesapladığı sınırlara göre değerlendirir.', 'اختياري. أدخله ليقيّم Homatch هذا السعر تحديدًا مقابل الحدود التي حسبها.', 'רשות. הזינו ו-Homatch ידרג בדיוק את המחיר הזה מול הגבולות שחישב.'],
   inv_f_remaining_balance: [
     'Balance still owed at completion',
     'დარჩენილი ვალდებულება დასრულებისას',
@@ -615,14 +545,7 @@ export const INVESTMENT_STRINGS_5 = {
     'مدة التجديد',
     'משך השיפוץ',
   ],
-  inv_f_renovation_hint: [
-    'Total spend on the works. Pick a standard above and Homatch suggests a range for your area.',
-    'სამუშაოების ჯამური ხარჯი. აირჩიეთ სტანდარტი ზემოთ და Homatch შემოგთავაზებთ დიაპაზონს თქვენი ფართობისთვის.',
-    'Общие затраты на работы. Выберите уровень выше — и Homatch предложит диапазон под вашу площадь.',
-    'İşlere toplam harcama. Yukarıdan bir standart seçin, Homatch alanınıza uygun bir aralık önersin.',
-    'إجمالي الإنفاق على الأعمال. اختر مستوى أعلاه ليقترح Homatch نطاقًا يناسب مساحتك.',
-    'סך ההוצאה על העבודות. בחרו רמה למעלה ו-Homatch יציע טווח לשטח שלכם.',
-  ],
+  inv_f_renovation_hint: ['Total spend on the works. Pick a standard above and Homatch suggests a range for your area.', 'სამუშაოების ჯამური ხარჯი. აირჩიეთ სტანდარტი ზემოთ და HOMATCH შემოგთავაზებთ დიაპაზონს თქვენი ფართობისთვის.', 'Общие затраты на работы. Выберите уровень выше — и Homatch предложит диапазон под вашу площадь.', 'İşlere toplam harcama. Yukarıdan bir standart seçin, Homatch alanınıza uygun bir aralık önersin.', 'إجمالي الإنفاق على الأعمال. اختر مستوى أعلاه ليقترح Homatch نطاقًا يناسب مساحتك.', 'סך ההוצאה על העבודות. בחרו רמה למעלה ו-Homatch יציע טווח לשטח שלכם.'],
   inv_f_renovation_needed: [
     'Does it need work before letting?',
     'სჭირდება სამუშაოები გაქირავებამდე?',
@@ -679,14 +602,7 @@ export const INVESTMENT_STRINGS_5 = {
     'العائد الذي تطلبه',
     'התשואה שאתם דורשים',
   ],
-  inv_f_target_return_hint: [
-    'On the cash you put in, over the whole deal. Homatch reports the sale price that reaches it.',
-    'თქვენს ჩადებულ ფულზე, მთელ გარიგებაზე. Homatch გაჩვენებთ იმ გასაყიდ ფასს, რომელიც ამას აღწევს.',
-    'На вложенные вами деньги, за всю сделку. Homatch покажет цену продажи, которая её даёт.',
-    'Koyduğunuz nakit üzerinden, işlemin tamamı için. Homatch buna ulaşan satış fiyatını gösterir.',
-    'على النقد الذي تضعه، عبر الصفقة كاملة. يعرض Homatch سعر البيع الذي يحققه.',
-    'על המזומן שהכנסתם, לאורך כל העסקה. Homatch יראה את מחיר המכירה שמגיע לשם.',
-  ],
+  inv_f_target_return_hint: ['On the cash you put in, over the whole deal. Homatch reports the sale price that reaches it.', 'თქვენს ჩადებულ ფულზე, მთელ გარიგებაზე. HOMATCH გაჩვენებთ იმ გასაყიდ ფასს, რომელიც ამას აღწევს.', 'На вложенные вами деньги, за всю сделку. Homatch покажет цену продажи, которая её даёт.', 'Koyduğunuz nakit üzerinden, işlemin tamamı için. Homatch buna ulaşan satış fiyatını gösterir.', 'على النقد الذي تضعه، عبر الصفقة كاملة. يعرض Homatch سعر البيع الذي يحققه.', 'על המזומן שהכנסתם, לאורך כל העסקה. Homatch יראה את מחיר המכירה שמגיע לשם.'],
   inv_f_target_yield: [
     'Yield you require',
     'სარგებელი, რომელსაც მოითხოვთ',

@@ -26,12 +26,5 @@ export const DS_STRINGS_11 = {
   ds_photo_room: ['Room photo', 'ოთახის ფოტო', 'Фото комнаты', 'Oda fotoğrafı', 'صورة الغرفة', 'צילום חדר'],
   ds_photo_room_label: ['Room to photograph', 'გადასაღები ოთახი', 'Комната для фото', 'Fotoğraflanacak oda', 'الغرفة المراد تصويرها', 'החדר לצילום'],
   ds_reject_op_not_allowed: ['This piece cannot be changed that way.', 'ამ ნივთის ასე შეცვლა შეუძლებელია.', 'Этот предмет нельзя изменить таким образом.', 'Bu parça bu şekilde değiştirilemez.', 'لا يمكن تغيير هذه القطعة بهذه الطريقة.', 'אי אפשר לשנות את הפריט הזה כך.'],
-  ds_hint_manipulate: [
-    'Drag to move · turn with the ring · hold Alt to place freely · arrow keys nudge',
-    'გადაათრიეთ გადასაადგილებლად · შეატრიალეთ რგოლით · Alt — თავისუფლად განთავსება · ისრებით მცირედ გადაადგილება',
-    'Перетащите, чтобы переместить · поворот — кольцом · Alt — свободная расстановка · стрелки — сдвиг',
-    'Taşımak için sürükleyin · halkayla döndürün · serbest yerleştirmek için Alt · oklarla kaydırın',
-    'اسحب للتحريك · دوّر بالحلقة · اضغط Alt للوضع بحرية · الأسهم للتحريك الدقيق',
-    'גררו להזזה · סובבו בטבעת · Alt למיקום חופשי · חיצים להזזה עדינה',
-  ],
+  ds_hint_manipulate: ['Drag to move · turn with the ring · hold Alt to place freely · arrow keys nudge', 'გადაათრიეთ გადასაადგილებლად · შეატრიალეთ რგოლით · Alt, თავისუფლად განთავსება · ისრებით მცირედ გადაადგილება', 'Перетащите, чтобы переместить · поворот — кольцом · Alt — свободная расстановка · стрелки — сдвиг', 'Taşımak için sürükleyin · halkayla döndürün · serbest yerleştirmek için Alt · oklarla kaydırın', 'اسحب للتحريك · دوّر بالحلقة · اضغط Alt للوضع بحرية · الأسهم للتحريك الدقيق', 'גררו להזזה · סובבו בטבעת · Alt למיקום חופשי · חיצים להזזה עדינה'],
 };

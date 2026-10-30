@@ -32,13 +32,14 @@ export const SUITE_CATALOGUE = {
   'mobile:routes': { title: 'Mobile — every customer route', files: ['tests/mobile/routeOverflow.test.mjs', 'tests/mobile/routeHealth.test.mjs', 'tests/mobile/textContrast.test.mjs', 'tests/mobile/formControls.test.mjs', 'tests/mobile/propertyOwnerWorkspace.test.mjs', 'tests/mobile/publishingWorkspace.test.mjs'] },
   'mobile:shell': { title: 'Mobile — shell, motion, composer', files: ['tests/mobile/shellAndMotion.test.mjs', 'tests/mobile/appShell.test.mjs', 'tests/mobile/chatComposer.test.mjs', 'tests/mobile/serviceControls.test.mjs', 'tests/mobile/serviceControlsExpand.test.mjs'] },
   'mobile:auth': { title: 'Mobile — auth screens', files: ['tests/mobile/authScreens.test.mjs', 'tests/mobile/legalCompliance.test.mjs'] },
-  'mobile:verify': { title: 'Mobile — verification report', files: ['tests/mobile/mobileOverflow.test.mjs', 'tests/mobile/verifyReportPremium.test.mjs', 'tests/mobile/verifyReportTranslation.test.mjs'] },
+  'mobile:verify': { title: 'Mobile — verification report', files: ['tests/mobile/mobileOverflow.test.mjs', 'tests/mobile/verifyReportPremium.test.mjs', 'tests/mobile/verifyReportTranslation.test.mjs', 'tests/mobile/verifyReportDelivery.test.mjs'] },
   'mobile:meta-ads': { title: 'Mobile — Meta Ads builder', files: ['tests/mobile/metaAdsBuilder.test.mjs'] },
   'mobile:mortgage': { title: 'Mobile — mortgage', files: ['tests/mobile/mortgageConsultant.test.mjs', 'tests/mobile/mortgageHuman.test.mjs'] },
   'mobile:expats': { title: 'Mobile — For Expats', files: ['tests/mobile/expatsReadable.test.mjs', 'tests/mobile/myGeorgia.test.mjs'] },
   'mobile:admin-mortgage': { title: 'Mobile — admin mortgage rules and bank products', files: ['tests/mobile/adminMortgageBankProducts.test.mjs'] },
   'mobile:discovery': { title: 'Mobile — admin Discovery', files: ['tests/mobile/adminDiscovery.test.mjs', 'tests/mobile/findPropertyAttribution.test.mjs', 'tests/mobile/findPropertyMarketplace.test.mjs', 'tests/mobile/findBuyersResults.test.mjs', 'tests/mobile/internalMatches.test.mjs', 'tests/mobile/findBuyersReport.test.mjs', 'tests/mobile/findBuyersUx.test.mjs', 'tests/mobile/findBuyersNavigation.test.mjs', 'tests/mobile/homatchLeads.test.mjs', 'tests/mobile/ownerDemoLead.test.mjs', 'tests/mobile/matchExpansion.test.mjs', 'tests/mobile/findPropertyCosts.test.mjs', 'tests/mobile/matchingWorkspace.test.mjs'] },
   'mobile:broker': { title: 'Mobile — broker lifecycle', files: ['tests/mobile/brokerLifecycle.test.mjs'] },
+  'mobile:access': { title: 'Mobile — admin user access and owner Unlimited', files: ['tests/mobile/adminUserAccess.test.mjs'] },
   'mobile:tasks': { title: 'Mobile — tasks and contracts', files: ['tests/mobile/tasksAndContracts.test.mjs', 'tests/mobile/leadEmailCampaigns.test.mjs'] },
   developer: { title: 'Developer acceptance', script: 'test:developer', files: ['tests/browser/developerAcceptance.test.mjs'] },
   onboarding: { title: 'Developer onboarding', script: 'test:onboarding', files: ['tests/browser/developerOnboarding.test.mjs'] },
@@ -117,8 +118,10 @@ export const COMPONENTS = {
       /^src\/subscriptions\//, /^src\/pages\/(MySubscriptionPage|SubscriptionConfirmPage|SubscriptionSandboxPayPage)\.tsx$/,
       /^supabase\/functions\/_shared\/(entitlements|saasNotify)\.ts$/, /^supabase\/functions\/_shared\/saasPayments\//,
       /^tests\/matrix\/saasSubscriptions\.test\.mjs$/, /^tests\/sql\/saas\//, /^scripts\/saas-subs-i18n-/,
+      // Owner Unlimited and admin access grants (2026-10-30): admin page, matrix test, copy.
+      /^src\/pages\/admin\/AdminAccessPage\.tsx$/, /^tests\/matrix\/accessGrants\.test\.mjs$/, /^tests\/mobile\/adminUserAccess\.test\.mjs$/, /^scripts\/stab-access-i18n-/,
       fn('billing', 'credits-topup', 'payment-webhook', 'payment-method-setup', 'atomic-unlock', 'unlock-external-contact', 'research-purchase', 'spend-cap-check', 'saas-checkout', 'saas-payments-webhook')],
-    suites: ['mobile:routes', 'mobile:shell'],
+    suites: ['mobile:routes', 'mobile:shell', 'mobile:access'],
     proofs: ['money: reserve → settle → release on a real row; no unknown COGS silently zero'],
   },
   STORAGE: {
@@ -172,7 +175,7 @@ export const COMPONENTS = {
     proofs: ['push: push-send PROVEN_EXACT; a real subscription receives a test notification'],
   },
   VERIFY: {
-    paths: [/^src\/pages\/(Verify|ContractResultPage|VerificationCasePage|ContractsHistoryPage|ContractsPage)/, /^src\/(verify|components\/verify|components\/contracts|components\/research|contracts)\//, /^src\/services\/(verifyResult|verifyDocumentFile|verifyReportPrefetch)\.ts$/, fn('research-agent', 'verify-synthesis', 'verify-queue', 'verify-scaling', 'verification-handoff', 'browserbase-handoff', 'revalidate-evidence', 'homatch-research')],
+    paths: [/^src\/pages\/(Verify|ContractResultPage|VerificationCasePage|ContractsHistoryPage|ContractsPage)/, /^src\/(verify|components\/verify|components\/contracts|components\/research|contracts)\//, /^src\/services\/(verifyResult|verifyDocumentFile|verifyReportPrefetch|verifyDelivery)\.ts$/, fn('research-agent', 'verify-synthesis', 'verify-queue', 'verify-scaling', 'verification-handoff', 'browserbase-handoff', 'revalidate-evidence', 'homatch-research')],
     suites: ['mobile:verify', 'mobile:routes'],
   },
   MORTGAGE: { paths: [/^src\/(pages\/Mortgage(Page|TermsPage|TermPage)|components\/mortgage|mortgage)/, /^src\/services\/mortgageFxRates\.ts$/, /^scripts\/ux-mortgage-i18n/, fn('mortgage-fx-rates')], suites: ['mobile:mortgage', 'mobile:routes', 'mobile:admin-mortgage'] },
@@ -276,6 +279,8 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(mortgage)/, 'MORTGAGE'],
   [/^public\.(expat)/, 'EXPATS'],
   [/^public\.(research_|verify|verification|deal_room)/, 'VERIFY'],
+  // Verify Admin reads: engine stats and report delivery (20261207120000 / 20261208130000) and the audited report retry (20261208100000).
+  [/^public\.(admin_verify_)/, 'VERIFY'],
   // Contracts: revisions, owner-only deletion and the fixed price the entry page shows.
   [/^public\.(contract_revisions|contract_document_delete$|contract_fixed_price$)/, 'VERIFY'],
   // homatch_refuse_spend_while_viewed: the BEFORE INSERT guard on credit_ledger / usage_reservations.

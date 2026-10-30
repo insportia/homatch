@@ -33,14 +33,7 @@ export const RS_STRINGS = {
     'مدرجة في سجل دافعي الضرائب',
     'רשומה במרשם משלמי המסים',
   ],
-  vbi_rs_status_caution: [
-    'The status the registry shows for the company needs attention — check it before any transaction.',
-    'რეესტრში მითითებული კომპანიის სტატუსი ყურადღებას საჭიროებს — გარიგებამდე გადაამოწმეთ.',
-    'Статус компании в реестре требует внимания — проверьте его до любой сделки.',
-    'Sicilde şirket için gösterilen durum dikkat gerektiriyor — herhangi bir işlemden önce kontrol edin.',
-    'الحالة التي يُظهرها السجل للشركة تستدعي الانتباه — تحقّقوا منها قبل أي معاملة.',
-    'הסטטוס שהמרשם מציג לחברה דורש תשומת לב — בדקו אותו לפני כל עסקה.',
-  ],
+  vbi_rs_status_caution: ['The status the registry shows for the company needs attention — check it before any transaction.', 'რეესტრში მითითებული კომპანიის სტატუსი ყურადღებას საჭიროებს, გარიგებამდე გადაამოწმეთ.', 'Статус компании в реестре требует внимания — проверьте его до любой сделки.', 'Sicilde şirket için gösterilen durum dikkat gerektiriyor — herhangi bir işlemden önce kontrol edin.', 'الحالة التي يُظهرها السجل للشركة تستدعي الانتباه — تحقّقوا منها قبل أي معاملة.', 'הסטטוס שהמרשם מציג לחברה דורש תשומת לב — בדקו אותו לפני כל עסקה.'],
   vbi_rs_no_record: [
     'No record returned for this identifier',
     'ამ კოდით ჩანაწერი არ დაბრუნდა',
@@ -59,41 +52,13 @@ export const RS_STRINGS = {
   ],
   vbi_rs_source_link: ['Check on rs.ge', 'გადაამოწმეთ rs.ge-ზე', 'Проверить на rs.ge', 'rs.ge üzerinde kontrol edin', 'تحقّقوا على rs.ge', 'בדקו ב-rs.ge'],
   vbi_rs_state_pending: ['To be confirmed', 'დამატებით დასაზუსტებელია', 'Требует уточнения', 'Teyit edilecek', 'قيد التأكيد', 'טעון אישור'],
-  vbi_rs_state_pending_explain: [
-    'The taxpayer registry check is still to be confirmed for this research. This is neither a good nor a bad sign — you can check it in a minute on rs.ge with company ID {{id}}.',
-    'გადამხდელთა რეესტრის შემოწმება ამ კვლევისთვის დამატებით დასაზუსტებელია. ეს არც დადებითი ნიშანია და არც უარყოფითი — rs.ge-ზე ერთ წუთში შეამოწმებთ საიდენტიფიკაციო კოდით {{id}}.',
-    'Проверка по реестру налогоплательщиков для этого исследования ещё требует уточнения. Это ни хороший, ни плохой знак — проверить можно за минуту на rs.ge по коду {{id}}.',
-    'Vergi mükellefleri sicili kontrolü bu araştırma için henüz teyit edilecek. Bu ne olumlu ne olumsuz bir işarettir — rs.ge üzerinde {{id}} şirket koduyla bir dakikada kontrol edebilirsiniz.',
-    'لا يزال فحص سجل دافعي الضرائب قيد التأكيد في هذا البحث. هذا ليس مؤشرًا إيجابيًا ولا سلبيًا — يمكنكم التحقق خلال دقيقة على rs.ge برمز الشركة {{id}}.',
-    'בדיקת מרשם משלמי המסים עדיין טעונה אישור במחקר זה. זה אינו סימן טוב ואינו סימן רע — אפשר לבדוק תוך דקה ב-rs.ge עם מספר החברה {{id}}.',
-  ],
+  vbi_rs_state_pending_explain: ['The taxpayer registry check is still to be confirmed for this research. This is neither a good nor a bad sign — you can check it in a minute on rs.ge with company ID {{id}}.', 'გადამხდელთა რეესტრის შემოწმება ამ კვლევისთვის დამატებით დასაზუსტებელია. ეს არც დადებითი ნიშანია და არც უარყოფითი, rs.ge-ზე ერთ წუთში შეამოწმებთ საიდენტიფიკაციო კოდით {{id}}.', 'Проверка по реестру налогоплательщиков для этого исследования ещё требует уточнения. Это ни хороший, ни плохой знак — проверить можно за минуту на rs.ge по коду {{id}}.', 'Vergi mükellefleri sicili kontrolü bu araştırma için henüz teyit edilecek. Bu ne olumlu ne olumsuz bir işarettir — rs.ge üzerinde {{id}} şirket koduyla bir dakikada kontrol edebilirsiniz.', 'لا يزال فحص سجل دافعي الضرائب قيد التأكيد في هذا البحث. هذا ليس مؤشرًا إيجابيًا ولا سلبيًا — يمكنكم التحقق خلال دقيقة على rs.ge برمز الشركة {{id}}.', 'בדיקת מרשם משלמי המסים עדיין טעונה אישור במחקר זה. זה אינו סימן טוב ואינו סימן רע — אפשר לבדוק תוך דקה ב-rs.ge עם מספר החברה {{id}}.'],
   vbi_rs_state_unavailable: ['Temporarily unavailable', 'დროებით მიუწვდომელი იყო', 'Временно недоступен', 'Geçici olarak erişilemedi', 'غير متاح مؤقتًا', 'לא היה זמין זמנית'],
-  vbi_rs_state_unavailable_explain: [
-    'The Revenue Service registry was temporarily unavailable during this research. This is neither a good nor a bad sign — you can check it in a minute on rs.ge with company ID {{id}}.',
-    'შემოსავლების სამსახურის რეესტრი ამ კვლევის დროს დროებით მიუწვდომელი იყო. ეს არც დადებითი ნიშანია და არც უარყოფითი — rs.ge-ზე ერთ წუთში შეამოწმებთ საიდენტიფიკაციო კოდით {{id}}.',
-    'Реестр Службы доходов был временно недоступен во время этого исследования. Это ни хороший, ни плохой знак — проверить можно за минуту на rs.ge по коду {{id}}.',
-    'Gelir İdaresi sicili bu araştırma sırasında geçici olarak erişilemezdi. Bu ne olumlu ne olumsuz bir işarettir — rs.ge üzerinde {{id}} şirket koduyla bir dakikada kontrol edebilirsiniz.',
-    'كان سجل مصلحة الإيرادات غير متاح مؤقتًا خلال هذا البحث. هذا ليس مؤشرًا إيجابيًا ولا سلبيًا — يمكنكم التحقق خلال دقيقة على rs.ge برمز الشركة {{id}}.',
-    'מרשם רשות ההכנסות לא היה זמין זמנית במהלך מחקר זה. זה אינו סימן טוב ואינו סימן רע — אפשר לבדוק תוך דקה ב-rs.ge עם מספר החברה {{id}}.',
-  ],
+  vbi_rs_state_unavailable_explain: ['The Revenue Service registry was temporarily unavailable during this research. This is neither a good nor a bad sign — you can check it in a minute on rs.ge with company ID {{id}}.', 'შემოსავლების სამსახურის რეესტრი ამ კვლევის დროს დროებით მიუწვდომელი იყო. ეს არც დადებითი ნიშანია და არც უარყოფითი, rs.ge-ზე ერთ წუთში შეამოწმებთ საიდენტიფიკაციო კოდით {{id}}.', 'Реестр Службы доходов был временно недоступен во время этого исследования. Это ни хороший, ни плохой знак — проверить можно за минуту на rs.ge по коду {{id}}.', 'Gelir İdaresi sicili bu araştırma sırasında geçici olarak erişilemezdi. Bu ne olumlu ne olumsuz bir işarettir — rs.ge üzerinde {{id}} şirket koduyla bir dakikada kontrol edebilirsiniz.', 'كان سجل مصلحة الإيرادات غير متاح مؤقتًا خلال هذا البحث. هذا ليس مؤشرًا إيجابيًا ولا سلبيًا — يمكنكم التحقق خلال دقيقة على rs.ge برمز الشركة {{id}}.', 'מרשם רשות ההכנסות לא היה זמין זמנית במהלך מחקר זה. זה אינו סימן טוב ואינו סימן רע — אפשר לבדוק תוך דקה ב-rs.ge עם מספר החברה {{id}}.'],
   vbi_rs_state_failed: ['To be checked on rs.ge', 'rs.ge-ზე გადასამოწმებელია', 'Стоит проверить на rs.ge', 'rs.ge üzerinde kontrol edilmeli', 'يُستحسن التحقق على rs.ge', 'כדאי לבדוק ב-rs.ge'],
-  vbi_rs_state_failed_explain: [
-    'The taxpayer registry entry for this company is best checked directly on rs.ge. This is neither a good nor a bad sign — it takes a minute with company ID {{id}}.',
-    'კომპანიის ჩანაწერი გადამხდელთა რეესტრში სასურველია უშუალოდ rs.ge-ზე გადაამოწმოთ. ეს არც დადებითი ნიშანია და არც უარყოფითი — ერთ წუთში შეამოწმებთ საიდენტიფიკაციო კოდით {{id}}.',
-    'Запись компании в реестре налогоплательщиков лучше проверить напрямую на rs.ge. Это ни хороший, ни плохой знак — это займёт минуту по коду {{id}}.',
-    'Şirketin vergi mükellefleri sicilindeki kaydını doğrudan rs.ge üzerinde kontrol etmeniz önerilir. Bu ne olumlu ne olumsuz bir işarettir — {{id}} şirket koduyla bir dakika sürer.',
-    'يُستحسن التحقق من قيد الشركة في سجل دافعي الضرائب مباشرةً على rs.ge. هذا ليس مؤشرًا إيجابيًا ولا سلبيًا — يستغرق الأمر دقيقة برمز الشركة {{id}}.',
-    'מומלץ לבדוק את רישום החברה במרשם משלמי המסים ישירות ב-rs.ge. זה אינו סימן טוב ואינו סימן רע — זה לוקח דקה עם מספר החברה {{id}}.',
-  ],
+  vbi_rs_state_failed_explain: ['The taxpayer registry entry for this company is best checked directly on rs.ge. This is neither a good nor a bad sign — it takes a minute with company ID {{id}}.', 'კომპანიის ჩანაწერი გადამხდელთა რეესტრში სასურველია უშუალოდ rs.ge-ზე გადაამოწმოთ. ეს არც დადებითი ნიშანია და არც უარყოფითი, ერთ წუთში შეამოწმებთ საიდენტიფიკაციო კოდით {{id}}.', 'Запись компании в реестре налогоплательщиков лучше проверить напрямую на rs.ge. Это ни хороший, ни плохой знак — это займёт минуту по коду {{id}}.', 'Şirketin vergi mükellefleri sicilindeki kaydını doğrudan rs.ge üzerinde kontrol etmeniz önerilir. Bu ne olumlu ne olumsuz bir işarettir — {{id}} şirket koduyla bir dakika sürer.', 'يُستحسن التحقق من قيد الشركة في سجل دافعي الضرائب مباشرةً على rs.ge. هذا ليس مؤشرًا إيجابيًا ولا سلبيًا — يستغرق الأمر دقيقة برمز الشركة {{id}}.', 'מומלץ לבדוק את רישום החברה במרשם משלמי המסים ישירות ב-rs.ge. זה אינו סימן טוב ואינו סימן רע — זה לוקח דקה עם מספר החברה {{id}}.'],
 };
 
 export const RS_REPLACED_STRINGS = {
-  vbi_fin_tax_explain: [
-    'This is what the Revenue Service taxpayer registry returned for the company on the date shown. The registry shows registration details only — it does not show whether the company has tax arrears.',
-    'ეს არის ის, რაც შემოსავლების სამსახურის გადასახადის გადამხდელთა რეესტრმა კომპანიაზე მითითებულ თარიღში დააბრუნა. რეესტრი მხოლოდ სარეგისტრაციო მონაცემებს აჩვენებს — საგადასახადო დავალიანების არსებობა-არარსებობას ის არ აჩვენებს.',
-    'Это то, что реестр налогоплательщиков Службы доходов вернул по компании на указанную дату. Реестр показывает только регистрационные данные — наличие или отсутствие налоговой задолженности он не показывает.',
-    'Bu, Gelir İdaresi vergi mükellefleri sicilinin gösterilen tarihte şirket için döndürdüğü bilgidir. Sicil yalnızca kayıt bilgilerini gösterir — şirketin vergi borcu olup olmadığını göstermez.',
-    'هذا ما أرجعه سجل دافعي الضرائب لدى مصلحة الإيرادات عن الشركة في التاريخ المبيّن. يعرض السجل بيانات التسجيل فقط — ولا يبيّن ما إذا كانت على الشركة متأخرات ضريبية.',
-    'זה מה שמרשם משלמי המסים של רשות ההכנסות החזיר לגבי החברה בתאריך המצוין. המרשם מציג פרטי רישום בלבד — הוא אינו מראה אם לחברה יש חובות מס.',
-  ],
+  vbi_fin_tax_explain: ['This is what the Revenue Service taxpayer registry returned for the company on the date shown. The registry shows registration details only — it does not show whether the company has tax arrears.', 'ეს არის ის, რაც შემოსავლების სამსახურის გადასახადის გადამხდელთა რეესტრმა კომპანიაზე მითითებულ თარიღში დააბრუნა. რეესტრი მხოლოდ სარეგისტრაციო მონაცემებს აჩვენებს, საგადასახადო დავალიანების არსებობა-არარსებობას ის არ აჩვენებს.', 'Это то, что реестр налогоплательщиков Службы доходов вернул по компании на указанную дату. Реестр показывает только регистрационные данные — наличие или отсутствие налоговой задолженности он не показывает.', 'Bu, Gelir İdaresi vergi mükellefleri sicilinin gösterilen tarihte şirket için döndürdüğü bilgidir. Sicil yalnızca kayıt bilgilerini gösterir — şirketin vergi borcu olup olmadığını göstermez.', 'هذا ما أرجعه سجل دافعي الضرائب لدى مصلحة الإيرادات عن الشركة في التاريخ المبيّن. يعرض السجل بيانات التسجيل فقط — ولا يبيّن ما إذا كانت على الشركة متأخرات ضريبية.', 'זה מה שמרשם משלמי המסים של רשות ההכנסות החזיר לגבי החברה בתאריך המצוין. המרשם מציג פרטי רישום בלבד — הוא אינו מראה אם לחברה יש חובות מס.'],
 };

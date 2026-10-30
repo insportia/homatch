@@ -101,16 +101,21 @@ test('POST_COMPLETE_MATERIAL_MUTATION = NO: once COMPLETE, nothing left can chan
   assert.equal(verifyCustomerState({ ...final, stage: 'COMPLETE' }), 'COMPLETE');
 });
 
-test('a synthesis that will never arrive still ends the run', () => {
+test('a synthesis that will never arrive still ends the run — as FAILED, never as a completed shell', () => {
   /*
    * The other half of the contract. If the report cannot be produced, the
-   * fetch settles having failed, and the page falls back to the evidence
-   * view — which is a real result, just not the synthesised one. Without
-   * `synthesisSettled` a degraded run would finalise for ever, which is a
-   * worse lie than finishing early.
+   * fetch settles having failed. The premise changed on 2026-10-30 (prod
+   * 674df06e: research COMPLETE, synthesis FAILED, the page showed the
+   * evidence as if it were the report): research completion is not report
+   * delivery. The run still ends — FAILED when the server says the report
+   * failed — and while the report is still being prepared it stays
+   * FINALIZING. It is never COMPLETE without the report.
    */
-  const failed = { jobStatus: 'COMPLETE', stage: 'COMPLETE', hasReport: true, synthesis: null, synthesisLoading: false, synthesisSettled: true };
-  assert.equal(verifyCustomerState(failed), 'COMPLETE');
+  const settled = { jobStatus: 'COMPLETE', stage: 'COMPLETE', hasReport: true, synthesis: null, synthesisLoading: false, synthesisSettled: true };
+  assert.equal(verifyCustomerState({ ...settled, reportDelivery: 'FAILED' }), 'FAILED');
+  assert.equal(verifyCustomerState({ ...settled, reportDelivery: 'PREPARING' }), 'FINALIZING');
+  assert.equal(verifyCustomerState(settled), 'FINALIZING');
+  assert.notEqual(verifyCustomerState({ ...settled, reportDelivery: 'DELIVERED' }), 'COMPLETE', 'a report that did not load is not shown as delivered');
 });
 
 test('the states a customer must act on are never a completion', () => {

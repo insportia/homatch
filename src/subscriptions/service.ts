@@ -29,9 +29,32 @@ export interface PlansResponse {
   autoRenewAvailable: boolean;
 }
 
+/** Who pays for this feature now, decided by saas_access_resolve (20261208110000). */
+export type AccessSource = 'OWNER' | 'GRANT' | 'TRIAL' | 'PLAN' | 'LEGACY_CREDITS' | 'NONE';
+export type GrantKind = 'UNLIMITED' | 'PLAN' | 'CUSTOM';
+export interface GrantAllowance { feature: FeatureCode; unlimited: boolean; limit: number | null; period: 'TOTAL' | 'MONTHLY' }
+export interface AccessGrantSummary {
+  id: string;
+  kind: GrantKind;
+  planCode: PlanCode | null;
+  startsAt: string;
+  expiresAt: string | null;
+  permanent: boolean;
+  allowances: GrantAllowance[];
+}
+export interface AccessStatus {
+  owner: boolean;
+  /** Owner, or an active Unlimited grant: every credit / top-up surface is hidden. */
+  unlimited: boolean;
+  source: 'OWNER' | 'GRANT' | 'PLAN' | 'NONE';
+  grants: AccessGrantSummary[];
+}
 export interface FeatureStatus {
   feature: FeatureCode;
   kind: 'QUOTA' | 'BOOLEAN';
+  /** Absent on a server older than 20261208110000. */
+  source?: AccessSource;
+  grant?: { id: string; kind: GrantKind; planCode: PlanCode | null; period: string; expiresAt: string | null; permanent: boolean };
   included: boolean;
   unlimited: boolean;
   limit: number | null;
@@ -63,7 +86,11 @@ export interface EntitlementStatus {
   accountEligibleForTrials: boolean;
   legacyBalance: number;
   hasLegacyBalance: boolean;
+  /** Absent on a server older than 20261208110000: treated as an ordinary account. */
+  access?: AccessStatus;
 }
+
+export { grantExpiry, hasUnlimitedAccess, isAccessForbidden } from './access';
 
 export function formatGel(tetri: number, locale = 'ka-GE'): string {
   const gel = tetri / 100;
@@ -166,3 +193,55 @@ export const adminProviders = () => invoke<{ liveProvider: string | null; provid
 export const adminConnectivity = (provider: string) => invoke<{ ok: boolean; detail?: string; reason?: string }>({ action: 'admin-connectivity', provider });
 export const adminRefund = (checkoutId: string, reason: string, amountTetri?: number) =>
   invoke<{ ok: boolean }>({ action: 'admin-refund', checkoutId, reason, ...(amountTetri ? { amountTetri } : {}) });
+
+/* ── Admin → User access (20261208110100; the server re-checks admin, self, owner on every call) ── */
+export interface AdminAccessUserRow {
+  id: string; email: string | null; fullName: string | null; username: string | null;
+  isAdmin: boolean; owner: boolean; suspended: boolean; createdAt: string;
+  plan: PlanCode | null; activeGrants: number; unlimited: boolean;
+}
+export interface AdminGrantAllowance extends GrantAllowance {
+  countedSince: string; windowStart: string; used: number; remaining: number | null;
+}
+export interface AdminGrant {
+  id: string; userId: string; kind: GrantKind; planCode: PlanCode | null; status: 'ACTIVE' | 'REVOKED';
+  live: boolean; expired: boolean; startsAt: string; expiresAt: string | null; permanent: boolean;
+  reason: string; createdBy: string; createdAt: string; updatedAt: string;
+  revokedAt: string | null; revokeReason: string | null;
+  allowances: AdminGrantAllowance[];
+}
+export interface AdminAccessUsage {
+  id: string; feature: FeatureCode; funding: AccessSource; state: 'RESERVED' | 'COMMITTED' | 'RELEASED';
+  planCode: string | null; grantId: string | null; jobRef: string | null; reservedAt: string;
+  committedAt: string | null; releasedAt: string | null; releaseReason: string | null; overAllowance: boolean;
+}
+export interface AdminAccessEvent {
+  id: string; grantId: string | null; action: 'GRANTED' | 'MODIFIED' | 'REVOKED' | 'ALLOWANCE_RESET';
+  actorId: string; actorEmail: string | null; previous: AdminGrant | null; new: AdminGrant | null;
+  reason: string; expiresAt: string | null; createdAt: string;
+}
+export interface AdminAccessDetail {
+  user: { id: string; email: string | null; fullName: string | null; username: string | null; isAdmin: boolean; owner: boolean;
+          accountType: string | null; suspended: boolean; createdAt: string; verified: boolean };
+  manageable: boolean;
+  status: EntitlementStatus;
+  grants: AdminGrant[];
+  usage: AdminAccessUsage[];
+  events: AdminAccessEvent[];
+  legacyBalance: number;
+}
+export interface AllowanceInput { feature: FeatureCode; unlimited?: boolean; limit?: number | null; period?: 'TOTAL' | 'MONTHLY'; remove?: boolean }
+
+export const adminAccessUsers = (search: string | null) =>
+  rpc<AdminAccessUserRow[]>('admin_access_users', { p_search: search, p_limit: 30 }).then((r) => r ?? []);
+export const adminAccessUser = (userId: string) => rpc<AdminAccessDetail>('admin_access_user', { p_user_id: userId });
+export const adminAccessGrant = (userId: string, kind: GrantKind, planCode: PlanCode | null, allowances: AllowanceInput[] | null,
+  expiresAt: string | null, reason: string) =>
+  rpc<AdminGrant>('admin_access_grant', { p_user_id: userId, p_kind: kind, p_plan_code: planCode, p_allowances: allowances, p_expires_at: expiresAt, p_reason: reason });
+export const adminAccessUpdate = (grantId: string, expiryMode: 'KEEP' | 'PERMANENT' | 'DATE', expiresAt: string | null,
+  allowances: AllowanceInput[] | null, reason: string) =>
+  rpc<AdminGrant>('admin_access_grant_update', { p_grant_id: grantId, p_expiry_mode: expiryMode, p_expires_at: expiresAt, p_allowances: allowances, p_reason: reason });
+export const adminAccessRevoke = (grantId: string, reason: string) =>
+  rpc<AdminGrant>('admin_access_grant_revoke', { p_grant_id: grantId, p_reason: reason, p_confirm: 'REVOKE' });
+export const adminAccessReset = (grantId: string, feature: FeatureCode | null, reason: string) =>
+  rpc<AdminGrant>('admin_access_allowance_reset', { p_grant_id: grantId, p_feature: feature, p_reason: reason });

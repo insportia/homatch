@@ -75,14 +75,7 @@ export const LEGAL_LISTING_CONTACT_STRINGS = {
     'يمكن للأشخاص الذين يطابق بحثهم هذا العقار مراسلتك دائمًا على HOMATCH، ولن يروا هذا الرقم إلا إذا اخترت إظهاره في الإعلان.',
     'אנשים שהחיפוש שלהם תואם לנכס זה יכולים תמיד לשלוח לך הודעה ב-HOMATCH. הם יראו את המספר הזה רק אם תבחר להציג אותו במודעה.',
   ],
-  native_call_not_published: [
-    'The advertiser hasn\'t chosen to show a phone number on this listing. Send them a message instead.',
-    'განმცხადებელს ამ განცხადებაში ტელეფონის ნომრის ჩვენება არ აურჩევია — მიწერეთ შეტყობინება.',
-    'Автор объявления не стал показывать номер телефона. Напишите ему сообщение.',
-    'İlan sahibi bu ilanda telefon numarası göstermeyi seçmedi. Bunun yerine mesaj gönderin.',
-    'لم يختر المعلِن إظهار رقم هاتف في هذا الإعلان. أرسل له رسالة بدلًا من ذلك.',
-    'המפרסם לא בחר להציג מספר טלפון במודעה זו. שלח לו הודעה במקום זאת.',
-  ],
+  native_call_not_published: ['The advertiser hasn\'t chosen to show a phone number on this listing. Send them a message instead.', 'განმცხადებელს ამ განცხადებაში ტელეფონის ნომრის ჩვენება არ აურჩევია, მიწერეთ შეტყობინება.', 'Автор объявления не стал показывать номер телефона. Напишите ему сообщение.', 'İlan sahibi bu ilanda telefon numarası göstermeyi seçmedi. Bunun yerine mesaj gönderin.', 'لم يختر المعلِن إظهار رقم هاتف في هذا الإعلان. أرسل له رسالة بدلًا من ذلك.', 'המפרסם לא בחר להציג מספר טלפון במודעה זו. שלח לו הודעה במקום זאת.'],
 
   // ── Privacy: no claim that every phone is private ──
   privacy_match_p4: [

@@ -3,7 +3,7 @@
 // shape is identical: key -> [en, ka, ru, tr, ar, he].
 
 export const INVESTMENT_STRINGS_2 = {
-  /* ── Snapshot ─────────────────────────────────────────────────── */
+  /* ── Snapshot ─────────────────────────────────────────────────── */
   inv_mod_implied_eyebrow: ['Valuation lens', 'შეფასების პრიზმა', 'Оценочная призма', 'Değerleme merceği', 'عدسة التقييم', 'עדשת הערכה'],
   inv_mod_implied_title: ['What this income implies about value', 'რას გულისხმობს ეს შემოსავალი ღირებულებაზე', 'Какую стоимость подразумевает этот доход', 'Bu gelir değere dair ne ima ediyor', 'ما تشير إليه هذه الدخول عن القيمة', 'מה ההכנסה הזו מרמזת על השווי'],
   inv_mod_implied_sub: [
@@ -16,14 +16,7 @@ export const INVESTMENT_STRINGS_2 = {
   ],
   inv_mod_price_eyebrow: ['Positioning', 'პოზიციონირება', 'Позиционирование', 'Konumlandırma', 'الموضعة', 'מיצוב'],
   inv_mod_price_title: ['Is this expensive?', 'ძვირია ეს?', 'Это дорого?', 'Bu pahalı mı?', 'هل هذا غالٍ؟', 'זה יקר?'],
-  inv_mod_price_sub: [
-    'Where the price sits against everything we can honestly compare it to — and nothing we cannot.',
-    'სად დგას ფასი ყველაფერთან შედარებით, რასაც პატიოსნად შევადარებთ — და არაფერთან, რასაც ვერ.',
-    'Где цена относительно всего, с чем её честно можно сравнить — и ничего, с чем нельзя.',
-    'Fiyatın, dürüstçe karşılaştırabildiğimiz her şeye göre nerede durduğu — karşılaştıramadığımız hiçbir şeye göre değil.',
-    'أين يقع السعر مقارنةً بكل ما يمكن مقارنته بصدق — ولا شيء مما لا يمكن.',
-    'איפה המחיר עומד ביחס לכל מה שניתן להשוות אליו בכנות — ולא למה שלא.',
-  ],
+  inv_mod_price_sub: ['Where the price sits against everything we can honestly compare it to — and nothing we cannot.', 'სად დგას ფასი ყველაფერთან შედარებით, რასაც პატიოსნად შევადარებთ, და არაფერთან, რასაც ვერ.', 'Где цена относительно всего, с чем её честно можно сравнить — и ничего, с чем нельзя.', 'Fiyatın, dürüstçe karşılaştırabildiğimiz her şeye göre nerede durduğu — karşılaştıramadığımız hiçbir şeye göre değil.', 'أين يقع السعر مقارنةً بكل ما يمكن مقارنته بصدق — ولا شيء مما لا يمكن.', 'איפה המחיר עומד ביחס לכל מה שניתן להשוות אליו בכנות — ולא למה שלא.'],
   inv_mod_payback_eyebrow: ['Recovery', 'ანაზღაურება', 'Возврат', 'Geri kazanım', 'الاسترداد', 'החזר'],
   inv_mod_payback_title: ['When you get your money back', 'როდის დაიბრუნებთ ფულს', 'Когда вернутся ваши деньги', 'Paranızı ne zaman geri alırsınız', 'متى تسترد أموالك', 'מתי הכסף שלכם חוזר'],
   inv_mod_payback_sub: [
@@ -155,14 +148,7 @@ export const INVESTMENT_STRINGS_2 = {
   inv_implied_chart_label: ['Implied value across required yields', 'ნაგულისხმევი ღირებულება სხვადასხვა მოთხოვნილ სარგებელზე', 'Подразумеваемая стоимость при разной требуемой доходности', 'Farklı talep edilen getirilerde ima edilen değer', 'القيمة المستنتجة عبر عوائد مطلوبة مختلفة', 'שווי נגזר לפי תשואות נדרשות'],
   inv_implied_income_label: ['Annual income ({{basis}})', 'წლიური შემოსავალი ({{basis}})', 'Годовой доход ({{basis}})', 'Yıllık gelir ({{basis}})', 'الدخل السنوي ({{basis}})', 'הכנסה שנתית ({{basis}})'],
   inv_implied_at: ['Implied value at {{yield}}', 'ნაგულისხმევი ღირებულება {{yield}}-ზე', 'Подразумеваемая стоимость при {{yield}}', '{{yield}} için ima edilen değer', 'القيمة المستنتجة عند {{yield}}', 'שווי נגזר ב-{{yield}}'],
-  inv_implied_explainer: [
-    'A buyer who insists on a higher yield will pay less for the same income — that is why the curve falls. The first percentage point costs far more value than the fifth.',
-    'მყიდველი, რომელიც უფრო მაღალ სარგებელს მოითხოვს, იმავე შემოსავალში ნაკლებს გადაიხდის — სწორედ ამიტომ ეცემა მრუდი. პირველი პროცენტი გაცილებით მეტ ღირებულებას შთანთქავს, ვიდრე მეხუთე.',
-    'Покупатель, требующий большей доходности, заплатит меньше за тот же доход — поэтому кривая падает. Первый процентный пункт стоит куда дороже пятого.',
-    'Daha yüksek getiri isteyen bir alıcı, aynı gelir için daha az öder — eğri bu yüzden düşer. İlk yüzde puanı, beşinciden çok daha fazla değere mal olur.',
-    'المشتري الذي يشترط عائدًا أعلى سيدفع أقل مقابل الدخل نفسه — لذلك ينحدر المنحنى. النقطة المئوية الأولى تكلّف قيمة أكبر بكثير من الخامسة.',
-    'קונה שדורש תשואה גבוהה יותר ישלם פחות על אותה הכנסה — לכן העקומה יורדת. אחוז אחד ראשון עולה הרבה יותר שווי מהחמישי.',
-  ],
+  inv_implied_explainer: ['A buyer who insists on a higher yield will pay less for the same income — that is why the curve falls. The first percentage point costs far more value than the fifth.', 'მყიდველი, რომელიც უფრო მაღალ სარგებელს მოითხოვს, იმავე შემოსავალში ნაკლებს გადაიხდის, სწორედ ამიტომ ეცემა მრუდი. პირველი პროცენტი გაცილებით მეტ ღირებულებას შთანთქავს, ვიდრე მეხუთე.', 'Покупатель, требующий большей доходности, заплатит меньше за тот же доход — поэтому кривая падает. Первый процентный пункт стоит куда дороже пятого.', 'Daha yüksek getiri isteyen bir alıcı, aynı gelir için daha az öder — eğri bu yüzden düşer. İlk yüzde puanı, beşinciden çok daha fazla değere mal olur.', 'المشتري الذي يشترط عائدًا أعلى سيدفع أقل مقابل الدخل نفسه — لذلك ينحدر المنحنى. النقطة المئوية الأولى تكلّف قيمة أكبر بكثير من الخامسة.', 'קונה שדורש תשואה גבוהה יותר ישלם פחות על אותה הכנסה — לכן העקומה יורדת. אחוז אחד ראשון עולה הרבה יותר שווי מהחמישי.'],
   inv_implied_caveat: [
     'This is what the income implies at that yield. It is not a market value: only comparable evidence can say what the market would pay.',
     'ეს არის ის, რასაც შემოსავალი გულისხმობს ამ სარგებელზე. ეს არ არის საბაზრო ღირებულება: მხოლოდ შესადარებელ მტკიცებულებას შეუძლია თქვას, რას გადაიხდიდა ბაზარი.',
@@ -212,14 +198,7 @@ export const INVESTMENT_STRINGS_2 = {
     'السعر أعلى من كل ما يُعلن عنه من مقارنات. يستحق فهم ما يبرره قبل افتراض أنه خطأ.',
     'המחיר גבוה מכל מה שמפורסם כהשוואה. כדאי להבין מה מצדיק זאת לפני שמניחים שהוא שגוי.',
   ],
-  inv_price_vs_implied: [
-    'The income-implied value is {{amount}} {{direction}} what you would pay. That is a potential, unrealised difference — not a profit, and not a valuation.',
-    'შემოსავლით ნაგულისხმევი ღირებულება {{amount}}-ით {{direction}} თქვენს გადასახდელს. ეს არის პოტენციური, რეალიზებული სხვაობა — არა მოგება და არა შეფასება.',
-    'Стоимость, подразумеваемая доходом, на {{amount}} {{direction}} того, что вы платите. Это потенциальная, нереализованная разница — не прибыль и не оценка.',
-    'Gelir-ima değeri, ödeyeceğinizden {{amount}} {{direction}}. Bu potansiyel, gerçekleşmemiş bir farktır — kâr değil, değerleme de değil.',
-    'القيمة المستنتجة من الدخل {{amount}} {{direction}} ما ستدفعه. هذا فارق محتمل غير محقق — ليس ربحًا ولا تقييمًا.',
-    'השווי הנגזר מההכנסה גבוה/נמוך ב-{{amount}} {{direction}} ממה שתשלמו. זהו פער פוטנציאלי שטרם מומש — לא רווח ולא הערכת שווי.',
-  ],
+  inv_price_vs_implied: ['The income-implied value is {{amount}} {{direction}} what you would pay. That is a potential, unrealised difference — not a profit, and not a valuation.', 'შემოსავლით ნაგულისხმევი ღირებულება {{amount}}-ით {{direction}} თქვენს გადასახდელს. ეს არის პოტენციური, რეალიზებული სხვაობა, არა მოგება და არა შეფასება.', 'Стоимость, подразумеваемая доходом, на {{amount}} {{direction}} того, что вы платите. Это потенциальная, нереализованная разница — не прибыль и не оценка.', 'Gelir-ima değeri, ödeyeceğinizden {{amount}} {{direction}}. Bu potansiyel, gerçekleşmemiş bir farktır — kâr değil, değerleme de değil.', 'القيمة المستنتجة من الدخل {{amount}} {{direction}} ما ستدفعه. هذا فارق محتمل غير محقق — ليس ربحًا ولا تقييمًا.', 'השווי הנגזר מההכנסה גבוה/נמוך ב-{{amount}} {{direction}} ממה שתשלמו. זהו פער פוטנציאלי שטרם מומש — לא רווח ולא הערכת שווי.'],
   inv_price_above: ['above', 'მეტი', 'выше', 'üzerinde', 'أعلى من', 'מעל'],
   inv_price_below: ['below', 'ნაკლები', 'ниже', 'altında', 'أدنى من', 'מתחת'],
   inv_price_evidence_note: [
@@ -230,14 +209,7 @@ export const INVESTMENT_STRINGS_2 = {
     'من {{observations}} ملاحظة عبر {{sources}} مصادر مستقلة، على أساس {{basis}}.',
     'מתוך {{observations}} תצפיות ב-{{sources}} מקורות עצמאיים, על בסיס {{basis}}.',
   ],
-  inv_price_no_evidence_note: [
-    'Homatch does not invent a market range. Until research runs, the only reference points here are yours.',
-    'Homatch საბაზრო დიაპაზონს არ იგონებს. სანამ კვლევა არ გაეშვება, აქ მხოლოდ თქვენი საორიენტაციო წერტილებია.',
-    'Homatch не выдумывает рыночный диапазон. Пока исследование не запущено, здесь только ваши ориентиры.',
-    'Homatch bir piyasa aralığı uydurmaz. Araştırma çalışmadan buradaki tek referans sizinkilerdir.',
-    'لا يخترع Homatch نطاقًا سوقيًا. حتى يُشغَّل البحث، المراجع الوحيدة هنا هي أرقامك.',
-    'Homatch אינו ממציא טווח שוק. עד שהמחקר ירוץ, נקודות הייחוס היחידות כאן הן שלכם.',
-  ],
+  inv_price_no_evidence_note: ['Homatch does not invent a market range. Until research runs, the only reference points here are yours.', 'HOMATCH საბაზრო დიაპაზონს არ იგონებს. სანამ კვლევა არ გაეშვება, აქ მხოლოდ თქვენი საორიენტაციო წერტილებია.', 'Homatch не выдумывает рыночный диапазон. Пока исследование не запущено, здесь только ваши ориентиры.', 'Homatch bir piyasa aralığı uydurmaz. Araştırma çalışmadan buradaki tek referans sizinkilerdir.', 'لا يخترع Homatch نطاقًا سوقيًا. حتى يُشغَّل البحث، المراجع الوحيدة هنا هي أرقامك.', 'Homatch אינו ממציא טווח שוק. עד שהמחקר ירוץ, נקודות הייחוס היחידות כאן הן שלכם.'],
   inv_basis_label_ASKING: ['asking', 'მოთხოვნილი', 'запрашиваемая', 'istenen', 'مطلوب', 'מבוקש'],
   inv_basis_label_TRANSACTION: ['transaction', 'გარიგების', 'сделочная', 'işlem', 'صفقة', 'עסקה'],
   inv_basis_label_ASKING_RENT: ['asking rent', 'მოთხოვნილი ქირა', 'запрашиваемая аренда', 'istenen kira', 'إيجار مطلوب', 'שכירות מבוקשת'],

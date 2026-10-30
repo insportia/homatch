@@ -34,7 +34,7 @@ import {Activity, AudioLines, BadgeDollarSign, Bot, Landmark, Languages,BarChart
   MessageCircle, MessageSquareWarning, 
   Paintbrush, PhoneCall, Plug, Puzzle, Radio, 
   Receipt, Send, Server, Settings2, Share2, ShieldAlert, ShieldCheck, SlidersHorizontal, Store, 
-  TrendingUp, Type, UserSearch, Users, Wrench, Zap, Contact,
+  TrendingUp, Type, UserCheck, UserSearch, Users, Wrench, Zap, Contact,
 } from 'lucide-react';
 import type { TranslationKey } from '@/i18n/translations';
 
@@ -294,6 +294,11 @@ export const ADMIN_GROUPS: AdminGroup[] = [
       {
         path: '/admin/plans', labelKey: 'admin_nav_plans', icon: Settings2,
         keywords: ['plans', 'subscription', 'entitlement', 'allowance', 'trial', 'vip', 'unlimited', 'bank', 'bog', 'tbc'],
+      },
+      {
+        // Owner Unlimited and audited manual access grants (20261208110100).
+        path: '/admin/access', labelKey: 'admin_nav_access', icon: UserCheck,
+        keywords: ['access', 'grant', 'unlimited', 'owner', 'allowance', 'limit', 'manual', 'revoke', 'წვდომა', 'შეუზღუდავი'],
       },
       {
         path: '/admin/pricing', labelKey: 'admin_nav_pricing', icon: Settings2,

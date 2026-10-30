@@ -31,14 +31,7 @@ export const CAMPAIGN_LANGUAGE_STRINGS = {
     'اللغات التي نبحث بها. المشترون في تبليسي يكتبون بعدة لغات، والبحث بلغة واحدة يجد جزءًا منهم فقط.',
     'באילו שפות אנחנו מחפשים. קונים בטביליסי כותבים בכמה שפות, וחיפוש באחת מוצא רק חלק מהם.',
   ],
-  campaign_langs_not_ui: [
-    'This is not the language Homatch is shown in, and it does not require anyone to speak it.',
-    'ეს არ არის ენა, რომელზეც Homatch გეჩვენებათ, და არავისგან არ მოითხოვს ამ ენის ცოდნას.',
-    'Это не язык интерфейса Homatch и не требование, чтобы кто-то на нём говорил.',
-    'Bu, Homatch\'in gösterildiği dil değildir ve kimsenin o dili konuşmasını gerektirmez.',
-    'هذه ليست لغة عرض Homatch ولا تشترط أن يتحدث بها أحد.',
-    'זו אינה השפה שבה Homatch מוצג, והיא אינה דורשת מאיש לדבר בה.',
-  ],
+  campaign_langs_not_ui: ['This is not the language Homatch is shown in, and it does not require anyone to speak it.', 'ეს არ არის ენა, რომელზეც HOMATCH გეჩვენებათ, და არავისგან არ მოითხოვს ამ ენის ცოდნას.', 'Это не язык интерфейса Homatch и не требование, чтобы кто-то на нём говорил.', 'Bu, Homatch\'in gösterildiği dil değildir ve kimsenin o dili konuşmasını gerektirmez.', 'هذه ليست لغة عرض Homatch ولا تشترط أن يتحدث بها أحد.', 'זו אינה השפה שבה Homatch מוצג, והיא אינה דורשת מאיש לדבר בה.'],
   campaign_langs_mode_auto: [
     'Recommended',
     'რეკომენდებული',
@@ -47,14 +40,7 @@ export const CAMPAIGN_LANGUAGE_STRINGS = {
     'موصى به',
     'מומלץ',
   ],
-  campaign_langs_mode_auto_desc: [
-    'Homatch picks the languages your buyers are most likely writing in.',
-    'Homatch ირჩევს ენებს, რომლებზეც თქვენი მყიდველები სავარაუდოდ წერენ.',
-    'Homatch выбирает языки, на которых ваши покупатели вероятнее всего пишут.',
-    'Homatch, alıcılarınızın büyük olasılıkla yazdığı dilleri seçer.',
-    'يختار Homatch اللغات التي يُرجَّح أن يكتب بها المشترون لديك.',
-    'Homatch בוחר את השפות שבהן הקונים שלך ככל הנראה כותבים.',
-  ],
+  campaign_langs_mode_auto_desc: ['Homatch picks the languages your buyers are most likely writing in.', 'HOMATCH ირჩევს ენებს, რომლებზეც თქვენი მყიდველები სავარაუდოდ წერენ.', 'Homatch выбирает языки, на которых ваши покупатели вероятнее всего пишут.', 'Homatch, alıcılarınızın büyük olasılıkla yazdığı dilleri seçer.', 'يختار Homatch اللغات التي يُرجَّح أن يكتب بها المشترون لديك.', 'Homatch בוחר את השפות שבהן הקונים שלך ככל הנראה כותבים.'],
   campaign_langs_mode_choose: [
     'Choose languages',
     'ენების არჩევა',
@@ -199,12 +185,5 @@ export const CAMPAIGN_LANGUAGE_STRINGS = {
     'الأصل، {{language}}',
     'מקור, {{language}}',
   ],
-  campaign_langs_machine_summary: [
-    'Summary written by Homatch, not by the author',
-    'რეზიუმე დაწერილია Homatch-ის და არა ავტორის მიერ',
-    'Краткое изложение составлено Homatch, а не автором',
-    'Özet yazarı değil Homatch yazdı',
-    'ملخّص كتبه Homatch وليس صاحب النص',
-    'תקציר שנכתב על ידי Homatch, לא על ידי הכותב',
-  ],
+  campaign_langs_machine_summary: ['Summary written by Homatch, not by the author', 'რეზიუმე დაწერილია HOMATCH-ის და არა ავტორის მიერ', 'Краткое изложение составлено Homatch, а не автором', 'Özet yazarı değil Homatch yazdı', 'ملخّص كتبه Homatch وليس صاحب النص', 'תקציר שנכתב על ידי Homatch, לא על ידי הכותב'],
 };

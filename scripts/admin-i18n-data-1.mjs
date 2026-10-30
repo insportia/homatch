@@ -101,10 +101,7 @@ export const ADMIN_STRINGS_1 = {
   ],
 
   /* ── The control centre ─────────────────────────────────────────── */
-  admin_home_title: [
-    'Homatch Admin', 'Homatch-ის ადმინი', 'Админка Homatch',
-    'Homatch Yönetimi', 'إدارة Homatch', 'ניהול Homatch',
-  ],
+  admin_home_title: ['Homatch Admin', 'HOMATCH-ის ადმინი', 'Админка Homatch', 'Homatch Yönetimi', 'إدارة Homatch', 'ניהול Homatch'],
   admin_home_subtitle: [
     'Manage your platform from one place.',
     'მართეთ თქვენი პლატფორმა ერთი ადგილიდან.',

@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
+import { LegalLayout, LegalList, type LegalSection } from '@/components/legal/LegalLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import { openCookieSettings } from '@/lib/consent/cookieConsent';
-import { LegalLayout, LegalList, type LegalSection } from '@/components/legal/LegalLayout';
+import { listsStripeCookies } from '@/lib/legal/operator';
+import { useLegalEdition } from '@/lib/legal/useLegalEdition';
 
 /*
  * THE INVENTORY IS WHAT THE CODE ACTUALLY STORES, NOT A TEMPLATE.
@@ -41,6 +43,10 @@ const CONSENT_LABEL: Record<Consent, TranslationKey> = {
 
 export default function CookiesPage() {
   const { t } = useLanguage();
+  /* 2026-10-30: no payment provider is connected and Stripe is not used, so its checkout cookies are
+     no longer listed. Earlier editions (?version=2026-10-29, 2026-10-25) still show them as published. */
+  const stripe = listsStripeCookies(useLegalEdition('cookies'));
+  const rows = INVENTORY.filter((r) => stripe || r.provider !== 'Stripe');
 
   const cols: { key: TranslationKey; cell: (r: typeof INVENTORY[number]) => ReactNode }[] = [
     { key: 'cookie_col_provider', cell: (r) => r.provider },
@@ -55,7 +61,7 @@ export default function CookiesPage() {
     <>
       {/* Phones: one card per entry. */}
       <ul className="space-y-3 md:hidden">
-        {INVENTORY.map((r) => (
+        {rows.map((r) => (
           <li key={r.name} className="rounded-[0.9rem] border border-border bg-card p-3.5">
             <p className="font-mono text-2xs text-foreground break-all" dir="ltr">{r.name}</p>
             <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[14px]">
@@ -76,7 +82,7 @@ export default function CookiesPage() {
             </tr>
           </thead>
           <tbody>
-            {INVENTORY.map((r) => (
+            {rows.map((r) => (
               <tr key={r.name} className="border-t border-border align-top">
                 <td className="p-2.5 font-mono text-2xs text-foreground break-all" dir="ltr">{r.name}</td>
                 {cols.map((c) => <td key={c.key} className="p-2.5">{c.cell(r)}</td>)}
@@ -111,7 +117,7 @@ export default function CookiesPage() {
     {
       id: 'third-party', title: t('cookie_s_third_title'), content: <>
         <p>{t('cookie_s_third_body')}</p>
-        <LegalList items={[t('cookie_third_google'), t('cookie_third_fonts'), t('cookie_third_stripe'), t('cookie_third_sentry'), t('cookie_third_video')]} />
+        <LegalList items={[t('cookie_third_google'), t('cookie_third_fonts'), ...(stripe ? [t('cookie_third_stripe')] : []), t('cookie_third_sentry'), t('cookie_third_video')]} />
       </>,
     },
     { id: 'updates', title: t('cookie_s_updates_title'), content: <p>{t('cookie_s_updates_body')}</p> },

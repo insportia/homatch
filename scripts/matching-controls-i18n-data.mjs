@@ -3,14 +3,7 @@
  * Service Control Center shows for the three new switches. [en, ka, ru, tr, ar, he].
  */
 export const MATCHING_CONTROLS_STRINGS = {
-  admin_nav_leads_database: [
-    'Leads Database',
-    'ლიდების ბაზა',
-    'База лидов',
-    'Potansiyel Müşteri Veritabanı',
-    'قاعدة بيانات العملاء المحتملين',
-    'מאגר לידים',
-  ],
+  admin_nav_leads_database: ['Leads Database', 'კონტაქტების ბაზა', 'База лидов', 'Potansiyel Müşteri Veritabanı', 'قاعدة بيانات العملاء المحتملين', 'מאגר לידים'],
   svc_name_internal_matching: [
     'HOMATCH Internal Matches',
     'HOMATCH-ის შიდა დამთხვევები',
@@ -27,22 +20,8 @@ export const MATCHING_CONTROLS_STRINGS = {
     'التطابقات بين عقار المالك وعمليات البحث التي يجريها أعضاء HOMATCH، وفتح بيانات الاتصال بهم.',
     'התאמות בין נכס של בעלים לבין חיפושי הנכסים של חברי HOMATCH, ופתיחת פרטי הקשר שלהם.',
   ],
-  svc_name_curated_leads: [
-    'External Leads Database',
-    'გარე ლიდების ბაზა',
-    'База внешних лидов',
-    'Harici Potansiyel Müşteri Veritabanı',
-    'قاعدة بيانات العملاء المحتملين الخارجية',
-    'מאגר לידים חיצוני',
-  ],
-  svc_desc_curated_leads: [
-    'The shared, administrator-curated catalog of potential buyers, tenants and investors, sold per contact.',
-    'პოტენციური მყიდველების, მოიჯარეებისა და ინვესტორების საერთო, ადმინისტრატორის მიერ შერჩეული კატალოგი — თითოეული კონტაქტი ცალკე იყიდება.',
-    'Общий каталог потенциальных покупателей, арендаторов и инвесторов, подобранный администратором; каждый контакт продаётся отдельно.',
-    'Yönetici tarafından derlenen, potansiyel alıcı, kiracı ve yatırımcılardan oluşan ortak katalog; her iletişim bilgisi ayrı satılır.',
-    'كتالوج مشترك ينسّقه المسؤول للمشترين والمستأجرين والمستثمرين المحتملين، ويُباع كل جهة اتصال على حدة.',
-    'קטלוג משותף של קונים, שוכרים ומשקיעים פוטנציאליים שנאסף על ידי מנהל המערכת; כל איש קשר נמכר בנפרד.',
-  ],
+  svc_name_curated_leads: ['External Leads Database', 'გარე კონტაქტების ბაზა', 'База внешних лидов', 'Harici Potansiyel Müşteri Veritabanı', 'قاعدة بيانات العملاء المحتملين الخارجية', 'מאגר לידים חיצוני'],
+  svc_desc_curated_leads: ['The shared, administrator-curated catalog of potential buyers, tenants and investors, sold per contact.', 'პოტენციური მყიდველების, მოიჯარეებისა და ინვესტორების საერთო, ადმინისტრატორის მიერ შერჩეული კატალოგი, თითოეული კონტაქტი ცალკე იყიდება.', 'Общий каталог потенциальных покупателей, арендаторов и инвесторов, подобранный администратором; каждый контакт продаётся отдельно.', 'Yönetici tarafından derlenen, potansiyel alıcı, kiracı ve yatırımcılardan oluşan ortak katalog; her iletişim bilgisi ayrı satılır.', 'كتالوج مشترك ينسّقه المسؤول للمشترين والمستأجرين والمستثمرين المحتملين، ويُباع كل جهة اتصال على حدة.', 'קטלוג משותף של קונים, שוכרים ומשקיעים פוטנציאליים שנאסף על ידי מנהל המערכת; כל איש קשר נמכר בנפרד.'],
   svc_name_find_buyers_external: [
     'Legacy paid external discovery',
     'ძველი ფასიანი გარე ძიება',

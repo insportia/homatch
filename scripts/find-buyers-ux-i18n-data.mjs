@@ -108,14 +108,7 @@ export const FIND_BUYERS_UX_STRINGS = {
     'سأل عن عقار مشابه. هذا اهتمام وليس قرارًا معلنًا: اقرأ الأدلة قبل التواصل معه.',
     'שאל על נכס דומה. זו התעניינות ולא החלטה מוצהרת: קראו את הראיות לפני שתיצרו קשר.',
   ],
-  fbx_lead_explain_verify: [
-    'Stated their own intent, but match review rated the fit weak or has not reviewed it yet — needs verification before you rely on it.',
-    'თავად დააფიქსირა სურვილი, თუმცა დამთხვევის შემოწმებამ შესაბამისობა სუსტად შეაფასა ან ჯერ არ შეუფასებია — დაყრდნობამდე საჭიროებს გადამოწმებას.',
-    'Сам заявил о намерении, но проверка совпадения оценила соответствие как слабое или ещё не оценила — требует проверки.',
-    'Niyetini kendisi belirtti, ancak eşleşme incelemesi uyumu zayıf buldu ya da henüz incelemedi — güvenmeden önce doğrulama gerekiyor.',
-    'أعلن نيته بنفسه، لكن مراجعة التطابق قيّمت الملاءمة بأنها ضعيفة أو لم تراجعها بعد — يحتاج إلى تحقق قبل الاعتماد عليه.',
-    'הצהיר בעצמו על כוונתו, אך בדיקת ההתאמה דירגה את ההתאמה כחלשה או טרם בדקה — דורש אימות לפני שתסתמכו עליו.',
-  ],
+  fbx_lead_explain_verify: ['Stated their own intent, but match review rated the fit weak or has not reviewed it yet — needs verification before you rely on it.', 'თავად დააფიქსირა სურვილი, თუმცა დამთხვევის შემოწმებამ შესაბამისობა სუსტად შეაფასა ან ჯერ არ შეუფასებია, დაყრდნობამდე საჭიროებს გადამოწმებას.', 'Сам заявил о намерении, но проверка совпадения оценила соответствие как слабое или ещё не оценила — требует проверки.', 'Niyetini kendisi belirtti, ancak eşleşme incelemesi uyumu zayıf buldu ya da henüz incelemedi — güvenmeden önce doğrulama gerekiyor.', 'أعلن نيته بنفسه، لكن مراجعة التطابق قيّمت الملاءمة بأنها ضعيفة أو لم تراجعها بعد — يحتاج إلى تحقق قبل الاعتماد عليه.', 'הצהיר בעצמו על כוונתו, אך בדיקת ההתאמה דירגה את ההתאמה כחלשה או טרם בדקה — דורש אימות לפני שתסתמכו עליו.'],
   fbx_lead_explain_excluded: [
     'Match review set this reading aside, so it is not listed in your results.',
     'დამთხვევის შემოწმებამ ეს ჩანაწერი გამორიცხა, ამიტომ ის თქვენს შედეგებში არ ჩანს.',
@@ -125,14 +118,7 @@ export const FIND_BUYERS_UX_STRINGS = {
     'בדיקת ההתאמה פסלה את הרשומה הזו, ולכן היא לא מופיעה בתוצאות שלכם.',
   ],
   fbx_lead_intent_title: ['Intent confidence', 'განზრახვის სანდოობა', 'Уверенность в намерении', 'Niyet güveni', 'الثقة في النية', 'ודאות הכוונה'],
-  fbx_lead_intent_body: [
-    'How clearly this person stated their own intent, read from their own words.',
-    'რამდენად ნათლად დააფიქსირა ამ ადამიანმა საკუთარი სურვილი — მისივე სიტყვებიდან.',
-    'Насколько ясно человек заявил о своём намерении — по его собственным словам.',
-    'Bu kişinin niyetini ne kadar açık belirttiği — kendi sözlerinden.',
-    'مدى وضوح إعلان هذا الشخص عن نيته، استنادًا إلى كلماته.',
-    'עד כמה האדם הצהיר בבירור על כוונתו — מתוך דבריו שלו.',
-  ],
+  fbx_lead_intent_body: ['How clearly this person stated their own intent, read from their own words.', 'რამდენად ნათლად დააფიქსირა ამ ადამიანმა საკუთარი სურვილი, მისივე სიტყვებიდან.', 'Насколько ясно человек заявил о своём намерении — по его собственным словам.', 'Bu kişinin niyetini ne kadar açık belirttiği — kendi sözlerinden.', 'مدى وضوح إعلان هذا الشخص عن نيته، استنادًا إلى كلماته.', 'עד כמה האדם הצהיר בבירור על כוונתו — מתוך דבריו שלו.'],
   fbx_lead_compat_title: ['Property compatibility', 'ქონებასთან შესაბამისობა', 'Соответствие объекту', 'Mülk uyumu', 'الملاءمة مع العقار', 'התאמה לנכס'],
   fbx_lead_compat_body: [
     'How well what they asked about fits this property: budget, location, rooms and type.',
@@ -168,14 +154,7 @@ export const FIND_BUYERS_UX_STRINGS = {
   fbx_ev_kind_comment: ['Comment', 'კომენტარი', 'Комментарий', 'Yorum', 'تعليق', 'תגובה'],
   fbx_ev_kind_message: ['Message', 'შეტყობინება', 'Сообщение', 'Mesaj', 'رسالة', 'הודעה'],
 
-  fbx_kind_verify_transaction: [
-    'Needs verification — buy or rent not stated',
-    'საჭიროებს გადამოწმებას — ყიდვა თუ ქირაობა, არ არის მითითებული',
-    'Требует проверки — не указано, покупка или аренда',
-    'Doğrulama gerekiyor — satın alma mı kiralama mı belirtilmedi',
-    'يحتاج إلى تحقق — لم يُذكر الشراء أو الاستئجار',
-    'דורש אימות — לא צוין אם קנייה או שכירות',
-  ],
+  fbx_kind_verify_transaction: ['Needs verification — buy or rent not stated', 'საჭიროებს გადამოწმებას: ყიდვა თუ ქირაობა, არ არის მითითებული', 'Требует проверки — не указано, покупка или аренда', 'Doğrulama gerekiyor — satın alma mı kiralama mı belirtilmedi', 'يحتاج إلى تحقق — لم يُذكر الشراء أو الاستئجار', 'דורש אימות — לא צוין אם קנייה או שכירות'],
   fbx_opp_ad_comments: [
     'Comments are not accessible from the ad; review the advertiser’s Page.',
     'რეკლამიდან კომენტარები ხელმისაწვდომი არ არის; გადახედეთ რეკლამის განმთავსებლის გვერდს.',
@@ -189,8 +168,8 @@ export const FIND_BUYERS_UX_STRINGS = {
   fbl_lang_outcome_NOT_PLANNED: ['Not planned', 'არ იგეგმებოდა', 'Не планировался', 'Planlanmadı', 'غير مخطط', 'לא תוכנן'],
   fbl_lang_outcome_NOT_RUN: ['Not searched', 'ძებნა არ ჩატარებულა', 'Поиск не проводился', 'Aranmadı', 'لم يُبحث', 'לא נערך חיפוש'],
   fbl_lang_outcome_SOURCE_UNAVAILABLE: ['No source available', 'წყარო მიუწვდომელია', 'Нет доступного источника', 'Erişilebilir kaynak yok', 'لا يوجد مصدر متاح', 'אין מקור זמין'],
-  fbl_lang_outcome_SEARCHED_NO_RESULTS: ['Searched — nothing found', 'მოძებნილია — შედეგი არ არის', 'Искали — ничего не найдено', 'Arandı — sonuç yok', 'تم البحث — لا نتائج', 'נערך חיפוש — לא נמצא דבר'],
-  fbl_lang_outcome_RESULTS_FILTERED: ['Searched — results set aside', 'მოძებნილია — შედეგები გამოირიცხა', 'Искали — результаты отсеяны', 'Arandı — sonuçlar elendi', 'تم البحث — استُبعدت النتائج', 'נערך חיפוש — התוצאות נפסלו'],
+  fbl_lang_outcome_SEARCHED_NO_RESULTS: ['Searched — nothing found', 'მოძებნილია: შედეგი არ არის', 'Искали — ничего не найдено', 'Arandı — sonuç yok', 'تم البحث — لا نتائج', 'נערך חיפוש — לא נמצא דבר'],
+  fbl_lang_outcome_RESULTS_FILTERED: ['Searched — results set aside', 'მოძებნილია: შედეგები გამოირიცხა', 'Искали — результаты отсеяны', 'Arandı — sonuçlar elendi', 'تم البحث — استُبعدت النتائج', 'נערך חיפוש — התוצאות נפסלו'],
   fbl_lang_outcome_RESULTS: ['People found: {{n}}', 'ნაპოვნი ადამიანები: {{n}}', 'Найдено людей: {{n}}', 'Bulunan kişi: {{n}}', 'أشخاص وُجدوا: {{n}}', 'אנשים שנמצאו: {{n}}'],
 
   /* ── the live search: elapsed, real progress, duration note, details ── */

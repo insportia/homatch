@@ -21,14 +21,7 @@ export const MORTGAGE_STRINGS_2 = {
     'تمويل المنزل',
     'מימון דיור',
   ],
-  mortgage_home_body: [
-    'Choose what you want to understand. Homatch asks only for the figures that question needs, calculates as you enter them, and says which costs it does not know about.',
-    'აირჩიეთ, რისი გაგება გსურთ. Homatch მხოლოდ იმ ციფრებს ითხოვს, რაც ამ კითხვას სჭირდება, ითვლის შეყვანისთანავე და გეუბნებათ, რომელი ხარჯების შესახებ არ იცის.',
-    'Выберите, что хотите понять. Homatch спросит только те цифры, которые нужны этому вопросу, посчитает по мере ввода и скажет, о каких расходах ему неизвестно.',
-    'Neyi anlamak istediğinizi seçin. Homatch yalnızca o sorunun ihtiyaç duyduğu rakamları ister, siz girdikçe hesaplar ve hangi maliyetleri bilmediğini söyler.',
-    'اختر ما تريد فهمه. يطلب Homatch الأرقام التي يحتاجها ذلك السؤال فقط، ويحسب أثناء إدخالك، ويخبرك بالتكاليف التي لا يعرفها.',
-    'בחרו מה תרצו להבין. Homatch מבקש רק את המספרים שהשאלה הזו צריכה, מחשב תוך כדי הזנה, ואומר אילו עלויות אינן ידועות לו.',
-  ],
+  mortgage_home_body: ['Choose what you want to understand. Homatch asks only for the figures that question needs, calculates as you enter them, and says which costs it does not know about.', 'აირჩიე, რისი გაგება გინდა. HOMATCH მხოლოდ იმ ციფრებს ითხოვს, რაც ამ კითხვას სჭირდება, თვლის შეყვანისთანავე და გეუბნება, რომელი ხარჯების შესახებ არაფერი იცის.', 'Выберите, что хотите понять. Homatch спросит только те цифры, которые нужны этому вопросу, посчитает по мере ввода и скажет, о каких расходах ему неизвестно.', 'Neyi anlamak istediğinizi seçin. Homatch yalnızca o sorunun ihtiyaç duyduğu rakamları ister, siz girdikçe hesaplar ve hangi maliyetleri bilmediğini söyler.', 'اختر ما تريد فهمه. يطلب Homatch الأرقام التي يحتاجها ذلك السؤال فقط، ويحسب أثناء إدخالك، ويخبرك بالتكاليف التي لا يعرفها.', 'בחרו מה תרצו להבין. Homatch מבקש רק את המספרים שהשאלה הזו צריכה, מחשב תוך כדי הזנה, ואומר אילו עלויות אינן ידועות לו.'],
   mortgage_home_open: ['Open', 'გახსნა', 'Открыть', 'Aç', 'افتح', 'פתחו'],
   mortgage_home_needs: ['Needs', 'სჭირდება', 'Нужно', 'Gerekli', 'يحتاج', 'דרוש'],
   mortgage_home_last_opened: [
@@ -39,14 +32,7 @@ export const MORTGAGE_STRINGS_2 = {
     'آخر ما فُتح',
     'נפתח לאחרונה',
   ],
-  mortgage_home_footnote: [
-    'Every figure is calculated from what you enter and is reproducible from it. Official limits and programmes come from published sources with the date they were last checked. Homatch is not a lender and does not arrange finance.',
-    'ყოველი ციფრი გამოითვლება თქვენ მიერ შეყვანილიდან და მისგან აღწარმოებადია. ოფიციალური ზღვრები და პროგრამები მოდის გამოქვეყნებული წყაროებიდან ბოლო შემოწმების თარიღით. Homatch არ არის გამსესხებელი და არ აწყობს დაფინანსებას.',
-    'Каждая цифра рассчитана из введённого вами и воспроизводима из него. Официальные лимиты и программы взяты из опубликованных источников с датой последней проверки. Homatch не кредитор и не организует финансирование.',
-    'Her rakam girdiklerinizden hesaplanır ve onlardan yeniden üretilebilir. Resmî sınırlar ve programlar, son kontrol tarihiyle birlikte yayımlanmış kaynaklardan gelir. Homatch bir kredi kuruluşu değildir ve finansman ayarlamaz.',
-    'كل رقم محسوب مما تدخله وقابل لإعادة الإنتاج منه. الحدود والبرامج الرسمية مأخوذة من مصادر منشورة مع تاريخ آخر تحقق. Homatch ليس مُقرضًا ولا يرتب تمويلًا.',
-    'כל מספר מחושב ממה שהזנתם וניתן לשחזור ממנו. מגבלות ותוכניות רשמיות מגיעות ממקורות מפורסמים עם תאריך הבדיקה האחרונה. Homatch אינו מלווה ואינו מארגן מימון.',
-  ],
+  mortgage_home_footnote: ['Every figure is calculated from what you enter and is reproducible from it. Official limits and programmes come from published sources with the date they were last checked. Homatch is not a lender and does not arrange finance.', 'ყოველი ციფრი შენ მიერ შეყვანილიდან გამოითვლება და მისგან აღწარმოებადია. ოფიციალური ზღვრები და პროგრამები გამოქვეყნებული წყაროებიდან მოდის, ბოლო შემოწმების თარიღით. HOMATCH არ არის გამსესხებელი და დაფინანსებას არ აწყობს.', 'Каждая цифра рассчитана из введённого вами и воспроизводима из него. Официальные лимиты и программы взяты из опубликованных источников с датой последней проверки. Homatch не кредитор и не организует финансирование.', 'Her rakam girdiklerinizden hesaplanır ve onlardan yeniden üretilebilir. Resmî sınırlar ve programlar, son kontrol tarihiyle birlikte yayımlanmış kaynaklardan gelir. Homatch bir kredi kuruluşu değildir ve finansman ayarlamaz.', 'كل رقم محسوب مما تدخله وقابل لإعادة الإنتاج منه. الحدود والبرامج الرسمية مأخوذة من مصادر منشورة مع تاريخ آخر تحقق. Homatch ليس مُقرضًا ولا يرتب تمويلًا.', 'כל מספר מחושב ממה שהזנתם וניתן לשחזור ממנו. מגבלות ותוכניות רשמיות מגיעות ממקורות מפורסמים עם תאריך הבדיקה האחרונה. Homatch אינו מלווה ואינו מארגן מימון.'],
 
   /* ── The nine questions ─────────────────────────────────────────── */
 

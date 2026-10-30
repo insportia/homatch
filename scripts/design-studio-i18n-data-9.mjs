@@ -7,14 +7,7 @@ export const DS_STRINGS_9 = {
   ds_share_title: ['Share this design', 'დიზაინის გაზიარება', 'Поделиться дизайном', 'Bu tasarımı paylaş', 'مشاركة هذا التصميم', 'שיתוף העיצוב'],
   ds_share_short: ['Share', 'გაზიარება', 'Поделиться', 'Paylaş', 'مشاركة', 'שיתוף'],
   ds_share_walkthrough: ['Share walkthrough', 'გავლის გაზიარება', 'Поделиться прогулкой', 'İç gezintiyi paylaş', 'مشاركة الجولة', 'שיתוף הסיור'],
-  ds_share_intro: [
-    'Anyone with a link can walk through “{{version}}” exactly as it is now — no HOMATCH account needed, and nothing can be changed.',
-    'ბმულის მქონე ნებისმიერ ადამიანს შეუძლია გაიაროს „{{version}}“ ზუსტად ისე, როგორც ახლაა — HOMATCH-ის ანგარიში არ სჭირდება და ვერაფერს შეცვლის.',
-    'Любой, у кого есть ссылка, может пройтись по «{{version}}» ровно в нынешнем виде — без аккаунта HOMATCH и без возможности что-либо изменить.',
-    'Bağlantıya sahip herkes “{{version}}” içinde tam şu anki haliyle dolaşabilir — HOMATCH hesabı gerekmez ve hiçbir şey değiştirilemez.',
-    'يمكن لأي شخص لديه رابط التجوّل في «{{version}}» كما هو الآن تمامًا — دون حساب HOMATCH، ودون إمكانية تغيير أي شيء.',
-    'כל מי שיש לו קישור יכול לסייר ב„{{version}}” בדיוק כפי שהוא עכשיו — בלי חשבון HOMATCH, ובלי אפשרות לשנות דבר.',
-  ],
+  ds_share_intro: ['Anyone with a link can walk through “{{version}}” exactly as it is now — no HOMATCH account needed, and nothing can be changed.', 'ბმულის მქონე ნებისმიერ ადამიანს შეუძლია გაიაროს „{{version}}“ ზუსტად ისე, როგორც ახლაა, HOMATCH-ის ანგარიში არ სჭირდება და ვერაფერს შეცვლის.', 'Любой, у кого есть ссылка, может пройтись по «{{version}}» ровно в нынешнем виде — без аккаунта HOMATCH и без возможности что-либо изменить.', 'Bağlantıya sahip herkes “{{version}}” içinde tam şu anki haliyle dolaşabilir — HOMATCH hesabı gerekmez ve hiçbir şey değiştirilemez.', 'يمكن لأي شخص لديه رابط التجوّل في «{{version}}» كما هو الآن تمامًا — دون حساب HOMATCH، ودون إمكانية تغيير أي شيء.', 'כל מי שיש לו קישור יכול לסייר ב„{{version}}” בדיוק כפי שהוא עכשיו — בלי חשבון HOMATCH, ובלי אפשרות לשנות דבר.'],
   ds_share_label: ['Name (only you see it)', 'სახელი (მხოლოდ თქვენ ხედავთ)', 'Название (видите только вы)', 'Ad (yalnızca siz görürsünüz)', 'الاسم (تراه أنت فقط)', 'שם (רק אתם רואים)'],
   ds_share_label_placeholder: ['e.g. For my parents', 'მაგ. მშობლებისთვის', 'например: Для родителей', 'örn. Ailem için', 'مثلًا: لوالديّ', 'למשל: להורים שלי'],
   ds_share_expiry: ['Link works', 'ბმული მოქმედებს', 'Ссылка действует', 'Bağlantı geçerliliği', 'مدة صلاحية الرابط', 'הקישור פעיל'],
@@ -74,5 +67,5 @@ export const DS_STRINGS_9 = {
     'העיצוב כולל פריטי קטלוג שאסור להציג בפומבי, ולכן אי אפשר לשתף אותו בקישור.',
   ],
   ds_share_error_rate: ['You have created many links in the last hour. Please try again later.', 'ბოლო საათში ბევრი ბმული შექმენით. სცადეთ მოგვიანებით.', 'За последний час вы создали много ссылок. Попробуйте позже.', 'Son bir saatte çok sayıda bağlantı oluşturdunuz. Lütfen daha sonra tekrar deneyin.', 'أنشأت روابط كثيرة خلال الساعة الماضية. حاول لاحقًا.', 'יצרתם הרבה קישורים בשעה האחרונה. נסו שוב מאוחר יותר.'],
-  ds_share_error_generic: ['Something went wrong. Nothing was shared — please try again.', 'რაღაც შეცდომა მოხდა. არაფერი გაზიარებულა — სცადეთ ხელახლა.', 'Что-то пошло не так. Ничего не опубликовано — попробуйте снова.', 'Bir sorun oluştu. Hiçbir şey paylaşılmadı — lütfen tekrar deneyin.', 'حدث خطأ ما. لم تتم مشاركة أي شيء — حاول مجددًا.', 'משהו השתבש. שום דבר לא שותף — נסו שוב.'],
+  ds_share_error_generic: ['Something went wrong. Nothing was shared — please try again.', 'რაღაც შეცდომა მოხდა. არაფერი გაზიარებულა: სცადეთ ხელახლა.', 'Что-то пошло не так. Ничего не опубликовано — попробуйте снова.', 'Bir sorun oluştu. Hiçbir şey paylaşılmadı — lütfen tekrar deneyin.', 'حدث خطأ ما. لم تتم مشاركة أي شيء — حاول مجددًا.', 'משהו השתבש. שום דבר לא שותף — נסו שוב.'],
 };

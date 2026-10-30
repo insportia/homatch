@@ -95,9 +95,7 @@ export const BROKER_LIFECYCLE_STRINGS = {
   ],
 
   // ── Lead workflow states ────────────────────────────────────────────────
-  lead_state_label: [
-    'Lead status', 'ლიდის სტატუსი', 'Статус лида', 'Potansiyel müşteri durumu', 'حالة العميل المحتمل', 'סטטוס ליד',
-  ],
+  lead_state_label: ['Lead status', 'კონტაქტის სტატუსი', 'Статус лида', 'Potansiyel müşteri durumu', 'حالة العميل المحتمل', 'סטטוס ליד'],
   lead_state_NEW: [
     'New', 'ახალი', 'Новый', 'Yeni', 'جديد', 'חדש',
   ],
@@ -189,14 +187,7 @@ export const BROKER_LIFECYCLE_STRINGS = {
     'يجب أن تكون سنوات الخبرة عددًا صحيحًا من 0 إلى 80.',
     'שנות הניסיון חייבות להיות מספר שלם בין 0 ל-80.',
   ],
-  broker_err_insufficient_credits: [
-    'Not enough Credits. Top up and try again.',
-    'კრედიტები არ არის საკმარისი. შეავსეთ ბალანსი და სცადეთ ხელახლა.',
-    'Недостаточно кредитов. Пополните баланс и попробуйте снова.',
-    'Yeterli Kredi yok. Bakiye yükleyip tekrar deneyin.',
-    'الأرصدة غير كافية. اشحن رصيدك وحاول مرة أخرى.',
-    'אין מספיק קרדיטים. טענו את היתרה ונסו שוב.',
-  ],
+  broker_err_insufficient_credits: ['Not enough credits. New credits are no longer sold.', 'კრედიტი არ კმარა. ახალი კრედიტები აღარ იყიდება.', 'Недостаточно кредитов. Новые кредиты больше не продаются.', 'Kredi yetersiz. Yeni kredi artık satılmıyor.', 'الرصيد غير كافٍ. لم تعد الأرصدة الجديدة تُباع.', 'אין מספיק קרדיטים. קרדיטים חדשים כבר לא נמכרים.'],
   broker_err_not_purchasable: [
     'The directory listing can be bought once HOMATCH approves your profile.',
     'კატალოგში განთავსების შეძენა შესაძლებელი იქნება მას შემდეგ, რაც HOMATCH თქვენს პროფილს დაამტკიცებს.',
@@ -229,14 +220,7 @@ export const BROKER_LIFECYCLE_STRINGS = {
     'ارفع مستندًا واحدًا على الأقل أولًا.',
     'העלו קודם מסמך אחד לפחות.',
   ],
-  broker_err_unlock_required: [
-    'Open the contact first — this status needs an opened contact.',
-    'ჯერ გახსენით კონტაქტი — ამ სტატუსს გახსნილი კონტაქტი სჭირდება.',
-    'Сначала откройте контакт — для этого статуса нужен открытый контакт.',
-    'Önce iletişim bilgisini açın — bu durum için açılmış bir iletişim gerekir.',
-    'افتح جهة الاتصال أولًا — تتطلب هذه الحالة جهة اتصال مفتوحة.',
-    'פתחו קודם את איש הקשר — הסטטוס הזה דורש איש קשר פתוח.',
-  ],
+  broker_err_unlock_required: ['Open the contact first — this status needs an opened contact.', 'ჯერ გახსენით კონტაქტი, ამ სტატუსს გახსნილი კონტაქტი სჭირდება.', 'Сначала откройте контакт — для этого статуса нужен открытый контакт.', 'Önce iletişim bilgisini açın — bu durum için açılmış bir iletişim gerekir.', 'افتح جهة الاتصال أولًا — تتطلب هذه الحالة جهة اتصال مفتوحة.', 'פתחו קודם את איש הקשר — הסטטוס הזה דורש איש קשר פתוח.'],
   broker_err_verification_closed: [
     'Verification is closed for this profile.',
     'ამ პროფილისთვის ვერიფიკაცია დახურულია.',
@@ -363,14 +347,7 @@ export const BROKER_LIFECYCLE_STRINGS = {
     'أرسله للمراجعة وارفع المستندات لتصبح محترفًا موثَّقًا.',
     'שלחו אותו לבדיקה והעלו מסמכים כדי להפוך לאיש מקצוע מאומת.',
   ],
-  broker_onb_next_3: [
-    'Add properties and search for your clients — matches and leads appear on your desk.',
-    'დაამატეთ ქონება და მოძებნეთ თქვენი კლიენტებისთვის — დამთხვევები და ლიდები თქვენს პანელზე გამოჩნდება.',
-    'Добавляйте объекты и ищите для своих клиентов — совпадения и лиды появятся в вашем кабинете.',
-    'Mülk ekleyin ve müşterileriniz için arama yapın — eşleşmeler ve potansiyel müşteriler panelinizde görünür.',
-    'أضف العقارات وابحث لعملائك — تظهر التطابقات والعملاء المحتملون في لوحتك.',
-    'הוסיפו נכסים וחפשו עבור הלקוחות שלכם — התאמות ולידים יופיעו בשולחן שלכם.',
-  ],
+  broker_onb_next_3: ['Add properties and search for your clients — matches and leads appear on your desk.', 'დაამატეთ ქონება და მოძებნეთ თქვენი კლიენტებისთვის, დამთხვევები და კონტაქტები თქვენს პანელზე გამოჩნდება.', 'Добавляйте объекты и ищите для своих клиентов — совпадения и лиды появятся в вашем кабинете.', 'Mülk ekleyin ve müşterileriniz için arama yapın — eşleşmeler ve potansiyel müşteriler panelinizde görünür.', 'أضف العقارات وابحث لعملائك — تظهر التطابقات والعملاء المحتملون في لوحتك.', 'הוסיפו נכסים וחפשו עבור הלקוחות שלכם — התאמות ולידים יופיעו בשולחן שלכם.'],
   broker_onb_create: [
     'Create profile', 'პროფილის შექმნა', 'Создать профиль', 'Profil oluştur', 'إنشاء الملف', 'יצירת פרופיל',
   ],
@@ -432,14 +409,7 @@ export const BROKER_LIFECYCLE_STRINGS = {
   broker_desk_cancel: [
     'Cancel', 'გაუქმება', 'Отмена', 'İptal', 'إلغاء', 'ביטול',
   ],
-  broker_desk_bought: [
-    'Done — your profile is in the public directory.',
-    'მზადაა — თქვენი პროფილი საჯარო კატალოგშია.',
-    'Готово — ваш профиль в публичном каталоге.',
-    'Tamam — profiliniz herkese açık rehberde.',
-    'تم — ملفك الآن في الدليل العام.',
-    'בוצע — הפרופיל שלכם במדריך הציבורי.',
-  ],
+  broker_desk_bought: ['Done — your profile is in the public directory.', 'მზადაა: თქვენი პროფილი საჯარო კატალოგშია.', 'Готово — ваш профиль в публичном каталоге.', 'Tamam — profiliniz herkese açık rehberde.', 'تم — ملفك الآن في الدليل العام.', 'בוצע — הפרופיל שלכם במדריך הציבורי.'],
 
   // ── Broker desk: setup checklist ────────────────────────────────────────
   broker_desk_steps_heading: [
@@ -508,14 +478,7 @@ export const BROKER_LIFECYCLE_STRINGS = {
   broker_desk_import_property: [
     'Import from a link', 'ბმულიდან იმპორტი', 'Импорт по ссылке', 'Bağlantıdan içe aktar', 'استيراد من رابط', 'ייבוא מקישור',
   ],
-  broker_desk_leads_window: [
-    "Current leads count people who posted in the last {{days}} days and haven't been opened yet.",
-    'მიმდინარე ლიდები მოიცავს ადამიანებს, რომლებმაც ბოლო {{days}} დღეში დაწერეს და ჯერ არ გახსნილან.',
-    'Текущие лиды — это люди, которые написали за последние {{days}} дней и ещё не были открыты.',
-    'Güncel potansiyel müşteriler, son {{days}} gün içinde paylaşım yapan ve henüz açılmamış kişileri sayar.',
-    'يشمل العملاء المحتملون الحاليون الأشخاص الذين نشروا خلال آخر {{days}} يومًا ولم تُفتح بياناتهم بعد.',
-    'לידים עדכניים הם אנשים שפרסמו ב-{{days}} הימים האחרונים ועדיין לא נפתחו.',
-  ],
+  broker_desk_leads_window: ['Current leads count people who posted in the last {{days}} days and haven\'t been opened yet.', 'მიმდინარე კონტაქტები მოიცავს ადამიანებს, რომლებმაც ბოლო {{days}} დღეში დაწერეს და ჯერ არ გახსნილან.', 'Текущие лиды — это люди, которые написали за последние {{days}} дней и ещё не были открыты.', 'Güncel potansiyel müşteriler, son {{days}} gün içinde paylaşım yapan ve henüz açılmamış kişileri sayar.', 'يشمل العملاء المحتملون الحاليون الأشخاص الذين نشروا خلال آخر {{days}} يومًا ولم تُفتح بياناتهم بعد.', 'לידים עדכניים הם אנשים שפרסמו ב-{{days}} הימים האחרונים ועדיין לא נפתחו.'],
   broker_desk_portfolio_empty: [
     'No properties yet. Add one to start finding potentially interested people.',
     'ქონება ჯერ არ გაქვთ. დაამატეთ, რომ დაიწყოთ პოტენციურად დაინტერესებული პირების მოძიება.',
@@ -527,34 +490,19 @@ export const BROKER_LIFECYCLE_STRINGS = {
   broker_desk_untitled_property: [
     'Untitled property', 'უსათაურო ქონება', 'Объект без названия', 'Başlıksız mülk', 'عقار بلا عنوان', 'נכס ללא כותרת',
   ],
-  broker_desk_current_leads: [
-    'Current leads', 'მიმდინარე ლიდები', 'Текущие лиды', 'Güncel potansiyel müşteriler', 'العملاء المحتملون الحاليون', 'לידים עדכניים',
-  ],
+  broker_desk_current_leads: ['Current leads', 'მიმდინარე კონტაქტები', 'Текущие лиды', 'Güncel potansiyel müşteriler', 'العملاء المحتملون الحاليون', 'לידים עדכניים'],
   broker_desk_opened_contacts: [
     'Opened contacts', 'გახსნილი კონტაქტები', 'Открытые контакты', 'Açılan iletişimler', 'جهات الاتصال المفتوحة', 'אנשי קשר שנפתחו',
   ],
-  broker_desk_open_leads: [
-    'Leads', 'ლიდები', 'Лиды', 'Potansiyel müşteriler', 'العملاء المحتملون', 'לידים',
-  ],
+  broker_desk_open_leads: ['Leads', 'კონტაქტები', 'Лиды', 'Potansiyel müşteriler', 'العملاء المحتملون', 'לידים'],
   broker_desk_open_property: [
     'Property', 'ქონება', 'Объект', 'Mülk', 'العقار', 'נכס',
   ],
 
   // ── Broker desk: lead workflow ──────────────────────────────────────────
-  broker_desk_leads_heading: [
-    'Lead workflow', 'ლიდებთან მუშაობა', 'Работа с лидами', 'Potansiyel müşteri akışı', 'سير العمل مع العملاء المحتملين', 'תהליך עבודה עם לידים',
-  ],
-  broker_desk_leads_empty: [
-    'No current leads yet.', 'მიმდინარე ლიდები ჯერ არ არის.', 'Текущих лидов пока нет.', 'Henüz güncel potansiyel müşteri yok.', 'لا يوجد عملاء محتملون حاليون بعد.', 'עדיין אין לידים עדכניים.',
-  ],
-  broker_desk_leads_note: [
-    "Move a lead along from its property's matches. Contacted, In progress and Won need an opened contact.",
-    'ლიდის სტატუსი შეცვალეთ მისი ქონების დამთხვევებიდან. სტატუსებს „დაკავშირებული“, „მიმდინარე“ და „წარმატებული“ გახსნილი კონტაქტი სჭირდება.',
-    'Продвигайте лид из совпадений его объекта. Для статусов «Связались», «В работе» и «Успешно» нужен открытый контакт.',
-    'Bir potansiyel müşteriyi mülkünün eşleşmelerinden ilerletin. İletişime geçildi, Devam ediyor ve Kazanıldı durumları için açılmış bir iletişim gerekir.',
-    'انقل العميل المحتمل بين المراحل من تطابقات عقاره. تتطلب حالات «تم التواصل» و«قيد التنفيذ» و«تم الفوز» جهة اتصال مفتوحة.',
-    'קדמו ליד מתוך ההתאמות של הנכס שלו. הסטטוסים "נוצר קשר", "בטיפול" ו"נסגר בהצלחה" דורשים איש קשר פתוח.',
-  ],
+  broker_desk_leads_heading: ['Lead workflow', 'კონტაქტებთან მუშაობა', 'Работа с лидами', 'Potansiyel müşteri akışı', 'سير العمل مع العملاء المحتملين', 'תהליך עבודה עם לידים'],
+  broker_desk_leads_empty: ['No current leads yet.', 'მიმდინარე კონტაქტები ჯერ არ არის.', 'Текущих лидов пока нет.', 'Henüz güncel potansiyel müşteri yok.', 'لا يوجد عملاء محتملون حاليون بعد.', 'עדיין אין לידים עדכניים.'],
+  broker_desk_leads_note: ['Move a lead along from its property\'s matches. Contacted, In progress and Won need an opened contact.', 'კონტაქტის სტატუსი შეცვალეთ მისი ქონების დამთხვევებიდან. სტატუსებს „დაკავშირებული“, „მიმდინარე“ და „წარმატებული“ გახსნილი კონტაქტი სჭირდება.', 'Продвигайте лид из совпадений его объекта. Для статусов «Связались», «В работе» и «Успешно» нужен открытый контакт.', 'Bir potansiyel müşteriyi mülkünün eşleşmelerinden ilerletin. İletişime geçildi, Devam ediyor ve Kazanıldı durumları için açılmış bir iletişim gerekir.', 'انقل العميل المحتمل بين المراحل من تطابقات عقاره. تتطلب حالات «تم التواصل» و«قيد التنفيذ» و«تم الفوز» جهة اتصال مفتوحة.', 'קדמו ליד מתוך ההתאמות של הנכס שלו. הסטטוסים "נוצר קשר", "בטיפול" ו"נסגר בהצלחה" דורשים איש קשר פתוח.'],
 
   // ── Broker desk: client searches ────────────────────────────────────────
   broker_desk_clients_heading: [

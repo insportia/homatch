@@ -6,9 +6,9 @@ import { PageHero } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { planLabel } from '@/subscriptions/components';
+import { isUnlimitedSource, planLabel } from '@/subscriptions/components';
 import {
-  getPlans, type PlanCode, type PlansResponse,SubscriptionError, startCheckout, subscriptionAction, 
+  type AccessGrantSummary, getPlans, hasUnlimitedAccess, type PlanCode, type PlansResponse, SubscriptionError, startCheckout, subscriptionAction,
 } from '@/subscriptions/service';
 import { featureOf, useEntitlementStatus } from '@/subscriptions/useEntitlementStatus';
 
@@ -34,6 +34,12 @@ function SubscriptionContent() {
   const live = sub && sub.status !== 'EXPIRED' ? sub : null;
   const currentTier = plans?.plans.find((p) => p.code === live?.planCode)?.priorityTier ?? 0;
   const connected = plans?.paymentsConnected === true;
+  /* Owner / Unlimited grant (20261208110000): no purchase, no renewal, no credits. Server truth only. */
+  const unlimited = hasUnlimitedAccess(status);
+  const grants: AccessGrantSummary[] = status?.access?.grants ?? [];
+  const grantTitle = (g: AccessGrantSummary) => (g.kind === 'UNLIMITED' ? t('acc_unlimited')
+    : g.kind === 'PLAN' && g.planCode ? t('acc_manual_plan', { plan: planLabel(t, g.planCode) })
+    : t('acc_custom_limits'));
 
   async function run(key: string, fn: () => Promise<unknown>) {
     setBusy(key);
@@ -65,7 +71,7 @@ function SubscriptionContent() {
   return (
     <AppLayout>
       <div className="mx-auto max-w-2xl space-y-6">
-        <PageHero compact title={t('sub_go_subscription')} subtitle={live ? planLabel(t, live.planCode) : t('sub_none')} />
+        <PageHero compact title={t('sub_go_subscription')} subtitle={unlimited ? t('acc_unlimited') : live ? planLabel(t, live.planCode) : grants.length ? t('acc_manual_grant') : t('sub_none')} />
 
         {loading && !status ? (
           <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" /></div>
@@ -73,6 +79,29 @@ function SubscriptionContent() {
           <p role="alert" className="text-sm text-muted-foreground">{t('sub_err_generic')}</p>
         ) : (
           <>
+            {unlimited || grants.length ? (
+              <section className="space-y-3 rounded-2xl border border-[hsl(38_92%_54%)]/40 bg-card p-5" data-testid="manual-access">
+                {unlimited ? (
+                  <>
+                    <h2 className="text-lg font-semibold">{t('acc_unlimited')}</h2>
+                    <p className="text-sm">{t('acc_sub_active_no_purchase')}</p>
+                    <p className="text-sm text-muted-foreground">{t('acc_owner_notice')}</p>
+                  </>
+                ) : null}
+                {grants.map((g) => (
+                  <div key={g.id} className="rounded-xl border border-border p-3 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{grantTitle(g)}</span>
+                      <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">{t('acc_manual_grant')}</span>
+                    </div>
+                    <p className="mt-1 text-muted-foreground">
+                      {g.permanent ? t('acc_permanent') : t('acc_until', { date: date(g.expiresAt) })}
+                    </p>
+                  </div>
+                ))}
+              </section>
+            ) : null}
+
             {live ? (
               <section className="space-y-2 rounded-2xl border border-border bg-card p-5">
                 <div className="flex flex-wrap items-center gap-2">
@@ -81,6 +110,7 @@ function SubscriptionContent() {
                     {t(`sub_status_${live.status}`)}
                   </span>
                 </div>
+                {live.status === 'ACTIVE' ? <p className="text-sm">{t('sub_active_note')}</p> : null}
                 <p className="text-sm text-muted-foreground">{t('sub_period', { start: date(live.currentPeriodStart), end: date(live.currentPeriodEnd) })}</p>
                 {live.status === 'PAST_DUE' && live.graceUntil ? <p className="text-sm font-medium">{t('sub_grace_until', { date: date(live.graceUntil) })}</p> : null}
                 {live.cancelAtPeriodEnd ? <p className="text-sm">{t('sub_cancel_scheduled', { date: date(live.currentPeriodEnd) })}</p> : null}
@@ -109,9 +139,11 @@ function SubscriptionContent() {
                   ) : null}
                 </div>
               </section>
-            ) : (
+            ) : unlimited || grants.length ? null : (
               <section className="rounded-2xl border border-border bg-card p-5">
-                <p className="text-sm">{t('sub_none')}</p>
+                {/* An ended subscription is said as such; a first visit gets the first-use rule. */}
+                <p className="text-sm">{sub?.status === 'EXPIRED' ? t('sub_expired_note') : t('sub_none')}</p>
+                {sub?.status !== 'EXPIRED' ? <p className="mt-1 text-sm text-muted-foreground">{t('sub_first_free_detail')}</p> : null}
                 <Button asChild className="mt-3 bg-gold text-primary hover:bg-gold-hover"><Link to="/pricing">{t('sub_see_plans')}</Link></Button>
               </section>
             )}
@@ -126,8 +158,9 @@ function SubscriptionContent() {
                     <li key={code} className="flex flex-wrap items-baseline justify-between gap-2 py-2.5 text-sm">
                       <span className="font-medium">{t(`sub_feature_${code}`)}</span>
                       <span className="text-muted-foreground">
-                        {f.included ? (f.unlimited ? t('sub_unlimited') : t('sub_used_of', { used: String(f.used), limit: String(f.limit ?? 0) })) : null}
-                        {f.trialEnabled ? <span className="ms-2">{f.trialAvailable ? t('sub_trial_available') : f.trialState === 'CONSUMED' ? t('sub_trial_used') : ''}</span> : null}
+                        {isUnlimitedSource(f) ? t('acc_unlimited')
+                          : f.included ? (f.unlimited ? t('sub_unlimited') : t('sub_used_of', { used: String(f.used), limit: String(f.limit ?? 0) })) : null}
+                        {f.trialEnabled && !isUnlimitedSource(f) ? <span className="ms-2">{f.trialAvailable ? t('sub_trial_available') : f.trialState === 'CONSUMED' ? t('sub_trial_used') : ''}</span> : null}
                       </span>
                     </li>
                   );
@@ -135,7 +168,7 @@ function SubscriptionContent() {
               </ul>
             </section>
 
-            {live && plans ? (
+            {live && plans && !unlimited ? (
               <section className="space-y-2 rounded-2xl border border-border bg-card p-5">
                 {plans.plans.filter((p) => p.code !== live.planCode).map((p) => (
                   p.priorityTier > currentTier ? (
@@ -150,11 +183,11 @@ function SubscriptionContent() {
                   )
                 ))}
                 <p className="text-xs text-muted-foreground">{t('sub_upgrade_note')}</p>
-                {!connected ? <p className="text-xs text-muted-foreground">{t('sub_payments_pending_title')}</p> : null}
+                {!connected ? <p className="text-xs text-muted-foreground">{t('sub_payments_unavailable')}</p> : null}
               </section>
             ) : null}
 
-            {status.hasLegacyBalance ? (
+            {status.hasLegacyBalance && !unlimited ? (
               <section className="rounded-2xl border border-border bg-card p-5 text-sm">
                 <p className="font-medium">{t('sub_legacy_balance', { credits: status.legacyBalance.toFixed(1) })}</p>
                 <p className="mt-1 text-muted-foreground">{t('sub_legacy_note')}</p>

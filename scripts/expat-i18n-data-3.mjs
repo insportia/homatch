@@ -19,17 +19,10 @@ export const EXPAT_STRINGS_3 = {
   /* ── Plan shell ─────────────────────────────────────────────────── */
   expat_plan_eyebrow: ['My Expat Plan', 'ჩემი გეგმა', 'Мой план', 'Planım', 'خطتي', 'התוכנית שלי'],
   expat_plan_invite_title: ['Turn all of this into a list with dates on it', 'აქცევს ამ ყველაფერს სიად, რომელსაც თარიღები აქვს', 'Превратите всё это в список с датами', 'Bütün bunları tarihli bir listeye dönüştürün', 'حوّل كل هذا إلى قائمة عليها تواريخ', 'הפכו את כל זה לרשימה עם תאריכים'],
-  expat_plan_invite_body: [
-    'Tell us why you are coming and roughly when, and Homatch builds the list of what actually has to happen — in order, with what blocks what, and with a reminder before the one date the law sets rather than we do.',
-    'გვითხარით, რატომ ჩამოდიხართ და დაახლოებით როდის, და Homatch შეადგენს სიას იმისა, რაც ნამდვილად უნდა მოხდეს: თანმიმდევრობით, იმის ჩვენებით, რა რას აყოვნებს, და შეხსენებით იმ ერთი თარიღის წინ, რომელსაც კანონი აწესებს და არა ჩვენ.',
-    'Скажите, зачем вы едете и примерно когда, и Homatch составит список того, что действительно должно произойти: по порядку, с указанием, что чем заблокировано, и с напоминанием перед той единственной датой, которую устанавливает закон, а не мы.',
-    'Neden ve aşağı yukarı ne zaman geleceğinizi söyleyin; Homatch gerçekte olması gerekenlerin listesini kursun — sırayla, neyin neyi beklettiğini göstererek ve bizim değil kanunun koyduğu o tek tarihten önce bir hatırlatmayla.',
-    'أخبرنا لماذا ستأتي ومتى تقريباً، وسيبني Homatch قائمة بما يجب أن يحدث فعلاً: بالترتيب، مع بيان ما يعطّل ماذا، وبتذكير قبل التاريخ الوحيد الذي يحدده القانون لا نحن.',
-    'ספרו לנו למה אתם מגיעים ומתי בערך, ו‑Homatch יבנה את רשימת מה שבאמת צריך לקרות — לפי סדר, עם מה חוסם את מה, ועם תזכורת לפני התאריך האחד שהחוק קובע ולא אנחנו.',
-  ],
+  expat_plan_invite_body: ['Tell us why you are coming and roughly when, and Homatch builds the list of what actually has to happen — in order, with what blocks what, and with a reminder before the one date the law sets rather than we do.', 'გვითხარით, რატომ ჩამოდიხართ და დაახლოებით როდის, და HOMATCH შეადგენს სიას იმისა, რაც ნამდვილად უნდა მოხდეს: თანმიმდევრობით, იმის ჩვენებით, რა რას აყოვნებს, და შეხსენებით იმ ერთი თარიღის წინ, რომელსაც კანონი აწესებს და არა ჩვენ.', 'Скажите, зачем вы едете и примерно когда, и Homatch составит список того, что действительно должно произойти: по порядку, с указанием, что чем заблокировано, и с напоминанием перед той единственной датой, которую устанавливает закон, а не мы.', 'Neden ve aşağı yukarı ne zaman geleceğinizi söyleyin; Homatch gerçekte olması gerekenlerin listesini kursun — sırayla, neyin neyi beklettiğini göstererek ve bizim değil kanunun koyduğu o tek tarihten önce bir hatırlatmayla.', 'أخبرنا لماذا ستأتي ومتى تقريباً، وسيبني Homatch قائمة بما يجب أن يحدث فعلاً: بالترتيب، مع بيان ما يعطّل ماذا، وبتذكير قبل التاريخ الوحيد الذي يحدده القانون لا نحن.', 'ספרו לנו למה אתם מגיעים ומתי בערך, ו‑Homatch יבנה את רשימת מה שבאמת צריך לקרות — לפי סדר, עם מה חוסם את מה, ועם תזכורת לפני התאריך האחד שהחוק קובע ולא אנחנו.'],
   expat_plan_start: ['Build my plan', 'გეგმის შედგენა', 'Составить план', 'Planımı kur', 'ابنِ خطتي', 'בנו לי תוכנית'],
   expat_plan_open: ['Open my plan', 'ჩემი გეგმის გახსნა', 'Открыть мой план', 'Planımı aç', 'افتح خطتي', 'פתחו את התוכנית שלי'],
-  expat_plan_meta_title: ['My Expat Plan — Homatch', 'ჩემი გეგმა — Homatch', 'Мой план — Homatch', 'Planım — Homatch', 'خطتي — Homatch', 'התוכנית שלי — Homatch'],
+  expat_plan_meta_title: ['My Expat Plan — Homatch', 'ჩემი გეგმა: HOMATCH', 'Мой план — Homatch', 'Planım — Homatch', 'خطتي — Homatch', 'התוכנית שלי — Homatch'],
   expat_plan_meta_description: [
     'Your tasks, their order, what is blocking what, and reminders before the dates that matter.',
     'თქვენი დავალებები, მათი თანმიმდევრობა, რა რას აყოვნებს და შეხსენებები მნიშვნელოვან თარიღებამდე.',
@@ -163,7 +156,7 @@ export const EXPAT_STRINGS_3 = {
     'تتكدس التواريخ حول الوصول، وتسع رسائل في صباح واحد هي ما يجعل الإشعارات تُغلق نهائياً.',
     'התאריכים מצטופפים סביב ההגעה, ותשע הודעות בבוקר אחד הן הסיבה שמכבים התראות לתמיד.',
   ],
-  expat_reminder_channel_in_app: ['In Homatch', 'Homatch-ში', 'В Homatch', 'Homatch içinde', 'داخل Homatch', 'בתוך Homatch'],
+  expat_reminder_channel_in_app: ['In Homatch', 'HOMATCH-ში', 'В Homatch', 'Homatch içinde', 'داخل Homatch', 'בתוך Homatch'],
   expat_reminder_channel_push: ['Push', 'შეტყობინება', 'Пуш', 'Anlık bildirim', 'إشعار', 'התראה'],
   expat_reminder_channel_email: ['Email', 'ელფოსტა', 'Эл. почта', 'E-posta', 'البريد', 'אימייל'],
 

@@ -52,6 +52,7 @@ import {
   deterministicPayload, readOpenAIStream, SSE_HEADERS, sseFrame, stripAiDashes, trimConversation,
 } from './homi.ts';
 import { loadOwnContext, type OwnContext } from './ownContext.ts';
+import { includedAccess } from '../_shared/entitlements.ts';
 import { parsePublicPlans, plansAnswerLines, plansPromptBlock, type PublicPlan } from '../../../src/lib/homi/plansFacts.ts';
 
 /* One OpenAI call per chat turn; see the fetch below. */
@@ -612,7 +613,13 @@ serve(async (req) => {
   }
 
   const billableSurface = marketplaceScope || BILLED_SURFACES.has(surfaceName);
-  if (uid && billingEnabled && interactionId && billableSurface) {
+  /* Owner / admin access grant (20261208110000): HOMI is an included internal service, so a billed
+     surface is answered unbilled (usage still recorded below). Decided by the server resolver. The
+     property-analysis surface is NOT covered: it is a per-turn paid analysis with its own recovery. */
+  const homiIncluded = uid && billingEnabled && interactionId && billableSurface && !marketplaceScope
+    ? await includedAccess(sb, uid, 'HOMI_UNLIMITED')
+    : null;
+  if (uid && billingEnabled && interactionId && billableSurface && !homiIncluded) {
     grant = await beginExecution(sb, {
       userId: uid,
       productCode: CHAT_PRODUCT_CODE,

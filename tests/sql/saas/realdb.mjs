@@ -12,7 +12,10 @@ const CONN = { host: '127.0.0.1', port: Number(process.env.PG_PORT ?? 55432), us
 const REPO = fileURLToPath(new URL('../../..', import.meta.url));
 const HERE = new URL('.', import.meta.url);
 // Hardcoded developer machine default above is only a fallback; set PG_HARNESS_DIR elsewhere.
-const MIGRATIONS = ['20261207100000_saas_subscriptions_core.sql', '20261207100100_saas_entitlement_wiring.sql'];
+// The access-grant migrations (20261208110000 / 110100) replace the resolver: every subscription
+// assertion below must keep holding on top of them.
+const MIGRATIONS = ['20261207100000_saas_subscriptions_core.sql', '20261207100100_saas_entitlement_wiring.sql',
+  '20261208110000_owner_access_grants_core.sql', '20261208110100_owner_access_grants_admin.sql'];
 
 { const a = new pg.Client({ ...CONN, database: 'postgres' }); await a.connect();
   await a.query('drop database if exists saas_real with (force)'); await a.query("create database saas_real encoding 'UTF8' template template0 lc_collate 'C' lc_ctype 'C'");

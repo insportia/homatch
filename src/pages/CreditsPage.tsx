@@ -1,4 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { hasUnlimitedAccess } from '@/subscriptions/service';
+import { useEntitlementStatus } from '@/subscriptions/useEntitlementStatus';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -103,6 +105,7 @@ function CreditsContent() {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const ent = useEntitlements();
+  const unlimitedAccess = hasUnlimitedAccess(useEntitlementStatus().status);
 
   const [creditAccount, setCreditAccount] = useState<CreditAccount | null>(null);
   const [ledger, setLedger] = useState<CreditLedgerEntry[]>([]);
@@ -232,8 +235,8 @@ function CreditsContent() {
         <PageHero
           compact
           title={t('credits_title')}
-          subtitle={t('sub_legacy_note')}
-          actions={(
+          subtitle={unlimitedAccess ? t('acc_owner_notice') : t('sub_legacy_note')}
+          actions={unlimitedAccess ? undefined : (
             <Button
               onClick={() => navigate('/pricing')}
               className="h-11 shrink-0 border-0 bg-[hsl(38_92%_54%)] px-5 font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)]"
@@ -243,6 +246,16 @@ function CreditsContent() {
           )}
         />
 
+        {/* Owner / Unlimited grant (entitlement_status_for_me): no balance, no totals, no purchase.
+            The history below stays: nothing is deleted. */}
+        {unlimitedAccess ? (
+          <Card className="border-[hsl(var(--gold-border))] bg-card shadow-card" data-testid="unlimited-access-card">
+            <CardContent className="p-6">
+              <p className="text-2xl font-semibold text-foreground">{t('acc_unlimited')}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{t('acc_owner_notice')}</p>
+            </CardContent>
+          </Card>
+        ) : (<>
         {/* Balance card */}
         <Card className="border-[hsl(var(--gold-border))] bg-card shadow-card">
           <CardContent className="p-6">
@@ -296,6 +309,7 @@ function CreditsContent() {
             </CardContent>
           </Card>
         </div>
+        </>)}
 
         {/* The research-product catalogue (Telegram/Facebook/Google packages)
             that sat here belonged to the retired provider era. PAYG is the

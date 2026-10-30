@@ -1,8 +1,11 @@
 /*
  * SUBSCRIPTION ENTITLEMENTS — the gate in front of a gated operation (owner decision 2026-10-29).
  *
- * Funding order, decided in SQL by saas_usage_begin (migration 20261207100000), never here:
- *   first-use trial -> plan allowance -> legacy credit balance -> refusal.
+ * Funding order, decided in SQL by saas_access_resolve via saas_usage_begin (migrations
+ * 20261207100000, 20261208110000), never here:
+ *   owner -> admin access grant -> first-use trial -> plan allowance -> legacy credit balance -> refusal.
+ * OWNER and GRANT are included uses exactly like TRIAL / PLAN: same pipeline, recorded in saas_usage,
+ * never a wallet charge.
  *
  * Success-only: a TRIAL or PLAN use is RESERVED when the work starts, COMMITTED only when the
  * customer received the result, RELEASED on failure. A stale reservation is returned by the
@@ -13,7 +16,8 @@
 import type { ExecutionGrant } from './billing.ts';
 
 export type SaasFeature = 'VERIFY' | 'CONTRACT_ANALYSIS' | 'PREMIUM_DISCOVERY';
-export type EntitledFunding = 'TRIAL' | 'PLAN' | 'LEGACY_CREDITS';
+export type EntitledFunding = 'OWNER' | 'GRANT' | 'TRIAL' | 'PLAN' | 'LEGACY_CREDITS';
+const INCLUDED: ReadonlySet<string> = new Set(['OWNER', 'GRANT', 'TRIAL', 'PLAN']);
 export type EntitlementRefusal = 'SUBSCRIPTION_REQUIRED' | 'ALLOWANCE_EXHAUSTED' | 'ERROR' | string;
 
 export interface EntitledGrant {
@@ -51,8 +55,8 @@ export async function beginEntitled(
   });
   if (error || !data || typeof data !== 'object') return { ...base, reason: 'ERROR' };
   const r = data as Record<string, unknown>;
-  if (r.ok === true && (r.funding === 'TRIAL' || r.funding === 'PLAN')) {
-    return { ...base, ok: true, funding: r.funding, alreadyCommitted: r.state === 'COMMITTED' };
+  if (r.ok === true && typeof r.funding === 'string' && INCLUDED.has(r.funding)) {
+    return { ...base, ok: true, funding: r.funding as EntitledFunding, alreadyCommitted: r.state === 'COMMITTED' };
   }
   if (r.ok === true && r.funding === 'LEGACY_CREDITS' && opts.legacy) {
     const g = await opts.legacy();
@@ -84,6 +88,18 @@ export async function releaseEntitled(sb: Rpc, g: EntitledGrant, reason: string)
   if (!g.ok || g.funding === 'LEGACY_CREDITS' || g.funding === null) return;
   const { error } = await sb.rpc('saas_usage_release', { p_user_id: g.userId, p_feature: g.feature, p_key: g.key, p_reason: reason });
   if (error) console.error('[entitlements] release failed; the sweeper will return it', g.feature, (error as { message?: string })?.message);
+}
+
+/**
+ * Owner / admin-grant access to an included feature that has no usage ledger of its own (HOMI on a
+ * billed surface). Answers only OWNER or GRANT; anything else (plan, trial, none, an error) is null and
+ * the caller keeps its normal path. Decided by the server's one resolver, never by a role check here.
+ */
+export async function includedAccess(sb: Rpc, userId: string, feature: string): Promise<'OWNER' | 'GRANT' | null> {
+  const { data, error } = await sb.rpc('saas_access_resolve', { p_user_id: userId, p_feature: feature });
+  if (error || !data || typeof data !== 'object') return null;
+  const f = (data as { funding?: unknown }).funding;
+  return f === 'OWNER' || f === 'GRANT' ? f : null;
 }
 
 /** HTTP status for a refusal: 402 for "subscribe / upgrade", 503 when the gate itself failed. */

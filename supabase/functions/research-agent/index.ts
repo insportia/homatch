@@ -7303,8 +7303,18 @@ const SYNTHESIS_SETTLE_GRACE_MS = 2 * 60 * 60 * 1000;
 async function settleVerifyBudgets(sb: any): Promise<void> {
   try {
     const { data: open, error } = await sb.from('verify_billing').select('job_id').eq('state', 'ACTIVE').order('updated_at', { ascending: true }).limit(25);
-    if (error || !open?.length) return;
-    const ids = open.map((x: any) => x.job_id);
+    /* A job funded by a trial, a plan, the owner or an access grant has no wallet
+       row: its open saas_usage reservation is the budget, and verify_billing_close
+       commits or releases it. Without this a delivered trial stayed RESERVED until
+       the sweeper expired it, which handed the trial back (prod 674df06e, 2026-10-30). */
+    const { data: usage, error: usageError } = await sb.from('saas_usage').select('idempotency_key')
+      .eq('feature', 'VERIFY').eq('state', 'RESERVED').like('idempotency_key', 'verify:%')
+      .order('reserved_at', { ascending: true }).limit(25);
+    const ids = [...new Set([
+      ...(error ? [] : open ?? []).map((x: any) => String(x.job_id)),
+      ...(usageError ? [] : usage ?? []).map((u: any) => String(u.idempotency_key).slice('verify:'.length)),
+    ])].filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+    if (!ids.length) return;
     const { data: jobs } = await sb.from('research_jobs').select('id,status,synthesis_state,synthesis_attempts,completed_at,paused_at,official_found:result_json->officialSourcesConfirmedFound').in('id', ids);
     const { data: sessions } = await sb.from('verify_billing_sessions').select('job_id,created_at').in('job_id', ids).eq('state', 'RESERVED');
     const openedAt = new Map((sessions ?? []).map((x: any) => [x.job_id, x.created_at]));

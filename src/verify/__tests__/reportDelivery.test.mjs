@@ -110,6 +110,22 @@ test('research-agent commits a Verify use only through settlementOutcome (READY)
   assert.match(sweep, /\.not\('synthesis_json', 'is', null\)/, 'presence is read without the payload');
 });
 
+test('the settlement sweep also closes Verify uses funded by a trial, a plan, the owner or a grant (no wallet row)', () => {
+  // prod 674df06e (2026-10-30): delivered on a trial, its saas_usage stayed RESERVED because the
+  // sweep read verify_billing only; the sweeper would then have expired it and handed the trial back.
+  const sweep = RA.slice(RA.indexOf('async function settleVerifyBudgets'), RA.indexOf('async function retireAbandonedJobs'));
+  assert.match(sweep, /from\('verify_billing'\)\.select\('job_id'\)\.eq\('state', 'ACTIVE'\)/, 'wallet budgets still swept');
+  assert.match(sweep, /from\('saas_usage'\)\.select\('idempotency_key'\)\s*\.eq\('feature', 'VERIFY'\)\.eq\('state', 'RESERVED'\)\.like\('idempotency_key', 'verify:%'\)/,
+    'open Verify usage reservations are swept too');
+  assert.match(sweep, /String\(u\.idempotency_key\)\.slice\('verify:'\.length\)/, 'the job id is the key after verify:');
+  assert.match(sweep, /new Set\(\[/, 'a job with both a wallet row and a usage row is closed once per tick');
+  assert.match(sweep, /\/\^\[0-9a-f-\]\{36\}\$\/i\.test\(id\)/, 'only well-formed job ids reach the query');
+  // verify_billing_close commits a RESERVED usage on COMPLETE and releases it otherwise (20261207100100).
+  const wiring = read('supabase/migrations/20261207100100_saas_entitlement_wiring.sql');
+  assert.match(wiring, /v_r := public\.saas_usage_commit\(v_user, 'VERIFY', v_u\.idempotency_key\);/);
+  assert.match(wiring, /v_r := public\.saas_usage_release\(v_user, 'VERIFY', v_u\.idempotency_key, p_outcome\);/);
+});
+
 test('the "Verify completed" notification is sent by verify-synthesis after the report is saved, and research-agent never sends it', () => {
   assert.equal(/VERIFY_COMPLETE/.test(RA), false, 'research-agent must not announce a completed verification');
   const persistAt = VS.indexOf('await persist(writer, jobId, payload);');

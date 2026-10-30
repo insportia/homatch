@@ -132,6 +132,8 @@ test('verify-synthesis writes one VERIFY_REPORT cost_events row, after the repor
   // Every paid call of the build is its own row (2026-10-29), written after the report is saved.
   // V1/V2: one row, exactly as before. V3: one row per paid call, the first untagged.
   assert.match(src, /await persist\(writer, jobId, payload\);\s*\/\/[^\n]*\n\s*if \(!v3\) await recordReportCost\(writer, jobId, usage, job\.synthesis_at \?\? null\);\n\s*\/\/[^\n]*\n\s*else for \(const \[i, call\] of calls\.entries\(\)\) \{\n\s*const tag = build === 1 && i === 0 \? null : reportAttemptTag\(call, i\);/);
+  // The summary rewrite (2026-10-30) is a second paid call: on V1/V2 its own row, tagged per build so a rebuild never collides.
+  assert.match(src, /if \(!v3 && polishUsage\) await recordReportCost\(writer, jobId, polishUsage, job\.synthesis_at \?\? null, `polish:\$\{timing\.persistAt\}`\);/);
   // The customer meter does not count OpenAI cost_events — so this row cannot change a charge.
   const meter = read('supabase/migrations/20261026100000_verify_credit_budget.sql');
   assert.match(meter, /where ce\.job_id = p_job_id and ce\.provider::text <> 'OPENAI'/);

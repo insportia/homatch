@@ -304,7 +304,7 @@ async function callPolish(db: any, apiKey: string, model: string, system: string
 // through the secure viewer (research-agent `document_file`); the caller
 // already knows it, nothing new is disclosed.
 async function forCustomer(db: any, payload: Record<string, unknown>, jobId?: string): Promise<Record<string, unknown>> {
-  const { _usage: _droppedUsage, _timing: _droppedTiming, _usageFirstAttempt: _droppedFirst, _reportRouting: _droppedRouting, _reportAttempts: _droppedAttempts, officialVisuals, ...stripped } = payload as Record<string, any>;
+  const { _usage: _droppedUsage, _timing: _droppedTiming, _usageFirstAttempt: _droppedFirst, _reportRouting: _droppedRouting, _reportAttempts: _droppedAttempts, _summaryPolish: _droppedPolish, officialVisuals, ...stripped } = payload as Record<string, any>;
   const rest: Record<string, any> = jobId ? { ...stripped, jobId } : stripped;
   // Personal numbers never reach the browser, whatever an older build stored.
   if (rest.people) rest.people = redactPeopleSupport(rest.people);
@@ -1172,8 +1172,10 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
     synthesisModelPinned: true,
     /* Why this model wrote it (V2 report policy AUTO/LUNA/TERRA, and the evidence triggers that chose the strong model). */
     _reportRouting: v3
-      ? { ...reportRouting, model: reportModel, escalation, engine: 'V3', repair, summaryPolish, reasoningEffort: (reportRequestExtras(reportTuning, null).reasoning as { effort: string }).effort, storySkipped: skipStory }
-      : { ...reportRouting, model: reportModel, escalation, summaryPolish },
+      ? { ...reportRouting, model: reportModel, escalation, engine: 'V3', repair, reasoningEffort: (reportRequestExtras(reportTuning, null).reasoning as { effort: string }).effort, storySkipped: skipStory }
+      : { ...reportRouting, model: reportModel, escalation },
+    /* The summary rewrite's outcome (summaryPolish.ts): what Terra changed, what the guard kept. Internal. */
+    ...(summaryPolish ? { _summaryPolish: summaryPolish } : {}),
     ...(usageFirstAttempt ? { _usageFirstAttempt: usageFirstAttempt } : {}),
     /* V3: every paid report call of every build (verify_stage_cogs prices this ledger), and no advertising. Internal. */
     ...(v3 ? { _reportAttempts: reportAttempts, developerAdsHidden: true } : {}),
@@ -1285,15 +1287,14 @@ async function buildReport(job: any, writer: any, opts: { autoUpgrade: boolean; 
   Object.assign(payload as Record<string, unknown>, readEnrichmentMarkers());
   await persist(writer, jobId, payload);
   // After the report is saved: bookkeeping can cost us a number, never the report.
-  if (!v3) {
-    await recordReportCost(writer, jobId, usage, job.synthesis_at ?? null);
-    if (polishUsage) await recordReportCost(writer, jobId, polishUsage, job.synthesis_at ?? null, `polish:${timing.persistAt}`);
-  }
+  if (!v3) await recordReportCost(writer, jobId, usage, job.synthesis_at ?? null);
   // V3: one cost row per paid call of this build; the first call of the first build keeps the original untagged row.
   else for (const [i, call] of calls.entries()) {
     const tag = build === 1 && i === 0 ? null : reportAttemptTag(call, i);
     await recordReportCost(writer, jobId, { model: call.model, inputTokens: call.inputTokens, outputTokens: call.outputTokens, cachedTokens: call.cachedTokens }, job.synthesis_at ?? null, tag);
   }
+  // V1/V2: the summary rewrite is its own row, tagged per build (V3 carries it in the ledger above).
+  if (!v3 && polishUsage) await recordReportCost(writer, jobId, polishUsage, job.synthesis_at ?? null, `polish:${timing.persistAt}`);
   /* The customer is told when the report exists (prod 1ff4b786: the old
      notification fired at research completion and opened a page still
      writing it). First build only — an upgrade or a forced rebuild is not

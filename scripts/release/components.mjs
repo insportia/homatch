@@ -169,9 +169,11 @@ export const COMPONENTS = {
       // Reliable transactional notifications (saas-notify, 2026-10-29): the email leg, its retry
       // sweeper, the generated six-language copy, the one-click unsubscribe, the admin log, and
       // the client hook that keeps users.preferred_language current.
-      /^supabase\/functions\/_shared\/(notify|notifyEmail|transactionalEmail|notificationCopy|notificationCopy\.generated|notificationUnsubscribe|jobNotify)\.ts$/,
-      /^supabase\/functions\/_shared\/__tests__\/(notificationDelivery|notifyEmail|transactionalEmail|jobNotify)\.test\.mjs$/,
+      /^supabase\/functions\/_shared\/(notify|notifyEmail|transactionalEmail|notificationCopy|notificationCopy\.generated|notificationUnsubscribe|jobNotify|emailBrand)\.ts$/,
+      /^supabase\/functions\/_shared\/__tests__\/(notificationDelivery|notifyEmail|transactionalEmail|jobNotify|emailBrand)\.test\.mjs$/,
       /^scripts\/saas-notify-(i18n-data|i18n-apply|copy)\.mjs$/,
+      // The branded email header (2026-10-30) and the Supabase Auth templates built from it.
+      /^scripts\/email\/(build|apply)-auth-templates\.mjs$/, /^supabase\/templates\/auth\//,
       /^src\/hooks\/usePersistPreferredLanguage\.ts$/, /^src\/components\/admin\/NotificationDeliveryLog\.tsx$/],
     suites: ['push', 'a11y', 'mobile:shell'],
     proofs: ['push: push-send PROVEN_EXACT; a real subscription receives a test notification'],

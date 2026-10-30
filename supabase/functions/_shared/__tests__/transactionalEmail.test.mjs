@@ -49,8 +49,22 @@ test('links are our own paths only; anything else goes to the home page', () => 
 
 test('the official logo is in the header and text is escaped', () => {
   const e = buildTransactionalEmail('VERIFY_DONE', 'en', '/verify?job=<x>');
-  assert.ok(e.html.includes('https://homatch.live/images/logo/homatch-icon.png'));
+  // The host that serves the PNG directly: the apex answers 308, and Outlook does not follow
+  // redirects for images (2026-10-30: the logo was missing there).
+  assert.match(e.html, /<img src="https:\/\/www\.homatch\.live\/images\/logo\/homatch-icon\.png" width="40" height="40" alt="HOMATCH"/);
+  assert.ok(!e.html.includes('src="https://homatch.live/'), 'never the redirecting apex for an image');
+  assert.match(e.html, />HOMATCH<\/td>/, 'the wordmark is text: the header still reads HOMATCH with images blocked');
+  assert.match(e.html, /<meta name="color-scheme" content="light dark">/);
+  assert.match(e.html, /bgcolor="#0C1119"/, 'Outlook paints the dark header from bgcolor');
   assert.ok(!e.html.includes('<x>'));
+});
+
+test('every language and direction gets the same logo header; RTL mirrors only the spacing', () => {
+  for (const lang of ['ka', 'en', 'ru', 'tr', 'ar', 'he']) {
+    const e = buildTransactionalEmail('VERIFY_DONE', lang, '/verify');
+    assert.equal((e.html.match(/homatch-icon\.png/g) ?? []).length, 1, lang);
+    assert.match(e.html, lang === 'ar' || lang === 'he' ? /padding-left:12px/ : /padding-right:12px/, lang);
+  }
 });
 
 /* A tiny fake client: users, preferences, deliveries (unique per notification and channel). */

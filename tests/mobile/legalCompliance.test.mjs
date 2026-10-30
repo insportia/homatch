@@ -28,8 +28,8 @@ const ROOT = process.cwd();
 /* Its own port (4351 belongs to another suite): authScreens 4341. */
 const PORT = 4359;
 const BASE = `http://127.0.0.1:${PORT}`;
-/* Operator change and subscription Terms (2026-10-29): src/lib/legal/operator.ts. */
-const VERSIONS = { terms: '2026-10-29', privacy: '2026-10-29' };
+/* Operator change (2026-10-29) and the voice/Stripe copy edition (2026-10-30): src/lib/legal/operator.ts. */
+const VERSIONS = { terms: '2026-10-30', privacy: '2026-10-30' };
 
 function findChrome() {
   if (process.env.PLAYWRIGHT_CHROME) return process.env.PLAYWRIGHT_CHROME;

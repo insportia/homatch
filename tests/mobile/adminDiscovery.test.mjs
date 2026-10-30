@@ -102,7 +102,7 @@ const EMPTY = { generated_at: ago(0), settings: {}, telegram_health: null, targe
 
 async function boot(t, { width = 1440, height = 900, lang = 'en', admin = true, data = overview(), rpc = null } = {}) {
   const { chromium } = resolvePlaywright();
-  const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
+  const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
   t.after(async () => { await browser.close().catch(() => {}); server.kill(); });
   for (let i = 0; i < 80; i += 1) { try { await fetch(BASE); break; } catch { await new Promise((r) => setTimeout(r, 250)); } }

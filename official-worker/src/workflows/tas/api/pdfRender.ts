@@ -64,6 +64,15 @@ export type PdfRendererFactory = () => PdfPageRenderer;
 
 const ORIGIN = 'https://pdf-render.invalid';
 
+/*
+ * The worker runs under tsx, whose esbuild transform wraps named inner functions (render's
+ * `textOf`) in a `__name()` helper that does not exist inside the page, so every page.evaluate
+ * render failed with "ReferenceError: __name is not defined" (0 pages rendered in 17 production
+ * runs, 2026-10-30; the same trap RsTaxpayerWorker documents). The shell defines it as the
+ * identity it is for our purposes; the render code itself is unchanged.
+ */
+export const PAGE_SHELL_HTML = '<!doctype html><meta charset="utf-8"><script>globalThis.__name=globalThis.__name||function(f){return f};</script><script src="/pdf.js"></script>';
+
 export function pdfJsBuildDir(): string | null {
   try {
     const req = createRequire(import.meta.url);
@@ -106,7 +115,7 @@ export function createChromiumPdfRenderer(opts: { launch?: () => Promise<any>; e
           const url = String(route.request().url());
           if (!url.startsWith(ORIGIN)) return route.abort();
           const p = url.slice(ORIGIN.length).split(/[?#]/)[0] || '/';
-          if (p === '/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><script src="/pdf.js"></script>' });
+          if (p === '/') return route.fulfill({ contentType: 'text/html', body: PAGE_SHELL_HTML });
           if (p === '/pdf.js') return route.fulfill({ contentType: 'application/javascript', body: pdfJs });
           if (p === '/pdf.worker.js') return route.fulfill({ contentType: 'application/javascript', body: pdfWorker });
           return route.fulfill({ status: 404, body: '' });

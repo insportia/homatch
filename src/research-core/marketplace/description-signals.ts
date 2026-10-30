@@ -10,8 +10,11 @@ const PATTERNS: Array<[DescriptionSignalCode, RegExp]> = [
   ['PARKING', /პარკინგ|ავტოფარეხ|\bparking\b|\bgarage\b|парков|гараж/iu],
   ['FURNISHED', /ავეჯ|\bunfurnished\b|\bfurnished\b|\bfurniture\b|мебел/iu],
   ['APPLIANCES', /ტექნიკ|\bappliances\b|бытов.{0,12}техник/iu],
-  ['BALCONY', /აივან|აივნ|\bbalcony\b|балкон/iu],
-  ['VIEW', /ხედით|\b(?:sea|city|mountain|panoramic) view\b|панорам|вид на/iu],
+  ['BALCONY', /აივან|აივნ|ლოჯი|\bbalcon(?:y|ies)\b|\bloggia\b|балкон|лоджи/iu],
+  /* Every case of ხედი as listings write it ("ულამაზესი ხედებით", "ლამაზი ხედი"), never inside
+     another word ("მიუხედავად"): production search 34b3f91d (2026-10-29) required a view and
+     the old "ხედით"-only pattern confirmed it on none of 64 fitting homes. */
+  ['VIEW', /(?<!\p{L})ხედ(?:ი|ით|ზე|ს|ები|ებით|ებზე|ებს)(?!\p{L})|\b(?:sea|city|mountain|panoramic|river|park) views?\b|\bviews? (?:of|over|to)\b|панорам|вид(?:ом)? на|видов(?:ая|ой)/iu],
   ['CENTRAL_HEATING', /ცენტრალური გათბ|\bcentral heating\b|центральн.{0,8}отоплен/iu],
   ['ELEVATOR', /ლიფტ|\belevator\b|\blift\b|лифт/iu],
   ['OWNER_CLAIM', /მესაკუთრისგან|მე ვარ მესაკუთრე|\b(?:I am the owner|my apartment|my flat|from the owner)\b|я собственник|от собственника/iu],

@@ -232,3 +232,13 @@ test('seller filter: OWNER groups verified and likely owners only; unknown is ne
   assert.ok(sellerMatches('BROKER', 'BROKER'));
   assert.equal(sellerMatches('LIKELY_OWNER', 'VERIFIED_OWNER'), false, 'an exact value stays exact');
 });
+
+test('a view and a loggia are read in the forms listings use, never inside another word (search 34b3f91d, 2026-10-29)', () => {
+  const has = (text, code) => descriptionSignals(text).some((s) => s.code === code && s.polarity === 'MENTIONED');
+  for (const text of ['ნათელი ბინა ულამაზესი ხედებით!', 'ბინას აქვს ლამაზი ხედი სამებაზე', 'აივნიდან იშლება ქალაქის ხედები.', 'панорамный вид', 'с видом на город', 'Apartment with views over the old town']) {
+    assert.ok(has(text, 'VIEW'), text);
+  }
+  assert.equal(has('მიუხედავად იმისა, რომ ბინა ძველ აშენებაშია', 'VIEW'), false);
+  assert.equal(descriptionSignals('ბინას ხედი არ აქვს').find((s) => s.code === 'VIEW')?.polarity, 'NEGATED');
+  for (const text of ['ბინას აქვს ოთხი აივანი/ლოჯია', 'с лоджией', 'a large loggia', 'two balconies']) assert.ok(has(text, 'BALCONY'), text);
+});

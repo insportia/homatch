@@ -1,0 +1,128 @@
+{
+  "source": "https://fonts.googleapis.com/css2?family=Manrope:wght@500..800&family=Inter:wght@400..700&family=Noto+Sans+Georgian:wght@400..700&family=Noto+Sans+Hebrew:wght@400..700&family=Noto+Sans+Arabic:wght@400..700&display=swap",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+  "fetchedAt": "2026-10-30",
+  "stylesheetSha256": "7656d75dd71a9eb3b9ca5c427fe165d55bfc30371d6edd5d1c5ebc3b21bbc2bc",
+  "files": {
+    "s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2JL7SUc.woff2": {
+      "bytes": 25960,
+      "sha256": "ca157063339ac4ad418f214f3abfed119b0798ab4d377386ce5c9e5a7a435ebd"
+    },
+    "s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa0ZL7SUc.woff2": {
+      "bytes": 18748,
+      "sha256": "71d5ee93cc1e9f1d520a3a8b66456de18c7879d8df09d57fcd2eaff75fef0075"
+    },
+    "s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2ZL7SUc.woff2": {
+      "bytes": 11232,
+      "sha256": "6e9e020a25f9b56d418f2c085b1d3c09725a4da23fe693a5b463064606732190"
+    },
+    "s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1pL7SUc.woff2": {
+      "bytes": 18996,
+      "sha256": "1be3448e292fbf05ffe176fe1e43f135013d50b1e7d324ad1a558f623d3bb6f6"
+    },
+    "s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2pL7SUc.woff2": {
+      "bytes": 10252,
+      "sha256": "5c66f9e07e90c6d4ac4922cc68d60de26c17b1858e677fb5e603fce3952b3ff2"
+    },
+    "s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa25L7SUc.woff2": {
+      "bytes": 85068,
+      "sha256": "34b9c504cab7a73e37b746343a449132e56cf7b5481af2cb81dc74dcff25c956"
+    },
+    "s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2": {
+      "bytes": 48256,
+      "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+    },
+    "s/manrope/v23/xn7gYHE41ni1AdIRggqxSuXd.woff2": {
+      "bytes": 2588,
+      "sha256": "3c09135e88bbfcd848e99be137710afbb615a8d9a73c5c48e6cb0245a162af1d"
+    },
+    "s/manrope/v23/xn7gYHE41ni1AdIRggOxSuXd.woff2": {
+      "bytes": 14352,
+      "sha256": "447c49583b1b735cc6f566151db1d24354cec41076c55dd98455cfbde9e806c1"
+    },
+    "s/manrope/v23/xn7gYHE41ni1AdIRggSxSuXd.woff2": {
+      "bytes": 9268,
+      "sha256": "e507c109c31789b33994646b457ee288639324516357250607c9b1398186e069"
+    },
+    "s/manrope/v23/xn7gYHE41ni1AdIRggixSuXd.woff2": {
+      "bytes": 8388,
+      "sha256": "dbf64d973b3987844df30992c93f47d24ac8935ee8c9b1e320942aeb1b367703"
+    },
+    "s/manrope/v23/xn7gYHE41ni1AdIRggmxSuXd.woff2": {
+      "bytes": 15160,
+      "sha256": "2f7335119075b2079f1d882530bbc18728461612bf90743203d73a74a48f4d9b"
+    },
+    "s/manrope/v23/xn7gYHE41ni1AdIRggexSg.woff2": {
+      "bytes": 24532,
+      "sha256": "8c2def024c1bf31aacf3624ae3c4d701269b4ec3dc765c04830839f0d36b2d9e"
+    },
+    "s/notosansarabic/v33/nwpCtLGrOAZMl5nJ_wfgRg3DrWFZWsnVBJ_sS6tlqHHFlj4wv4r4xA.woff2": {
+      "bytes": 165960,
+      "sha256": "ce85091f020920b65762b387b194ef59457ea5b25b760f2dcc35240a94bb8669"
+    },
+    "s/notosansarabic/v33/nwpCtLGrOAZMl5nJ_wfgRg3DrWFZWsnVBJ_sS6tlqHHFlj5Jv4r4xA.woff2": {
+      "bytes": 22716,
+      "sha256": "2c7bffd56133bb333f6f23d240ba72ee767aa3e7de67cb71fb83bbb3595ded2b"
+    },
+    "s/notosansarabic/v33/nwpCtLGrOAZMl5nJ_wfgRg3DrWFZWsnVBJ_sS6tlqHHFlj5bv4r4xA.woff2": {
+      "bytes": 14584,
+      "sha256": "090786c8626fb67f5c50809079ed7fe42eb68b95d1afccffeb86943ec10254a2"
+    },
+    "s/notosansarabic/v33/nwpCtLGrOAZMl5nJ_wfgRg3DrWFZWsnVBJ_sS6tlqHHFlj47v4r4xA.woff2": {
+      "bytes": 16816,
+      "sha256": "27fe6458d54bcf13a2fe92228dd932ef3de9439267ca214e5c9f6bb02659e614"
+    },
+    "s/notosansarabic/v33/nwpCtLGrOAZMl5nJ_wfgRg3DrWFZWsnVBJ_sS6tlqHHFlj41v4o.woff2": {
+      "bytes": 31416,
+      "sha256": "fed070abc960c5f214fcb02b7b178cdab751ef7facd79a899f571bc21d38b8f8"
+    },
+    "s/notosansgeorgian/v49/PlIVFke5O6RzLfvNNVSitxkr76PRHBC4Ytyq-Gof7PUs4S7zcH6Ukdjo.woff2": {
+      "bytes": 1760,
+      "sha256": "1ac64c50da07536fa25de905de4f7b741ace69fcdb5ee8557b7631750552a6fc"
+    },
+    "s/notosansgeorgian/v49/PlIVFke5O6RzLfvNNVSitxkr76PRHBC4Ytyq-Gof7PUs4S7zcGyUkdjo.woff2": {
+      "bytes": 41628,
+      "sha256": "3fc0dec93921c7b8032a09d7ae93856c4bf6391c135dc80b61fd24c9ea1ab449"
+    },
+    "s/notosansgeorgian/v49/PlIVFke5O6RzLfvNNVSitxkr76PRHBC4Ytyq-Gof7PUs4S7zcH-Ukdjo.woff2": {
+      "bytes": 1760,
+      "sha256": "1ac64c50da07536fa25de905de4f7b741ace69fcdb5ee8557b7631750552a6fc"
+    },
+    "s/notosansgeorgian/v49/PlIVFke5O6RzLfvNNVSitxkr76PRHBC4Ytyq-Gof7PUs4S7zcA-Ukdjo.woff2": {
+      "bytes": 17480,
+      "sha256": "bc20e9dbdb704a6e509d6438249f8511f0a5188f01526d5031ba953bc22f1b5b"
+    },
+    "s/notosansgeorgian/v49/PlIVFke5O6RzLfvNNVSitxkr76PRHBC4Ytyq-Gof7PUs4S7zcB2Ukdjo.woff2": {
+      "bytes": 12096,
+      "sha256": "4172da02687da351d59e2c52bc098112afc8c9691617680f8d3df44671cda192"
+    },
+    "s/notosansgeorgian/v49/PlIVFke5O6RzLfvNNVSitxkr76PRHBC4Ytyq-Gof7PUs4S7zcH2Ukdjo.woff2": {
+      "bytes": 13624,
+      "sha256": "cf65951efa1e3e85dcf4be4fe400543633372c1fdf62f20a7ab1b4333d849f14"
+    },
+    "s/notosansgeorgian/v49/PlIVFke5O6RzLfvNNVSitxkr76PRHBC4Ytyq-Gof7PUs4S7zcHOUkQ.woff2": {
+      "bytes": 24932,
+      "sha256": "eb8ee9bbda6bd81fe3d4cbb772b1c159ce699e63ba59730932b6635367d089a7"
+    },
+    "s/notosanshebrew/v50/or30Q7v33eiDljA1IufXTtVf7V6RvEEdhQlk0LlGxCyaePiZTNzENg.woff2": {
+      "bytes": 1200,
+      "sha256": "a8d376cc2113e5ab5174bf306b27ebb3b46f84c2e4ce527dd58d110aaf265471"
+    },
+    "s/notosanshebrew/v50/or30Q7v33eiDljA1IufXTtVf7V6RvEEdhQlk0LlGxCyaePiYTNzENg.woff2": {
+      "bytes": 1200,
+      "sha256": "a8d376cc2113e5ab5174bf306b27ebb3b46f84c2e4ce527dd58d110aaf265471"
+    },
+    "s/notosanshebrew/v50/or30Q7v33eiDljA1IufXTtVf7V6RvEEdhQlk0LlGxCyaePiWTNzENg.woff2": {
+      "bytes": 12264,
+      "sha256": "8dd0a0bc744eca2c6d5d618bf002f8ef98b2948b31020e3cb64fe3587c9abb74"
+    },
+    "s/notosanshebrew/v50/or30Q7v33eiDljA1IufXTtVf7V6RvEEdhQlk0LlGxCyaePiaTNzENg.woff2": {
+      "bytes": 11560,
+      "sha256": "c088f4c4bf6d47d549adf622d8cd3c5e19164e7ead11931d8a2ff8832ba256d8"
+    },
+    "s/notosanshebrew/v50/or30Q7v33eiDljA1IufXTtVf7V6RvEEdhQlk0LlGxCyaePiUTNw.woff2": {
+      "bytes": 20192,
+      "sha256": "27fd789f4089b6aa76494638b3f94a6c00c69a0519e38add75a3c7e852cab1bc"
+    }
+  }
+}

@@ -35,7 +35,12 @@ test('A: one bottom bar on phones — the builder bar covers the app nav, respec
   // The bar's REAL height (hint line, two-line labels, safe area) is measured and reserved.
   assert.match(page, /new ResizeObserver\(\(\) => setNavH\(Math\.ceil\(el\.getBoundingClientRect\(\)\.height\)\)\)/, 'the bar is measured');
   assert.match(page, /pb-\[calc\(var\(--mm-nav-h,6\.5rem\)\+1rem\)\]/, 'the last control scrolls clear of the bar');
-  assert.equal((page.match(/min-h-11 shrink-0/g) ?? []).length, 3, 'Back, Continue and Launch are 44px targets');
+  // Back, Continue and Launch are 44px targets. On phones Back keeps its size and the primary action
+  // takes the rest of the row (2026-10-30: at 320px the bar split into two rows, 151px, in ka/ru).
+  assert.match(page, /className="min-h-11 shrink-0 gap-1\.5 px-3 sm:px-4">\s*<ArrowLeft/, 'Back: 44px, never shrinks');
+  assert.match(page, /className="min-h-11 min-w-0 flex-1 gap-1\.5 px-3 text-center sm:flex-none sm:shrink-0 sm:px-4"[^>]*>\s*\{t\('madsb_continue'\)\}/, 'Continue: 44px, fills the phone row');
+  assert.match(page, /className="min-h-11 min-w-0 flex-1 bg-\[hsl\(var\(--gold\)\)\][^"]* sm:flex-none sm:shrink-0 sm:px-4">\{t\('mads_launch'\)\}/, 'Launch: 44px, fills the phone row');
+  assert.match(page, /flex-wrap items-center justify-between gap-x-2 gap-y-1 px-4 [^"]*sm:flex-nowrap sm:gap-x-3/, 'one row of actions on phones');
   // The hero and the check notice once, at the start — later steps start with the work.
   assert.match(page, /step !== 'account' && 'hidden md:block'/);
   assert.match(page, /\{step === 'account' && preflight\?\.status !== 'READY' && \(/);

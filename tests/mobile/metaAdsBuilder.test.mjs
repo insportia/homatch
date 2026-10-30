@@ -22,6 +22,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
+import { fontsSettled, renderedFonts, useProductionFonts } from './productionFonts.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -228,6 +229,8 @@ async function boot(t, { width, height, lang, admin = false, statusOver = null, 
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));
     return r.fulfill(json({}));
   });
+  // After the catch-all, so it wins: every width below is measured in the faces customers get.
+  await useProductionFonts(page);
   return { page, calls };
 }
 
@@ -248,6 +251,7 @@ const LAYOUT = () => ({
 
 async function waitReady(page) {
   await page.waitForSelector('[data-madsb-stepper]', { timeout: 20000 });
+  await fontsSettled(page);
   await page.waitForTimeout(300);
 }
 
@@ -421,6 +425,7 @@ const DASH = () => {
 
 async function dashReady(page) {
   await page.waitForSelector('[data-mm-kpis] [data-mm-kpi="all"]', { timeout: 20000 });
+  await fontsSettled(page);
   await page.waitForTimeout(250);
 }
 
@@ -1314,6 +1319,145 @@ const GEOMETRY = () => {
   }
   return out;
 };
+
+/* ── PHONE WIDTHS × SIX LANGUAGES, in the production faces ──────────────────
+   Every KPI label and the review action bar at 320 / 360 / 375 / 390 / 430px.
+   A word is never broken inside (each word's own line boxes are measured), the
+   two bar buttons share one row inside the viewport, keep 44px, contain their
+   text, never overlap, and Back leads (left in LTR, right in RTL). The script
+   faces are proven from what Chrome drew (CDP), not from document.fonts. */
+const PHONE_WIDTHS = [[320, 640], [360, 760], [375, 812], [390, 844], [430, 932]];
+const SCRIPT_FACE = { ka: 'Noto Sans Georgian', he: 'Noto Sans Hebrew', ar: 'Noto Sans Arabic', en: 'Inter', ru: 'Inter', tr: 'Inter' };
+
+/** Words of an element that are split across lines, with each word's line count. */
+const BROKEN_WORDS = (el) => {
+  const out = [];
+  const text = el.firstChild && el.firstChild.nodeType === 3 ? el.firstChild : null;
+  if (!text) return out;
+  const re = /\S+/g;
+  let m;
+  while ((m = re.exec(text.data))) {
+    const r = document.createRange();
+    r.setStart(text, m.index);
+    r.setEnd(text, m.index + m[0].length);
+    const tops = new Set([...r.getClientRects()].filter((q) => q.width > 0).map((q) => Math.round(q.top)));
+    if (tops.size > 1) out.push(`${m[0]} (${tops.size} lines)`);
+  }
+  return out;
+};
+
+const KPI_PHONE = (brokenSrc) => {
+  const broken = new Function('return ' + brokenSrc)();
+  const vw = document.documentElement.clientWidth;
+  return {
+    overflow: document.documentElement.scrollWidth - vw,
+    dir: document.documentElement.getAttribute('dir') || 'ltr',
+    kpis: [...document.querySelectorAll('[data-mm-kpi]')].map((b) => {
+      const label = b.querySelector('[data-mm-kpi-label]');
+      const r = b.getBoundingClientRect();
+      const lr = label.getBoundingClientRect();
+      return {
+        kpi: b.getAttribute('data-mm-kpi'), text: label.textContent.trim(),
+        w: Math.round(r.width), h: Math.round(r.height), labelW: Math.round(lr.width), labelH: Math.round(lr.height),
+        brokenWords: broken(label),
+        clipped: b.scrollWidth > b.clientWidth + 1 || b.scrollHeight > b.clientHeight + 1 || lr.right > r.right + 1 || lr.left < r.left - 1,
+        offscreen: r.left < -1 || r.right > vw + 1,
+      };
+    }),
+  };
+};
+
+const BAR_PHONE = () => {
+  const vw = document.documentElement.clientWidth;
+  const nav = document.querySelector('[data-madsb-nav]');
+  const btns = [...nav.querySelectorAll(':scope > div > button')];
+  const rect = (b) => b.getBoundingClientRect();
+  const [back, primary] = btns;
+  const a = rect(back);
+  const p = rect(primary);
+  return {
+    navH: Math.round(rect(nav).height),
+    buttons: btns.map((b) => ({ text: b.textContent.trim(), w: Math.round(rect(b).width), h: Math.round(rect(b).height),
+      left: Math.round(rect(b).left), right: Math.round(rect(b).right),
+      clipped: b.scrollWidth > b.clientWidth + 1 || b.scrollHeight > b.clientHeight + 1 })),
+    // Same row: the two buttons share a vertical band (centred; one may be taller when a label wraps).
+    sameRow: Math.abs((a.top + a.bottom) / 2 - (p.top + p.bottom) / 2) < 2,
+    overlap: !(a.right <= p.left + 0.5 || p.right <= a.left + 0.5 || a.bottom <= p.top + 0.5 || p.bottom <= a.top + 0.5),
+    inside: btns.every((b) => rect(b).left >= -0.5 && rect(b).right <= vw + 0.5),
+    backLeads: (document.documentElement.getAttribute('dir') === 'rtl') ? a.left >= p.right - 0.5 : a.right <= p.left + 0.5,
+    primaryBroken: (() => {
+      // The launch label's words, measured where the text node sits.
+      const node = [...primary.childNodes].find((n) => n.nodeType === 3);
+      if (!node) return [];
+      const out = [];
+      const re = /\S+/g;
+      let m;
+      while ((m = re.exec(node.data))) {
+        const r = document.createRange();
+        r.setStart(node, m.index);
+        r.setEnd(node, m.index + m[0].length);
+        if (new Set([...r.getClientRects()].filter((q) => q.width > 0).map((q) => Math.round(q.top))).size > 1) out.push(m[0]);
+      }
+      return out;
+    })(),
+  };
+};
+
+test('PHONE WIDTHS: KPI labels and the review action bar at 320–430px in all six languages, in the production fonts (CDP-proven)', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads phone-width gate could not run: ${skipReason}`);
+  const campaignOver = { goal: 'LEADS_ON_META', daily_budget_cents: 500, duration_days: 7, name: 'ვაკის ორსაძინებლიანი ბინა',
+    targeting: { locations: [{ type: 'city', key: '2001', name: 'თბილისი', countryCode: 'GE', radiusKm: 10, lat: 41.7151, lng: 44.8271 }] } };
+  const failures = [];
+  const report = [];
+  for (const lang of LOCALES) {
+    for (const [width, height] of PHONE_WIDTHS) {
+      const tag = `${lang} ${width}px`;
+      {
+        const { page } = await boot(t, { width, height, lang });
+        await page.goto(`${BASE}/outreach/meta?tab=overview`, { waitUntil: 'domcontentloaded' });
+        await dashReady(page);
+        const faces = await renderedFonts(page, '[data-mm-kpi="attention"] [data-mm-kpi-label]');
+        const want = SCRIPT_FACE[lang];
+        if (!faces?.some((f) => f.family.startsWith(want) && f.webFont)) failures.push(`${tag}: KPI label not drawn in the ${want} web font (${JSON.stringify(faces)})`);
+        if (faces?.some((f) => !f.webFont)) failures.push(`${tag}: KPI label partly drawn in a system font (${JSON.stringify(faces)})`);
+        const k = await page.evaluate(KPI_PHONE, BROKEN_WORDS.toString());
+        if (k.overflow > 1) failures.push(`${tag}: dashboard overflows by ${k.overflow}px`);
+        if ((lang === 'ar' || lang === 'he') !== (k.dir === 'rtl')) failures.push(`${tag}: dir=${k.dir}`);
+        for (const c of k.kpis) {
+          if (c.brokenWords.length) failures.push(`${tag}: KPI "${c.text}" breaks inside ${c.brokenWords.join(', ')}`);
+          if (c.clipped) failures.push(`${tag}: KPI "${c.text}" clips its text`);
+          if (c.offscreen) failures.push(`${tag}: KPI "${c.text}" leaves the screen`);
+          if (c.h < 44) failures.push(`${tag}: KPI "${c.text}" is ${c.h}px tall`);
+        }
+        report.push({ view: 'kpi', tag, attention: k.kpis.find((c) => c.kpi === 'attention'), faces });
+        if (SHOTS) { mkdirSync(SHOTS, { recursive: true }); await page.locator('[data-mm-kpis]').screenshot({ path: join(SHOTS, `kpis-${width}-${lang}.png`) }); }
+      }
+      {
+        const { page } = await boot(t, { width, height, lang, campaignOver });
+        await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=review`, { waitUntil: 'domcontentloaded' });
+        await waitReady(page);
+        await page.waitForSelector('[data-mm-review-summary] [data-mm-row]');
+        const faces = await renderedFonts(page, '[data-madsb-nav] > div > button:last-of-type');
+        if (!faces?.some((f) => f.family.startsWith(SCRIPT_FACE[lang]) && f.webFont)) failures.push(`${tag}: launch button not drawn in the ${SCRIPT_FACE[lang]} web font (${JSON.stringify(faces)})`);
+        const b = await page.evaluate(BAR_PHONE);
+        if (!b.sameRow) failures.push(`${tag}: Back and Launch are on different rows (bar ${b.navH}px)`);
+        if (b.overlap) failures.push(`${tag}: Back and Launch overlap`);
+        if (!b.inside) failures.push(`${tag}: a bar button leaves the screen ${JSON.stringify(b.buttons)}`);
+        if (!b.backLeads) failures.push(`${tag}: Back does not lead (${lang === 'ar' || lang === 'he' ? 'right in RTL' : 'left in LTR'})`);
+        for (const x of b.buttons) {
+          if (x.h < 43.5) failures.push(`${tag}: "${x.text}" is ${x.h}px tall`);
+          if (x.clipped) failures.push(`${tag}: "${x.text}" clips its text`);
+        }
+        if (b.primaryBroken.length) failures.push(`${tag}: the launch label breaks inside ${b.primaryBroken.join(', ')}`);
+        if (b.navH > 120) failures.push(`${tag}: the bar is ${b.navH}px tall`);
+        report.push({ view: 'bar', tag, navH: b.navH, buttons: b.buttons.map((x) => `${x.text} ${x.w}×${x.h}`), sameRow: b.sameRow });
+        if (SHOTS) { await page.locator('[data-madsb-nav]').screenshot({ path: join(SHOTS, `bar-${width}-${lang}.png`) }); }
+      }
+    }
+  }
+  if (process.env.META_ADS_QA_REPORT) console.log(`PHONE_REPORT ${JSON.stringify(report)}`);
+  assert.deepEqual(failures, []);
+});
 
 test('MOBILE UX: the review summary reflows in Georgian — "Facebook/Instagram-ზე" whole, "$5.00 × 7" together, Edit 44px, the check button contains its text, nothing under the bar', opts, async (t) => {
   if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);

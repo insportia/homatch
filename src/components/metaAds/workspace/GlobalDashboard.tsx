@@ -150,22 +150,27 @@ function KpiControl({ filter, value, label, icon: Icon, tone, selected, onSelect
     <button type="button" aria-pressed={selected} data-mm-kpi={filter} data-mm-kpi-value={value}
       onClick={() => onSelect(selected && filter !== 'all' ? 'all' : filter)}
       className={cn(
-        'group relative flex min-h-[3.75rem] min-w-0 items-center gap-2.5 rounded-xl border px-3 py-2 text-start transition-[background-color,border-color,box-shadow,transform] duration-150',
+        // A container: the tile's own width, not the viewport's, decides its arrangement (two columns
+        // on a phone and four on a tablet are both narrow tiles).
+        'group relative @container flex min-h-[3.75rem] min-w-0 items-center rounded-xl border px-3 py-2 text-start transition-[background-color,border-color,box-shadow,transform] duration-150',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         'active:scale-[0.98] motion-reduce:active:scale-100',
         selected
           ? 'border-[hsl(var(--gold))] bg-[#0C1119] text-white shadow-hover'
           : 'border-border bg-card text-foreground shadow-card hover:border-[hsl(var(--gold-border))] hover:shadow-hover',
       )}>
-      <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-        selected ? 'bg-white/10 text-[hsl(var(--gold))]' : cn('bg-[hsl(var(--background))]', cue))} aria-hidden="true">
-        <Icon className="h-4 w-4" />
-      </span>
-      <span className="min-w-0">
-        <span className={cn('block font-display text-xl font-bold leading-none tabular-nums', selected ? 'text-[hsl(var(--gold))]' : 'text-foreground')}>
+      {/* Wide tile: icon beside the count and the label. Narrow tile: icon and count on top, the
+          label below across the whole tile, so one long word ("საყურადღებო", "Duraklatılan") is
+          never broken inside at 320–360px (index.css allows break-word for exactly that case). */}
+      <span className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5 @[9rem]:gap-y-0">
+        <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg @[9rem]:row-span-2',
+          selected ? 'bg-white/10 text-[hsl(var(--gold))]' : cn('bg-[hsl(var(--background))]', cue))} aria-hidden="true">
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className={cn('block min-w-0 font-display text-xl font-bold leading-none tabular-nums @[9rem]:self-end', selected ? 'text-[hsl(var(--gold))]' : 'text-foreground')}>
           {count(value, lang)}
         </span>
-        <span className={cn('mt-1 block text-2xs font-medium leading-tight', selected ? 'text-white/80' : 'text-muted-foreground')}>{label}</span>
+        <span data-mm-kpi-label="" className={cn('col-span-2 block min-w-0 text-2xs font-medium leading-tight @[9rem]:col-span-1 @[9rem]:col-start-2 @[9rem]:mt-1 @[9rem]:self-start', selected ? 'text-white/80' : 'text-muted-foreground')}>{label}</span>
       </span>
       {selected && <span className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-[hsl(var(--gold))]" aria-hidden="true" />}
     </button>

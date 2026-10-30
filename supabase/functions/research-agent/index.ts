@@ -20,7 +20,7 @@ import { compactOfficialContext } from '../../../src/verify/intelligence/officia
 import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/officialPromptContext.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 import { rsTaxpayerLegalStatus, withoutRsRaw } from '../../../src/verify/rsTaxpayer.ts';
-import { driveSettings, shouldFanOut, runPool, stepDelayMs } from '../../../src/verify/driveScale.ts';
+import { driveSettings, shouldFanOut, runPool, stepDelayMs, chainNextStep, STATUS_CHAIN_MAX_STEPS, STATUS_CHAIN_BUDGET_MS } from '../../../src/verify/driveScale.ts';
 import { awaitOpenAIBudget, backoffMs, estimateTokens, limitsFor, retryAfterMs, RETRYABLE_STATUSES } from '../../../src/verify/openaiLimit.ts';
 import { officialTaskPlan, followUpTasks, queueWorkerView, singleTaskView, entityTask, officialLiveOf, officialCodeNotFound, type QueueTaskRow, type TaskPlan } from '../../../src/verify/queueOfficial.ts';
 import { buildVerifyPerformance, taskTimeline } from '../../../src/verify/performance.ts';
@@ -8193,7 +8193,16 @@ Deno.serve(async (req) => {
         // full read (reports average ~108 KB) per contended poll was pure
         // database load (capacity audit 2026-10-18).
         if (await advanceExclusive(sb, key, model, j, lang)) {
-          const r = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
+          let r = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
+          // A step that only parked the job in an internal state is followed at once, as in
+          // driveJob — otherwise each hand-off waits for the next poll (driveScale.ts chainNextStep).
+          let before = j;
+          const until = Date.now() + STATUS_CHAIN_BUDGET_MS;
+          for (let n = 0; n < STATUS_CHAIN_MAX_STEPS && Date.now() < until && chainNextStep(before, r.data); n++) {
+            before = r.data;
+            if (!(await advanceExclusive(sb, key, model, r.data, lang))) break;
+            r = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
+          }
           j = r.data || j;
         }
       }

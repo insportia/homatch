@@ -78,6 +78,26 @@ export function stepDelayMs(before: { stage?: string | null; status?: string | n
   return 0;
 }
 
+/*
+ * THE PAGE'S OWN POLL CHAINS THE SAME WAY (owner 2026-10-30, Verify V3 speed).
+ *
+ * While a Verify tab is open (even hidden: one poll per ~10 s) its status polls keep updated_at
+ * fresh, so verify_drive_claim (updated_at older than 30 s) never hands the job to the driver and
+ * the poll is the only advancer. It stepped once per request, so every internal hand-off cost a
+ * whole poll period: prod d84f06db, public → market → reconciliation → synthesis took 24 s each,
+ * 106 s of idle in one run. The status path now follows a step that parked the job in an internal
+ * state with the next step at once, by the same rule as driveJob, inside a small budget so the
+ * response is never held: at most STATUS_CHAIN_MAX_STEPS extra steps and STATUS_CHAIN_BUDGET_MS.
+ * Every step still takes the advance lease; a finished, paused or human-wait job is never stepped.
+ */
+export const STATUS_CHAIN_MAX_STEPS = 4;
+export const STATUS_CHAIN_BUDGET_MS = 8_000;
+const CHAIN_LIVE_STATUSES = ['CREATED', 'RUNNING'];
+export function chainNextStep(before: { stage?: string | null; status?: string | null; cancelled_at?: string | null } | null, after: { stage?: string | null; status?: string | null; cancelled_at?: string | null } | null): boolean {
+  if (!after || after.cancelled_at || !CHAIN_LIVE_STATUSES.includes(String(after.status))) return false;
+  return stepDelayMs(before, after, 1) === 0;
+}
+
 /** Customer-facing capacity: how many jobs one cron tick can keep moving. */
 export function jobsPerTick(s: DriveSettings): number {
   return s.batch * (s.maxFanout + 1);

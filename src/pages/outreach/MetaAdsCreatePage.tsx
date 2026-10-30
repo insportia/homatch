@@ -487,8 +487,11 @@ export default function MetaAdsCreatePage() {
       {/* Its real height (hint line, two-line labels, the safe area) is measured,
           and the page reserves exactly that — content never hides under it. */}
       <div ref={navRef} data-madsb-nav="" className="fixed inset-x-0 bottom-0 z-[60] md:z-30 lg:start-[18rem] border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90">
-        <div className="mx-auto flex w-full max-w-[86rem] flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] sm:flex-nowrap sm:px-6 lg:px-8">
-          <Button variant="outline" onClick={() => void (idx > 0 ? go(STEPS[idx - 1]) : navigate('/outreach/meta'))} className="min-h-11 shrink-0 gap-1.5">
+        {/* Phones: Back keeps its size and the primary action takes the rest of the row (flex-1,
+            min-w-0), so at 320px the two never split onto two rows (the bar was 151px in ka/ru);
+            a label longer than the row wraps inside its own button, at a space. */}
+        <div className="mx-auto flex w-full max-w-[86rem] flex-wrap items-center justify-between gap-x-2 gap-y-1 px-4 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] sm:flex-nowrap sm:gap-x-3 sm:px-6 lg:px-8">
+          <Button variant="outline" onClick={() => void (idx > 0 ? go(STEPS[idx - 1]) : navigate('/outreach/meta'))} className="min-h-11 shrink-0 gap-1.5 px-3 sm:px-4">
             <ArrowLeft className="h-4 w-4 rtl:rotate-180" />{t(idx > 0 ? 'madsb_back' : 'madsb_exit')}
           </Button>
           {/* Phones: the hint is its own line above the buttons (two lines at most), never a squeezed column that grows the bar. */}
@@ -504,14 +507,14 @@ export default function MetaAdsCreatePage() {
           </div>
           {idx < STEPS.length - 1 ? (
             /* Only a BLOCKING_ERROR creative advice holds Continue; every other step is advisory. */
-            <Button onClick={() => void go(STEPS[idx + 1])} className="min-h-11 shrink-0 gap-1.5" disabled={step === 'creative' && creativeBlocked}
+            <Button onClick={() => void go(STEPS[idx + 1])} className="min-h-11 min-w-0 flex-1 gap-1.5 px-3 text-center sm:flex-none sm:shrink-0 sm:px-4" disabled={step === 'creative' && creativeBlocked}
               aria-describedby={step === 'creative' && creativeBlocked ? 'mm-b-blocking-hint' : undefined}>
               {t('madsb_continue')}<ArrowRight className="h-4 w-4 rtl:rotate-180" />
             </Button>
           ) : (
             <Button onClick={() => setConfirmOpen(true)} disabled={!canLaunch}
               aria-describedby={launchHint ? 'mm-b-launch-hint-nav' : undefined}
-              className="min-h-11 shrink-0 bg-[hsl(var(--gold))] font-bold text-[#161309] hover:bg-[hsl(var(--gold-hover))]">{t('mads_launch')}</Button>
+              className="min-h-11 min-w-0 flex-1 bg-[hsl(var(--gold))] px-3 text-center font-bold text-[#161309] hover:bg-[hsl(var(--gold-hover))] sm:flex-none sm:shrink-0 sm:px-4">{t('mads_launch')}</Button>
           )}
         </div>
       </div>

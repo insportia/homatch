@@ -27,6 +27,8 @@
 // Without a configured provider the first attempt is logged SKIPPED, never
 // faked as sent.
 
+import { emailHead, emailHeaderRow } from './emailBrand.ts';
+
 // deno-lint-ignore no-explicit-any
 type Sb = any;
 
@@ -456,10 +458,11 @@ export function renderNotificationEmail(o: {
   const section = (label: string, text: string | null) => (text ? `<h2 style="font-size:14px;margin:20px 0 6px;color:#0C1119">${esc(label)}</h2><p style="margin:0;font-size:14px;line-height:1.55;color:#333">${esc(text)}</p>` : '');
   const unsub = o.unsubscribeUrl && o.unsubscribeLabel
     ? `<br><a href="${esc(o.unsubscribeUrl)}" style="color:#777;text-decoration:underline">${esc(o.unsubscribeLabel)}</a>` : '';
-  const html = `<!doctype html><html lang="${esc(o.lang)}" dir="${dir}"><body style="margin:0;background:#f5f5f2;font-family:Arial,Helvetica,sans-serif">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
-<table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;text-align:${align}" dir="${dir}">
-<tr><td style="background:#0C1119;color:#E8B04B;padding:16px 24px;border-radius:12px 12px 0 0;font-weight:bold;letter-spacing:.08em"><img src="https://homatch.live/images/logo/homatch-icon.png" width="28" height="28" alt="" style="vertical-align:middle;border:0;margin-${o.rtl ? 'left' : 'right'}:10px">HOMATCH</td></tr>
+  // The header (official logo, wordmark, dark band) is emailBrand.ts: the same in every email.
+  const html = `<!doctype html><html lang="${esc(o.lang)}" dir="${dir}"><head>${emailHead(esc(o.title))}</head><body style="margin:0;background:#f5f5f2;font-family:Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f5f5f2"><tr><td align="center" style="padding:24px 12px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="max-width:560px;background:#ffffff;border-radius:12px;text-align:${align}" dir="${dir}">
+${emailHeaderRow({ rtl: o.rtl })}
 <tr><td style="padding:24px">
 <h1 style="font-size:20px;margin:0 0 10px;color:#0C1119">${esc(o.title)}</h1>
 <p style="margin:0;font-size:15px;line-height:1.55;color:#222">${esc(o.body)}</p>

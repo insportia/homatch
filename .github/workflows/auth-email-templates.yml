@@ -1,0 +1,48 @@
+name: Auth email templates
+
+# Supabase Auth's own emails (signup confirmation, password reset, magic link, invite,
+# email change, reauthentication) are hosted settings, not code. This applies the branded
+# templates in supabase/templates/auth (built by scripts/email/build-auth-templates.mjs).
+#   mode=read   snapshot and report the live templates (no change)
+#   mode=apply  snapshot (artifact, for rollback), then update ONLY the template and subject fields
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: read or apply
+        required: true
+        default: read
+        type: choice
+        options: [read, apply]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auth-email-templates
+  cancel-in-progress: false
+
+jobs:
+  templates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Templates are current
+        run: node scripts/email/build-auth-templates.mjs --check
+      - name: ${{ inputs.mode }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ptxajsjhobhvsfhmutjn
+        run: node scripts/email/apply-auth-templates.mjs "${{ inputs.mode }}"
+      - name: Keep the snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-templates-before-${{ github.run_id }}
+          path: auth-templates-before.json
+          if-no-files-found: ignore
+          retention-days: 90

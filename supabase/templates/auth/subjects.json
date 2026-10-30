@@ -1,0 +1,8 @@
+{
+  "confirmation": "HOMATCH — დაადასტურეთ ელფოსტა / Confirm your email",
+  "recovery": "HOMATCH — პაროლის აღდგენა / Reset your password",
+  "magic_link": "HOMATCH — შესვლის ბმული / Your sign-in link",
+  "invite": "HOMATCH — მოწვევა / You have been invited",
+  "email_change": "HOMATCH — ელფოსტის შეცვლის დადასტურება / Confirm your new email",
+  "reauthentication": "HOMATCH — დადასტურების კოდი / Your confirmation code"
+}

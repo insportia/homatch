@@ -57,6 +57,27 @@ export async function runPool<T>(items: readonly T[], limit: number, fn: (item: 
   }));
 }
 
+/*
+ * NO IDLE GAP BETWEEN STAGES (owner 2026-10-30, Verify V3 speed).
+ *
+ * driveJob stepped a job, then always slept DRIVE_TICK_SPACING_MS before the next step. Finishing
+ * a model stage only parks the job in an internal state (OFFICIAL_READY, *_CHECK_PENDING,
+ * *_READY); launching the next stage takes another step or two, so each transition idled
+ * 3–9 s inside an invocation (prod c89cc933: 89 s of gaps between stages; cc158dde: 36 s).
+ *
+ * The next step runs at once when the step moved the job to a different stage that is not a
+ * wait for something outside (an OpenAI background response, the browser worker, a financial
+ * lookup: every such stage ends in _WAITING). A step that changed nothing, or that left the job
+ * waiting, keeps the spacing, so this can never spin; the per-invocation step and wall-clock
+ * budgets, the lease, the claim and the cron fallback are unchanged.
+ */
+export function stepDelayMs(before: { stage?: string | null; status?: string | null } | null, after: { stage?: string | null; status?: string | null } | null, spacingMs: number): number {
+  if (!after?.stage || !before) return spacingMs;
+  if (after.stage === before.stage && after.status === before.status) return spacingMs;
+  if (/_WAITING$/.test(after.stage)) return spacingMs;
+  return 0;
+}
+
 /** Customer-facing capacity: how many jobs one cron tick can keep moving. */
 export function jobsPerTick(s: DriveSettings): number {
   return s.batch * (s.maxFanout + 1);

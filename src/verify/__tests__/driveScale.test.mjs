@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { driveSettings, shouldFanOut, runPool, jobsPerTick, DRIVE_DEFAULTS } from '../driveScale.ts';
+import { driveSettings, shouldFanOut, runPool, jobsPerTick, stepDelayMs, DRIVE_DEFAULTS } from '../driveScale.ts';
 
 const ra = readFileSync(fileURLToPath(new URL('../../../supabase/functions/research-agent/index.ts', import.meta.url)), 'utf8');
 
@@ -76,4 +76,34 @@ test('the batch claim re-checks the claim on the locked row (two drivers never g
   assert.match(pick, /where r\.status in \('CREATED', 'RUNNING'\)/);
   assert.match(pick, /and \(r\.driver_claimed_at is null or r\.driver_claimed_at < now\(\)/);
   assert.match(pick, /and r\.deleted_at is null\s+and r\.cancelled_at is null/);
+});
+
+/* ── no idle gap between stages (owner 2026-10-30, Verify V3 speed) ── */
+test('a step that moves the job into an internal state is followed at once; waits and no-progress keep the spacing', () => {
+  const S = 3000;
+  // A model stage finished: parked in an internal state, the next stage can launch now.
+  assert.equal(stepDelayMs({ stage: 'OFFICIAL_COLLECTION_WAITING', status: 'RUNNING' }, { stage: 'PUBLIC_RESEARCH_READY', status: 'CREATED' }, S), 0);
+  assert.equal(stepDelayMs({ stage: 'PUBLIC_RESEARCH_WAITING', status: 'RUNNING' }, { stage: 'PUBLIC_RESEARCH_CHECK_PENDING', status: 'CREATED' }, S), 0);
+  assert.equal(stepDelayMs({ stage: 'BROWSER_WAITING', status: 'RUNNING' }, { stage: 'OFFICIAL_READY', status: 'CREATED' }, S), 0);
+  // The step launched an outside wait (OpenAI background response, browser worker, financial lookup): poll at the old pace.
+  for (const w of ['IDENTITY_WAITING', 'OFFICIAL_COLLECTION_WAITING', 'PUBLIC_RESEARCH_WAITING', 'MARKET_WAITING', 'SYNTHESIS_WAITING', 'BROWSER_WAITING', 'FINANCIAL_ENTITY_WAITING']) {
+    assert.equal(stepDelayMs({ stage: 'X_READY', status: 'CREATED' }, { stage: w, status: 'RUNNING' }, S), S, w);
+  }
+  // Nothing changed (still waiting, or a no-op step): never spin.
+  assert.equal(stepDelayMs({ stage: 'PUBLIC_RESEARCH_WAITING', status: 'RUNNING' }, { stage: 'PUBLIC_RESEARCH_WAITING', status: 'RUNNING' }, S), S);
+  assert.equal(stepDelayMs({ stage: 'OFFICIAL_READY', status: 'CREATED' }, { stage: 'OFFICIAL_READY', status: 'CREATED' }, S), S);
+  // Unknown either side: the old spacing.
+  assert.equal(stepDelayMs(null, { stage: 'OFFICIAL_READY', status: 'CREATED' }, S), S);
+  assert.equal(stepDelayMs({ stage: 'OFFICIAL_READY', status: 'CREATED' }, null, S), S);
+  assert.equal(stepDelayMs({ stage: 'OFFICIAL_READY', status: 'CREATED' }, { stage: null, status: 'CREATED' }, S), S);
+});
+
+test('driveJob keeps every guard and only drops the sleep through stepDelayMs', () => {
+  const drive = ra.slice(ra.indexOf('async function driveJob('), ra.indexOf('async function driveJob(') + 2600);
+  assert.match(drive, /for \(let i = 0; i < DRIVE_TICKS_PER_JOB && Date\.now\(\) < deadline; i\+\+\)/, 'step and wall-clock budgets');
+  assert.match(drive, /if \(!\(await advanceExclusive\(sb, key, model, j, jobLanguage\(j\)\)\)\) return;/, 'the lease');
+  assert.match(drive, /if \(await recoverStalledOfficial\(sb, j\)\) return;/, 'stall recovery');
+  assert.match(drive, /const wait = stepDelayMs\(j, after, DRIVE_TICK_SPACING_MS\);\n\s+if \(wait > 0\) await new Promise\(\(r\) => setTimeout\(r, wait\)\);/);
+  assert.match(drive, /await releaseJob\(sb, id\);/, 'the claim is always released');
+  assert.equal((drive.match(/setTimeout\(r, DRIVE_TICK_SPACING_MS\)/g) ?? []).length, 0, 'no unconditional sleep left');
 });

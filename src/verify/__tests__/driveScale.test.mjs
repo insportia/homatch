@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { driveSettings, shouldFanOut, runPool, jobsPerTick, stepDelayMs, DRIVE_DEFAULTS } from '../driveScale.ts';
+import { driveSettings, shouldFanOut, runPool, jobsPerTick, stepDelayMs, chainNextStep, STATUS_CHAIN_MAX_STEPS, STATUS_CHAIN_BUDGET_MS, DRIVE_DEFAULTS } from '../driveScale.ts';
 
 const ra = readFileSync(fileURLToPath(new URL('../../../supabase/functions/research-agent/index.ts', import.meta.url)), 'utf8');
 
@@ -106,4 +106,32 @@ test('driveJob keeps every guard and only drops the sleep through stepDelayMs', 
   assert.match(drive, /const wait = stepDelayMs\(j, after, DRIVE_TICK_SPACING_MS\);\n\s+if \(wait > 0\) await new Promise\(\(r\) => setTimeout\(r, wait\)\);/);
   assert.match(drive, /await releaseJob\(sb, id\);/, 'the claim is always released');
   assert.equal((drive.match(/setTimeout\(r, DRIVE_TICK_SPACING_MS\)/g) ?? []).length, 0, 'no unconditional sleep left');
+});
+
+/* ── the page's status poll chains internal hand-offs (prod d84f06db: 24 s per hand-off) ── */
+test('chainNextStep: an internal hand-off is stepped again at once; waits, no-progress and finished/paused/human jobs are not', () => {
+  const W = (stage) => ({ stage, status: 'RUNNING' });
+  const C = (stage) => ({ stage, status: 'CREATED' });
+  assert.equal(chainNextStep(W('PUBLIC_RESEARCH_WAITING'), C('PUBLIC_RESEARCH_CHECK_PENDING')), true);
+  assert.equal(chainNextStep(C('PUBLIC_RESEARCH_CHECK_PENDING'), C('MARKET_READY')), true);
+  assert.equal(chainNextStep(C('MARKET_READY'), C('RECONCILIATION_CHECK_PENDING')), true);
+  assert.equal(chainNextStep(C('RECONCILIATION_CHECK_PENDING'), C('SYNTHESIS_READY')), true);
+  assert.equal(chainNextStep(W('FINANCIAL_ENTITY_WAITING'), C('PUBLIC_RESEARCH_READY')), true);
+  assert.equal(chainNextStep(C('PUBLIC_RESEARCH_READY'), W('PUBLIC_RESEARCH_WAITING')), false, 'a launched wait stops the chain');
+  assert.equal(chainNextStep(C('MARKET_READY'), C('MARKET_READY')), false, 'a hold (marketplace still running) never spins');
+  assert.equal(chainNextStep(C('SYNTHESIS_READY'), { stage: 'COMPLETE', status: 'COMPLETE' }), false);
+  assert.equal(chainNextStep(C('X_READY'), { stage: 'BROWSER_WAITING', status: 'WAITING_HUMAN' }), false);
+  assert.equal(chainNextStep(C('X_READY'), { stage: 'MARKET_READY', status: 'PAUSED' }), false);
+  assert.equal(chainNextStep(C('X_READY'), { ...C('MARKET_READY'), cancelled_at: '2026-10-30T00:00:00Z' }), false);
+  assert.equal(chainNextStep(C('X_READY'), null), false);
+  assert.ok(STATUS_CHAIN_MAX_STEPS >= 4 && STATUS_CHAIN_MAX_STEPS <= 6);
+  assert.ok(STATUS_CHAIN_BUDGET_MS <= 10_000, 'the status response is never held long');
+});
+
+test('the status path chains under the lease and the budget, and re-reads the row after every step', () => {
+  const at = ra.indexOf("if (action === 'status' || action === 'resume' || action === 'skip')");
+  const block = ra.slice(at, at + 6000);
+  assert.match(block, /for \(let n = 0; n < STATUS_CHAIN_MAX_STEPS && Date\.now\(\) < until && chainNextStep\(before, r\.data\); n\+\+\)/);
+  assert.match(block, /if \(!\(await advanceExclusive\(sb, key, model, r\.data, lang\)\)\) break;/);
+  assert.match(block, /const until = Date\.now\(\) \+ STATUS_CHAIN_BUDGET_MS;/);
 });

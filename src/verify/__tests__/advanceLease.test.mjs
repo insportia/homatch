@@ -28,7 +28,13 @@ test('the lease is released after the step, whatever happened', () => {
 });
 
 test('a status poll re-reads the row only when it stepped the job itself', () => {
-  assert.match(ra, /if \(await advanceExclusive\(sb, key, model, j, lang\)\) \{\s*const r = await ownedBy\(sb\.from\('research_jobs'\)\.select\('\*'\)\.eq\('id', id\)\)\.maybeSingle\(\);\s*j = r\.data \|\| j;\s*\}/);
+  // Every re-read sits inside the branch where THIS request won the lease and stepped the job
+  // (the chained follow-on steps of 2026-10-30 included); a contended poll answers from its first read.
+  const at = ra.indexOf('if (await advanceExclusive(sb, key, model, j, lang)) {');
+  assert.ok(at > 0);
+  const branch = ra.slice(at, ra.indexOf('j = r.data || j;', at));
+  assert.match(branch, /const reread = \(\) => ownedBy\(sb\.from\('research_jobs'\)\.select\('\*'\)\.eq\('id', id\)\)\.maybeSingle\(\);\s*let r = await reread\(\);/);
+  assert.match(branch, /if \(!\(await advanceExclusive\(sb, key, model, r\.data, lang\)\)\) break;\s*r = await reread\(\);/);
 });
 
 test('the drive loop still stops on a job it could not lease', () => {

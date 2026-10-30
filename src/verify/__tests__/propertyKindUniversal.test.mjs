@@ -304,9 +304,13 @@ test('land facts card: the parcel only; chapters gated for PARKING and LAND', ()
   assert.equal(l.projectTeam, false);
   // The report wires every gate (source premise: VerifyReport.tsx).
   const src = readFileSync(new URL('../../components/verify/VerifyReport.tsx', import.meta.url), 'utf8');
-  for (const needle of ['ks.unitUtilities ? <UtilitiesCard', 'ks.buildingSpecs && specGroups', 'ks.livingLocation ? <LocationLiving', 'ks.projectTeam &&', 'marketPlanForKind(', "marketPlan.mode === 'NOTE'", 'kind={copyKind}']) {
+  for (const needle of ['ks.unitUtilities ? <UtilitiesCard', 'ks.buildingSpecs && specGroups', 'ks.livingLocation ? <LocationLiving', 'people: showTeam && !!(', 'marketPlanForKind(', "marketPlan.mode === 'NOTE'", 'kind={copyKind}']) {
     assert.ok(src.includes(needle), needle);
   }
+  // The team chapter follows the kind (a plot has none of its own), except that official TAS
+  // cases naming a project team on the plot always show it (prod 9d96c8a7, LAND, 16 participants).
+  assert.match(src, /const showTeam = ks\.projectTeam \|\| teamV2Groups\.length > 0;/);
+  assert.ok(src.indexOf('const teamV2Groups = teamGroupsV2(synthesis.projectTeamV2);') < src.indexOf('const showTeam ='), 'the team groups exist before the gate reads them');
 });
 
 /* ───────────── gap 6: the stored story on rebuild ───────────── */

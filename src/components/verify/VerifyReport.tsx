@@ -512,11 +512,15 @@ function VerifyReportBody({
      of its own kind when one was gathered, else one honest sentence: never a silent gap. */
   const copyKind = copyKindOf(synthesis);
   const marketPlan = marketPlanForKind((synthesis as { propertyKind?: { kind?: string } }).propertyKind?.kind, synthesis.market);
+  /* A plot has no project team of its own — unless official TAS cases on it name one. Prod
+     9d96c8a7 (2026-10-30): a parcel-only extract (LAND) under a development, 16 participants
+     documented by the city (developer, chief architect…), and the chapter was not drawn. */
+  const showTeam = ks.projectTeam || teamV2Groups.length > 0;
   /* What each chapter has to say. A chapter with nothing is not drawn. */
   const has = {
     explore: true,
     story: !!(r.propertyStory?.chapters?.some((c) => clean(c.body)) || history?.milestones?.length || history?.milestoneGroups?.length || history?.evolution?.length),
-    people: ks.projectTeam && !!(inChapter('people').length || people.length || history?.team?.length || synthesis.projectTeam?.length || teamV2Groups.length || synthesis.snapshot?.developer || synthesis.companyFinance?.financingPartner || (adsShown && ['COMPLETE', 'CACHED'].includes(synthesis.developerAds!.outcome))),
+    people: showTeam && !!(inChapter('people').length || people.length || history?.team?.length || synthesis.projectTeam?.length || teamV2Groups.length || synthesis.snapshot?.developer || synthesis.companyFinance?.financingPartner || (adsShown && ['COMPLETE', 'CACHED'].includes(synthesis.developerAds!.outcome))),
     building: true,
     legal: !!(position || history?.legal?.length || history?.status || r.currentStatus || synthesis.propertyRegister?.latest || company || rights || synthesis.companyFinance || r.attentionPoints?.length || inChapter('legal').length || !!identityNotice(identity)),
     documents: hasDocuments,

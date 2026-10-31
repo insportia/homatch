@@ -1,23 +1,24 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { Search, User, Building2, Mail, Phone, CreditCard, Bot, DollarSign, Eye, Loader2, ChevronRight, ArrowLeft, Shield, Brain, History } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Textarea } from '@/components/ui/textarea';
-import { supabase } from '@/db/supabase';
-import { User360 } from '@/types/types';
+import { ArrowLeft, Bot, Brain, Building2, ChevronRight, CreditCard, DollarSign, Eye, History, Loader2, Mail, Phone, Search, Shield, User } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { useLanguage } from '@/contexts/LanguageContext';
 import { labelFor } from '@/admin/labels';
 import { Confirm, When } from '@/components/admin/control/AdminKit';
-import { writeImpersonation, type ImpersonationState } from '@/lib/impersonation';
+import { UserAccessPanel } from '@/components/admin/UserAccessPanel';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { supabase } from '@/db/supabase';
+import { type ImpersonationState, writeImpersonation } from '@/lib/impersonation';
 import {
-  endImpersonationById, listImpersonationSessions, searchUsers, startImpersonation,
-  type ImpersonationSessionRow, type UserSearchRow,
+  endImpersonationById, 
+  type ImpersonationSessionRow, listImpersonationSessions, searchUsers, startImpersonation,type UserSearchRow,
 } from '@/services/adminControl';
+import { User360 } from '@/types/types';
 
 /*
  * USER 360.
@@ -251,6 +252,15 @@ export default function AdminUser360Page() {
               )}
             </CardContent>
           </Card>
+
+          {/* Access and limits on the profile itself (owner, 2026-10-31): Unlimited, or a per-service
+              total / monthly limit, through the same audited admin_access_* RPCs as /admin/access. */}
+          {target && (
+            <section aria-labelledby="u360-access" className="space-y-3" data-testid="user360-access">
+              <h2 id="u360-access" className="text-base font-semibold">{t('admin_user360_access_title')}</h2>
+              <UserAccessPanel userId={target.id} />
+            </section>
+          )}
 
           {targetSessions.length > 0 && (
             <Card>

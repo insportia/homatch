@@ -108,7 +108,12 @@ export function startMyHomeRuntime(env = process.env, fetcher: typeof fetch = fe
       try {
         const slot = active < MAX_ACTIVE ? await semaphore?.acquire('myhome', globalMax, { deadlineAt: Date.now() + 1000, pollMs: 500, signal: controller.signal }) : null;
         if (active < MAX_ACTIVE && (slot || !semaphore)) {
-          const result = await ingest({ action: 'claim', limit: MAX_ACTIVE - active, leaseSeconds: 120 });
+          // A slot renews itself until released: a claim that throws (an ingest 5xx, a timeout)
+          // must hand it back, or this replica never claims a MyHome run again (prod e9be95b3,
+          // 2026-10-31: the run sat unclaimed to its deadline until the worker was redeployed).
+          let result: any;
+          try { result = await ingest({ action: 'claim', limit: MAX_ACTIVE - active, leaseSeconds: 120 }); }
+          catch (error) { await slot?.release(); throw error; }
           if (!(result.runs ?? []).length) await slot?.release();
           else if (slot) heldSlots.push(slot);
           lastClaimAt = new Date().toISOString(); lastError = null;

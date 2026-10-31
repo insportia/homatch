@@ -505,3 +505,42 @@ test('a body that times out is a retryable transport failure, never a raw abort 
     });
   }
 });
+
+/* ── Find Property fixes (2026-10-31) ── */
+test('a claim that fails hands its global slot back, so MyHome keeps claiming (prod e9be95b3)', async () => {
+  let acquired = 0, released = 0, claims = 0;
+  const semaphore = { acquire: async () => { acquired++; return { release: async () => { released++; } }; } };
+  const fetcher = async (input, init) => {
+    if (!String(input).includes('/functions/v1/')) return new Response('{}', { status: 503 });
+    const body = JSON.parse(init.body);
+    if (body.action === 'source-health') return Response.json({ mode: 'CACHE_ONLY', retryAt: null });
+    if (body.action === 'claim') { claims++; return new Response('upstream', { status: 502 }); }
+    return Response.json({});
+  };
+  const runtime = startMyHomeRuntime({ SUPABASE_URL: 'https://example.supabase.co', MYHOME_WORKER_TOKEN: 'x'.repeat(40), MYHOME_MARKETPLACE_ENABLED: 'true' }, fetcher, semaphore);
+  try {
+    for (let i = 0; i < 200 && !claims; i++) await new Promise((r) => setTimeout(r, 10));
+    for (let i = 0; i < 50 && released < claims; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(claims, 1);
+    assert.equal(acquired, 1);
+    assert.equal(released, 1, 'the slot taken for a failed claim is released');
+    assert.match(runtime.status().lastError ?? '', /Marketplace ingest HTTP 502/);
+  } finally { runtime.shutdown(); }
+});
+
+test('a district MyHome does not know is left out instead of failing the source; with none known the city is searched', () => {
+  const both = buildQueries({ ...request, districts: ['პეკინი', 'Krtsanisi'] }, locations, filters);
+  assert.equal(both.length, 1, 'only the known district is queried');
+  assert.equal(new URL(both[0].url).searchParams.get('urbans'), '65');
+  assert.deepEqual(both[0].unresolvedDistricts, ['პეკინი']);
+  const none = buildQueries({ ...request, districts: ['პეკინი'] }, locations, filters);
+  assert.equal(none.length, 1);
+  const u = new URL(none[0].url);
+  assert.equal(u.searchParams.get('cities'), '1');
+  assert.equal(u.searchParams.get('urbans'), null);
+  assert.equal(u.searchParams.get('districts'), null);
+  assert.deepEqual(none[0].unresolvedDistricts, ['პეკინი']);
+  // A known district alone records nothing; an unknown city still fails.
+  assert.equal(buildQueries(request, locations, filters)[0].unresolvedDistricts, undefined);
+  assert.throws(() => buildQueries({ ...request, city: 'Unknown', districts: ['პეკინი'] }, locations, filters));
+});

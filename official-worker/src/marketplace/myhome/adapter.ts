@@ -76,6 +76,7 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
     const locations = await json(endpoints.locations, 'en'), filters = await json(endpoints.filters);
     const queries = buildQueries(request, locations, filters);
     queriesApplied.requests = queries.map(query => query.url);
+    if (queries[0]?.unresolvedDistricts) queriesApplied.unresolvedDistricts = queries[0].unresolvedDistricts;
     // Ingress truncates diagnostic URL arrays to 80 characters per item.
     // Persist a bounded identity separately so acknowledged cursors survive it.
     queriesApplied.queryFingerprint = createHash('sha256').update(JSON.stringify(queriesApplied.requests)).digest('hex');

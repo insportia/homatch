@@ -82,6 +82,8 @@ export function PropertyRegisterCard({ register, source, kind }: { register?: Pr
   const ownerText = view.owners.length
     ? view.owners.map((o) => o.name).join(', ')
     : (latest.owners ?? []).some((o) => o.kind === 'PERSON') ? t('vbi_reg_owner_person') : '';
+  // A building parcel lists every co-owner; the rest are counted, not dropped.
+  const moreOwners = Math.max(0, (latest.ownersTotal ?? 0) - (latest.owners ?? []).length);
   const since = dmy(latest.ownershipRegisteredOn);
   const proceedings = (register.proceedings ?? []).slice(-12);
 
@@ -94,19 +96,23 @@ export function PropertyRegisterCard({ register, source, kind }: { register?: Pr
       accent
     >
       <RowList>
-        {ownerText ? (
-          <Row label={t('vbi_reg_owner')}>
+        {/* Always shown (owner, 2026-10-31): an owner the extract could not be read for is said so, never omitted. */}
+        <Row label={t('vbi_reg_owner')}>
+          {ownerText ? (
             <span className="font-medium">
               {/* As the public extract names them (owner, 2026-10-10). */}
               {ownerText}
+              {moreOwners ? <span className="font-normal text-muted-foreground"> {t('vbi_reg_owner_more', { count: String(moreOwners) })}</span> : null}
             </span>
-            {since ? (
-              <span className="block text-xs text-muted-foreground">
-                {t(latest.ownershipBasis === 'PURCHASE' ? 'vbi_reg_owner_since_purchase' : 'vbi_reg_owner_since', { date: iso(since) })}
-              </span>
-            ) : null}
-          </Row>
-        ) : null}
+          ) : (
+            <span className="text-muted-foreground">{t('vbi_reg_owner_unread')}</span>
+          )}
+          {ownerText && since ? (
+            <span className="block text-xs text-muted-foreground">
+              {t(latest.ownershipBasis === 'PURCHASE' ? 'vbi_reg_owner_since_purchase' : 'vbi_reg_owner_since', { date: iso(since) })}
+            </span>
+          ) : null}
+        </Row>
 
         <Row label={kindT(t, 'verify_v3_reg_unit_mortgage', kind)}>
           {view.unitMortgages.length ? (

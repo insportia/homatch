@@ -57,6 +57,8 @@ export interface RegisterExtract {
   /** ISO datetime the extract was prepared — the moment it describes. */
   issuedAt: string | null;
   owners: RegisterOwner[];
+  /** Every owner the extract lists, when more than `owners` keeps (a building parcel can list hundreds). */
+  ownersTotal?: number;
   ownershipRegisteredOn: string | null;
   /** PURCHASE when the basis is a sale-purchase agreement. */
   ownershipBasis: 'PURCHASE' | 'OTHER' | null;
@@ -207,7 +209,14 @@ const PERSON_ID = /,?\s*(?:P\/N|პ\/ნ)\s*:?\s*\d{11}/;
 
 /* ───────────────────────── extract parsing ───────────────────────── */
 
-const L_OWNERS = /\nმესაკუთრეები\s*\n/;
+/*
+ * The owner section's heading. Older extracts title it "მესაკუთრეები", current ones
+ * "მესაკუთრის განყოფილება" (prod 07fa2f3a, b6bba2ef, 2026-10-30: the owner was read as nobody and
+ * the report dropped its owner row). A building parcel's extract has neither and goes straight to
+ * the "მესაკუთრეები:" list (d84f06db): the block then starts at the list itself.
+ */
+const L_OWNERS = /\n[ \t]*(?:მესაკუთრეები|მესაკუთრის\s+განყოფილება)[ \t]*\n/;
+const L_OWNER_LIST = /(?=\n[ \t]*მესაკუთრეები\s*:)/;
 const L_MORTGAGE = /\nიპოთეკა\s*\n/;
 const L_TAX = /საგადასახადო\s+გირავნობა\s*:/;
 const L_SEIZURE = /ყადაღა\/აკრძალვა\s*:/;
@@ -240,22 +249,30 @@ function parseMortgages(body: string): RegisterMortgage[] {
     });
 }
 
-function parseOwners(text: string): RegisterOwner[] {
-  // The list follows "მესაკუთრეები:" (with the colon) and ends at "მესაკუთრე:".
-  const body = section(text, /მესაკუთრეები\s*:\s*\n/, [/\nმესაკუთრე\s*:/, L_MORTGAGE, L_TAX]);
+/* A page break inside a long owner list: the printed date/title line and the print path. */
+const PAGE_BREAK_LINE = /^(?:.*სრული\s+ამონაწერი.*|file:\/\/\S*|.*public\.reestri\.gov\.ge.*|.*გვერდი:\s*\d+\(\d+\).*)$/;
+/* Personal and foreign-passport numbers ("C/N: 00 0000000"): never part of a name. */
+const PERSON_DOC = /\s*,?\s*(?:P\/N|პ\/ნ|C\/N)\s*:.*$/;
+
+function ownerLines(text: string): string[] {
+  // The list follows "მესაკუთრეები:" (with the colon) and ends at "მესაკუთრე:", at a
+  // building's unit-owner table ("ბინა ერთეულის მესაკუთრეები", cc158dde) or at the mortgages.
+  const body = section(text, /მესაკუთრეები\s*:[ \t]*\n/, [/\nმესაკუთრე\s*:/, /\n[ \t]*ბინა\s+ერთეულის\s+მესაკუთრეები/, L_MORTGAGE, L_TAX]);
   if (!body) return [];
-  return body
-    .split('\n')
-    .map(squash)
-    .filter(Boolean)
+  return body.split('\n').map(squash).filter((line) => line && !PAGE_BREAK_LINE.test(line));
+}
+
+function parseOwners(text: string): RegisterOwner[] {
+  return ownerLines(text)
     .map((line): RegisterOwner => {
-      if (COMPANY_FORM.test(line) && !PERSON_ID.test(line)) {
+      if (COMPANY_FORM.test(line) && !PERSON_ID.test(line) && !/C\/N\s*:/.test(line)) {
         const id = line.match(/(\d{9})\s*$/)?.[1];
         const name = squash(line.replace(/,?\s*(?:ს\/ნ|ს\/კ|ID\/N|ID\s*ნომერი)\s*:?\s*\d{9}\s*$/, '').replace(/\d{9}\s*$/, '')).replace(/\s*,$/, '');
         return { kind: 'COMPANY', name: name || undefined, ...(id ? { companyId: id } : {}) };
       }
       // "სახელი გვარი ,P/N: 01001012345" → the name only.
-      const name = squash(line.replace(/,?\s*(?:P\/N|პ\/ნ)\s*:?\s*(?:\d{11}|—).*$/, '').replace(/\d{11}.*$/, '')).replace(/,$/, '');
+      // A foreign owner's passport ("სახელი გვარი , C/N: 00 0000000") is stripped the same way.
+      const name = squash(line.replace(PERSON_DOC, '').replace(/,?\s*(?:P\/N|პ\/ნ)\s*:?\s*(?:\d{11}|—).*$/, '').replace(/\d{6,}.*$/, '')).replace(/\s*,$/, '');
       return name && /\p{L}/u.test(name) ? { kind: 'PERSON', name } : { kind: 'PERSON' };
     })
     .slice(0, 12);
@@ -336,7 +353,8 @@ export function parseRegisterExtract(rawText: string, recordId: string): Registe
   if (!isRegisterExtract(text)) return null;
 
   const head = text.match(/N\s+(\d{9,14})\s*-\s*(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})/);
-  const ownersBlock = section(text, L_OWNERS, [L_MORTGAGE, L_TAX]) ?? '';
+  const ownersBlock = section(text, L_OWNERS, [L_MORTGAGE, L_TAX]) ?? section(text, L_OWNER_LIST, [L_MORTGAGE, L_TAX]) ?? '';
+  const ownerCount = ownerLines(ownersBlock).length;
   const rights = ownersBlock.match(/უფლების\s+რეგისტრაცია\s*:\s*თარიღი\s+(\d{2}\/\d{2}\/\d{4})/);
   const basisText = squash(section(ownersBlock, /უფლების\s+დამადასტურებელი\s+დოკუმენტი\s*:/, [/მესაკუთრეები\s*:/]) ?? '');
   // Older extracts say "ნაკვეთის ფუნქცია:", current ones "ნაკვეთის დანიშნულება:"
@@ -358,6 +376,7 @@ export function parseRegisterExtract(rawText: string, recordId: string): Registe
     applicationNumber: head?.[1] ?? null,
     issuedAt: head ? isoMoment(head[4], head[5]) : null,
     owners: parseOwners(ownersBlock),
+    ...(ownerCount > 12 ? { ownersTotal: ownerCount } : {}),
     ownershipRegisteredOn: isoDay(rights?.[1]),
     ownershipBasis: basisText ? (/ნასყიდობ/.test(basisText) ? 'PURCHASE' : 'OTHER') : null,
     landFunction: landFunction ? squash(landFunction) : null,

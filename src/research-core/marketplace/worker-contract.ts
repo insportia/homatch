@@ -20,6 +20,23 @@ import {
   BUILDING_STATUSES, asBuildingStatus, asPropertyType, asRenovationStatus, asTransaction,
 } from './taxonomy.ts';
 import { type SearchIntelligenceBrief, confirmedValue, primaryPriceRange } from './brief.ts';
+import { streetDistrictOf } from './ranking.ts';
+
+/*
+ * What the sources are asked for. A street or neighbourhood people name as a place („პეკინი“)
+ * is filed by portals under its district: ranking already reads it that way, but the sources got
+ * the raw name and MyHome failed on it (prod 8f9ba53b). They now get the district; a name the
+ * street table does not know is passed through unchanged.
+ */
+export function sourceDistricts(names: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const name of names) {
+    const district = streetDistrictOf(name);
+    const value = district ? district.charAt(0).toUpperCase() + district.slice(1) : name;
+    if (!out.some((d) => d.toLowerCase() === value.toLowerCase())) out.push(value);
+  }
+  return out;
+}
 
 export const WORKER_CONTRACT_VERSION = 'marketplace-worker-1';
 
@@ -152,7 +169,7 @@ export function buildSearchRequest(
     market: brief.country,
     country: brief.country,
     city,
-    districts: confirmedValue(brief.districts) ?? [],
+    districts: sourceDistricts(confirmedValue(brief.districts) ?? []),
     transactionType: t,
     propertyType: p,
     priceMinUsd: price.min,

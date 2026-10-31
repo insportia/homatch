@@ -30,7 +30,22 @@ export function buildQueries(request: MarketplaceSearchRequest, locations: any, 
   const base = { transaction, property, city: request.city, currency: 'USD' as const,
     minPrice: request.priceMinUsd, maxPrice: request.collectPriceMaxUsd ?? request.priceMaxUsd,
     minArea: request.areaMinSqm ?? undefined, maxArea: request.areaMaxSqm ?? undefined };
-  return (request.districts.length ? request.districts : [undefined]).map(district => {
+  /*
+   * A district MyHome's dictionary does not know (a neighbourhood such as „პეკინი“, prod 8f9ba53b)
+   * failed the whole source. It is now left out: the known districts are searched, and with none
+   * known the city is, the unresolved names recorded so HOMATCH's own location matching applies.
+   * An unknown city, conflicting IDs or a broken dictionary still fail as before.
+   */
+  const unresolvedDistricts: string[] = [];
+  const known = request.districts.filter(district => {
+    try { resolveLocation({ ...base, district }, locations); return true; }
+    catch (error) {
+      if (!/^Unknown or ambiguous district\/urban$/.test((error as Error).message)) throw error;
+      unresolvedDistricts.push(district);
+      return false;
+    }
+  });
+  return (known.length ? known : [undefined]).map(district => {
     const criteria = resolveLocation({ ...base, district }, locations);
     const url = new URL(apiUrl(criteria));
     const add = (key: string, ids: number[]) => { ids.forEach((id, index) => url.searchParams.set(`${key}[${index}]`, String(id))); };
@@ -77,7 +92,7 @@ export function buildQueries(request: MarketplaceSearchRequest, locations: any, 
       if (preference === 'NOT_FIRST') url.searchParams.set('not_first', '1');
       if (preference === 'NOT_LAST') url.searchParams.set('not_last', '1');
     }
-    return { criteria, url: url.href };
+    return { criteria, url: url.href, ...(unresolvedDistricts.length ? { unresolvedDistricts } : {}) };
   });
 }
 const number = (v: unknown): number | null => v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v);

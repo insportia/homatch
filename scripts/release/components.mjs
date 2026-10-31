@@ -119,7 +119,7 @@ export const COMPONENTS = {
       /^supabase\/functions\/_shared\/(entitlements|saasNotify)\.ts$/, /^supabase\/functions\/_shared\/saasPayments\//,
       /^tests\/matrix\/saasSubscriptions\.test\.mjs$/, /^tests\/sql\/saas\//, /^scripts\/saas-subs-i18n-/,
       // Owner Unlimited and admin access grants (2026-10-30): admin page, matrix test, copy.
-      /^src\/pages\/admin\/AdminAccessPage\.tsx$/, /^tests\/matrix\/accessGrants\.test\.mjs$/, /^tests\/mobile\/adminUserAccess\.test\.mjs$/, /^scripts\/stab-access-i18n-/,
+      /^src\/pages\/admin\/AdminAccessPage\.tsx$/, /^src\/components\/admin\/UserAccessPanel\.tsx$/, /^tests\/matrix\/accessGrants\.test\.mjs$/, /^tests\/mobile\/adminUserAccess\.test\.mjs$/, /^scripts\/stab-access-i18n-/,
       fn('billing', 'credits-topup', 'payment-webhook', 'payment-method-setup', 'atomic-unlock', 'unlock-external-contact', 'research-purchase', 'spend-cap-check', 'saas-checkout', 'saas-payments-webhook')],
     suites: ['mobile:routes', 'mobile:shell', 'mobile:access'],
     proofs: ['money: reserve → settle → release on a real row; no unknown COGS silently zero'],

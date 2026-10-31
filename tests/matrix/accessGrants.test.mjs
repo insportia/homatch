@@ -75,10 +75,14 @@ test('Admin navigation and route: /admin/access next to Plans and entitlements, 
   const access = nav.indexOf("path: '/admin/access', labelKey: 'admin_nav_access'");
   assert.ok(plans > 0 && access > plans && access - plans < 400, 'directly after Plans');
   assert.match(read('src/routes.tsx'), /path: '\/admin\/access',\s+element: adminWrap\(<AdminAccessPage \/>\),\s+adminOnly: true/);
-  const page = read('src/pages/admin/AdminAccessPage.tsx');
+  // The writes live in UserAccessPanel, shown by /admin/access and by the admin user profile (2026-10-31).
+  const page = read('src/components/admin/UserAccessPanel.tsx');
   for (const fn of ['adminAccessGrant', 'adminAccessUpdate', 'adminAccessRevoke', 'adminAccessReset']) assert.ok(page.includes(`${fn}(`), fn);
   assert.ok(page.includes('setPending({ label, run })') && page.includes("t('acc_confirm')"), 'every write asks for confirmation');
   assert.ok(!/supabase\.from\(/.test(page), 'no direct table writes');
+  for (const host of ['src/pages/admin/AdminAccessPage.tsx', 'src/pages/admin/AdminUser360Page.tsx']) {
+    assert.match(read(host), /<UserAccessPanel userId=\{/, `${host} renders the access panel`);
+  }
 });
 
 test('customer surfaces hide credits for unlimited accounts from entitlement_status_for_me, never a role check', () => {
